@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
   import { cn } from "../../src/lib/utils.js";
 import { getQualityColor, getQualityBgColor, dummyPurchaseOrders } from '@/components/data/dummyData';
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 export default function SupplierDetailsModal({ supplier, open, onClose }) {
   if (!supplier) return null;
@@ -59,7 +60,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
           <div className="grid grid-cols-3 gap-4">
             <div className={cn("rounded-xl p-4 border text-center", qualityBgColor)}>
               <Star className={cn("w-6 h-6 mx-auto mb-2", qualityColor)} fill="currentColor" />
-              <p className={cn("text-2xl font-bold", qualityColor)}>{supplier.quality_rating.toFixed(1)}</p>
+              <p className={cn("text-2xl font-bold", qualityColor)}>{formatNumber(supplier.quality_rating, 1)}</p>
               <p className="text-sm text-slate-500">Quality Rating</p>
             </div>
             <div className="rounded-xl p-4 border border-slate-200 bg-slate-50 text-center">
@@ -69,7 +70,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
             </div>
             <div className="rounded-xl p-4 border border-slate-200 bg-slate-50 text-center">
               <Package className="w-6 h-6 mx-auto mb-2 text-purple-500" />
-              <p className="text-2xl font-bold text-slate-900">{supplier.items_supplied.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{(supplier.items_supplied || []).length}</p>
               <p className="text-sm text-slate-500">Items</p>
             </div>
           </div>
@@ -87,11 +88,11 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {supplier.items_supplied.map((item, idx) => (
+                  {(supplier.items_supplied || []).map((item, idx) => (
                     <tr key={idx}>
                       <td className="p-3 font-medium text-slate-900">{item.item_name}</td>
                       <td className="p-3 text-right text-slate-600">{item.moq}</td>
-                      <td className="p-3 text-right text-slate-900 font-medium">${item.price_per_unit.toFixed(2)}</td>
+                      <td className="p-3 text-right text-slate-900 font-medium">${formatNumber(item.price_per_unit, 2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -130,7 +131,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
                       <p className="text-sm text-slate-500">{po.received_date}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-slate-600">${po.total_amount.toFixed(2)}</span>
+                      <span className="text-slate-600">${formatNumber(po.total_amount, 2)}</span>
                       {po.delivery_rating && (
                         <div className="flex items-center gap-1">
                           <Star className="w-4 h-4 text-amber-500" fill="currentColor" />
@@ -145,7 +146,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
           )}
 
           {/* Actions */}
-          <div className="pt-4 border-t border-slate-200">
+          <div className="pt-8 pb-6 border-t border-slate-200">
             <Link to={createPageUrl("PurchaseOrders") + `?supplier=${supplier.id}&action=create`}>
               <Button className="w-full bg-teal-600 hover:bg-teal-700">
                 <FilePlus className="w-4 h-4 mr-2" />

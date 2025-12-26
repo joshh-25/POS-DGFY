@@ -4,8 +4,8 @@ import { cn } from '../../src/lib/utils.js'
 const Button = React.forwardRef(({ className, variant = 'default', size = 'default', ...props }, ref) => {
   const variants = {
     default: 'bg-teal-600 text-white hover:bg-teal-700',
-    outline: 'border border-slate-300 bg-white hover:bg-slate-50',
-    ghost: 'hover:bg-slate-100',
+    outline: 'border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900',
+    ghost: 'text-slate-600 hover:bg-slate-200 hover:text-slate-900',
     destructive: 'bg-red-600 text-white hover:bg-red-700',
   }
   

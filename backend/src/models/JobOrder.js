@@ -1,0 +1,52 @@
+import { DataTypes } from 'sequelize';
+import sequelize from '../config/database.js';
+
+const JobOrder = sequelize.define('JobOrder', {
+  jo_id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  jo_number: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    unique: true
+  },
+  product_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  quantity_to_produce: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('draft', 'in_progress', 'completed', 'cancelled'),
+    defaultValue: 'draft'
+  },
+  created_date: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  completion_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  responsible_user: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  }
+}, {
+  tableName: 'job_orders',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
+});
+
+export default JobOrder;
+

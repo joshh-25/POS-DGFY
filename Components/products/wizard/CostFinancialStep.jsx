@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DollarSign, TrendingUp } from 'lucide-react';
+import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function CostFinancialStep({ data, updateData, items }) {
   const [packagingCost, setPackagingCost] = React.useState(0);
@@ -50,7 +51,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
           <p className="text-sm text-emerald-700 mb-1">Raw Materials Cost</p>
-          <p className="text-2xl font-bold text-emerald-900">₱{ingredientCost.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-emerald-900">₱{formatNumber(ingredientCost, 2)}</p>
           <p className="text-xs text-emerald-600">per batch (auto-calculated)</p>
         </div>
 
@@ -99,29 +100,29 @@ export default function CostFinancialStep({ data, updateData, items }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-xs text-slate-400">Raw Materials</p>
-            <p className="text-lg font-bold">₱{ingredientCost.toFixed(2)}</p>
+            <p className="text-lg font-bold">₱{formatNumber(ingredientCost, 2)}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Packaging</p>
-            <p className="text-lg font-bold">₱{packagingCost.toFixed(2)}</p>
+            <p className="text-lg font-bold">₱{formatNumber(packagingCost, 2)}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Labor</p>
-            <p className="text-lg font-bold">₱{laborCost.toFixed(2)}</p>
+            <p className="text-lg font-bold">₱{formatNumber(laborCost, 2)}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Overhead</p>
-            <p className="text-lg font-bold">₱{overheadCost.toFixed(2)}</p>
+            <p className="text-lg font-bold">₱{formatNumber(overheadCost, 2)}</p>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
           <div className="flex justify-between items-center">
             <span className="text-sm">Total COGS per Batch:</span>
-            <span className="text-2xl font-bold">₱{totalCOGS.toFixed(2)}</span>
+            <span className="text-2xl font-bold">₱{formatNumber(totalCOGS, 2)}</span>
           </div>
           <div className="flex justify-between items-center mt-2">
             <span className="text-sm">Cost per Unit:</span>
-            <span className="text-xl font-bold text-emerald-400">₱{costPerUnit.toFixed(2)}</span>
+            <span className="text-xl font-bold text-emerald-400">₱{formatNumber(costPerUnit, 2)}</span>
           </div>
         </div>
       </div>
@@ -153,7 +154,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-4xl font-bold text-teal-900">₱{suggestedPrice.toFixed(2)}</p>
+            <p className="text-4xl font-bold text-teal-900">₱{formatNumber(suggestedPrice, 2)}</p>
             <p className="text-sm text-teal-600">per unit</p>
           </div>
         </div>

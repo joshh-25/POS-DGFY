@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,11 +14,17 @@ import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
 import ProductCreateWizard from '@/components/products/ProductCreateWizard';
-import { dummyItems, getStockStatus } from '@/components/data/dummyData';
+import { getStockStatus } from '@/components/data/dummyData';
+import { useItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/hooks/useItems.js';
+import { toast } from 'sonner';
 import { cn } from "../src/lib/utils.js";
+import { formatNumber } from '../src/lib/numberUtils.js';
 
 export default function Items() {
-  const [items, setItems] = useState(dummyItems);
+  const { items, loading, error, refetch } = useItems();
+  const { createItem, loading: creating } = useCreateItem();
+  const { updateItem, loading: updating } = useUpdateItem();
+  const { deleteItem, loading: deleting } = useDeleteItem();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -73,7 +79,7 @@ export default function Items() {
           case 'stock_desc':
             return b.current_stock - a.current_stock;
           case 'updated':
-            return new Date(b.last_updated) - new Date(a.last_updated);
+            return new Date(b.updated_at || b.last_updated) - new Date(a.updated_at || a.last_updated);
           default:
             return 0;
         }
@@ -99,20 +105,65 @@ export default function Items() {
     setShowProductWizard(true);
   };
 
-  const handleProductSubmit = (productData) => {
-    const newId = `item-${Date.now()}`;
-    setItems(prev => [...prev, { ...productData, id: newId, last_updated: new Date().toISOString().split('T')[0] }]);
+  const handleProductSubmit = async (productData) => {
+    try {
+      await createItem(productData);
+      toast.success('Product created successfully');
+      refetch();
     setShowProductWizard(false);
-  };
-
-  const handleSave = (itemData) => {
-    if (editingItem) {
-      setItems(prev => prev.map(i => i.id === editingItem.id ? { ...itemData, id: editingItem.id } : i));
-    } else {
-      const newId = `item-${Date.now()}`;
-      setItems(prev => [...prev, { ...itemData, id: newId, last_updated: new Date().toISOString().split('T')[0] }]);
+    } catch (error) {
+      toast.error(error.message || 'Failed to create product');
     }
   };
+
+  const handleSave = async (itemData) => {
+    try {
+    if (editingItem) {
+        await updateItem(editingItem.item_id, itemData);
+        toast.success('Item updated successfully');
+    } else {
+        await createItem(itemData);
+        toast.success('Item created successfully');
+      }
+      refetch();
+      setShowFormModal(false);
+      setEditingItem(null);
+    } catch (error) {
+      toast.error(error.message || 'Failed to save item');
+    }
+  };
+
+  const handleDelete = async (itemId) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) {
+      return;
+    }
+    try {
+      await deleteItem(itemId);
+      toast.success('Item deleted successfully');
+      refetch();
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete item');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <p className="text-red-800 font-medium">Error loading items</p>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+    }
 
   return (
     <div className="space-y-6">
@@ -219,7 +270,7 @@ export default function Items() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map(item => (
             <ItemCard 
-              key={item.id} 
+              key={item.item_id || item.id} 
               item={item} 
               onView={handleView}
               onEdit={handleEdit}
@@ -250,7 +301,7 @@ export default function Items() {
                 };
                 return (
                   <tr 
-                    key={item.id} 
+                    key={item.item_id || item.id} 
                     className="hover:bg-slate-50 cursor-pointer transition-colors"
                     onClick={() => handleView(item)}
                   >
@@ -265,7 +316,7 @@ export default function Items() {
                     </td>
                     <td className="p-4">
                       <span className="font-medium text-slate-900">
-                        {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
+                        {parseFloat(item.current_stock || 0)} / {parseFloat(item.max_capacity || 0)} {item.unit_of_measure}
                       </span>
                     </td>
                     <td className="p-4">
@@ -273,8 +324,8 @@ export default function Items() {
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                       </span>
                     </td>
-                    <td className="p-4 font-medium text-slate-900">₱{item.cost_per_unit.toFixed(2)}</td>
-                    <td className="p-4 text-slate-600">{item.last_updated}</td>
+                    <td className="p-4 font-medium text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</td>
+                    <td className="p-4 text-slate-600">{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : (item.last_updated || 'N/A')}</td>
                   </tr>
                 );
               })}

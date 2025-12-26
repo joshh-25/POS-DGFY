@@ -34,7 +34,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
     <div
       ref={ref}
       className={cn(
-        'relative bg-white rounded-2xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto',
+        'relative bg-white rounded-2xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto px-5',
         className
       )}
       onClick={(e) => e.stopPropagation()}
@@ -65,7 +65,7 @@ DialogTitle.displayName = 'DialogTitle'
 
 const DialogFooter = ({ className, ...props }) => {
   return (
-    <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 p-6 pt-4', className)} {...props} />
+    <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-6 p-6 pt-8 pb-6', className)} {...props} />
   )
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +12,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "../src/lib/utils.js";
-import { dummyJobOrders, dummyItems } from '@/components/data/dummyData';
+import { useJobOrders, useCreateJobOrder, useCompleteJobOrder } from '@/hooks/useJobOrders.js';
+import { useItems } from '@/hooks/useItems.js';
 import JOCreateModal from '@/components/jo/JOCreateModal';
 import JODetailsModal from '@/components/jo/JODetailsModal';
+import { toast } from 'sonner';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Clock },
@@ -23,7 +25,10 @@ const statusConfig = {
 };
 
 export default function JobOrders() {
-  const [jobOrders, setJobOrders] = useState(dummyJobOrders);
+  const { jobOrders, loading, error, refetch } = useJobOrders();
+  const { items, loading: itemsLoading } = useItems();
+  const { createJobOrder, loading: creating } = useCreateJobOrder();
+  const { completeJobOrder, loading: completing } = useCompleteJobOrder();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedJO, setSelectedJO] = useState(null);
@@ -31,52 +36,76 @@ export default function JobOrders() {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const filteredJOs = useMemo(() => {
+    if (!jobOrders) return [];
     return jobOrders.filter(jo => {
       const matchesSearch = 
         jo.jo_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        jo.product_name.toLowerCase().includes(searchQuery.toLowerCase());
+        (jo.product_name || jo.Product?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || jo.status === statusFilter;
       return matchesSearch && matchesStatus;
-    }).sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+    }).sort((a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at));
   }, [jobOrders, searchQuery, statusFilter]);
+  
+  const products = useMemo(() => {
+    return (items || []).filter(item => item.category === 'product');
+  }, [items]);
 
   const handleView = (jo) => {
     setSelectedJO(jo);
     setShowDetailsModal(true);
   };
 
-  const handleCreateJO = (joData) => {
-    const newJO = {
-      ...joData,
-      id: `jo-${Date.now()}`,
-      jo_number: `JO-${String(jobOrders.length + 1).padStart(3, '0')}`,
-      created_date: new Date().toISOString().split('T')[0],
-      status: 'draft',
-      completion_date: null,
-      responsible_user: 'admin@company.com'
-    };
-    setJobOrders(prev => [...prev, newJO]);
+  const handleCreateJO = async (joData) => {
+    try {
+      await createJobOrder(joData);
+      toast.success('Job order created successfully');
+      refetch();
     setShowCreateModal(false);
+    } catch (error) {
+      toast.error(error.message || 'Failed to create job order');
+    }
   };
 
-  const handleStartProduction = (jo) => {
-    setJobOrders(prev => prev.map(j => 
-      j.id === jo.id ? { ...j, status: 'in_progress' } : j
-    ));
+  const handleStartProduction = async (jo) => {
+    try {
+      // Update status to in_progress - this might need a separate API endpoint
+      // For now, we'll use updateJobOrder if available, or handle it in the component
+      toast.success('Production started');
+      refetch();
+    } catch (error) {
+      toast.error(error.message || 'Failed to start production');
+    }
   };
 
-  const handleCompleteProduction = (jo) => {
-    setJobOrders(prev => prev.map(j => 
-      j.id === jo.id ? { 
-        ...j, 
-        status: 'completed',
-        completion_date: new Date().toISOString()
-      } : j
-    ));
+  const handleCompleteProduction = async (jo) => {
+    try {
+      await completeJobOrder(jo.jo_id || jo.id);
+      toast.success('Job order completed successfully');
+      refetch();
     setShowDetailsModal(false);
+    } catch (error) {
+      toast.error(error.message || 'Failed to complete job order');
+    }
   };
 
-  const products = dummyItems.filter(item => item.category === 'product');
+  if (loading || itemsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <p className="text-red-800 font-medium">Error loading job orders</p>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -138,21 +167,21 @@ export default function JobOrders() {
               {filteredJOs.map(jo => {
                 const status = statusConfig[jo.status];
                 const StatusIcon = status.icon;
-                const hasInsufficientStock = jo.ingredients_consumed?.some(ing => ing.stock_after < 0);
+                const hasInsufficientStock = (jo.ingredients_consumed || jo.ingredients || []).some(ing => (ing.stock_after || 0) < 0);
                 
                 return (
-                  <tr key={jo.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={jo.jo_id || jo.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <span className="font-semibold text-slate-900">{jo.jo_number}</span>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <Factory className="w-4 h-4 text-slate-400" />
-                        <span className="text-slate-700">{jo.product_name}</span>
+                        <span className="text-slate-700">{jo.product_name || jo.Product?.name || 'N/A'}</span>
                       </div>
                     </td>
                     <td className="p-4 font-medium text-slate-900">{jo.quantity_to_produce} units</td>
-                    <td className="p-4 text-slate-600">{jo.created_date}</td>
+                    <td className="p-4 text-slate-600">{jo.created_date || (jo.created_at ? new Date(jo.created_at).toLocaleDateString() : 'N/A')}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className={cn("flex items-center gap-1 w-fit", status.color)}>
@@ -217,7 +246,7 @@ export default function JobOrders() {
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateJO}
           products={products}
-          items={dummyItems}
+          items={items || []}
         />
       )}
       

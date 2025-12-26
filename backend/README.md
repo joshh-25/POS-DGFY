@@ -1,0 +1,81 @@
+# SKU Inventory Manager - Backend API
+
+Backend API server for the SKU Inventory Manager system.
+
+## Technology Stack
+
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js 4.18+
+- **ORM**: Sequelize 6.35+
+- **Database**: MySQL 8.0+
+- **Authentication**: JWT + bcrypt
+- **Validation**: Joi 17.11+
+
+## Setup
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Create `.env` file from `.env.example`:
+```bash
+cp .env.example .env
+```
+
+3. Update `.env` with your database credentials
+
+4. Run database migrations:
+```bash
+npm run migrate
+```
+
+5. Start development server:
+```bash
+npm run dev
+```
+
+## Scripts
+
+- `npm start` - Start production server
+- `npm run dev` - Start development server with nodemon
+- `npm test` - Run tests
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Generate test coverage report
+- `npm run migrate` - Run database migrations
+- `npm run migrate:undo` - Rollback last migration
+- `npm run migrate:create -- --name migration_name` - Create new migration
+- `npm run seed` - Run database seeders
+- `npm run seed:undo` - Rollback seeders
+
+## API Base URL
+
+- Development: `http://localhost:5000/api/v1`
+- Production: Configure via environment variables
+
+## Project Structure
+
+```
+backend/
+├── src/
+│   ├── config/          # Configuration files
+│   ├── models/          # Sequelize models
+│   ├── migrations/     # Database migrations
+│   ├── routes/         # Express routes
+│   ├── controllers/   # Request handlers
+│   ├── services/       # Business logic
+│   ├── middleware/    # Custom middleware
+│   ├── utils/          # Utility functions
+│   └── server.js       # Entry point
+├── tests/              # Test files
+├── package.json
+└── .env.example
+```
+
+## Documentation
+
+See `/docs` folder in the root project for:
+- API Specification: `docs/api/specification.md`
+- Database Schema: `docs/database/schema.md`
+- Integration Guide: `docs/api/integration-guide.md`
+

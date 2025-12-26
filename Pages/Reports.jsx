@@ -6,30 +6,34 @@ import {
   TrendingUp, 
   DollarSign,
   Download,
-  BarChart3
+  BarChart3,
+  Loader2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "../src/lib/utils.js";
-import { 
-  dummyItems, 
-  dummyStockMovements, 
-  getStockStatus 
-} from '@/components/data/dummyData';
+import { useItems } from '@/hooks/useItems.js';
+import { useStockMovements } from '@/hooks/useStockMovements.js';
+import { getStockStatus } from '@/components/data/dummyData';
+import { formatNumber } from '../src/lib/numberUtils.js';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('aging');
+  const { items, loading: itemsLoading, error: itemsError } = useItems();
+  const { stockMovements, loading: movementsLoading, error: movementsError } = useStockMovements();
 
   // Stock Aging Report Data
   const agingReport = useMemo(() => {
-    return dummyItems.map(item => {
-      const lastMovement = dummyStockMovements
-        .filter(m => m.item_id === item.id)
-        .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0];
+    if (!items || !stockMovements) return [];
+    return items.map(item => {
+      const itemId = item.item_id || item.id;
+      const lastMovement = stockMovements
+        .filter(m => (m.item_id || m.Item?.item_id) == itemId)
+        .sort((a, b) => new Date(b.timestamp || b.created_date || b.created_at) - new Date(a.timestamp || a.created_date || a.created_at))[0];
       
       const daysInStorage = lastMovement 
-        ? Math.floor((new Date() - new Date(lastMovement.created_date)) / (1000 * 60 * 60 * 24))
+        ? Math.floor((new Date() - new Date(lastMovement.timestamp || lastMovement.created_date || lastMovement.created_at)) / (1000 * 60 * 60 * 24))
         : 30;
       
       let agingStatus = 'fresh';
@@ -38,29 +42,33 @@ export default function Reports() {
 
       return {
         ...item,
-        lastMovementDate: lastMovement?.created_date || item.last_updated,
+        lastMovementDate: lastMovement ? (lastMovement.timestamp || lastMovement.created_date || lastMovement.created_at) : (item.updated_at || item.last_updated),
         daysInStorage,
         agingStatus
       };
     }).sort((a, b) => b.daysInStorage - a.daysInStorage);
-  }, []);
+  }, [items, stockMovements]);
 
   // Surplus & Shortage Report Data
   const surplusShortageReport = useMemo(() => {
-    return dummyItems.map(item => {
+    if (!items) return [];
+    return items.map(item => {
       const status = getStockStatus(item);
+      const currentStock = parseFloat(item.current_stock || 0);
+      const minThreshold = parseFloat(item.min_threshold || 0);
+      const maxCapacity = parseFloat(item.max_capacity || 0);
       let variancePercent = 0;
       let recommendation = '';
 
-      if (item.current_stock < item.min_threshold) {
-        variancePercent = -Math.round((1 - item.current_stock / item.min_threshold) * 100);
-        const neededQty = item.min_threshold - item.current_stock;
-        recommendation = `Order ${neededQty} ${item.unit_of_measure} - currently ${item.current_stock}, minimum is ${item.min_threshold}`;
-      } else if (item.current_stock > item.max_capacity) {
-        variancePercent = Math.round((item.current_stock / item.max_capacity - 1) * 100);
-        recommendation = `Surplus of ${item.current_stock - item.max_capacity} ${item.unit_of_measure}`;
+      if (currentStock < minThreshold) {
+        variancePercent = -Math.round((1 - currentStock / minThreshold) * 100);
+        const neededQty = minThreshold - currentStock;
+        recommendation = `Order ${neededQty} ${item.unit_of_measure} - currently ${currentStock}, minimum is ${minThreshold}`;
+      } else if (currentStock > maxCapacity) {
+        variancePercent = Math.round((currentStock / maxCapacity - 1) * 100);
+        recommendation = `Surplus of ${currentStock - maxCapacity} ${item.unit_of_measure}`;
       } else {
-        variancePercent = Math.round((item.current_stock / item.max_capacity) * 100);
+        variancePercent = maxCapacity > 0 ? Math.round((currentStock / maxCapacity) * 100) : 0;
         recommendation = 'Stock level is healthy';
       }
 
@@ -71,7 +79,7 @@ export default function Reports() {
         recommendation
       };
     });
-  }, []);
+  }, [items]);
 
   // Movement Summary Stats
   const movementStats = useMemo(() => {
@@ -82,26 +90,29 @@ export default function Reports() {
       totalTransfers: 0
     };
 
-    dummyStockMovements.forEach(mov => {
+    if (!stockMovements) return stats;
+
+    stockMovements.forEach(mov => {
+      const quantity = parseFloat(mov.quantity || 0);
       switch (mov.movement_type) {
         case 'purchase_receipt':
         case 'return':
-          stats.totalReceived += mov.quantity;
+          stats.totalReceived += quantity;
           break;
         case 'production_consumption':
-          stats.totalConsumed += mov.quantity;
+          stats.totalConsumed += quantity;
           break;
         case 'calculated_loss':
-          stats.totalLosses += mov.quantity;
+          stats.totalLosses += quantity;
           break;
         case 'transfer':
-          stats.totalTransfers += mov.quantity;
+          stats.totalTransfers += quantity;
           break;
       }
     });
 
     return stats;
-  }, []);
+  }, [stockMovements]);
 
   // Inventory Valuation Report Data
   const valuationReport = useMemo(() => {
@@ -111,16 +122,22 @@ export default function Reports() {
       packaging: { items: [], total: 0 }
     };
 
-    dummyItems.forEach(item => {
-      const totalValue = item.current_stock * item.cost_per_unit;
+    if (!items) return { byCategory, grandTotal: 0 };
+
+    items.forEach(item => {
+      const currentStock = parseFloat(item.current_stock || 0);
+      const costPerUnit = parseFloat(item.cost_per_unit || 0);
+      const totalValue = currentStock * costPerUnit;
+      if (byCategory[item.category]) {
       byCategory[item.category].items.push({ ...item, totalValue });
       byCategory[item.category].total += totalValue;
+      }
     });
 
     const grandTotal = Object.values(byCategory).reduce((sum, cat) => sum + cat.total, 0);
 
     return { byCategory, grandTotal };
-  }, []);
+  }, [items]);
 
   const agingStatusColors = {
     fresh: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -134,6 +151,25 @@ export default function Reports() {
     healthy: "bg-emerald-100 text-emerald-700",
     surplus: "bg-blue-100 text-blue-700"
   };
+
+  if (itemsLoading || movementsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (itemsError || movementsError) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <p className="text-red-800 font-medium">Error loading reports</p>
+          <p className="text-red-600 text-sm mt-1">{itemsError || movementsError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -191,12 +227,12 @@ export default function Reports() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {agingReport.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50">
+                    <tr key={item.item_id || item.id} className="hover:bg-slate-50">
                       <td className="p-4 font-medium text-slate-900">{item.name}</td>
                       <td className="p-4 text-slate-600 capitalize">{item.category}</td>
-                      <td className="p-4 text-right text-slate-900">{item.current_stock} {item.unit_of_measure}</td>
+                      <td className="p-4 text-right text-slate-900">{parseFloat(item.current_stock || 0)} {item.unit_of_measure}</td>
                       <td className="p-4 text-right font-medium text-slate-900">{item.daysInStorage} days</td>
-                      <td className="p-4 text-slate-600">{item.lastMovementDate}</td>
+                      <td className="p-4 text-slate-600">{item.lastMovementDate ? new Date(item.lastMovementDate).toLocaleDateString() : 'N/A'}</td>
                       <td className="p-4">
                         <Badge variant="outline" className={agingStatusColors[item.agingStatus]}>
                           {item.agingStatus.charAt(0).toUpperCase() + item.agingStatus.slice(1)}
@@ -231,11 +267,11 @@ export default function Reports() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {surplusShortageReport.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50">
+                    <tr key={item.item_id || item.id} className="hover:bg-slate-50">
                       <td className="p-4 font-medium text-slate-900">{item.name}</td>
-                      <td className="p-4 text-right font-medium text-slate-900">{item.current_stock} {item.unit_of_measure}</td>
-                      <td className="p-4 text-right text-slate-600">{item.min_threshold} {item.unit_of_measure}</td>
-                      <td className="p-4 text-right text-slate-600">{item.max_capacity} {item.unit_of_measure}</td>
+                      <td className="p-4 text-right font-medium text-slate-900">{parseFloat(item.current_stock || 0)} {item.unit_of_measure}</td>
+                      <td className="p-4 text-right text-slate-600">{parseFloat(item.min_threshold || 0)} {item.unit_of_measure}</td>
+                      <td className="p-4 text-right text-slate-600">{parseFloat(item.max_capacity || 0)} {item.unit_of_measure}</td>
                       <td className="p-4">
                         <Badge className={cn("font-medium", statusColors[item.status])}>
                           {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
@@ -293,13 +329,13 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {dummyStockMovements.slice(0, 10).map(mov => (
-                      <tr key={mov.id} className="hover:bg-slate-50">
-                        <td className="p-4 text-slate-600">{mov.created_date.split('T')[0]}</td>
-                        <td className="p-4 font-medium text-slate-900">{mov.item_name}</td>
-                        <td className="p-4 text-slate-600 capitalize">{mov.movement_type.replace(/_/g, ' ')}</td>
-                        <td className="p-4 text-right font-medium text-slate-900">{mov.quantity}</td>
-                        <td className="p-4 text-slate-600">{mov.user_responsible}</td>
+                    {(stockMovements || []).slice(0, 10).map(mov => (
+                      <tr key={mov.movement_id || mov.id} className="hover:bg-slate-50">
+                        <td className="p-4 text-slate-600">{(mov.timestamp || mov.created_date || mov.created_at) ? new Date(mov.timestamp || mov.created_date || mov.created_at).toLocaleDateString() : 'N/A'}</td>
+                        <td className="p-4 font-medium text-slate-900">{mov.item_name || mov.Item?.name || 'N/A'}</td>
+                        <td className="p-4 text-slate-600 capitalize">{(mov.movement_type || '').replace(/_/g, ' ')}</td>
+                        <td className="p-4 text-right font-medium text-slate-900">{parseFloat(mov.quantity || 0)}</td>
+                        <td className="p-4 text-slate-600">{mov.user_responsible || 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -347,11 +383,11 @@ export default function Reports() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {data.items.map(item => (
-                        <tr key={item.id} className="hover:bg-slate-50">
+                        <tr key={item.item_id || item.id} className="hover:bg-slate-50">
                           <td className="p-4 font-medium text-slate-900">{item.name}</td>
-                          <td className="p-4 text-right text-slate-600">{item.current_stock} {item.unit_of_measure}</td>
-                          <td className="p-4 text-right text-slate-600">₱{item.cost_per_unit.toFixed(2)}</td>
-                          <td className="p-4 text-right font-medium text-slate-900">₱{item.totalValue.toFixed(2)}</td>
+                          <td className="p-4 text-right text-slate-600">{parseFloat(item.current_stock || 0)} {item.unit_of_measure}</td>
+                          <td className="p-4 text-right text-slate-600">₱{formatNumber(item.cost_per_unit, 2)}</td>
+                          <td className="p-4 text-right font-medium text-slate-900">₱{formatNumber(item.totalValue, 2)}</td>
                         </tr>
                       ))}
                     </tbody>

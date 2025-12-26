@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Info } from 'lucide-react';
+import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function PhysicalPropertiesStep({ data, updateData }) {
   const properties = data.physical_properties || {};
@@ -56,7 +57,7 @@ export default function PhysicalPropertiesStep({ data, updateData }) {
           <div className="flex items-center justify-between">
             <Label>pH Level</Label>
             <span className="text-lg font-bold text-teal-600">
-              {properties.ph_level?.toFixed(1) || '7.0'}
+              {formatNumber(properties.ph_level, 1)}
             </span>
           </div>
           <Slider
@@ -78,7 +79,7 @@ export default function PhysicalPropertiesStep({ data, updateData }) {
           <div className="flex items-center justify-between">
             <Label>Water Activity (aW)</Label>
             <span className="text-lg font-bold text-teal-600">
-              {properties.water_activity?.toFixed(3) || '0.600'}
+              {formatNumber(properties.water_activity, 3)}
             </span>
           </div>
           <Slider

@@ -50,12 +50,12 @@ export default function LowStockList({ items }) {
         </div>
       </div>
       <div className="divide-y divide-slate-100">
-        {lowStockItems.slice(0, 5).map((item) => {
+        {lowStockItems.slice(0, 5).map((item, index) => {
           const percentage = Math.round((item.current_stock / item.max_capacity) * 100);
           const isCritical = item.current_stock < item.min_threshold * 0.5;
           
           return (
-            <div key={item.id} className="p-4 hover:bg-slate-50 transition-colors">
+            <div key={item.id || `low-stock-${index}`} className="p-4 hover:bg-slate-50 transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-slate-900">{item.name}</span>

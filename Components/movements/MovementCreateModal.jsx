@@ -243,7 +243,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button 
             onClick={handleSubmit}

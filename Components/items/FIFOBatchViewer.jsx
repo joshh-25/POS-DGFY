@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Package, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from "../../src/lib/utils.js";
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 export default function FIFOBatchViewer({ item }) {
   if (!item.fifo_enabled || !item.fifo_batches || item.fifo_batches.length === 0) {
@@ -95,7 +96,7 @@ export default function FIFOBatchViewer({ item }) {
                   )}
                 </div>
                 <span className="font-semibold text-slate-900">
-                  ₱{batch.cost_per_unit.toFixed(2)}/unit
+                  ₱{formatNumber(batch.cost_per_unit, 2)}/unit
                 </span>
               </div>
             </div>
@@ -113,8 +114,11 @@ export default function FIFOBatchViewer({ item }) {
         <div className="flex justify-between text-sm mt-1">
           <span className="text-blue-700">Weighted Avg Cost:</span>
           <span className="font-semibold text-blue-900">
-            ₱{(sortedBatches.reduce((sum, b) => sum + (b.quantity * b.cost_per_unit), 0) / 
-               sortedBatches.reduce((sum, b) => sum + b.quantity, 0)).toFixed(2)}/unit
+            ₱{formatNumber(
+              sortedBatches.reduce((sum, b) => sum + (b.quantity * parseFloat(b.cost_per_unit || 0)), 0) / 
+              sortedBatches.reduce((sum, b) => sum + b.quantity, 0),
+              2
+            )}/unit
           </span>
         </div>
       </div>

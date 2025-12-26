@@ -31,14 +31,31 @@ const DropdownMenu = ({ children }) => {
 const DropdownMenuTrigger = React.forwardRef(({ className, children, asChild, ...props }, ref) => {
   const { setOpen, triggerRef } = React.useContext(DropdownMenuContext)
   
+  const handleClick = () => setOpen(prev => !prev)
+  const handleRef = (node) => {
+    triggerRef.current = node
+    if (ref) ref.current = node
+  }
+  
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      ref: handleRef,
+      onClick: (e) => {
+        handleClick()
+        if (children.props.onClick) {
+          children.props.onClick(e)
+        }
+      },
+      className: cn(className, children.props.className),
+      ...props
+    })
+  }
+  
   return (
     <button
-      ref={(node) => {
-        triggerRef.current = node
-        if (ref) ref.current = node
-      }}
+      ref={handleRef}
       type="button"
-      onClick={() => setOpen(prev => !prev)}
+      onClick={handleClick}
       className={cn(className)}
       {...props}
     >
@@ -70,19 +87,45 @@ const DropdownMenuContent = React.forwardRef(({ className, align = 'end', ...pro
 })
 DropdownMenuContent.displayName = 'DropdownMenuContent'
 
-const DropdownMenuItem = React.forwardRef(({ className, ...props }, ref) => {
+const DropdownMenuItem = React.forwardRef(({ className, asChild, children, ...props }, ref) => {
   const { setOpen } = React.useContext(DropdownMenuContext)
+  
+  const handleClick = (e) => {
+    setOpen(false)
+    if (props.onClick) {
+      props.onClick(e)
+    }
+  }
+  
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      ref,
+      onClick: (e) => {
+        handleClick(e)
+        if (children.props.onClick) {
+          children.props.onClick(e)
+        }
+      },
+      className: cn(
+        'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-slate-900 outline-none transition-colors hover:bg-slate-100 focus:bg-slate-100 [&_svg]:text-slate-700',
+        className,
+        children.props.className
+      )
+    })
+  }
   
   return (
     <div
       ref={ref}
       className={cn(
-        'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-slate-100 focus:bg-slate-100',
+        'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-slate-900 outline-none transition-colors hover:bg-slate-100 focus:bg-slate-100 [&_svg]:text-slate-700',
         className
       )}
-      onClick={() => setOpen(false)}
+      onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 })
 DropdownMenuItem.displayName = 'DropdownMenuItem'

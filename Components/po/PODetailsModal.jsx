@@ -16,6 +16,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 const statusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700", icon: Clock },
@@ -42,7 +43,7 @@ export default function PODetailsModal({ po, open, onClose }) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
+        <div className="space-y-6 mt-4 pb-6">
           {/* Supplier & Dates */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-slate-50 rounded-xl p-4">
@@ -125,8 +126,8 @@ export default function PODetailsModal({ po, open, onClose }) {
                           {item.quantity_received}
                         </span>
                       </td>
-                      <td className="p-3 text-right text-slate-600">₱{item.unit_price.toFixed(2)}</td>
-                      <td className="p-3 text-right font-medium text-slate-900">₱{item.total_price.toFixed(2)}</td>
+                      <td className="p-3 text-right text-slate-600">₱{formatNumber(item.unit_price, 2)}</td>
+                      <td className="p-3 text-right font-medium text-slate-900">₱{formatNumber(item.total_price, 2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -138,17 +139,17 @@ export default function PODetailsModal({ po, open, onClose }) {
           <div className="bg-slate-50 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Subtotal</span>
-              <span className="text-slate-900">${po.subtotal.toFixed(2)}</span>
+              <span className="text-slate-900">${formatNumber(po.subtotal, 2)}</span>
             </div>
             {po.discount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-emerald-600">Discount</span>
-                <span className="text-emerald-600">-${po.discount.toFixed(2)}</span>
+                <span className="text-emerald-600">-${formatNumber(po.discount, 2)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-slate-200">
               <span>Total</span>
-              <span className="text-teal-600">${po.total_amount.toFixed(2)}</span>
+              <span className="text-teal-600">${formatNumber(po.total_amount, 2)}</span>
             </div>
           </div>
 

@@ -9,7 +9,8 @@ import {
   ArrowLeftRight,
   RotateCcw,
   AlertCircle,
-  Calendar
+  Calendar,
+  Loader2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,8 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "../src/lib/utils.js";
-import { dummyStockMovements, dummyItems } from '@/components/data/dummyData';
+import { useStockMovements, useCreateStockMovement } from '@/hooks/useStockMovements.js';
+import { useItems } from '@/hooks/useItems.js';
 import MovementCreateModal from '@/components/movements/MovementCreateModal';
+import { toast } from 'sonner';
 
 const movementConfig = {
   purchase_receipt: { 
@@ -59,7 +62,9 @@ const movementConfig = {
 };
 
 export default function StockMovements() {
-  const [movements, setMovements] = useState(dummyStockMovements);
+  const { stockMovements, loading, error, refetch } = useStockMovements();
+  const { items, loading: itemsLoading } = useItems();
+  const { createStockMovement, loading: creating } = useCreateStockMovement();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -71,8 +76,8 @@ export default function StockMovements() {
     const itemId = params.get('item');
     const action = params.get('action');
     
-    if (itemId) {
-      const item = dummyItems.find(i => i.id === itemId);
+    if (itemId && items) {
+      const item = items.find(i => (i.item_id || i.id) == itemId);
       if (item) {
         setSearchQuery(item.name);
         if (action === 'create') {
@@ -81,30 +86,50 @@ export default function StockMovements() {
         }
       }
     }
-  }, []);
+  }, [items]);
 
   const filteredMovements = useMemo(() => {
-    return movements.filter(mov => {
+    if (!stockMovements) return [];
+    return stockMovements.filter(mov => {
       const matchesSearch = 
-        mov.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mov.notes?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mov.reference_id?.toLowerCase().includes(searchQuery.toLowerCase());
+        (mov.item_name || mov.Item?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (mov.notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (mov.reference_id || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = typeFilter === 'all' || mov.movement_type === typeFilter;
       return matchesSearch && matchesType;
-    }).sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-  }, [movements, searchQuery, typeFilter]);
+    }).sort((a, b) => new Date(b.timestamp || b.created_date || b.created_at) - new Date(a.timestamp || a.created_date || a.created_at));
+  }, [stockMovements, searchQuery, typeFilter]);
 
-  const handleCreateMovement = (movementData) => {
-    const newMovement = {
-      ...movementData,
-      id: `mov-${Date.now()}`,
-      created_date: new Date().toISOString(),
-      user_responsible: 'admin@company.com'
-    };
-    setMovements(prev => [newMovement, ...prev]);
+  const handleCreateMovement = async (movementData) => {
+    try {
+      await createStockMovement(movementData);
+      toast.success('Stock movement recorded successfully');
+      refetch();
     setShowCreateModal(false);
     setPreselectedItem(null);
+    } catch (error) {
+      toast.error(error.message || 'Failed to create stock movement');
+    }
   };
+
+  if (loading || itemsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <p className="text-red-800 font-medium">Error loading stock movements</p>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -171,21 +196,21 @@ export default function StockMovements() {
                 const isPositive = mov.movement_type === 'purchase_receipt' || mov.movement_type === 'return';
                 
                 return (
-                  <tr key={mov.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={mov.movement_id || mov.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-2 text-slate-600">
                         <Calendar className="w-4 h-4 text-slate-400" />
                         <div>
                           <p className="font-medium text-slate-900">
-                            {format(new Date(mov.created_date), 'MMM d, yyyy')}
+                            {format(new Date(mov.timestamp || mov.created_date || mov.created_at), 'MMM d, yyyy')}
                           </p>
                           <p className="text-xs text-slate-500">
-                            {format(new Date(mov.created_date), 'h:mm a')}
+                            {format(new Date(mov.timestamp || mov.created_date || mov.created_at), 'h:mm a')}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-900">{mov.item_name}</td>
+                    <td className="p-4 font-medium text-slate-900">{mov.item_name || mov.Item?.name || 'N/A'}</td>
                     <td className="p-4">
                       <Badge variant="outline" className={cn("flex items-center gap-1 w-fit", config.bg)}>
                         <Icon className={cn("w-3 h-3", config.color)} />
@@ -245,7 +270,7 @@ export default function StockMovements() {
             setPreselectedItem(null);
           }}
           onSubmit={handleCreateMovement}
-          items={dummyItems}
+          items={items || []}
           preselectedItem={preselectedItem}
         />
       )}

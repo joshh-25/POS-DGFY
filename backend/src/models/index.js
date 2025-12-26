@@ -1,0 +1,118 @@
+import sequelize from '../config/database.js';
+import User from './User.js';
+import Item from './Item.js';
+import Supplier from './Supplier.js';
+import PurchaseOrder from './PurchaseOrder.js';
+import JobOrder from './JobOrder.js';
+import StockMovement from './StockMovement.js';
+import FIFOBatch from './FIFOBatch.js';
+import ItemNutrition from './ItemNutrition.js';
+import ItemAllergen from './ItemAllergen.js';
+import ProductComposition from './ProductComposition.js';
+import SupplierItem from './SupplierItem.js';
+import BulkDiscount from './BulkDiscount.js';
+import POLineItem from './POLineItem.js';
+import JOIngredient from './JOIngredient.js';
+import BatchTransaction from './BatchTransaction.js';
+import AuditLog from './AuditLog.js';
+import SystemSetting from './SystemSetting.js';
+
+// Define associations
+// User associations
+User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
+User.hasMany(PurchaseOrder, { foreignKey: 'created_by', as: 'createdPurchaseOrders' });
+User.hasMany(JobOrder, { foreignKey: 'responsible_user', as: 'jobOrders' });
+User.hasMany(StockMovement, { foreignKey: 'user_responsible', as: 'stockMovements' });
+
+// Item associations
+Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
+Item.hasOne(ItemNutrition, { foreignKey: 'item_id', as: 'nutrition' });
+Item.hasMany(ItemAllergen, { foreignKey: 'item_id', as: 'allergens' });
+Item.hasMany(ProductComposition, { foreignKey: 'product_id', as: 'productCompositions' });
+Item.hasMany(ProductComposition, { foreignKey: 'ingredient_id', as: 'ingredientCompositions' });
+Item.hasMany(SupplierItem, { foreignKey: 'item_id', as: 'supplierItems' });
+Item.hasMany(POLineItem, { foreignKey: 'item_id', as: 'poLineItems' });
+Item.hasMany(JobOrder, { foreignKey: 'product_id', as: 'jobOrders' });
+Item.hasMany(JOIngredient, { foreignKey: 'item_id', as: 'joIngredients' });
+Item.hasMany(StockMovement, { foreignKey: 'item_id', as: 'stockMovements' });
+
+// Supplier associations
+Supplier.hasMany(SupplierItem, { foreignKey: 'supplier_id', as: 'supplierItems' });
+Supplier.hasMany(BulkDiscount, { foreignKey: 'supplier_id', as: 'bulkDiscounts' });
+Supplier.hasMany(PurchaseOrder, { foreignKey: 'supplier_id', as: 'purchaseOrders' });
+
+// PurchaseOrder associations
+PurchaseOrder.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+PurchaseOrder.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+PurchaseOrder.hasMany(POLineItem, { foreignKey: 'po_id', as: 'lineItems' });
+
+// POLineItem associations
+POLineItem.belongsTo(PurchaseOrder, { foreignKey: 'po_id', as: 'purchaseOrder' });
+POLineItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// JobOrder associations
+JobOrder.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
+JobOrder.belongsTo(User, { foreignKey: 'responsible_user', as: 'responsibleUser' });
+JobOrder.hasMany(JOIngredient, { foreignKey: 'jo_id', as: 'ingredients' });
+
+// JOIngredient associations
+JOIngredient.belongsTo(JobOrder, { foreignKey: 'jo_id', as: 'jobOrder' });
+JOIngredient.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// StockMovement associations
+StockMovement.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+StockMovement.belongsTo(User, { foreignKey: 'user_responsible', as: 'userResponsible' });
+StockMovement.hasMany(BatchTransaction, { foreignKey: 'movement_id', as: 'batchTransactions' });
+
+// FIFOBatch associations
+FIFOBatch.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+FIFOBatch.hasMany(BatchTransaction, { foreignKey: 'batch_id', as: 'batchTransactions' });
+
+// BatchTransaction associations
+BatchTransaction.belongsTo(StockMovement, { foreignKey: 'movement_id', as: 'movement' });
+BatchTransaction.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
+
+// SupplierItem associations
+SupplierItem.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+SupplierItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// BulkDiscount associations
+BulkDiscount.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+
+// ItemNutrition associations
+ItemNutrition.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemAllergen associations
+ItemAllergen.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ProductComposition associations
+ProductComposition.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
+ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredient' });
+
+// AuditLog associations
+AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+const db = {
+  sequelize,
+  Sequelize: sequelize.Sequelize,
+  User,
+  Item,
+  Supplier,
+  PurchaseOrder,
+  JobOrder,
+  StockMovement,
+  FIFOBatch,
+  ItemNutrition,
+  ItemAllergen,
+  ProductComposition,
+  SupplierItem,
+  BulkDiscount,
+  POLineItem,
+  JOIngredient,
+  BatchTransaction,
+  AuditLog,
+  SystemSetting
+};
+
+export default db;
+

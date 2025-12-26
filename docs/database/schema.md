@@ -11,6 +11,8 @@
 
 ## Entity-Relationship Diagram
 
+> **Reference Diagram**: See [Data Model Diagram](./images/data-model-diagram.png) for a visual representation of the complete database schema and entity relationships.
+
 ```
 ┌─────────────────┐
 │     Users       │

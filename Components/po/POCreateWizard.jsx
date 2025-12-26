@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items }) {
   const [step, setStep] = useState(1);
@@ -307,7 +308,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                               <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
                                 <span className="flex items-center gap-1">
                                   <Star className={cn("w-4 h-4", getQualityColor(supplier.quality_rating))} fill="currentColor" />
-                                  {supplier.quality_rating.toFixed(1)}
+                                  {formatNumber(supplier.quality_rating, 1)}
                                 </span>
                                 <span className="flex items-center gap-1">
                                   <Truck className="w-4 h-4" />
@@ -317,7 +318,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-bold text-slate-900">₱{supplier.totalCost.toFixed(2)}</p>
+                            <p className="text-lg font-bold text-slate-900">₱{formatNumber(supplier.totalCost, 2)}</p>
                             <p className="text-sm text-slate-500">Est. Total</p>
                           </div>
                         </div>
@@ -451,8 +452,8 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                             <tr key={itemId}>
                               <td className="p-3 font-medium text-slate-900">{item?.name}</td>
                               <td className="p-3 text-right text-slate-600">{qty}</td>
-                              <td className="p-3 text-right text-slate-600">₱{supplierItem?.price_per_unit.toFixed(2)}</td>
-                              <td className="p-3 text-right font-medium text-slate-900">₱{total.toFixed(2)}</td>
+                              <td className="p-3 text-right text-slate-600">₱{formatNumber(supplierItem?.price_per_unit, 2)}</td>
+                              <td className="p-3 text-right font-medium text-slate-900">₱{formatNumber(total, 2)}</td>
                             </tr>
                           );
                         })}
@@ -462,7 +463,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                     <div className="bg-slate-50 p-4 border-t border-slate-200">
                       <div className="flex justify-between text-lg font-bold">
                         <span>Supplier Total</span>
-                        <span className="text-teal-600">₱{subtotal.toFixed(2)}</span>
+                        <span className="text-teal-600">₱{formatNumber(subtotal, 2)}</span>
                       </div>
                     </div>
                   </div>
@@ -477,14 +478,17 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                   <p className="text-xs text-slate-500">{selectedSuppliers.length} supplier{selectedSuppliers.length !== 1 ? 's' : ''}</p>
                 </div>
                 <p className="text-2xl font-bold text-teal-600">
-                  ₱{selectedSuppliers.reduce((sum, supplier) => {
-                    const supplierItemIds = supplierItemMapping[supplier.id] || [];
-                    return sum + supplierItemIds.reduce((itemSum, itemId) => {
-                      const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
-                      const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
-                      return itemSum + (qty * (supplierItem?.price_per_unit || 0));
-                    }, 0);
-                  }, 0).toFixed(2)}
+                  ₱{formatNumber(
+                    selectedSuppliers.reduce((sum, supplier) => {
+                      const supplierItemIds = supplierItemMapping[supplier.id] || [];
+                      return sum + supplierItemIds.reduce((itemSum, itemId) => {
+                        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                        return itemSum + (qty * (parseFloat(supplierItem?.price_per_unit || 0)));
+                      }, 0);
+                    }, 0),
+                    2
+                  )}
                 </p>
               </div>
             </div>

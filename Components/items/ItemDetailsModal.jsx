@@ -24,6 +24,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
 import FIFOBatchViewer from './FIFOBatchViewer';
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 const categoryConfig = {
   ingredient: { icon: Beaker, color: "bg-purple-100 text-purple-700", label: "Ingredient" },
@@ -53,7 +54,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
-            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", category.color)}>
+            <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", category.color)}>
               <Icon className="w-5 h-5" />
             </div>
             <div>
@@ -63,9 +64,9 @@ export default function ItemDetailsModal({ item, open, onClose }) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
+        <div className="space-y-4">
           {/* Status and Category */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-6">
             <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
               {statusStyle.label}
             </Badge>
@@ -80,15 +81,15 @@ export default function ItemDetailsModal({ item, open, onClose }) {
           )}
 
           {/* Stock Level */}
-          <div className="bg-slate-50 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className="bg-slate-50 rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
               <span className="font-medium text-slate-700">Stock Level</span>
               <span className="text-lg font-bold text-slate-900">
                 {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
               </span>
             </div>
             <Progress value={percentage} className="h-3" />
-            <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 text-sm">
               <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                 <p className="text-slate-500">Min Threshold</p>
                 <p className="font-semibold text-slate-900">{item.min_threshold} {item.unit_of_measure}</p>
@@ -99,19 +100,19 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </div>
               <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                 <p className="text-slate-500">Total Value</p>
-                <p className="font-semibold text-emerald-600">₱{totalValue.toFixed(2)}</p>
+                <p className="font-semibold text-emerald-600">₱{formatNumber(totalValue, 2)}</p>
               </div>
             </div>
           </div>
 
           {/* Product Matrix (for products) */}
           {item.category === 'product' && item.ingredients && item.ingredients.length > 0 && (
-            <div className="bg-blue-50 rounded-xl p-4">
-              <h4 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
+            <div className="bg-blue-50 rounded-lg p-4 space-y-4">
+              <h4 className="font-medium text-blue-900 flex items-center gap-2">
                 <Layers className="w-4 h-4" />
                 Ingredient Composition (per unit)
               </h4>
-              <div className="space-y-2">
+              <div className="space-y-4">
                 {item.ingredients.map((ing, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-100">
                     <span className="text-slate-700">{ing.item_name}</span>
@@ -124,12 +125,12 @@ export default function ItemDetailsModal({ item, open, onClose }) {
 
           {/* Packaging Specs (for packaging) */}
           {item.category === 'packaging' && item.packaging_specs && (
-            <div className="bg-amber-50 rounded-xl p-4">
-              <h4 className="font-medium text-amber-900 mb-3 flex items-center gap-2">
+            <div className="bg-amber-50 rounded-lg p-4 space-y-4">
+              <h4 className="font-medium text-amber-900 flex items-center gap-2">
                 <Ruler className="w-4 h-4" />
                 Packaging Specifications
               </h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
                   <p className="text-xs text-slate-500">Dimensions</p>
                   <p className="font-medium text-slate-900">
@@ -160,10 +161,10 @@ export default function ItemDetailsModal({ item, open, onClose }) {
           {item.fifo_enabled && <FIFOBatchViewer item={item} />}
 
           {/* Cost Info */}
-          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
             <div>
               <p className="text-sm text-slate-500">Cost per Unit</p>
-              <p className="text-xl font-bold text-slate-900">₱{item.cost_per_unit.toFixed(2)}</p>
+              <p className="text-xl font-bold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</p>
             </div>
             <div className="text-right">
               <p className="text-sm text-slate-500">Last Updated</p>
@@ -172,7 +173,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-slate-200">
+          <div className="flex gap-6 pt-8 pb-6 border-t border-slate-200">
             <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
               <Button variant="outline" className="w-full">
                 <History className="w-4 h-4 mr-2" />

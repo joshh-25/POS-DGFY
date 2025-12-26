@@ -41,12 +41,13 @@ const movementConfig = {
 };
 
 export default function RecentMovements({ movements = [] }) {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Components/dashboard/RecentMovements.jsx:35',message:'RecentMovements component entry',data:{movementsCount:movements?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  
   const recentMovements = movements
-    .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+    .filter(mov => mov.created_date) // Filter out invalid dates
+    .sort((a, b) => {
+      const dateA = new Date(a.created_date);
+      const dateB = new Date(b.created_date);
+      return dateB - dateA;
+    })
     .slice(0, 5);
 
   if (recentMovements.length === 0) {
@@ -110,7 +111,11 @@ export default function RecentMovements({ movements = [] }) {
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>{format(new Date(mov.created_date), 'MMM d, yyyy h:mm a')}</span>
+                <span>
+                  {mov.created_date 
+                    ? format(new Date(mov.created_date), 'MMM d, yyyy h:mm a')
+                    : 'N/A'}
+                </span>
                 {mov.reference_id && (
                   <span className="font-medium">{mov.reference_id}</span>
                 )}

@@ -143,7 +143,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-4">
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -239,7 +239,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
           </div>
 
           {/* Auto-calculated fields */}
-          <div className="grid grid-cols-2 gap-4 bg-slate-50 rounded-xl p-4">
+          <div className="grid grid-cols-2 gap-4 bg-slate-50 rounded-lg p-4">
             <div>
               <p className="text-sm text-slate-500">Min Threshold (40% of capacity)</p>
               <p className="font-semibold text-slate-900">{formData.min_threshold || Math.round(formData.max_capacity * 0.4)} {formData.unit_of_measure}</p>
@@ -252,14 +252,14 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
 
           {/* FIFO Tracking Option */}
           {(formData.category === 'ingredient' || formData.category === 'packaging') && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-1">
                   <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                     <Package className="w-5 h-5 text-blue-600" />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
                       <Label htmlFor="fifo-toggle" className="font-semibold text-slate-900 cursor-pointer">
                         Enable FIFO Batch Tracking
                       </Label>
@@ -387,7 +387,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">
             {item ? 'Update Item' : 'Create Item'}

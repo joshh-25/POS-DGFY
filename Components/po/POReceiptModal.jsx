@@ -161,7 +161,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleConfirm} className="bg-teal-600 hover:bg-teal-700">
             Confirm Receipt

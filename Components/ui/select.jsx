@@ -8,14 +8,27 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   const [open, setOpen] = useState(false)
   const [selectedValue, setSelectedValue] = useState(value || '')
   
+  // Sync selectedValue with value prop when it changes externally
+  useEffect(() => {
+    if (value !== undefined && value !== selectedValue) {
+      setSelectedValue(value)
+    }
+  }, [value])
+  
   const handleValueChange = (newValue) => {
     setSelectedValue(newValue)
     setOpen(false)
     if (onValueChange) onValueChange(newValue)
   }
 
+  // Find SelectContent from Select's children (not SelectTrigger's children)
+  const childrenArray = React.Children.toArray(children)
+  const selectContent = childrenArray.find(child => {
+    return React.isValidElement(child) && child.type === SelectContent
+  })
+
   return (
-    <SelectContext.Provider value={{ open, setOpen, selectedValue, handleValueChange }}>
+    <SelectContext.Provider value={{ open, setOpen, selectedValue, handleValueChange, selectContent }}>
       <div className="relative" {...props}>
         {children}
       </div>
@@ -24,7 +37,7 @@ const Select = ({ children, value, onValueChange, ...props }) => {
 }
 
 const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => {
-  const { open, setOpen, selectedValue } = React.useContext(SelectContext)
+  const { open, setOpen, selectedValue, selectContent } = React.useContext(SelectContext)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
 
@@ -59,10 +72,10 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
         {children || <span className="text-slate-500">Select...</span>}
         <ChevronDown className="h-4 w-4 opacity-50" />
       </button>
-      {open && (
+      {open && selectContent && (
         <div ref={menuRef} className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
           <SelectContext.Provider value={{ ...React.useContext(SelectContext), menuOpen: true }}>
-            {React.Children.toArray(children).find(child => child.type === SelectContent)}
+            {selectContent}
           </SelectContext.Provider>
         </div>
       )}

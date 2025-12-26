@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 const categoryConfig = {
   ingredient: { icon: Beaker, color: "bg-purple-100 text-purple-700" },
@@ -97,7 +98,7 @@ export default function ItemCard({ item, onView, onEdit }) {
 
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
           <span className="text-sm text-slate-500">Unit Cost</span>
-          <span className="font-semibold text-slate-900">₱{item.cost_per_unit.toFixed(2)}</span>
+          <span className="font-semibold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</span>
         </div>
       </div>
     </div>

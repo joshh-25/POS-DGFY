@@ -268,7 +268,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave }) {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">
             {supplier ? 'Update Supplier' : 'Add Supplier'}

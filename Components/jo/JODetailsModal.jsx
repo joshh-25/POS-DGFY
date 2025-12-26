@@ -19,6 +19,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700", icon: Clock },
@@ -132,7 +133,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                         "p-3 text-right font-medium",
                         ing.stock_after < 0 ? "text-red-600" : "text-emerald-600"
                       )}>
-                        {typeof ing.stock_after === 'number' ? ing.stock_after.toFixed(2) : ing.stock_after}
+                        {formatNumber(ing.stock_after, 2)}
                       </td>
                     </tr>
                   ))}
@@ -150,7 +151,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Close</Button>
           {jo.status === 'in_progress' && (
             <Button 

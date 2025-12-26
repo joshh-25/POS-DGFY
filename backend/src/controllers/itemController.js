@@ -1,0 +1,130 @@
+import * as itemService from '../services/itemService.js';
+
+export const getItems = async (req, res, next) => {
+  try {
+    const result = await itemService.getItems(req.query);
+    
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getItemById = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const item = await itemService.getItemById(item_id);
+    
+    res.status(200).json({
+      success: true,
+      data: item,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createItem = async (req, res, next) => {
+  try {
+    const itemData = req.validatedData;
+    const item = await itemService.createItem(itemData);
+    
+    res.status(201).json({
+      success: true,
+      data: {
+        item_id: item.item_id,
+        sku_code: item.sku_code,
+        name: item.name,
+        category: item.category
+      },
+      message: 'Item created successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateItem = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const itemData = req.validatedData;
+    const item = await itemService.updateItem(item_id, itemData);
+    
+    res.status(200).json({
+      success: true,
+      data: item,
+      message: 'Item updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteItem = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    await itemService.deleteItem(item_id);
+    
+    res.status(200).json({
+      success: true,
+      data: null,
+      message: 'Item deleted successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getItemStockHistory = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const movements = await itemService.getItemStockHistory(item_id, req.query);
+    
+    res.status(200).json({
+      success: true,
+      data: { movements },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getItemBatches = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const batches = await itemService.getItemBatches(item_id);
+    
+    res.status(200).json({
+      success: true,
+      data: { batches },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getItemMovements = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const movements = await itemService.getItemMovements(item_id);
+    
+    res.status(200).json({
+      success: true,
+      data: { movements },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

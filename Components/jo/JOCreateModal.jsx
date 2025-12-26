@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 export default function JOCreateModal({ open, onClose, onSubmit, products, items }) {
   const [selectedProduct, setSelectedProduct] = useState('');
@@ -137,7 +138,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, products, items
                       <div>
                         <p className="text-slate-500">Required</p>
                         <p className="font-medium text-slate-900">
-                          {ing.quantity_required.toFixed(3)} {ing.unit}
+                          {formatNumber(ing.quantity_required, 3)} {ing.unit}
                         </p>
                       </div>
                       <div>
@@ -152,13 +153,13 @@ export default function JOCreateModal({ open, onClose, onSubmit, products, items
                           "font-medium",
                           ing.isInsufficient ? "text-red-600" : "text-emerald-600"
                         )}>
-                          {ing.stock_after.toFixed(3)} {ing.unit}
+                          {formatNumber(ing.stock_after, 3)} {ing.unit}
                         </p>
                       </div>
                     </div>
                     {ing.isInsufficient && (
                       <p className="text-xs text-red-600 mt-2">
-                        Need {Math.abs(ing.stock_after).toFixed(3)} {ing.unit} more to complete this order
+                        Need {formatNumber(Math.abs(ing.stock_after), 3)} {ing.unit} more to complete this order
                       </p>
                     )}
                   </div>
@@ -168,7 +169,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, products, items
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button 
             onClick={handleSubmit}

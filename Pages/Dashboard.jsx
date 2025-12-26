@@ -8,35 +8,62 @@ import {
   Truck, 
   ClipboardList,
   Calendar,
-  DollarSign
+  DollarSign,
+  Loader2
 } from 'lucide-react';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AlertBanner from '@/components/dashboard/AlertBanner';
 import RecentMovements from '@/components/dashboard/RecentMovements';
 import LowStockList from '@/components/dashboard/LowStockList';
-import { 
-  dummyItems, 
-  dummySuppliers, 
-  dummyPurchaseOrders, 
-  dummyStockMovements,
-  getItemsStats 
-} from '@/components/data/dummyData';
+import { useDashboardStats, useLowStockItems, useRecentMovements } from '@/hooks/useDashboard.js';
+import { usePurchaseOrders } from '@/hooks/usePurchaseOrders.js';
+import { useSuppliers } from '@/hooks/useSuppliers.js';
 
 export default function Dashboard() {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Pages/Dashboard.jsx:25',message:'Dashboard function entry',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  const stats = getItemsStats(dummyItems);
-  const pendingPOs = dummyPurchaseOrders.filter(po => po.status === 'pending').length;
-  const activeSuppliers = dummySuppliers.length;
+  const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
+  const { items: lowStockItems, loading: lowStockLoading } = useLowStockItems();
+  const { movements: recentMovements, loading: movementsLoading } = useRecentMovements(10);
+  const { purchaseOrders, loading: poLoading } = usePurchaseOrders();
+  const { suppliers, loading: suppliersLoading } = useSuppliers();
+  
+  const pendingPOs = purchaseOrders?.filter(po => po.status === 'pending').length || 0;
+  const activeSuppliers = suppliers?.length || 0;
   
   // Check if within 7 days of month start
   const today = new Date();
   const dayOfMonth = today.getDate();
   const showProcurementReminder = dayOfMonth <= 7;
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Pages/Dashboard.jsx:33',message:'Before return JSX',data:{statsComputed:!!stats,recentMovementsType:typeof RecentMovements,isFunction:typeof RecentMovements==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
+  
+  const loading = statsLoading || lowStockLoading || movementsLoading || poLoading || suppliersLoading;
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+  
+  if (statsError) {
+    return (
+      <div className="space-y-8">
+        <AlertBanner 
+          type="critical"
+          title="Error Loading Dashboard"
+          message={statsError}
+        />
+      </div>
+    );
+  }
+  
+  // Use stats from API or calculate from available data
+  const displayStats = stats || {
+    totalItems: 0,
+    lowStockCount: lowStockItems?.length || 0,
+    overStockCount: 0,
+    healthyCount: 0,
+    totalValue: 0
+  };
 
   return (
     <div className="space-y-8">
@@ -48,10 +75,10 @@ export default function Dashboard() {
 
       {/* Alerts */}
       <div className="space-y-3">
-        {stats.lowStockCount > 0 && (
+        {displayStats.lowStockCount > 0 && (
           <AlertBanner 
             type="critical"
-            title={`${stats.lowStockCount} items below minimum threshold`}
+            title={`${displayStats.lowStockCount} items below minimum threshold`}
             message="Review your inventory levels and create purchase orders to restock."
           />
         )}
@@ -69,17 +96,17 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard 
           title="Total Items"
-          value={stats.totalItems}
+          value={displayStats.totalItems || 0}
           subtitle="In inventory"
           icon={Package}
           color="teal"
         />
         <StatsCard 
           title="Low Stock"
-          value={stats.lowStockCount}
+          value={displayStats.lowStockCount || 0}
           subtitle="Below threshold"
           icon={AlertTriangle}
-          color={stats.lowStockCount > 0 ? "red" : "emerald"}
+          color={displayStats.lowStockCount > 0 ? "red" : "emerald"}
         />
         <StatsCard 
           title="Pending Orders"
@@ -90,7 +117,7 @@ export default function Dashboard() {
         />
         <StatsCard 
           title="Inventory Value"
-          value={`₱${stats.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`₱${(displayStats.totalValue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle="Total stock value"
           icon={DollarSign}
           color="emerald"
@@ -121,7 +148,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">Healthy Stock</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{stats.healthyCount}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{displayStats.healthyCount || 0}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-white" />
@@ -131,11 +158,11 @@ export default function Dashboard() {
             <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-emerald-500 rounded-full"
-                style={{ width: `${(stats.healthyCount / stats.totalItems) * 100}%` }}
+                style={{ width: `${displayStats.totalItems > 0 ? (displayStats.healthyCount / displayStats.totalItems) * 100 : 0}%` }}
               />
             </div>
             <span className="text-sm text-slate-500">
-              {Math.round((stats.healthyCount / stats.totalItems) * 100)}%
+              {displayStats.totalItems > 0 ? Math.round((displayStats.healthyCount / displayStats.totalItems) * 100) : 0}%
             </span>
           </div>
         </div>
@@ -144,25 +171,22 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">Surplus Items</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{stats.overStockCount}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{displayStats.overStockCount || 0}</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
               <Package className="w-6 h-6 text-white" />
             </div>
           </div>
           <p className="text-sm text-slate-500 mt-4">
-            {stats.overStockCount === 0 ? "No items over capacity" : "Items exceeding maximum capacity"}
+            {displayStats.overStockCount === 0 ? "No items over capacity" : "Items exceeding maximum capacity"}
           </p>
         </div>
       </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LowStockList items={dummyItems} />
-        {/* #region agent log */}
-        {(()=>{fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Pages/Dashboard.jsx:156',message:'Before RecentMovements render',data:{RecentMovementsType:typeof RecentMovements,isComponent:typeof RecentMovements==='function'},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});return null;})()}
-        {/* #endregion */}
-        <RecentMovements movements={dummyStockMovements} />
+        <LowStockList items={lowStockItems || []} />
+        <RecentMovements movements={recentMovements || []} />
       </div>
     </div>
   );

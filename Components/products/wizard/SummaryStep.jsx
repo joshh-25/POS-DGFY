@@ -2,6 +2,7 @@ import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertTriangle, Package, DollarSign, Calendar, ShieldCheck } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
+import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function SummaryStep({ data }) {
   const isComplete = (section) => {
@@ -128,7 +129,7 @@ export default function SummaryStep({ data }) {
           </div>
           <div>
             <p className="text-slate-400">Cost per Unit:</p>
-            <p className="font-semibold">₱{data.cost_per_unit?.toFixed(2) || '0.00'}</p>
+            <p className="font-semibold">₱{formatNumber(data.cost_per_unit, 2)}</p>
           </div>
           <div>
             <p className="text-slate-400">Ingredients:</p>

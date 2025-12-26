@@ -1,0 +1,42 @@
+import { DataTypes } from 'sequelize';
+import sequelize from '../config/database.js';
+
+const JOIngredient = sequelize.define('JOIngredient', {
+  jo_ingredient_id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  jo_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  item_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  quantity_required: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false
+  },
+  quantity_consumed: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true
+  },
+  stock_before: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true
+  },
+  stock_after: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true
+  }
+}, {
+  tableName: 'jo_ingredients',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: false
+});
+
+export default JOIngredient;
+

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
+import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function RecipeFormulationStep({ data, updateData, items }) {
   const ingredients = data.ingredients || [];
@@ -154,7 +155,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                         </span>
                       </div>
                       <Badge variant="outline" className="bg-white">
-                        ₱{(item.cost_per_unit * totalNeeded).toFixed(2)}
+                        ₱{formatNumber(item.cost_per_unit * totalNeeded, 2)}
                       </Badge>
                     </div>
                   )}
@@ -171,7 +172,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
             <p className="font-medium text-teal-900">Total Ingredient Cost per Batch</p>
             <p className="text-sm text-teal-700">Based on current pricing</p>
           </div>
-          <p className="text-2xl font-bold text-teal-900">₱{totalIngredientCost.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-teal-900">₱{formatNumber(totalIngredientCost, 2)}</p>
         </div>
       </div>
     </div>

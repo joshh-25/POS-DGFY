@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,10 +18,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "../src/lib/utils.js";
-import { dummyPurchaseOrders, dummySuppliers, dummyItems, getStockStatus } from '@/components/data/dummyData';
+import { usePurchaseOrders, useCreatePurchaseOrder, useReceivePurchaseOrder } from '@/hooks/usePurchaseOrders.js';
+import { useSuppliers } from '@/hooks/useSuppliers.js';
+import { useItems } from '@/hooks/useItems.js';
+import * as purchaseOrderService from '../src/services/purchaseOrderService.js';
 import POCreateWizard from '@/components/po/POCreateWizard';
 import PODetailsModal from '@/components/po/PODetailsModal';
 import POReceiptModal from '@/components/po/POReceiptModal';
+import { toast } from 'sonner';
+import { formatNumber } from '../src/lib/numberUtils.js';
 
 const statusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
@@ -30,7 +35,11 @@ const statusConfig = {
 };
 
 export default function PurchaseOrders() {
-  const [purchaseOrders, setPurchaseOrders] = useState(dummyPurchaseOrders);
+  const { purchaseOrders, loading, error, refetch } = usePurchaseOrders();
+  const { suppliers, loading: suppliersLoading } = useSuppliers();
+  const { items, loading: itemsLoading } = useItems();
+  const { createPurchaseOrder, loading: creating } = useCreatePurchaseOrder();
+  const { receivePurchaseOrder, loading: receiving } = useReceivePurchaseOrder();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedPO, setSelectedPO] = useState(null);
@@ -39,10 +48,11 @@ export default function PurchaseOrders() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   const filteredPOs = useMemo(() => {
+    if (!purchaseOrders) return [];
     return purchaseOrders.filter(po => {
       const matchesSearch = 
         po.po_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        po.supplier_name.toLowerCase().includes(searchQuery.toLowerCase());
+        (po.supplier_name || po.Supplier?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
       return matchesSearch && matchesStatus;
     }).sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
@@ -53,40 +63,107 @@ export default function PurchaseOrders() {
     setShowDetailsModal(true);
   };
 
-  const handleReceive = (po) => {
-    setSelectedPO(po);
-    setShowReceiptModal(true);
-  };
-
-  const handleCreatePO = (poData) => {
-    const newPO = {
-      ...poData,
-      id: `po-${Date.now()}`,
-      po_number: `PO-${String(purchaseOrders.length + 1).padStart(3, '0')}`,
-      order_date: new Date().toISOString().split('T')[0],
-      status: 'pending',
-      delivery_rating: null,
-      notes: ''
-    };
-    setPurchaseOrders(prev => [...prev, newPO]);
-    setShowCreateWizard(false);
-  };
-
-  const handleReceiptConfirm = (receiptData) => {
-    setPurchaseOrders(prev => prev.map(po => {
-      if (po.id === selectedPO.id) {
+  const handleReceive = async (po) => {
+    try {
+      // Fetch full PO details with line items to ensure we have line_item_id
+      const fullPO = await purchaseOrderService.getPurchaseOrderById(po.po_id || po.id);
+      
+      // Transform lineItems to items format expected by modal
+      // Handle both Sequelize models and plain objects
+      const lineItems = fullPO.lineItems || fullPO.LineItems || [];
+      const items = lineItems.map(lineItem => {
+        const lineItemData = lineItem.toJSON ? lineItem.toJSON() : lineItem;
+        const itemData = lineItemData.item || lineItemData.Item || {};
+        const itemName = itemData.name || itemData.item_name || lineItemData.item_name;
+        
         return {
-          ...po,
-          ...receiptData,
-          status: receiptData.status,
-          received_date: new Date().toISOString().split('T')[0]
+          line_item_id: lineItemData.line_item_id,
+          item_id: lineItemData.item_id,
+          item_name: itemName,
+          quantity: lineItemData.quantity_ordered,
+          quantity_received: lineItemData.quantity_received || 0,
+          unit_price: lineItemData.unit_price,
+          total_price: lineItemData.total_price,
+          quality_check: lineItemData.quality_check_status === 'passed' ? 'pass' : 
+                        lineItemData.quality_check_status === 'failed' ? 'fail' : 'pass'
         };
-      }
-      return po;
-    }));
-    setShowReceiptModal(false);
-    setSelectedPO(null);
+      });
+      
+      const poData = fullPO.toJSON ? fullPO.toJSON() : fullPO;
+      const supplierData = poData.supplier || poData.Supplier || {};
+      
+      setSelectedPO({
+        ...poData,
+        items: items,
+        supplier_name: supplierData.name || po.supplier_name,
+        po_number: poData.po_number || po.po_number
+      });
+      setShowReceiptModal(true);
+    } catch (error) {
+      toast.error('Failed to load purchase order details');
+    }
   };
+
+  const handleCreatePO = async (poData) => {
+    try {
+      await createPurchaseOrder(poData);
+      toast.success('Purchase order created successfully');
+      refetch();
+    setShowCreateWizard(false);
+    } catch (error) {
+      toast.error(error.message || 'Failed to create purchase order');
+    }
+  };
+
+  const handleReceiptConfirm = async (receiptData) => {
+    try {
+      // Transform receipt data to match backend expectations
+      const line_items = (receiptData.items || []).map(item => {
+        // Map quality_check ('pass'/'fail') to quality_check_status ('passed'/'failed')
+        const quality_check_status = item.quality_check === 'pass' ? 'passed' : 
+                                     item.quality_check === 'fail' ? 'failed' : 'pending';
+        
+        return {
+          line_item_id: item.line_item_id || item.item_id, // Use line_item_id if available, fallback to item_id
+          quantity_received: item.quantity_received || item.quantity || 0,
+          quality_check_status: quality_check_status
+        };
+      });
+      
+      const transformedData = {
+        line_items: line_items,
+        delivery_rating: receiptData.delivery_rating,
+        notes: receiptData.notes
+      };
+      
+      await receivePurchaseOrder(selectedPO.po_id || selectedPO.id, transformedData);
+      toast.success('Purchase order received successfully');
+      refetch();
+      setShowReceiptModal(false);
+      setSelectedPO(null);
+    } catch (error) {
+      toast.error(error.message || 'Failed to receive purchase order');
+    }
+  };
+
+  if (loading || suppliersLoading || itemsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <p className="text-red-800 font-medium">Error loading purchase orders</p>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -150,13 +227,13 @@ export default function PurchaseOrders() {
                 const status = statusConfig[po.status];
                 const StatusIcon = status.icon;
                 return (
-                  <tr key={po.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={po.po_id || po.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <span className="font-semibold text-slate-900">{po.po_number}</span>
                     </td>
-                    <td className="p-4 text-slate-600">{po.supplier_name}</td>
-                    <td className="p-4 text-slate-600">{po.items.length} items</td>
-                    <td className="p-4 font-medium text-slate-900">${po.total_amount.toFixed(2)}</td>
+                    <td className="p-4 text-slate-600">{po.supplier_name || po.Supplier?.name || 'N/A'}</td>
+                    <td className="p-4 text-slate-600">{(po.items || po.line_items || []).length} items</td>
+                    <td className="p-4 font-medium text-slate-900">₱{formatNumber(po.total_amount, 2)}</td>
                     <td className="p-4 text-slate-600">{po.order_date}</td>
                     <td className="p-4 text-slate-600">{po.expected_delivery_date}</td>
                     <td className="p-4">
@@ -196,8 +273,8 @@ export default function PurchaseOrders() {
           open={showCreateWizard}
           onClose={() => setShowCreateWizard(false)}
           onSubmit={handleCreatePO}
-          suppliers={dummySuppliers}
-          items={dummyItems}
+          suppliers={suppliers || []}
+          items={items || []}
         />
       )}
       

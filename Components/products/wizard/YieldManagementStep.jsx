@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "../../../src/lib/utils.js";
 import { getQualityColor, getQualityBgColor } from '@/components/data/dummyData';
+import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function SupplierCard({ supplier, onView, onEdit, onCreatePO }) {
   const qualityColor = getQualityColor(supplier.quality_rating);
@@ -49,7 +50,7 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO }) {
             <div className="flex items-center gap-2">
               <Star className={cn("w-5 h-5", qualityColor)} fill="currentColor" />
               <span className={cn("font-bold text-lg", qualityColor)}>
-                {supplier.quality_rating.toFixed(1)}
+                {formatNumber(supplier.quality_rating, 1)}
               </span>
             </div>
             <span className="text-sm text-slate-500">Quality Rating</span>

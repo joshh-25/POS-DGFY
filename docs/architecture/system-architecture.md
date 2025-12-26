@@ -2,6 +2,8 @@
 
 ## 1. High-Level System Architecture
 
+> **Reference Diagram**: See [System Architecture Diagram](./images/system-architecture-diagram.png) for a visual overview of the complete system architecture.
+
 ```mermaid
 graph TB
     subgraph Client["Client Layer"]
