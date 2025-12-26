@@ -148,7 +148,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
               type="number"
               min={0}
               value={formData.quantity}
-              onChange={(e) => handleChange('quantity', parseFloat(e.target.value) || 0)}
+              onChange={(e) => handleChange('quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 

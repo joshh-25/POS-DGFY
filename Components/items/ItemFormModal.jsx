@@ -44,20 +44,75 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
   });
 
   useEffect(() => {
-    if (item) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:46',message:'useEffect triggered',data:{hasItem:!!item,itemId:item?.item_id || item?.id,open},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    if (item && open) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:50',message:'Setting form data from item',data:{itemFields:Object.keys(item),itemValues:{sku_code:item.sku_code,name:item.name,cost_per_unit:item.cost_per_unit,max_capacity:item.max_capacity}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       setFormData({
-        ...item,
+        sku_code: item.sku_code || '',
+        name: item.name || '',
+        category: item.category || 'ingredient',
+        description: item.description || '',
+        unit_of_measure: item.unit_of_measure || 'kg',
+        cost_per_unit: item.cost_per_unit ?? 0,
+        max_capacity: item.max_capacity ?? 0,
+        current_stock: item.current_stock ?? 0,
+        min_threshold: item.min_threshold ?? 0,
+        purchase_allowance: item.purchase_allowance ?? 0,
+        fifo_enabled: item.fifo_enabled || false,
         ingredients: item.ingredients || [],
-        packaging_specs: item.packaging_specs || {
-          height: '',
-          width: '',
-          thickness: '',
-          material: '',
-          design: '',
-          contents: ''
-        }
+        packaging_specs: (() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:69',message:'Initializing packaging_specs from item',data:{packaging_specs:item.packaging_specs,isArray:Array.isArray(item.packaging_specs),type:typeof item.packaging_specs},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          
+          // Ensure packaging_specs is always an object, not an array
+          if (!item.packaging_specs) {
+            return {
+              height: '',
+              width: '',
+              thickness: '',
+              material: '',
+              design: '',
+              contents: ''
+            };
+          }
+          
+          if (Array.isArray(item.packaging_specs)) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:85',message:'packaging_specs is array, converting to object',data:{original:item.packaging_specs},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            return {
+              height: '',
+              width: '',
+              thickness: '',
+              material: '',
+              design: '',
+              contents: ''
+            };
+          }
+          
+          // Return as object with defaults for missing properties
+          return {
+            height: item.packaging_specs?.height || '',
+            width: item.packaging_specs?.width || '',
+            thickness: item.packaging_specs?.thickness || '',
+            material: item.packaging_specs?.material || '',
+            design: item.packaging_specs?.design || '',
+            contents: item.packaging_specs?.contents || ''
+          };
+        })()
       });
-    } else {
+    } else if (!item && open) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:75',message:'Resetting form data for new item',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       setFormData({
         sku_code: '',
         name: '',
@@ -67,6 +122,8 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
         cost_per_unit: 0,
         max_capacity: 0,
         current_stock: 0,
+        min_threshold: 0,
+        purchase_allowance: 0,
         fifo_enabled: false,
         ingredients: [],
         packaging_specs: {
@@ -128,7 +185,105 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
   };
 
   const handleSubmit = () => {
-    onSave(formData);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:130',message:'handleSubmit called - formData before cleaning',data:{formData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    // Convert empty strings to 0 for number fields, but validate max_capacity is positive
+    const cleanedData = {
+      ...formData,
+      cost_per_unit: formData.cost_per_unit === '' ? 0 : (typeof formData.cost_per_unit === 'string' ? parseFloat(formData.cost_per_unit) || 0 : formData.cost_per_unit),
+      max_capacity: formData.max_capacity === '' ? 0 : (typeof formData.max_capacity === 'string' ? parseFloat(formData.max_capacity) || 0 : formData.max_capacity),
+      current_stock: formData.current_stock === '' ? 0 : (typeof formData.current_stock === 'string' ? parseFloat(formData.current_stock) || 0 : formData.current_stock),
+      ingredients: formData.ingredients.map(ing => ({
+        ...ing,
+        quantity: ing.quantity === '' ? 0 : (typeof ing.quantity === 'string' ? parseFloat(ing.quantity) || 0 : ing.quantity)
+      }))
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:144',message:'cleanedData after conversion',data:{cleanedData,max_capacity_type:typeof cleanedData.max_capacity,max_capacity_value:cleanedData.max_capacity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    // Validate max_capacity is positive before submitting
+    if (!cleanedData.max_capacity || cleanedData.max_capacity <= 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:152',message:'Validation failed - max_capacity must be positive',data:{max_capacity:cleanedData.max_capacity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      alert('Max Capacity must be a positive number greater than 0');
+      return;
+    }
+    
+    // Filter out fields that aren't in the backend schema
+    // Only send fields that the backend validator expects
+    // Note: current_stock is not in the create schema - backend sets it automatically
+    // Convert number fields to proper numbers or null (not empty strings, undefined, or NaN)
+    const toNumberOrNull = (value) => {
+      if (value === '' || value === undefined || value === null) return null;
+      const num = Number(value);
+      return isNaN(num) ? null : num;
+    };
+    
+    const validFields = {
+      sku_code: cleanedData.sku_code || '',
+      name: cleanedData.name || '',
+      category: cleanedData.category || 'ingredient',
+      description: cleanedData.description || '',
+      unit_of_measure: cleanedData.unit_of_measure || 'kg',
+      cost_per_unit: toNumberOrNull(cleanedData.cost_per_unit),
+      max_capacity: Number(cleanedData.max_capacity), // Already validated to be positive above
+      min_threshold: toNumberOrNull(cleanedData.min_threshold),
+      purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
+      fifo_enabled: cleanedData.fifo_enabled || false,
+      product_folder: cleanedData.product_folder || null,
+      batch_size: toNumberOrNull(cleanedData.batch_size),
+      yield_percentage: toNumberOrNull(cleanedData.yield_percentage),
+      processing_loss: toNumberOrNull(cleanedData.processing_loss),
+      production_notes: cleanedData.production_notes || null,
+      ...(cleanedData.category === 'packaging' ? {
+        packaging_specs: cleanedData.packaging_specs ? (() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:208',message:'Processing packaging_specs',data:{packaging_specs:cleanedData.packaging_specs,isArray:Array.isArray(cleanedData.packaging_specs),type:typeof cleanedData.packaging_specs},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          
+          // Ensure packaging_specs is an object, not an array
+          if (Array.isArray(cleanedData.packaging_specs)) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:213',message:'packaging_specs is array, converting to object',data:{original:cleanedData.packaging_specs},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            return {
+              height: '',
+              width: '',
+              thickness: '',
+              material: '',
+              design: '',
+              contents: ''
+            };
+          }
+          
+          // Ensure it's a proper object with the expected structure
+          // Create a new clean object with only the expected properties (no numeric keys)
+          const cleanSpecs = {
+            height: cleanedData.packaging_specs?.height || '',
+            width: cleanedData.packaging_specs?.width || '',
+            thickness: cleanedData.packaging_specs?.thickness || '',
+            material: cleanedData.packaging_specs?.material || '',
+            design: cleanedData.packaging_specs?.design || '',
+            contents: cleanedData.packaging_specs?.contents || ''
+          };
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:270',message:'Final packaging_specs object',data:{cleanSpecs,isArray:Array.isArray(cleanSpecs),keys:Object.keys(cleanSpecs)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          
+          return cleanSpecs;
+        })() : null
+      } : {})
+    };
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ItemFormModal.jsx:195',message:'Sending validFields to backend',data:{validFields,fieldTypes:Object.keys(validFields).reduce((acc,key)=>{acc[key]=typeof validFields[key];return acc;},{})},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    onSave(validFields);
     onClose();
   };
 
@@ -148,9 +303,9 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="sku">SKU Code</Label>
-              <Input
+                <Input
                 id="sku"
-                value={formData.sku_code}
+                value={formData.sku_code || ''}
                 onChange={(e) => handleChange('sku_code', e.target.value)}
                 placeholder="e.g., ING-SUG-001"
               />
@@ -159,7 +314,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
               <Label htmlFor="name">Item Name</Label>
               <Input
                 id="name"
-                value={formData.name}
+                value={formData.name || ''}
                 onChange={(e) => handleChange('name', e.target.value)}
                 placeholder="e.g., Sugar"
               />
@@ -169,7 +324,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Category</Label>
-              <Select value={formData.category} onValueChange={(v) => handleChange('category', v)}>
+              <Select value={formData.category || 'ingredient'} onValueChange={(v) => handleChange('category', v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -182,7 +337,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
             </div>
             <div className="space-y-2">
               <Label>Unit of Measure</Label>
-              <Select value={formData.unit_of_measure} onValueChange={(v) => handleChange('unit_of_measure', v)}>
+              <Select value={formData.unit_of_measure || 'kg'} onValueChange={(v) => handleChange('unit_of_measure', v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -200,7 +355,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={formData.description}
+              value={formData.description || ''}
               onChange={(e) => handleChange('description', e.target.value)}
               placeholder="Item description..."
               rows={3}
@@ -209,13 +364,13 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="cost">Cost per Unit ($)</Label>
+              <Label htmlFor="cost">Cost per Unit (₱)</Label>
               <Input
                 id="cost"
                 type="number"
                 step="0.01"
-                value={formData.cost_per_unit}
-                onChange={(e) => handleChange('cost_per_unit', parseFloat(e.target.value) || 0)}
+                value={formData.cost_per_unit ?? ''}
+                onChange={(e) => handleChange('cost_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
               />
             </div>
             <div className="space-y-2">
@@ -223,8 +378,8 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
               <Input
                 id="capacity"
                 type="number"
-                value={formData.max_capacity}
-                onChange={(e) => handleChange('max_capacity', parseFloat(e.target.value) || 0)}
+                value={formData.max_capacity ?? ''}
+                onChange={(e) => handleChange('max_capacity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
               />
             </div>
             <div className="space-y-2">
@@ -232,8 +387,8 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
               <Input
                 id="stock"
                 type="number"
-                value={formData.current_stock}
-                onChange={(e) => handleChange('current_stock', parseFloat(e.target.value) || 0)}
+                value={formData.current_stock ?? ''}
+                onChange={(e) => handleChange('current_stock', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
               />
             </div>
           </div>
@@ -308,8 +463,8 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                     step="0.001"
                     className="w-32"
                     placeholder="Qty"
-                    value={ing.quantity}
-                    onChange={(e) => updateIngredient(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                    value={ing.quantity ?? ''}
+                    onChange={(e) => updateIngredient(idx, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   />
                   <span className="text-sm text-slate-500">kg</span>
                   <Button variant="ghost" size="icon" onClick={() => removeIngredient(idx)}>
@@ -329,7 +484,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                   <Label htmlFor="height">Height</Label>
                   <Input
                     id="height"
-                    value={formData.packaging_specs.height}
+                    value={formData.packaging_specs?.height || ''}
                     onChange={(e) => handlePackagingChange('height', e.target.value)}
                     placeholder="e.g., 6 inches"
                   />
@@ -338,7 +493,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                   <Label htmlFor="width">Width</Label>
                   <Input
                     id="width"
-                    value={formData.packaging_specs.width}
+                    value={formData.packaging_specs?.width || ''}
                     onChange={(e) => handlePackagingChange('width', e.target.value)}
                     placeholder="e.g., 2 inches"
                   />
@@ -347,7 +502,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                   <Label htmlFor="thickness">Thickness</Label>
                   <Input
                     id="thickness"
-                    value={formData.packaging_specs.thickness}
+                    value={formData.packaging_specs?.thickness || ''}
                     onChange={(e) => handlePackagingChange('thickness', e.target.value)}
                     placeholder="e.g., 3mm"
                   />
@@ -358,7 +513,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                   <Label htmlFor="material">Material</Label>
                   <Input
                     id="material"
-                    value={formData.packaging_specs.material}
+                    value={formData.packaging_specs?.material || ''}
                     onChange={(e) => handlePackagingChange('material', e.target.value)}
                     placeholder="e.g., Borosilicate Glass"
                   />
@@ -367,7 +522,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                   <Label htmlFor="design">Design</Label>
                   <Input
                     id="design"
-                    value={formData.packaging_specs.design}
+                    value={formData.packaging_specs?.design || ''}
                     onChange={(e) => handlePackagingChange('design', e.target.value)}
                     placeholder="e.g., Clear with embossed logo"
                   />
@@ -377,7 +532,7 @@ export default function ItemFormModal({ item, open, onClose, onSave }) {
                 <Label htmlFor="contents">Contents Description</Label>
                 <Textarea
                   id="contents"
-                  value={formData.packaging_specs.contents}
+                  value={formData.packaging_specs?.contents || ''}
                   onChange={(e) => handlePackagingChange('contents', e.target.value)}
                   placeholder="What this packaging can hold..."
                   rows={2}

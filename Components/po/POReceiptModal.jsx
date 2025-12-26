@@ -41,11 +41,16 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
   };
 
   const handleConfirm = () => {
-    const allReceived = items.every(item => item.quantity_received === item.quantity);
-    const anyReceived = items.some(item => item.quantity_received > 0);
+    // Convert empty strings to 0 for number fields
+    const cleanedItems = items.map(item => ({
+      ...item,
+      quantity_received: item.quantity_received === '' ? 0 : item.quantity_received
+    }));
+    const allReceived = cleanedItems.every(item => item.quantity_received === item.quantity);
+    const anyReceived = cleanedItems.some(item => item.quantity_received > 0);
     
     onConfirm({
-      items,
+      items: cleanedItems,
       status: allReceived ? 'received' : (anyReceived ? 'partial' : 'pending'),
       delivery_rating: deliveryRating,
       notes
@@ -94,7 +99,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                       min={0}
                       max={item.quantity}
                       value={item.quantity_received}
-                      onChange={(e) => updateItem(idx, 'quantity_received', parseInt(e.target.value) || 0)}
+                      onChange={(e) => updateItem(idx, 'quantity_received', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
                     />
                   </div>
                   <div className="space-y-2">

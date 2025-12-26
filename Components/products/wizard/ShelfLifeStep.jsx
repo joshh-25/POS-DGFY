@@ -35,7 +35,7 @@ export default function ShelfLifeStep({ data, updateData }) {
             min="1"
             placeholder="e.g., 365"
             value={shelfLife.duration_days || ''}
-            onChange={(e) => updateShelfLife('duration_days', parseInt(e.target.value) || 0)}
+            onChange={(e) => updateShelfLife('duration_days', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
           />
           <p className="text-xs text-slate-500">Unopened shelf life from production date</p>
         </div>
@@ -47,7 +47,7 @@ export default function ShelfLifeStep({ data, updateData }) {
             min="1"
             placeholder="e.g., 30"
             value={shelfLife.opened_shelf_life_days || ''}
-            onChange={(e) => updateShelfLife('opened_shelf_life_days', parseInt(e.target.value) || 0)}
+            onChange={(e) => updateShelfLife('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
           />
           <p className="text-xs text-slate-500">After opening/breaking seal</p>
         </div>

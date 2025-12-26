@@ -40,7 +40,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               min="0"
               placeholder="kcal"
               value={nutritionalInfo.calories || ''}
-              onChange={(e) => updateNutrition('calories', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('calories', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -51,7 +51,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.total_fat || ''}
-              onChange={(e) => updateNutrition('total_fat', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('total_fat', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -62,7 +62,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.saturated_fat || ''}
-              onChange={(e) => updateNutrition('saturated_fat', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('saturated_fat', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -72,7 +72,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               type="number"
               min="0"
               value={nutritionalInfo.cholesterol || ''}
-              onChange={(e) => updateNutrition('cholesterol', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('cholesterol', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -82,7 +82,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               type="number"
               min="0"
               value={nutritionalInfo.sodium || ''}
-              onChange={(e) => updateNutrition('sodium', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('sodium', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -93,7 +93,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.total_carbohydrates || ''}
-              onChange={(e) => updateNutrition('total_carbohydrates', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('total_carbohydrates', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -104,7 +104,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.dietary_fiber || ''}
-              onChange={(e) => updateNutrition('dietary_fiber', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('dietary_fiber', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -115,7 +115,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.sugars || ''}
-              onChange={(e) => updateNutrition('sugars', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('sugars', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -126,7 +126,7 @@ export default function NutritionalInfoStep({ data, updateData }) {
               step="0.1"
               min="0"
               value={nutritionalInfo.protein || ''}
-              onChange={(e) => updateNutrition('protein', parseFloat(e.target.value) || 0)}
+              onChange={(e) => updateNutrition('protein', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>

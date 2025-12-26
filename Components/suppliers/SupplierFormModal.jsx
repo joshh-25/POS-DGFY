@@ -210,7 +210,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave }) {
                     type="number"
                     className="w-20"
                     value={item.moq}
-                    onChange={(e) => updateItem(idx, 'moq', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateItem(idx, 'moq', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -220,7 +220,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave }) {
                     step="0.01"
                     className="w-24"
                     value={item.price_per_unit}
-                    onChange={(e) => updateItem(idx, 'price_per_unit', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => updateItem(idx, 'price_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   />
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => removeItem(idx)}>
@@ -246,7 +246,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave }) {
                     type="number"
                     className="w-24"
                     value={tier.min_quantity}
-                    onChange={(e) => updateDiscount(idx, 'min_quantity', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateDiscount(idx, 'min_quantity', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -256,7 +256,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave }) {
                     step="0.5"
                     className="w-20"
                     value={tier.discount_percent}
-                    onChange={(e) => updateDiscount(idx, 'discount_percent', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => updateDiscount(idx, 'discount_percent', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   />
                   <span className="text-sm text-slate-500">%</span>
                 </div>

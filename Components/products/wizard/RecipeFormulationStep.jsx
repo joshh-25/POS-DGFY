@@ -75,7 +75,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
             type="number"
             min="1"
             value={batchSize}
-            onChange={(e) => updateData({ batch_size: parseInt(e.target.value) || 1 })}
+            onChange={(e) => updateData({ batch_size: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
           />
         </div>
         <div className="bg-slate-50 rounded-lg p-4">
@@ -133,7 +133,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                           step="0.01"
                           min="0"
                           value={ing.quantity}
-                          onChange={(e) => updateIngredient(index, 'quantity', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateIngredient(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                         />
                         <Button variant="ghost" size="sm" onClick={() => removeIngredient(index)}>
                           <Trash2 className="w-4 h-4 text-red-500" />

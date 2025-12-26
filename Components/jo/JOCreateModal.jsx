@@ -92,7 +92,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, products, items
               type="number"
               min={1}
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+              onChange={(e) => setQuantity(e.target.value === '' ? '' : parseInt(e.target.value) || 1)}
             />
           </div>
 

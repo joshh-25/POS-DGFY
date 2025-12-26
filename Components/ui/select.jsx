@@ -37,9 +37,13 @@ const Select = ({ children, value, onValueChange, ...props }) => {
 }
 
 const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => {
-  const { open, setOpen, selectedValue, selectContent } = React.useContext(SelectContext)
+  const contextValue = React.useContext(SelectContext)
+  const { open, setOpen, selectedValue, selectContent } = contextValue
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'select.jsx:40',message:'SelectTrigger render - hooks called',data:{open,hasSelectContent:!!selectContent,contextKeys:Object.keys(contextValue)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -74,7 +78,7 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
       </button>
       {open && selectContent && (
         <div ref={menuRef} className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
-          <SelectContext.Provider value={{ ...React.useContext(SelectContext), menuOpen: true }}>
+          <SelectContext.Provider value={{ ...contextValue, menuOpen: true }}>
             {selectContent}
           </SelectContext.Provider>
         </div>

@@ -63,7 +63,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
             min="0"
             placeholder="0.00"
             value={packagingCost}
-            onChange={(e) => setPackagingCost(parseFloat(e.target.value) || 0)}
+            onChange={(e) => setPackagingCost(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
           />
         </div>
 
@@ -75,7 +75,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
             min="0"
             placeholder="0.00"
             value={laborCost}
-            onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
+            onChange={(e) => setLaborCost(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
           />
         </div>
 
@@ -87,7 +87,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
             min="0"
             placeholder="0.00"
             value={overheadCost}
-            onChange={(e) => setOverheadCost(parseFloat(e.target.value) || 0)}
+            onChange={(e) => setOverheadCost(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
           />
         </div>
       </div>

@@ -254,7 +254,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                           type="number"
                           className="w-20"
                           value={orderQuantities[item.id] || ''}
-                          onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value) || 0)}
+                          onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>

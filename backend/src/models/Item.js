@@ -75,6 +75,10 @@ const Item = sequelize.define('Item', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  packaging_specs: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

@@ -127,9 +127,13 @@ export default function Items() {
       }
       refetch();
       setShowFormModal(false);
-      setEditingItem(null);
     } catch (error) {
-      toast.error(error.message || 'Failed to save item');
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Items.jsx:119',message:'handleSave error caught',data:{status:error.response?.status,errors:error.response?.data?.errors,message:error.response?.data?.message,itemData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save item';
+      toast.error(errorMessage);
+      setEditingItem(null);
     }
   };
 

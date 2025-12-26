@@ -92,7 +92,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
                     <tr key={idx}>
                       <td className="p-3 font-medium text-slate-900">{item.item_name}</td>
                       <td className="p-3 text-right text-slate-600">{item.moq}</td>
-                      <td className="p-3 text-right text-slate-900 font-medium">${formatNumber(item.price_per_unit, 2)}</td>
+                      <td className="p-3 text-right text-slate-900 font-medium">₱{formatNumber(item.price_per_unit, 2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -131,7 +131,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
                       <p className="text-sm text-slate-500">{po.received_date}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-slate-600">${formatNumber(po.total_amount, 2)}</span>
+                      <span className="text-slate-600">₱{formatNumber(po.total_amount, 2)}</span>
                       {po.delivery_rating && (
                         <div className="flex items-center gap-1">
                           <Star className="w-4 h-4 text-amber-500" fill="currentColor" />

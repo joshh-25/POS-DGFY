@@ -51,7 +51,15 @@ export const createItemSchema = Joi.object({
     'number.min': 'Processing loss must be 0 or greater',
     'number.max': 'Processing loss must not exceed 100'
   }),
-  production_notes: Joi.string().allow(null, '')
+  production_notes: Joi.string().allow(null, ''),
+  packaging_specs: Joi.object({
+    height: Joi.string().allow(null, ''),
+    width: Joi.string().allow(null, ''),
+    thickness: Joi.string().allow(null, ''),
+    material: Joi.string().allow(null, ''),
+    design: Joi.string().allow(null, ''),
+    contents: Joi.string().allow(null, '')
+  }).allow(null)
 });
 
 export const updateItemSchema = Joi.object({
@@ -80,6 +88,14 @@ export const updateItemSchema = Joi.object({
   yield_percentage: Joi.number().min(0).max(100).allow(null),
   processing_loss: Joi.number().min(0).max(100).allow(null),
   production_notes: Joi.string().allow(null, ''),
+  packaging_specs: Joi.object({
+    height: Joi.string().allow(null, ''),
+    width: Joi.string().allow(null, ''),
+    thickness: Joi.string().allow(null, ''),
+    material: Joi.string().allow(null, ''),
+    design: Joi.string().allow(null, ''),
+    contents: Joi.string().allow(null, '')
+  }).allow(null),
   is_active: Joi.boolean()
 });
 
