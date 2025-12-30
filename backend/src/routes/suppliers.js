@@ -1,15 +1,29 @@
 import express from 'express';
 import * as supplierController from '../controllers/supplierController.js';
-import { authenticate } from '../middleware/auth.js';
+import { validateCreateSupplier, validateUpdateSupplier, validateCreateSupplierDraft } from '../validators/supplierValidator.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(authenticate);
 
+// Read operations - all authenticated users
 router.get('/', supplierController.getSuppliers);
 router.get('/:supplier_id', supplierController.getSupplierById);
-router.post('/', supplierController.createSupplier);
-router.put('/:supplier_id', supplierController.updateSupplier);
-router.post('/:supplier_id/items', supplierController.addSupplierItem);
+
+// Create/Update operations - managers and admins only
+router.post('/', authorize('admin', 'manager'), (req, res, next) => {
+  const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
+  if (isDraft) {
+    validateCreateSupplierDraft(req, res, next);
+  } else {
+    validateCreateSupplier(req, res, next);
+  }
+}, supplierController.createSupplier);
+router.put('/:supplier_id', authorize('admin', 'manager'), validateUpdateSupplier, supplierController.updateSupplier);
+router.post('/:supplier_id/items', authorize('admin', 'manager'), supplierController.addSupplierItem);
+
+// Finalize draft - managers and admins only
+router.patch('/:supplier_id/finalize', authorize('admin', 'manager'), supplierController.finalizeSupplier);
 
 export default router;
 

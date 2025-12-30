@@ -10,11 +10,17 @@ export const getSuppliers = async (queryParams) => {
     limit = 20,
     search,
     sortBy = 'name',
-    sortOrder = 'asc'
+    sortOrder = 'asc',
+    status
   } = queryParams;
 
   const offset = (page - 1) * limit;
   const where = {};
+
+  // Filter by status
+  if (status) {
+    where.status = status;
+  }
 
   if (search) {
     where[Op.or] = [
@@ -85,19 +91,65 @@ export const getSupplierById = async (supplierId) => {
   return formatted;
 };
 
-export const createSupplier = async (supplierData) => {
-  const supplier = await Supplier.create(supplierData);
+export const createSupplier = async (supplierData, userId = null) => {
+  // Add created_by if userId provided
+  const dataToCreate = { ...supplierData };
+  if (userId) {
+    dataToCreate.created_by = userId;
+    dataToCreate.updated_by = userId;
+  }
+
+  const supplier = await Supplier.create(dataToCreate);
   return supplier;
 };
 
-export const updateSupplier = async (supplierId, supplierData) => {
+export const updateSupplier = async (supplierId, supplierData, userId = null) => {
   const supplier = await Supplier.findByPk(supplierId);
   if (!supplier) {
     const error = new Error('Supplier not found');
     error.statusCode = 404;
     throw error;
   }
-  await supplier.update(supplierData);
+
+  // Add updated_by if userId provided
+  const dataToUpdate = { ...supplierData };
+  if (userId) {
+    dataToUpdate.updated_by = userId;
+  }
+
+  await supplier.update(dataToUpdate);
+  return supplier;
+};
+
+export const finalizeSupplier = async (supplierId, userId = null) => {
+  const supplier = await Supplier.findByPk(supplierId);
+
+  if (!supplier) {
+    const error = new Error('Supplier not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (supplier.status !== 'draft') {
+    const error = new Error('Only draft suppliers can be finalized');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate required fields for finalization
+  if (!supplier.name) {
+    const error = new Error('Name is required to finalize supplier');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  // Update status to active
+  const updateData = { status: 'active' };
+  if (userId) {
+    updateData.updated_by = userId;
+  }
+
+  await supplier.update(updateData);
   return supplier;
 };
 

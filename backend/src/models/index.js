@@ -11,6 +11,12 @@ import ItemAllergen from './ItemAllergen.js';
 import ProductComposition from './ProductComposition.js';
 import SupplierItem from './SupplierItem.js';
 import BulkDiscount from './BulkDiscount.js';
+import ItemPhysicalProperties from './ItemPhysicalProperties.js';
+import ItemShelfLife from './ItemShelfLife.js';
+import ItemPackaging from './ItemPackaging.js';
+import ItemQualityControl from './ItemQualityControl.js';
+import ItemRegulatoryCompliance from './ItemRegulatoryCompliance.js';
+import ItemCostBreakdown from './ItemCostBreakdown.js';
 import POLineItem from './POLineItem.js';
 import JOIngredient from './JOIngredient.js';
 import BatchTransaction from './BatchTransaction.js';
@@ -28,6 +34,12 @@ User.hasMany(StockMovement, { foreignKey: 'user_responsible', as: 'stockMovement
 Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
 Item.hasOne(ItemNutrition, { foreignKey: 'item_id', as: 'nutrition' });
 Item.hasMany(ItemAllergen, { foreignKey: 'item_id', as: 'allergens' });
+Item.hasOne(ItemPhysicalProperties, { foreignKey: 'item_id', as: 'physicalProperties' });
+Item.hasOne(ItemShelfLife, { foreignKey: 'item_id', as: 'shelfLife' });
+Item.hasOne(ItemPackaging, { foreignKey: 'item_id', as: 'packaging' });
+Item.hasOne(ItemQualityControl, { foreignKey: 'item_id', as: 'qualityControl' });
+Item.hasOne(ItemRegulatoryCompliance, { foreignKey: 'item_id', as: 'regulatoryCompliance' });
+Item.hasOne(ItemCostBreakdown, { foreignKey: 'item_id', as: 'costBreakdown' });
 Item.hasMany(ProductComposition, { foreignKey: 'product_id', as: 'productCompositions' });
 Item.hasMany(ProductComposition, { foreignKey: 'ingredient_id', as: 'ingredientCompositions' });
 Item.hasMany(SupplierItem, { foreignKey: 'item_id', as: 'supplierItems' });
@@ -85,6 +97,24 @@ ItemNutrition.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 // ItemAllergen associations
 ItemAllergen.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 
+// ItemPhysicalProperties associations
+ItemPhysicalProperties.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemShelfLife associations
+ItemShelfLife.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemPackaging associations
+ItemPackaging.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemQualityControl associations
+ItemQualityControl.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemRegulatoryCompliance associations
+ItemRegulatoryCompliance.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
+// ItemCostBreakdown associations
+ItemCostBreakdown.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+
 // ProductComposition associations
 ProductComposition.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
 ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredient' });
@@ -104,6 +134,12 @@ const db = {
   FIFOBatch,
   ItemNutrition,
   ItemAllergen,
+  ItemPhysicalProperties,
+  ItemShelfLife,
+  ItemPackaging,
+  ItemQualityControl,
+  ItemRegulatoryCompliance,
+  ItemCostBreakdown,
   ProductComposition,
   SupplierItem,
   BulkDiscount,

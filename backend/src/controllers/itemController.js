@@ -32,17 +32,21 @@ export const getItemById = async (req, res, next) => {
 export const createItem = async (req, res, next) => {
   try {
     const itemData = req.validatedData;
-    const item = await itemService.createItem(itemData);
-    
+    const userId = req.user.user_id;
+    const item = await itemService.createItem(itemData, userId);
+
+    const message = item.status === 'draft' ? 'Item draft saved successfully' : 'Item created successfully';
+
     res.status(201).json({
       success: true,
       data: {
         item_id: item.item_id,
         sku_code: item.sku_code,
         name: item.name,
-        category: item.category
+        category: item.category,
+        status: item.status
       },
-      message: 'Item created successfully',
+      message,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -54,12 +58,31 @@ export const updateItem = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const itemData = req.validatedData;
-    const item = await itemService.updateItem(item_id, itemData);
-    
+    const userId = req.user.user_id;
+    const item = await itemService.updateItem(item_id, itemData, userId);
+
     res.status(200).json({
       success: true,
       data: item,
       message: 'Item updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const finalizeItem = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const itemData = req.validatedData || req.body || {};
+    const userId = req.user.user_id;
+    const item = await itemService.finalizeItem(item_id, itemData, userId);
+
+    res.status(200).json({
+      success: true,
+      data: item,
+      message: 'Item finalized successfully',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

@@ -4,6 +4,13 @@ import Item from '../models/Item.js';
 import FIFOBatch from '../models/FIFOBatch.js';
 import ItemNutrition from '../models/ItemNutrition.js';
 import ItemAllergen from '../models/ItemAllergen.js';
+import ItemPhysicalProperties from '../models/ItemPhysicalProperties.js';
+import ItemShelfLife from '../models/ItemShelfLife.js';
+import ItemPackaging from '../models/ItemPackaging.js';
+import ItemQualityControl from '../models/ItemQualityControl.js';
+import ItemRegulatoryCompliance from '../models/ItemRegulatoryCompliance.js';
+import ItemCostBreakdown from '../models/ItemCostBreakdown.js';
+import ProductComposition from '../models/ProductComposition.js';
 import SupplierItem from '../models/SupplierItem.js';
 import Supplier from '../models/Supplier.js';
 import StockMovement from '../models/StockMovement.js';
@@ -28,11 +35,9 @@ export const getItems = async (queryParams) => {
     where.category = category;
   }
 
-  // Filter by status (active/inactive)
-  if (status === 'active') {
-    where.is_active = true;
-  } else if (status === 'inactive') {
-    where.is_active = false;
+  // Filter by status (draft/active/inactive)
+  if (status) {
+    where.status = status;
   }
 
   // Search filter
@@ -79,19 +84,56 @@ export const getItemById = async (itemId) => {
         required: false
       },
       {
+        model: ItemPhysicalProperties,
+        as: 'physicalProperties',
+        required: false
+      },
+      {
+        model: ItemShelfLife,
+        as: 'shelfLife',
+        required: false
+      },
+      {
+        model: ItemPackaging,
+        as: 'packaging',
+        required: false
+      },
+      {
+        model: ItemQualityControl,
+        as: 'qualityControl',
+        required: false
+      },
+      {
+        model: ItemRegulatoryCompliance,
+        as: 'regulatoryCompliance',
+        required: false
+      },
+      {
+        model: ItemCostBreakdown,
+        as: 'costBreakdown',
+        required: false
+      },
+      {
+        model: ProductComposition,
+        as: 'productCompositions',
+        required: false,
+        include: [
+          {
+            model: Item,
+            as: 'ingredient',
+            required: false
+          }
+        ]
+      },
+      {
         model: FIFOBatch,
         as: 'fifoBatches',
         required: false,
-        where: {
-          [Op.and]: [
-            sequelize.where(
-              sequelize.col('fifo_batches.quantity'),
-              Op.gt,
-              sequelize.col('fifo_batches.quantity_consumed')
-            )
-          ]
-        },
-        order: [['received_date', 'ASC']]
+        where: sequelize.where(
+          sequelize.col('fifoBatches.quantity'),
+          Op.gt,
+          sequelize.col('fifoBatches.quantity_consumed')
+        )
       },
       {
         model: SupplierItem,
@@ -116,7 +158,7 @@ export const getItemById = async (itemId) => {
 
   // Format response
   const formattedItem = item.toJSON();
-  
+
   // Format suppliers
   formattedItem.suppliers = formattedItem.supplierItems?.map(si => ({
     supplier_id: si.supplier.supplier_id,
@@ -127,49 +169,287 @@ export const getItemById = async (itemId) => {
 
   delete formattedItem.supplierItems;
 
+  // Format allergens for wizard compatibility
+  if (formattedItem.allergens && Array.isArray(formattedItem.allergens)) {
+    const directAllergens = formattedItem.allergens
+      .filter(a => !a.is_cross_contamination)
+      .map(a => a.allergen_name);
+
+    const mayContainAllergens = formattedItem.allergens
+      .filter(a => a.is_cross_contamination)
+      .map(a => a.allergen_name);
+
+    formattedItem.allergens = directAllergens;
+    formattedItem.may_contain_allergens = mayContainAllergens;
+  }
+
+  // Format relational data to match wizard expected property names
+  if (formattedItem.nutrition) {
+    formattedItem.nutritional_info = formattedItem.nutrition;
+    delete formattedItem.nutrition;
+  }
+
+  if (formattedItem.physicalProperties) {
+    formattedItem.physical_properties = formattedItem.physicalProperties;
+    delete formattedItem.physicalProperties;
+  }
+
+  if (formattedItem.shelfLife) {
+    formattedItem.shelf_life = formattedItem.shelfLife;
+    delete formattedItem.shelfLife;
+  }
+
+  if (formattedItem.packaging) {
+    formattedItem.packaging_info = formattedItem.packaging;
+    delete formattedItem.packaging;
+  }
+
+  if (formattedItem.qualityControl) {
+    formattedItem.quality_control = formattedItem.qualityControl;
+    delete formattedItem.qualityControl;
+  }
+
+  if (formattedItem.regulatoryCompliance) {
+    formattedItem.regulatory_compliance = formattedItem.regulatoryCompliance;
+    delete formattedItem.regulatoryCompliance;
+  }
+
+  if (formattedItem.costBreakdown) {
+    formattedItem.labor_cost = formattedItem.costBreakdown.labor_cost;
+    formattedItem.overhead_cost = formattedItem.costBreakdown.overhead_cost;
+    formattedItem.additional_packaging_cost = formattedItem.costBreakdown.additional_packaging_cost;
+    delete formattedItem.costBreakdown;
+  }
+
+  // Format product compositions into ingredients and packaging items
+  if (formattedItem.productCompositions) {
+    formattedItem.ingredients = formattedItem.productCompositions
+      .filter(comp => comp.composition_type === 'ingredient')
+      .map(comp => ({
+        item_id: comp.ingredient_id,
+        item_name: comp.ingredient?.name,
+        quantity: comp.quantity_required,
+        unit_of_measure: comp.ingredient?.unit_of_measure
+      }));
+
+    formattedItem.packaging_items = formattedItem.productCompositions
+      .filter(comp => comp.composition_type === 'packaging')
+      .map(comp => ({
+        item_id: comp.ingredient_id,
+        item_name: comp.ingredient?.name,
+        quantity: comp.quantity_required,
+        unit_of_measure: comp.ingredient?.unit_of_measure
+      }));
+
+    delete formattedItem.productCompositions;
+  }
+
   return formattedItem;
 };
 
-export const createItem = async (itemData) => {
-  // Check if SKU code already exists
-  const existingItem = await Item.findOne({
-    where: { sku_code: itemData.sku_code }
-  });
+export const createItem = async (itemData, userId = null) => {
+  const transaction = await sequelize.transaction();
 
-  if (existingItem) {
-    const error = new Error('Item with this SKU code already exists');
-    error.statusCode = 409;
+  try {
+    // Only check SKU uniqueness for non-draft items
+    if (itemData.status !== 'draft' && itemData.sku_code) {
+      const existingItem = await Item.findOne({
+        where: {
+          sku_code: itemData.sku_code,
+          status: { [Op.ne]: 'draft' } // Exclude drafts from uniqueness check
+        }
+      });
+
+      if (existingItem) {
+        const error = new Error('Item with this SKU code already exists');
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    // Separate wizard-specific fields from database fields
+    const {
+      labor_cost,
+      overhead_cost,
+      additional_packaging_cost,
+      ingredients,
+      packaging_items,
+      nutritional_info,
+      allergens,
+      may_contain_allergens,
+      physical_properties,
+      shelf_life,
+      packaging_info,
+      quality_control,
+      regulatory_compliance,
+      ...dbFields
+    } = itemData;
+
+    // For draft products, store wizard data in wizard_metadata
+    if (itemData.status === 'draft') {
+      dbFields.wizard_metadata = {
+        ...dbFields.wizard_metadata,
+        labor_cost,
+        overhead_cost,
+        additional_packaging_cost,
+        ingredients,
+        packaging_items,
+        nutritional_info,
+        allergens,
+        may_contain_allergens,
+        physical_properties,
+        shelf_life,
+        packaging_info,
+        quality_control,
+        regulatory_compliance
+      };
+    }
+
+    // Create the item
+    const dataToCreate = { ...dbFields };
+
+    const item = await Item.create(dataToCreate, { transaction });
+
+    // For active products, save wizard data to relational tables
+    if (itemData.status === 'active' && itemData.category === 'product') {
+      const wizardData = {
+        labor_cost,
+        overhead_cost,
+        additional_packaging_cost,
+        ingredients,
+        packaging_items,
+        nutritional_info,
+        allergens,
+        may_contain_allergens,
+        physical_properties,
+        shelf_life,
+        packaging_info,
+        quality_control,
+        regulatory_compliance
+      };
+
+      await saveRelatedWizardData(item.item_id, wizardData, transaction);
+    }
+
+    await transaction.commit();
+
+    // Fetch and return complete item with all associations (outside transaction)
+    const completeItem = await getItemById(item.item_id);
+    return completeItem;
+
+  } catch (error) {
+    // Only rollback if transaction is still active
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
     throw error;
   }
-
-  const item = await Item.create(itemData);
-  return item;
 };
 
-export const updateItem = async (itemId, itemData) => {
-  const item = await Item.findByPk(itemId);
+export const updateItem = async (itemId, itemData, userId = null) => {
+  const transaction = await sequelize.transaction();
 
-  if (!item) {
-    const error = new Error('Item not found');
-    error.statusCode = 404;
-    throw error;
-  }
+  try {
+    const item = await Item.findByPk(itemId);
 
-  // Check if SKU code is being changed and if it already exists
-  if (itemData.sku_code && itemData.sku_code !== item.sku_code) {
-    const existingItem = await Item.findOne({
-      where: { sku_code: itemData.sku_code }
-    });
-
-    if (existingItem) {
-      const error = new Error('Item with this SKU code already exists');
-      error.statusCode = 409;
+    if (!item) {
+      const error = new Error('Item not found');
+      error.statusCode = 404;
       throw error;
     }
-  }
 
-  await item.update(itemData);
-  return item;
+    // Check if SKU code is being changed and if it already exists (exclude drafts)
+    if (itemData.sku_code && itemData.sku_code !== item.sku_code) {
+      const existingItem = await Item.findOne({
+        where: {
+          sku_code: itemData.sku_code,
+          status: { [Op.ne]: 'draft' },
+          item_id: { [Op.ne]: itemId }
+        }
+      });
+
+      if (existingItem) {
+        const error = new Error('Item with this SKU code already exists');
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    // Separate wizard-specific fields from database fields
+    const {
+      labor_cost,
+      overhead_cost,
+      additional_packaging_cost,
+      ingredients,
+      packaging_items,
+      nutritional_info,
+      allergens,
+      may_contain_allergens,
+      physical_properties,
+      shelf_life,
+      packaging_info,
+      quality_control,
+      regulatory_compliance,
+      ...dbFields
+    } = itemData;
+
+    // For draft products, store wizard data in wizard_metadata
+    if (itemData.status === 'draft' || item.status === 'draft') {
+      dbFields.wizard_metadata = {
+        ...(item.wizard_metadata || {}),
+        labor_cost,
+        overhead_cost,
+        additional_packaging_cost,
+        ingredients,
+        packaging_items,
+        nutritional_info,
+        allergens,
+        may_contain_allergens,
+        physical_properties,
+        shelf_life,
+        packaging_info,
+        quality_control,
+        regulatory_compliance
+      };
+    }
+
+    // Update item basic fields
+    dbFields.updated_by = userId;
+    await item.update(dbFields, { transaction });
+
+    // For active products, save wizard data to relational tables
+    if (item.status === 'active' && item.category === 'product') {
+      const wizardData = {
+        labor_cost,
+        overhead_cost,
+        additional_packaging_cost,
+        ingredients,
+        packaging_items,
+        nutritional_info,
+        allergens,
+        may_contain_allergens,
+        physical_properties,
+        shelf_life,
+        packaging_info,
+        quality_control,
+        regulatory_compliance
+      };
+
+      await saveRelatedWizardData(itemId, wizardData, transaction);
+    }
+
+    await transaction.commit();
+
+    // Return complete item with all associations
+    return await getItemById(itemId);
+
+  } catch (error) {
+    // Only rollback if transaction is still active
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
 };
 
 export const deleteItem = async (itemId) => {
@@ -181,9 +461,330 @@ export const deleteItem = async (itemId) => {
     throw error;
   }
 
-  // Soft delete by setting is_active to false
-  await item.update({ is_active: false });
+  // Soft delete by setting status to inactive
+  await item.update({ status: 'inactive' });
   return true;
+};
+
+/**
+ * Extracts wizard data and saves to related tables
+ * @param {number} itemId - The item ID
+ * @param {object} wizardData - Wizard metadata object
+ * @param {Transaction} transaction - Sequelize transaction
+ */
+const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
+  const promises = [];
+
+  // 1. Nutritional Info
+  if (wizardData.nutritional_info && Object.keys(wizardData.nutritional_info).length > 0) {
+    promises.push(
+      ItemNutrition.upsert({
+        item_id: itemId,
+        ...wizardData.nutritional_info
+      }, { transaction })
+    );
+  }
+
+  // 2. Allergens - convert arrays to rows
+  if ((wizardData.allergens && wizardData.allergens.length > 0) ||
+      (wizardData.may_contain_allergens && wizardData.may_contain_allergens.length > 0)) {
+    // Delete existing allergens for this item
+    promises.push(
+      ItemAllergen.destroy({ where: { item_id: itemId }, transaction })
+    );
+
+    // Collect all allergen rows
+    const allergenRows = [];
+
+    // Main allergens
+    if (wizardData.allergens && wizardData.allergens.length > 0) {
+      allergenRows.push(...wizardData.allergens.map(allergen => ({
+        item_id: itemId,
+        allergen_name: allergen,
+        is_cross_contamination: false
+      })));
+    }
+
+    // May contain allergens (cross-contamination)
+    if (wizardData.may_contain_allergens && wizardData.may_contain_allergens.length > 0) {
+      allergenRows.push(...wizardData.may_contain_allergens.map(allergen => ({
+        item_id: itemId,
+        allergen_name: allergen,
+        is_cross_contamination: true
+      })));
+    }
+
+    if (allergenRows.length > 0) {
+      promises.push(
+        ItemAllergen.bulkCreate(allergenRows, { transaction })
+      );
+    }
+  }
+
+  // 3. Physical Properties
+  if (wizardData.physical_properties && Object.keys(wizardData.physical_properties).length > 0) {
+    promises.push(
+      ItemPhysicalProperties.upsert({
+        item_id: itemId,
+        ...wizardData.physical_properties
+      }, { transaction })
+    );
+  }
+
+  // 4. Shelf Life
+  if (wizardData.shelf_life && Object.keys(wizardData.shelf_life).length > 0) {
+    promises.push(
+      ItemShelfLife.upsert({
+        item_id: itemId,
+        ...wizardData.shelf_life
+      }, { transaction })
+    );
+  }
+
+  // 5. Packaging Info
+  if (wizardData.packaging_info && Object.keys(wizardData.packaging_info).length > 0) {
+    promises.push(
+      ItemPackaging.upsert({
+        item_id: itemId,
+        ...wizardData.packaging_info
+      }, { transaction })
+    );
+  }
+
+  // 6. Quality Control
+  if (wizardData.quality_control && Object.keys(wizardData.quality_control).length > 0) {
+    promises.push(
+      ItemQualityControl.upsert({
+        item_id: itemId,
+        ...wizardData.quality_control
+      }, { transaction })
+    );
+  }
+
+  // 7. Regulatory Compliance
+  if (wizardData.regulatory_compliance && Object.keys(wizardData.regulatory_compliance).length > 0) {
+    promises.push(
+      ItemRegulatoryCompliance.upsert({
+        item_id: itemId,
+        ...wizardData.regulatory_compliance
+      }, { transaction })
+    );
+  }
+
+  // 8. Cost Breakdown
+  const hasCostData = wizardData.labor_cost || wizardData.overhead_cost || wizardData.additional_packaging_cost;
+  if (hasCostData) {
+    promises.push(
+      ItemCostBreakdown.upsert({
+        item_id: itemId,
+        labor_cost: wizardData.labor_cost || 0,
+        overhead_cost: wizardData.overhead_cost || 0,
+        additional_packaging_cost: wizardData.additional_packaging_cost || 0
+      }, { transaction })
+    );
+  }
+
+  // 9. Ingredients (ProductComposition with type='ingredient')
+  if (wizardData.ingredients && wizardData.ingredients.length > 0) {
+    // Delete existing ingredient compositions
+    promises.push(
+      ProductComposition.destroy({
+        where: { product_id: itemId, composition_type: 'ingredient' },
+        transaction
+      })
+    );
+
+    const ingredientRows = wizardData.ingredients
+      .filter(ing => ing.item_id && ing.quantity)
+      .map(ing => ({
+        product_id: itemId,
+        ingredient_id: ing.item_id,
+        composition_type: 'ingredient',
+        quantity_required: ing.quantity,
+        unit_of_measure: ing.unit_of_measure || null
+      }));
+
+    if (ingredientRows.length > 0) {
+      promises.push(
+        ProductComposition.bulkCreate(ingredientRows, { transaction })
+      );
+    }
+  }
+
+  // 10. Packaging Items (ProductComposition with type='packaging')
+  if (wizardData.packaging_items && wizardData.packaging_items.length > 0) {
+    // Delete existing packaging compositions
+    promises.push(
+      ProductComposition.destroy({
+        where: { product_id: itemId, composition_type: 'packaging' },
+        transaction
+      })
+    );
+
+    const packagingRows = wizardData.packaging_items
+      .filter(pkg => pkg.item_id && pkg.quantity)
+      .map(pkg => ({
+        product_id: itemId,
+        ingredient_id: pkg.item_id, // Reusing same column
+        composition_type: 'packaging',
+        quantity_required: pkg.quantity,
+        unit_of_measure: pkg.unit_of_measure || null
+      }));
+
+    if (packagingRows.length > 0) {
+      promises.push(
+        ProductComposition.bulkCreate(packagingRows, { transaction })
+      );
+    }
+  }
+
+  await Promise.all(promises);
+};
+
+export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const item = await Item.findByPk(itemId, { transaction });
+
+    if (!item) {
+      const error = new Error('Item not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (item.status !== 'draft') {
+      const error = new Error('Only draft items can be finalized');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Extract wizard_metadata if exists
+    const wizardData = item.wizard_metadata || {};
+
+    // Merge priority: wizardData < existing item data < new itemData
+    // This ensures new data from the wizard takes precedence
+    const mergedData = {
+      ...wizardData,
+      sku_code: item.sku_code,
+      name: item.name,
+      category: item.category,
+      description: item.description,
+      product_folder: item.product_folder,
+      max_capacity: item.max_capacity,
+      min_threshold: item.min_threshold,
+      purchase_allowance: item.purchase_allowance,
+      unit_of_measure: item.unit_of_measure,
+      cost_per_unit: item.cost_per_unit,
+      current_stock: item.current_stock,
+      fifo_enabled: item.fifo_enabled,
+      batch_size: item.batch_size,
+      yield_percentage: item.yield_percentage,
+      processing_loss: item.processing_loss,
+      production_notes: item.production_notes,
+      ...itemData
+    };
+
+    // Validate required fields from merged data
+    if (!mergedData.sku_code) {
+      const error = new Error('SKU code is required to finalize item');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    if (!mergedData.category) {
+      const error = new Error('Category is required to finalize item');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    if (!mergedData.max_capacity) {
+      const error = new Error('Max capacity is required to finalize item');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    if (!mergedData.unit_of_measure) {
+      const error = new Error('Unit of measure is required to finalize item');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    // Check SKU uniqueness among active items
+    const existingItem = await Item.findOne({
+      where: {
+        sku_code: mergedData.sku_code,
+        status: { [Op.ne]: 'draft' },
+        item_id: { [Op.ne]: itemId }
+      },
+      transaction
+    });
+
+    if (existingItem) {
+      const error = new Error('Item with this SKU code already exists');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    // SAVE ALL RELATED DATA FIRST (before clearing wizard_metadata)
+    await saveRelatedWizardData(itemId, wizardData, transaction);
+
+    // Remove wizard-specific fields from updateData - they're now in relational tables
+    const {
+      labor_cost,
+      overhead_cost,
+      additional_packaging_cost,
+      ingredients,
+      packaging_items,
+      nutritional_info,
+      allergens,
+      may_contain_allergens,
+      physical_properties,
+      shelf_life,
+      packaging_info,
+      quality_control,
+      regulatory_compliance,
+      ...itemFields
+    } = mergedData;
+
+    // Prepare update data - only item table fields
+    const updateData = {
+      ...itemFields,
+      status: 'active',
+      wizard_metadata: null,  // Clear wizard metadata after finalization
+      updated_by: userId
+    };
+
+    // Update the item
+    await item.update(updateData, { transaction });
+
+    await transaction.commit();
+
+    // Reload item with all associations
+    const finalizedItem = await Item.findByPk(itemId, {
+      include: [
+        { model: ItemNutrition, as: 'nutrition', required: false },
+        { model: ItemAllergen, as: 'allergens', required: false },
+        { model: ItemPhysicalProperties, as: 'physicalProperties', required: false },
+        { model: ItemShelfLife, as: 'shelfLife', required: false },
+        { model: ItemPackaging, as: 'packaging', required: false },
+        { model: ItemQualityControl, as: 'qualityControl', required: false },
+        { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
+        { model: ItemCostBreakdown, as: 'costBreakdown', required: false },
+        {
+          model: ProductComposition,
+          as: 'productCompositions',
+          required: false,
+          include: [{ model: Item, as: 'ingredient', required: false }]
+        }
+      ]
+    });
+
+    return finalizedItem;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 };
 
 export const getItemStockHistory = async (itemId, queryParams) => {

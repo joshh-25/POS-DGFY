@@ -15,6 +15,11 @@ const ProductComposition = sequelize.define('ProductComposition', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  composition_type: {
+    type: DataTypes.ENUM('ingredient', 'packaging'),
+    allowNull: false,
+    defaultValue: 'ingredient'
+  },
   quantity_required: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false

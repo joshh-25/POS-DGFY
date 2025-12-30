@@ -28,14 +28,20 @@ export const getSupplierById = async (req, res, next) => {
 
 export const createSupplier = async (req, res, next) => {
   try {
-    const supplier = await supplierService.createSupplier(req.body);
+    const supplierData = req.validatedData;
+    const userId = req.user.user_id;
+    const supplier = await supplierService.createSupplier(supplierData, userId);
+
+    const message = supplier.status === 'draft' ? 'Supplier draft saved successfully' : 'Supplier created successfully';
+
     res.status(201).json({
       success: true,
       data: {
         supplier_id: supplier.supplier_id,
-        name: supplier.name
+        name: supplier.name,
+        status: supplier.status
       },
-      message: 'Supplier created successfully',
+      message,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -45,11 +51,32 @@ export const createSupplier = async (req, res, next) => {
 
 export const updateSupplier = async (req, res, next) => {
   try {
-    const supplier = await supplierService.updateSupplier(req.params.supplier_id, req.body);
+    const { supplier_id } = req.params;
+    const supplierData = req.validatedData;
+    const userId = req.user.user_id;
+    const supplier = await supplierService.updateSupplier(supplier_id, supplierData, userId);
+
     res.status(200).json({
       success: true,
       data: supplier,
       message: 'Supplier updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const finalizeSupplier = async (req, res, next) => {
+  try {
+    const { supplier_id } = req.params;
+    const userId = req.user.user_id;
+    const supplier = await supplierService.finalizeSupplier(supplier_id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: supplier,
+      message: 'Supplier finalized successfully',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

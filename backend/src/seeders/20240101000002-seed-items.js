@@ -1,7 +1,24 @@
 export default {
   async up(queryInterface, Sequelize) {
+    // Check if items already exist (idempotent seeder)
+    let existingItems = [];
+    try {
+      const result = await queryInterface.sequelize.query(
+        `SELECT sku_code FROM items WHERE sku_code IN ('ING-SUG-001', 'ING-SAL-001', 'ING-GIN-001', 'ING-TEA-001', 'PRD-GTM-001', 'PRD-HRB-001', 'PKG-BTL-001', 'PKG-STK-001', 'PKG-BOX-001')`
+      );
+      existingItems = result[0] || [];
+    } catch (err) {
+      // Table might not exist yet, continue with insert
+    }
+
+    // Only seed if items don't exist
+    if (existingItems.length > 0) {
+      console.log('ℹ️  Items already exist, skipping seed');
+      return;
+    }
+
     const now = new Date();
-    
+
     await queryInterface.bulkInsert('items', [
       {
         sku_code: 'ING-SUG-001',

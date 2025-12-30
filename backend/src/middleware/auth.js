@@ -1,4 +1,4 @@
-import { verifyToken } from '../services/authService.js';
+import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import User from '../models/User.js';
 
 export const authenticate = async (req, res, next) => {
@@ -16,6 +16,17 @@ export const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Check if token is blacklisted (logged out)
+    const isBlacklisted = await isTokenBlacklisted(token);
+    if (isBlacklisted) {
+      return res.status(401).json({
+        success: false,
+        data: null,
+        message: 'Token has been revoked. Please login again.',
+        timestamp: new Date().toISOString()
+      });
+    }
 
     // Verify token
     let decoded;

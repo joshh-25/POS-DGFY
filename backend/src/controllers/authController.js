@@ -50,8 +50,15 @@ export const refreshToken = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
   try {
-    // In a more advanced implementation, you might want to blacklist tokens
-    // For now, we'll just return success
+    // Get token from authorization header
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+    if (token) {
+      // Blacklist the token
+      await authService.blacklistToken(token);
+    }
+
     res.status(200).json({
       success: true,
       data: null,

@@ -9,8 +9,8 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   },
   po_number: {
     type: DataTypes.STRING(50),
-    allowNull: false,
-    unique: true
+    allowNull: true,
+    unique: false
   },
   supplier_id: {
     type: DataTypes.INTEGER,
@@ -29,8 +29,8 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('pending', 'partial', 'received', 'cancelled'),
-    defaultValue: 'pending'
+    type: DataTypes.ENUM('draft', 'pending', 'partial', 'received', 'cancelled'),
+    defaultValue: 'draft'
   },
   subtotal: {
     type: DataTypes.DECIMAL(12, 2),
@@ -59,7 +59,8 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   created_by: {
     type: DataTypes.INTEGER,
     allowNull: true
-  }
+  },
+
 }, {
   tableName: 'purchase_orders',
   timestamps: true,

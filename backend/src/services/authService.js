@@ -2,10 +2,27 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Op } from 'sequelize';
 import User from '../models/User.js';
+import * as cacheService from './cacheService.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here-change-in-production';
+// Validate required environment variables
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required but not set. Please configure your .env file.');
+}
+if (!process.env.REFRESH_TOKEN_SECRET) {
+  throw new Error('FATAL: REFRESH_TOKEN_SECRET environment variable is required but not set. Please configure your .env file.');
+}
+
+// Validate secret strength (minimum length)
+if (process.env.JWT_SECRET.length < 32) {
+  throw new Error('FATAL: JWT_SECRET must be at least 32 characters long for security.');
+}
+if (process.env.REFRESH_TOKEN_SECRET.length < 32) {
+  throw new Error('FATAL: REFRESH_TOKEN_SECRET must be at least 32 characters long for security.');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret-key-here-change-in-production';
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
 export const hashPassword = async (password) => {
@@ -44,7 +61,9 @@ export const verifyRefreshToken = (token) => {
 };
 
 export const registerUser = async (userData) => {
-  const { username, email, password, role = 'staff' } = userData;
+  const { username, email, password } = userData;
+  // Always create new users as 'staff' - only admins can change roles via User Management
+  const role = 'staff';
 
   // Check if user already exists
   const existingUser = await User.findOne({
@@ -68,7 +87,7 @@ export const registerUser = async (userData) => {
     email,
     password_hash,
     role,
-    is_active: true
+    is_active: true // Keep is_active for User model as it's still BOOLEAN in User.js
   });
 
   // Generate tokens
@@ -170,6 +189,57 @@ export const refreshUserToken = async (refreshToken) => {
       throw authError;
     }
     throw error;
+  }
+};
+
+/**
+ * Blacklist a token (add to Redis blacklist)
+ * @param {string} token - JWT token to blacklist
+ * @returns {Promise<boolean>} - True if successful
+ */
+export const blacklistToken = async (token) => {
+  try {
+    // Decode token to get expiration time (without verification)
+    const decoded = jwt.decode(token);
+
+    if (!decoded || !decoded.exp) {
+      return false;
+    }
+
+    // Calculate TTL: time until token expires
+    const currentTime = Math.floor(Date.now() / 1000);
+    const ttl = decoded.exp - currentTime;
+
+    // Only blacklist if token hasn't expired yet
+    if (ttl > 0) {
+      const blacklistKey = `blacklist:token:${token}`;
+      await cacheService.set(blacklistKey, 'true', ttl);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    // If Redis is unavailable, log warning but don't throw
+    // Token will still be invalidated client-side
+    console.warn('Failed to blacklist token (Redis unavailable):', error.message);
+    return false;
+  }
+};
+
+/**
+ * Check if a token is blacklisted
+ * @param {string} token - JWT token to check
+ * @returns {Promise<boolean>} - True if blacklisted
+ */
+export const isTokenBlacklisted = async (token) => {
+  try {
+    const blacklistKey = `blacklist:token:${token}`;
+    const result = await cacheService.get(blacklistKey);
+    return result === 'true';
+  } catch (error) {
+    // If Redis is unavailable, assume token is not blacklisted
+    // Better to allow access than block legitimate users
+    return false;
   }
 };
 

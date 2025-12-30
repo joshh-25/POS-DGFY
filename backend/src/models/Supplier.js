@@ -42,9 +42,9 @@ const Supplier = sequelize.define('Supplier', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
-  is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+  status: {
+    type: DataTypes.ENUM('draft', 'active', 'inactive'),
+    defaultValue: 'active'
   },
   last_delivery_date: {
     type: DataTypes.DATEONLY,
@@ -53,7 +53,8 @@ const Supplier = sequelize.define('Supplier', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
-  }
+  },
+
 }, {
   tableName: 'suppliers',
   timestamps: true,

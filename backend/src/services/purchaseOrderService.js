@@ -91,15 +91,18 @@ export const getPurchaseOrderById = async (poId) => {
 export const createPurchaseOrder = async (poData, userId) => {
   const { line_items, ...poMainData } = poData;
 
-  // Generate PO number
-  const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  // Only generate PO number if not a draft
+  const isDraft = poData.status === 'draft';
+  const poNumber = isDraft ? null : `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
-  // Calculate totals
+  // Calculate totals if line_items exist
   let subtotal = 0;
-  line_items.forEach(item => {
-    item.total_price = item.quantity_ordered * item.unit_price;
-    subtotal += item.total_price;
-  });
+  if (line_items && line_items.length > 0) {
+    line_items.forEach(item => {
+      item.total_price = item.quantity_ordered * item.unit_price;
+      subtotal += item.total_price;
+    });
+  }
 
   const discount = poData.discount || 0;
   const total_amount = subtotal - discount;
@@ -111,18 +114,71 @@ export const createPurchaseOrder = async (poData, userId) => {
     discount,
     total_amount,
     created_by: userId,
-    status: 'pending'
+    updated_by: userId,
+    status: isDraft ? 'draft' : 'pending'
   });
 
-  // Create line items
-  const lineItems = await Promise.all(
-    line_items.map(item => POLineItem.create({
-      po_id: po.po_id,
-      ...item
-    }))
-  );
+  // Create line items if they exist
+  let lineItems = [];
+  if (line_items && line_items.length > 0) {
+    lineItems = await Promise.all(
+      line_items.map(item => POLineItem.create({
+        po_id: po.po_id,
+        ...item
+      }))
+    );
+  }
 
   return { ...po.toJSON(), lineItems };
+};
+
+export const finalizePurchaseOrder = async (poId, userId) => {
+  const po = await PurchaseOrder.findByPk(poId, {
+    include: [{ model: POLineItem, as: 'lineItems' }]
+  });
+
+  if (!po) {
+    const error = new Error('Purchase order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (po.status !== 'draft') {
+    const error = new Error('Only draft purchase orders can be finalized');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate required fields
+  if (!po.supplier_id) {
+    const error = new Error('Supplier is required to finalize purchase order');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  if (!po.order_date) {
+    const error = new Error('Order date is required to finalize purchase order');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  if (!po.lineItems || po.lineItems.length === 0) {
+    const error = new Error('At least one line item is required to finalize purchase order');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  // Generate PO number
+  const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+  // Update status to pending and add PO number
+  await po.update({
+    status: 'pending',
+    po_number: poNumber,
+    updated_by: userId
+  });
+
+  return po;
 };
 
 export const receivePurchaseOrder = async (poId, receiptData, userId) => {

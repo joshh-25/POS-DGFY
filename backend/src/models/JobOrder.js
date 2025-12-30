@@ -9,8 +9,8 @@ const JobOrder = sequelize.define('JobOrder', {
   },
   jo_number: {
     type: DataTypes.STRING(50),
-    allowNull: false,
-    unique: true
+    allowNull: true,
+    unique: false
   },
   product_id: {
     type: DataTypes.INTEGER,
@@ -39,6 +39,14 @@ const JobOrder = sequelize.define('JobOrder', {
   },
   notes: {
     type: DataTypes.TEXT,
+    allowNull: true
+  },
+  created_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  updated_by: {
+    type: DataTypes.INTEGER,
     allowNull: true
   }
 }, {

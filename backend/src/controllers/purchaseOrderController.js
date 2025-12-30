@@ -28,11 +28,33 @@ export const getPurchaseOrderById = async (req, res, next) => {
 
 export const createPurchaseOrder = async (req, res, next) => {
   try {
-    const po = await purchaseOrderService.createPurchaseOrder(req.body, req.user.user_id);
+    const poData = req.validatedData;
+    const userId = req.user.user_id;
+    const po = await purchaseOrderService.createPurchaseOrder(poData, userId);
+
+    const message = po.status === 'draft' ? 'Purchase order draft saved successfully' : 'Purchase order created successfully';
+
     res.status(201).json({
       success: true,
       data: po,
-      message: 'Purchase order created successfully',
+      message,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const finalizePurchaseOrder = async (req, res, next) => {
+  try {
+    const { po_id } = req.params;
+    const userId = req.user.user_id;
+    const po = await purchaseOrderService.finalizePurchaseOrder(po_id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: po,
+      message: 'Purchase order finalized successfully',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

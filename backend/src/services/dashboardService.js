@@ -7,10 +7,10 @@ import JobOrder from '../models/JobOrder.js';
 import User from '../models/User.js';
 
 export const getDashboardStats = async () => {
-  const totalItems = await Item.count({ where: { is_active: true } });
+  const totalItems = await Item.count({ where: { status: 'active' } });
   const lowStockItems = await Item.count({
     where: {
-      is_active: true,
+      status: 'active',
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),
@@ -25,7 +25,7 @@ export const getDashboardStats = async () => {
 
   // Calculate total inventory value
   const items = await Item.findAll({
-    where: { is_active: true },
+    where: { status: 'active' },
     attributes: ['current_stock', 'cost_per_unit']
   });
 
@@ -47,7 +47,7 @@ export const getDashboardStats = async () => {
 export const getLowStockItems = async () => {
   const items = await Item.findAll({
     where: {
-      is_active: true,
+      status: 'active',
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),

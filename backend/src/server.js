@@ -105,6 +105,7 @@ app.get('/health', async (req, res) => {
 
 // API routes
 import authRoutes from './routes/auth.js';
+import userRoutes from './routes/users.js';
 import itemRoutes from './routes/items.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchaseOrders.js';
@@ -114,9 +115,12 @@ import dashboardRoutes from './routes/dashboard.js';
 import reportRoutes from './routes/reports.js';
 import forecastRoutes from './routes/forecast.js';
 import alertRoutes from './routes/alerts.js';
+import settingsRoutes from './routes/settings.js';
 
 // Apply stricter rate limiter to auth routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/items', itemRoutes);
 app.use('/api/v1/suppliers', supplierRoutes);
 app.use('/api/v1/purchase-orders', purchaseOrderRoutes);

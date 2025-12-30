@@ -1,41 +1,234 @@
 # SKU Inventory Manager
 
-A comprehensive inventory management system for food and beverage operations with real-time tracking, FIFO batch management, and automated procurement workflows.
+A comprehensive full-stack inventory management system for SKU tracking, purchase orders, job orders, and stock movements with FIFO batch tracking.
 
-## Features
+## 🏗️ Project Structure (Monorepo)
 
-- Real-time inventory tracking with FIFO batch management
-- Purchase order management with supplier integration
-- Job order production tracking
-- Stock movement logging and audit trails
-- Low stock alerts and forecasting
-- Comprehensive reporting and analytics
+This project is organized as a monorepo with separate frontend and backend applications:
 
-## Tech Stack
+```
+SKU-Inventory-Manager/
+├── frontend/          # React + Vite frontend application
+├── backend/           # Node.js + Express backend API
+├── docs/              # Documentation
+├── spec-kit/          # Full technical specifications
+├── .claude/           # Claude Code configuration
+├── package.json       # Root monorepo package.json
+└── docker-compose.yml # Docker orchestration
+```
 
-**Frontend:** React 18.2.0, Vite 5.0.8, TailwindCSS 3.3.6  
-**Backend (Planned):** Node.js 18+, Express.js, MySQL 8.0+, Redis 7.0+
+## 🚀 Quick Start
 
-## Quick Start
+### Prerequisites
 
+- Node.js >= 18.0.0
+- npm >= 9.0.0
+- MySQL 8.0
+- Redis 7.x (optional, for caching)
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd SKU-Inventory-Manager
+   ```
+
+2. **Install all dependencies**
+   ```bash
+   npm run install:all
+   ```
+   This will install dependencies for root, frontend, and backend.
+
+3. **Setup Backend Environment**
+   ```bash
+   cd backend
+   cp .env.example .env
+   # Edit .env with your MySQL and Redis credentials
+   ```
+
+4. **Setup Database**
+   ```bash
+   # Create the database
+   mysql -u root -p < backend/database-setup.sql
+
+   # Run migrations and seeders
+   cd backend
+   npm run db:setup
+   ```
+
+### Development
+
+**Start both frontend and backend concurrently:**
 ```bash
-npm install
 npm run dev
 ```
 
-## Documentation
+**Or start individually:**
+```bash
+# Frontend only (http://localhost:5173)
+npm run dev:frontend
 
-Complete documentation available in `/docs`:
-- [Documentation Index](./docs/README.md)
-- [System Architecture](./docs/architecture/system-architecture.md)
-- [API Specification](./docs/api/specification.md)
-- [Development Roadmap](./docs/development/roadmap.md)
+# Backend only (http://localhost:5000)
+npm run dev:backend
+```
 
-## Status
+### Using Docker
 
-🚧 **In Development** - Phase 1: Backend Foundation
+```bash
+# Start all services (MySQL, Redis, Backend, Frontend)
+docker-compose up -d
 
-## License
+# View logs
+docker-compose logs -f
 
-MIT License - See [LICENSE](./LICENSE) for details
+# Stop all services
+docker-compose down
+```
 
+## 📁 Frontend (`frontend/`)
+
+- **Framework**: React 18 + Vite
+- **Styling**: TailwindCSS + Shadcn UI
+- **Routing**: React Router v6
+- **State**: Component-level + Zustand stores
+- **Port**: 5173 (development)
+
+### Frontend Structure
+```
+frontend/
+├── Components/        # React components by feature
+│   ├── dashboard/
+│   ├── items/
+│   ├── po/           # Purchase Orders
+│   ├── jo/           # Job Orders
+│   ├── movements/
+│   ├── products/
+│   ├── suppliers/
+│   ├── users/
+│   └── ui/           # Shadcn UI components
+├── Pages/            # Page components
+├── Entities/         # Frontend data models
+├── src/
+│   ├── services/     # API integration layer
+│   └── store/        # Zustand stores
+└── package.json
+```
+
+## 🔧 Backend (`backend/`)
+
+- **Framework**: Node.js + Express
+- **ORM**: Sequelize
+- **Database**: MySQL 8.0
+- **Cache**: Redis
+- **Auth**: JWT + Bcrypt
+- **Port**: 5000 (development)
+
+### Backend Structure
+```
+backend/
+├── src/
+│   ├── routes/        # Express routes
+│   ├── controllers/   # Business logic
+│   ├── models/        # Sequelize models
+│   ├── middleware/    # Auth & validation
+│   ├── services/      # Complex operations
+│   ├── validators/    # Input validation
+│   ├── seeders/       # Database seeders
+│   └── server.js      # Entry point
+├── .env              # Environment variables
+└── package.json
+```
+
+## 🎯 Key Features
+
+- **Dashboard**: Real-time stats, alerts, and recent movements
+- **SKU Management**: Comprehensive item tracking with FIFO batches
+- **Purchase Orders**: Full PO workflow with receipt tracking
+- **Job Orders**: Production job management
+- **Stock Movements**: Detailed movement logging
+- **Supplier Management**: Supplier profiles with quality ratings
+- **User Authentication**: JWT-based auth with role-based access
+- **Product Creation**: 12-step wizard for detailed product setup
+
+## 📚 Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** - Claude Code specification and project overview
+- **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference guide
+- **[QUICK_START.md](QUICK_START.md)** - Detailed quick start guide
+- **[ADMIN_SETUP.md](ADMIN_SETUP.md)** - Admin user setup
+- **[REDIS_SETUP.md](REDIS_SETUP.md)** - Redis installation and configuration
+- **[SETUP.md](SETUP.md)** - Complete setup instructions
+- **[spec-kit/](spec-kit/)** - Full technical specifications
+
+## 🛠️ Available Scripts
+
+### Root Level
+```bash
+npm run dev              # Start both frontend & backend
+npm run dev:frontend     # Start frontend only
+npm run dev:backend      # Start backend only
+npm run build            # Build both applications
+npm run install:all      # Install all dependencies
+npm run start            # Start production builds
+```
+
+### Frontend (`cd frontend/`)
+```bash
+npm run dev              # Start dev server
+npm run build            # Build for production
+npm run preview          # Preview production build
+npm run lint             # Lint code
+```
+
+### Backend (`cd backend/`)
+```bash
+npm run dev              # Start dev server with nodemon
+npm start                # Start production server
+npm run db:setup         # Run migrations & seeders
+npm test                 # Run tests
+```
+
+## 🔐 Default Credentials
+
+After running the seeders, you can log in with:
+
+- **Admin User**:
+  - Username: `admin`
+  - Password: `Admin@123`
+
+See [backend/CREDENTIALS.md](backend/CREDENTIALS.md) for more details.
+
+## 🐛 Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` |
+| Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
+| Frontend can't reach backend | Check CORS in `backend/src/server.js` |
+| Backend won't start | Verify `.env` exists in `backend/` |
+| Database connection error | Check MySQL is running, verify credentials |
+| Dependencies not installing | Run `npm run install:all` from root |
+
+## 🤝 Contributing
+
+1. Create a feature branch
+2. Make your changes in either `frontend/` or `backend/`
+3. Test thoroughly
+4. Commit your changes
+5. Push and create a pull request
+
+## 📄 License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with React, Express, and Sequelize
+- UI components from Shadcn UI
+- Icons from Lucide React
+- Styled with TailwindCSS
+
+---
+
+For more detailed information, refer to the [CLAUDE.md](CLAUDE.md) file or the [spec-kit/](spec-kit/) directory.

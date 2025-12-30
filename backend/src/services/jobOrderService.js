@@ -60,13 +60,18 @@ export const getJobOrderById = async (joId) => {
 
 export const createJobOrder = async (joData, userId) => {
   const { ingredients, ...joMainData } = joData;
-  const joNumber = `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+  // Only generate JO number if not a draft
+  const isDraft = joData.status === 'draft' || !joData.status;
+  const joNumber = isDraft ? null : `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
   const jo = await JobOrder.create({
     ...joMainData,
     jo_number: joNumber,
     responsible_user: userId,
-    status: 'draft'
+    created_by: userId,
+    updated_by: userId,
+    status: isDraft ? 'draft' : 'in_progress'
   });
 
   if (ingredients && ingredients.length > 0) {
@@ -77,6 +82,52 @@ export const createJobOrder = async (joData, userId) => {
       }))
     );
   }
+
+  return jo;
+};
+
+export const finalizeJobOrder = async (joId, userId) => {
+  const jo = await JobOrder.findByPk(joId, {
+    include: [
+      { model: Item, as: 'product' },
+      { model: JOIngredient, as: 'ingredients' }
+    ]
+  });
+
+  if (!jo) {
+    const error = new Error('Job order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (jo.status !== 'draft') {
+    const error = new Error('Only draft job orders can be finalized');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate required fields
+  if (!jo.product_id) {
+    const error = new Error('Product is required to finalize job order');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  if (!jo.quantity_to_produce || jo.quantity_to_produce <= 0) {
+    const error = new Error('Quantity to produce must be greater than 0');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  // Generate JO number
+  const joNumber = `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+  // Update status to in_progress and add JO number
+  await jo.update({
+    status: 'in_progress',
+    jo_number: joNumber,
+    updated_by: userId
+  });
 
   return jo;
 };
