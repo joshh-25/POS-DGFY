@@ -49,7 +49,7 @@ export default function Login() {
                 <Package className="w-10 h-10 text-white" />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">SKU Inventory Manager</h1>
+            <h1 className="text-2xl font-bold text-slate-900">SKUpervisor</h1>
             <p className="text-slate-600 mt-2">Sign in to your account</p>
           </div>
 
@@ -121,7 +121,7 @@ export default function Login() {
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-500 mt-6">
-          SKU Inventory Manager v1.0.0
+          SKUpervisor v1.0.0
         </p>
       </div>
     </div>

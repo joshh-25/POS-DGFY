@@ -59,7 +59,7 @@ export default function Layout({ children, currentPageName }) {
           <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-700 rounded-lg flex items-center justify-center">
             <Warehouse className="w-5 h-5 text-white" />
           </div>
-          <span className="font-semibold text-slate-900">InventoryPro</span>
+          <span className="font-semibold text-slate-900">SKUpervisor</span>
         </div>
       </div>
 
@@ -82,7 +82,7 @@ export default function Layout({ children, currentPageName }) {
               <Warehouse className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-slate-900 text-lg">InventoryPro</h1>
+              <h1 className="font-bold text-slate-900 text-lg">SKUpervisor</h1>
               <p className="text-xs text-slate-500">Management System</p>
             </div>
           </div>

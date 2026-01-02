@@ -64,8 +64,8 @@ export default function Register() {
       navigate(redirectPath);
     } catch (err) {
       const errorMessage = err.response?.data?.message ||
-                          err.response?.data?.errors?.[0]?.message ||
-                          'Registration failed. Please try again.';
+        err.response?.data?.errors?.[0]?.message ||
+        'Registration failed. Please try again.';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -97,7 +97,7 @@ export default function Register() {
               </div>
             </div>
             <h1 className="text-2xl font-bold text-slate-900">Create Account</h1>
-            <p className="text-slate-600 mt-2">Join SKU Inventory Manager</p>
+            <p className="text-slate-600 mt-2">Join SKUpervisor</p>
           </div>
 
           {/* Error Message */}
@@ -217,7 +217,7 @@ export default function Register() {
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-500 mt-6">
-          SKU Inventory Manager v1.0.0
+          SKUpervisor v1.0.0
         </p>
       </div>
     </div>
