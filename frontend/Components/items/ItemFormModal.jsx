@@ -383,7 +383,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ingredient">Ingredient</SelectItem>
-                    <SelectItem value="product">Product</SelectItem>
                     <SelectItem value="packaging">Packaging</SelectItem>
                   </SelectContent>
                 </Select>
@@ -414,20 +413,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                 rows={3}
               />
             </div>
-
-            {/* Product Folder Selection - only for products */}
-            {formData.category === 'product' && (
-              <div className="space-y-2">
-                <Label htmlFor="folder">Product Folder</Label>
-                <Input
-                  id="folder"
-                  value={formData.product_folder || ''}
-                  onChange={(e) => handleChange('product_folder', e.target.value)}
-                  placeholder="e.g., Beverages, Snacks, etc."
-                />
-                <p className="text-xs text-slate-500">Optional: Organize products into folders for easier management</p>
-              </div>
-            )}
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -498,47 +483,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                     onCheckedChange={(checked) => handleChange('fifo_enabled', checked)}
                   />
                 </div>
-              </div>
-            )}
-
-            {/* Product Ingredients */}
-            {formData.category === 'product' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Ingredients (Product Matrix)</Label>
-                  <Button variant="outline" size="sm" onClick={addIngredient}>
-                    <Plus className="w-4 h-4 mr-1" /> Add Ingredient
-                  </Button>
-                </div>
-                {formData.ingredients.map((ing, idx) => (
-                  <div key={idx} className="flex items-center gap-3 bg-slate-50 rounded-lg p-3">
-                    <Select
-                      value={ing.item_id}
-                      onValueChange={(v) => updateIngredient(idx, 'item_id', v)}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select ingredient" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ingredientOptions.map(item => (
-                          <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      className="w-32"
-                      placeholder="Qty"
-                      value={ing.quantity ?? ''}
-                      onChange={(e) => updateIngredient(idx, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    />
-                    <span className="text-sm text-slate-500">kg</span>
-                    <Button variant="ghost" size="icon" onClick={() => removeIngredient(idx)}>
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </Button>
-                  </div>
-                ))}
               </div>
             )}
 

@@ -65,12 +65,49 @@ export const createJobOrder = async (joData, userId) => {
   const isDraft = joData.status === 'draft' || !joData.status;
   const joNumber = isDraft ? null : `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
+  // NEW: Validate stock for non-draft JOs
+  if (!isDraft && ingredients && ingredients.length > 0) {
+    const insufficientIngredients = [];
+
+    for (const ing of ingredients) {
+      // Fetch current stock from database
+      const item = await Item.findByPk(ing.item_id, {
+        attributes: ['item_id', 'name', 'current_stock', 'unit_of_measure']
+      });
+
+      if (!item) {
+        const error = new Error(`Ingredient not found: ${ing.item_id}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const currentStock = parseFloat(item.current_stock);
+      const requiredQty = parseFloat(ing.quantity_required);
+
+      if (currentStock < requiredQty) {
+        insufficientIngredients.push({
+          item_name: item.name,
+          required: requiredQty,
+          available: currentStock,
+          unit: item.unit_of_measure,
+          shortage: requiredQty - currentStock
+        });
+      }
+    }
+
+    // If any ingredients have insufficient stock, reject the creation
+    if (insufficientIngredients.length > 0) {
+      const error = new Error('Cannot create job order: Insufficient stock for ingredients');
+      error.statusCode = 400;
+      error.insufficientIngredients = insufficientIngredients;
+      throw error;
+    }
+  }
+
   const jo = await JobOrder.create({
     ...joMainData,
     jo_number: joNumber,
     responsible_user: userId,
-    created_by: userId,
-    updated_by: userId,
     status: isDraft ? 'draft' : 'in_progress'
   });
 
@@ -78,7 +115,11 @@ export const createJobOrder = async (joData, userId) => {
     await Promise.all(
       ingredients.map(ing => JOIngredient.create({
         jo_id: jo.jo_id,
-        ...ing
+        item_id: ing.item_id,
+        quantity_required: ing.quantity_required,
+        quantity_consumed: ing.quantity_consumed || null,
+        stock_before: ing.stock_before || null,
+        stock_after: ing.stock_after || null
       }))
     );
   }
@@ -119,14 +160,54 @@ export const finalizeJobOrder = async (joId, userId) => {
     throw error;
   }
 
+  // NEW: Validate stock before finalizing draft
+  const insufficientIngredients = [];
+
+  // Reload ingredients with item details
+  const joWithIngredients = await JobOrder.findByPk(joId, {
+    include: [
+      {
+        model: JOIngredient,
+        as: 'ingredients',
+        include: [{
+          model: Item,
+          as: 'item',
+          attributes: ['item_id', 'name', 'current_stock', 'unit_of_measure']
+        }]
+      }
+    ]
+  });
+
+  for (const ingredient of joWithIngredients.ingredients) {
+    const item = ingredient.item;
+    const currentStock = parseFloat(item.current_stock);
+    const requiredQty = parseFloat(ingredient.quantity_required);
+
+    if (currentStock < requiredQty) {
+      insufficientIngredients.push({
+        item_name: item.name,
+        required: requiredQty,
+        available: currentStock,
+        unit: item.unit_of_measure,
+        shortage: requiredQty - currentStock
+      });
+    }
+  }
+
+  if (insufficientIngredients.length > 0) {
+    const error = new Error('Cannot finalize job order: Insufficient stock for ingredients');
+    error.statusCode = 400;
+    error.insufficientIngredients = insufficientIngredients;
+    throw error;
+  }
+
   // Generate JO number
   const joNumber = `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
   // Update status to in_progress and add JO number
   await jo.update({
     status: 'in_progress',
-    jo_number: joNumber,
-    updated_by: userId
+    jo_number: joNumber
   });
 
   return jo;
@@ -163,7 +244,7 @@ export const completeJobOrder = async (joId, userId) => {
     const stockBefore = parseFloat(item.current_stock);
 
     if (stockBefore < quantityRequired) {
-      const error = new Error(`Insufficient stock for ${item.name}`);
+      const error = new Error(`Insufficient stock for ${item.name}. Required: ${quantityRequired} ${item.unit_of_measure}, Available: ${stockBefore} ${item.unit_of_measure}`);
       error.statusCode = 400;
       throw error;
     }
@@ -259,6 +340,41 @@ export const completeJobOrder = async (joId, userId) => {
     completion_date: new Date()
   });
 
-  return jo;
+  // Reload JO with all associations including item details
+  const completedJO = await JobOrder.findByPk(jo.jo_id, {
+    include: [
+      {
+        model: JOIngredient,
+        as: 'ingredients',
+        include: [{
+          model: Item,
+          as: 'item',
+          attributes: ['item_id', 'name', 'unit_of_measure']
+        }]
+      },
+      {
+        model: Item,
+        as: 'product',
+        attributes: ['item_id', 'name', 'unit_of_measure']
+      }
+    ]
+  });
+
+  // Transform ingredients to match frontend expectations
+  const ingredientsConsumed = completedJO.ingredients.map(ing => ({
+    item_id: ing.item_id,
+    item_name: ing.item?.name || 'Unknown',
+    unit_of_measure: ing.item?.unit_of_measure || '',
+    quantity_required: parseFloat(ing.quantity_required),
+    quantity_consumed: parseFloat(ing.quantity_consumed),
+    stock_before: parseFloat(ing.stock_before),
+    stock_after: parseFloat(ing.stock_after)
+  }));
+
+  // Return enriched data
+  return {
+    ...completedJO.toJSON(),
+    ingredients_consumed: ingredientsConsumed
+  };
 };
 

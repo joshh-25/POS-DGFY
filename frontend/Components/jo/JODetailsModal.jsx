@@ -126,19 +126,36 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {jo.ingredients_consumed?.map((ing, idx) => (
-                    <tr key={idx} className={ing.stock_after < 0 ? "bg-red-50" : ""}>
-                      <td className="p-3 font-medium text-slate-900">{ing.item_name}</td>
-                      <td className="p-3 text-right text-slate-600">{ing.quantity_required}</td>
-                      <td className="p-3 text-right text-slate-600">{ing.stock_before}</td>
-                      <td className={cn(
-                        "p-3 text-right font-medium",
-                        ing.stock_after < 0 ? "text-red-600" : "text-emerald-600"
+                  {jo.ingredients_consumed && jo.ingredients_consumed.length > 0 ? (
+                    jo.ingredients_consumed.map((ing, idx) => (
+                      <tr key={idx} className={cn(
+                        "hover:bg-slate-50 transition-colors",
+                        ing.stock_after < 0 ? "bg-red-50" : ""
                       )}>
-                        {formatNumber(ing.stock_after, 2)}
+                        <td className="p-3 font-medium text-slate-900">{ing.item_name}</td>
+                        <td className="p-3 text-right text-slate-600">
+                          {formatNumber(ing.quantity_required, 2)} {ing.unit_of_measure}
+                        </td>
+                        <td className="p-3 text-right text-slate-600">
+                          {formatNumber(ing.stock_before, 2)} {ing.unit_of_measure}
+                        </td>
+                        <td className={cn(
+                          "p-3 text-right font-medium",
+                          ing.stock_after < 0 ? "text-red-600" : "text-emerald-600"
+                        )}>
+                          {formatNumber(ing.stock_after, 2)} {ing.unit_of_measure}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" className="p-6 text-center text-slate-500">
+                        {jo.status === 'completed'
+                          ? 'No ingredient consumption data available'
+                          : 'Complete the job order to see ingredient consumption'}
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

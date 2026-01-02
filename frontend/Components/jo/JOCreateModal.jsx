@@ -10,277 +10,407 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertTriangle, CheckCircle, Package, Plus } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { toast } from 'sonner';
 
-export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, products, items, jobOrder }) {
-  const [selectedProduct, setSelectedProduct] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [initialFormData, setInitialFormData] = useState(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, products, items, jobOrder, initialProductId }) {
+  // If editing an existing JO, we operate in single-mode
+  const isEditing = !!jobOrder;
   const isEditingDraft = jobOrder?.status === 'draft';
 
+  // Selection state for new JOs (Bulk Mode)
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [quantities, setQuantities] = useState({}); // { [productId]: quantity }
+
+  // Selection state for editing (Single Mode)
+  const [singleSelectedProduct, setSingleSelectedProduct] = useState('');
+  const [singleQuantity, setSingleQuantity] = useState(1);
+
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Initialize state when opening
   useEffect(() => {
-    if (jobOrder && open) {
-      const initialData = {
-        selectedProduct: jobOrder.product_id || '',
-        quantity: jobOrder.quantity_to_produce || 1
-      };
-      setSelectedProduct(initialData.selectedProduct);
-      setQuantity(initialData.quantity);
-      setInitialFormData(initialData);
-      setIsDirty(false);
-    } else if (!jobOrder && open) {
-      const initialData = { selectedProduct: '', quantity: 1 };
-      setSelectedProduct('');
-      setQuantity(1);
-      setInitialFormData(initialData);
+    if (open) {
+      if (isEditing) {
+        setSingleSelectedProduct(jobOrder.product_id);
+        setSingleQuantity(jobOrder.quantity_to_produce);
+      } else {
+        if (initialProductId) {
+          const pid = parseInt(initialProductId);
+          setSelectedProductIds([pid]);
+          setQuantities({ [pid]: 1 });
+        } else {
+          setSelectedProductIds([]);
+          setQuantities({});
+        }
+      }
       setIsDirty(false);
     }
-  }, [jobOrder, open]);
+  }, [open, jobOrder, isEditing, initialProductId]);
 
-  // Track dirty state
-  useEffect(() => {
-    if (initialFormData && !jobOrder) {
-      const currentData = { selectedProduct, quantity };
-      const hasChanged = JSON.stringify(currentData) !== JSON.stringify(initialFormData);
-      setIsDirty(hasChanged);
-    }
-  }, [selectedProduct, quantity, initialFormData, jobOrder]);
-
-  const product = products.find(p => p.id === selectedProduct);
-
-  const ingredientRequirements = useMemo(() => {
-    if (!product || !product.ingredients) return [];
-    
-    return product.ingredients.map(ing => {
-      const item = items.find(i => i.id === ing.item_id);
-      const requiredQty = ing.quantity * quantity;
-      const currentStock = item?.current_stock || 0;
-      const stockAfter = currentStock - requiredQty;
-      const isInsufficient = stockAfter < 0;
-      
-      return {
-        item_id: ing.item_id,
-        item_name: ing.item_name,
-        quantity_required: requiredQty,
-        stock_before: currentStock,
-        stock_after: stockAfter,
-        isInsufficient,
-        unit: item?.unit_of_measure || 'units'
-      };
+  // Identify low stock products
+  const lowStockProducts = useMemo(() => {
+    return products.filter(p => {
+      // Logic for low stock: current_stock <= min_threshold
+      // Ensure we treat null/undefined thresholds safely
+      const minThreshold = p.min_threshold || 0;
+      return (p.current_stock || 0) <= minThreshold;
     });
-  }, [product, quantity, items]);
+  }, [products]);
 
-  const hasInsufficientStock = ingredientRequirements.some(ing => ing.isInsufficient);
+  // Handle "Select Low Stock"
+  const handleSelectLowStock = () => {
+    const lowStockIds = lowStockProducts.map(p => p.id || p.item_id);
+    setSelectedProductIds(prev => {
+      const combined = new Set([...prev, ...lowStockIds]);
+      return Array.from(combined);
+    });
 
-  const handleClose = () => {
-    if (isDirty && !jobOrder) {
-      setShowConfirmation(true);
+    // Default quantity to 1 for newly selected items if not set
+    setQuantities(prev => {
+      const next = { ...prev };
+      lowStockIds.forEach(id => {
+        if (!next[id]) next[id] = 1;
+      });
+      return next;
+    });
+
+    toast.success(`Selected ${lowStockIds.length} low stock products`);
+  };
+
+  const toggleProduct = (productId) => {
+    setSelectedProductIds(prev => {
+      const isSelected = prev.includes(productId);
+      if (isSelected) {
+        // Deselect
+        const next = prev.filter(id => id !== productId);
+        // Clean up quantity
+        const nextQuantities = { ...quantities };
+        delete nextQuantities[productId];
+        setQuantities(nextQuantities);
+        return next;
+      } else {
+        // Select
+        setQuantities(prevQtys => ({ ...prevQtys, [productId]: 1 }));
+        return [...prev, productId];
+      }
+    });
+  };
+
+  const handleQuantityChange = (productId, qty) => {
+    setQuantities(prev => ({
+      ...prev,
+      [productId]: qty < 1 ? 1 : qty
+    }));
+  };
+
+  // Calculate ingredients for ALL selected products (or single if editing)
+  const allIngredientRequirements = useMemo(() => {
+    let reqs = [];
+
+    if (isEditing) {
+      const product = products.find(p => (p.id || p.item_id) === singleSelectedProduct);
+      if (product && product.ingredients) {
+        product.ingredients.forEach(ing => {
+          reqs.push({
+            ...ing,
+            quantity_required: ing.quantity * singleQuantity,
+            jo_product: product.name
+          });
+        });
+      }
     } else {
-      onClose();
+      selectedProductIds.forEach(pid => {
+        const product = products.find(p => (p.id || p.item_id) === pid);
+        const qty = quantities[pid] || 1;
+        if (product && product.ingredients) {
+          product.ingredients.forEach(ing => {
+            reqs.push({
+              ...ing,
+              quantity_required: ing.quantity * qty,
+              jo_product: product.name
+            });
+          });
+        }
+      });
     }
-  };
 
-  const handleSaveDraft = () => {
-    const draftData = {
-      product_id: selectedProduct,
-      quantity_to_produce: quantity || 1,
-      ingredients: ingredientRequirements,
-      status: 'draft'
-    };
-    if (onSaveDraft) {
-      onSaveDraft(draftData);
-    }
-    setIsDirty(false);
-    onClose();
-  };
+    // Aggregate by item_id
+    const aggregated = {};
+    reqs.forEach(req => {
+      if (!aggregated[req.item_id]) {
+        const item = items.find(i => i.id === req.item_id);
+        aggregated[req.item_id] = {
+          item_id: req.item_id,
+          item_name: req.item_name,
+          quantity_required: 0,
+          current_stock: item?.current_stock || 0,
+          unit: item?.unit_of_measure || 'units',
+          affected_products: new Set()
+        };
+      }
+      aggregated[req.item_id].quantity_required += req.quantity_required;
+      aggregated[req.item_id].affected_products.add(req.jo_product);
+    });
 
-  const handleFinalize = () => {
-    handleSubmit(false);
-  };
+    return Object.values(aggregated).map(item => ({
+      ...item,
+      stock_after: item.current_stock - item.quantity_required,
+      isInsufficient: item.current_stock < item.quantity_required,
+      affected_products: Array.from(item.affected_products)
+    }));
+
+  }, [isEditing, singleSelectedProduct, singleQuantity, selectedProductIds, quantities, products, items]);
+
+  const hasInsufficientStock = allIngredientRequirements.some(ing => ing.isInsufficient);
 
   const handleSubmit = (isDraft = false) => {
-    if (!product && !isDraft) return;
+    if (isEditing) {
+      // Single Update Mode
+      if (!singleSelectedProduct) return;
 
-    const joData = {
-      product_id: selectedProduct || product?.id,
-      product_name: product?.name,
-      quantity_to_produce: quantity || 1,
-      ingredients: ingredientRequirements,
-      status: isDraft ? 'draft' : (jobOrder?.status || 'in_progress')
-    };
+      const product = products.find(p => (p.id || p.item_id) === singleSelectedProduct);
+      const ingredients = product?.ingredients?.map(ing => {
+        const item = items.find(i => i.id === ing.item_id);
+        const reqQty = ing.quantity * singleQuantity;
+        return {
+          item_id: ing.item_id,
+          quantity_required: reqQty,
+          stock_before: item?.current_stock || 0,
+          stock_after: (item?.current_stock || 0) - reqQty,
+          isInsufficient: (item?.current_stock || 0) < reqQty
+        };
+      }) || [];
 
-    if (isDraft && onSaveDraft) {
-      onSaveDraft(joData);
+      const joData = {
+        product_id: singleSelectedProduct,
+        quantity_to_produce: singleQuantity,
+        ingredients,
+        status: isDraft ? 'draft' : (jobOrder.status || 'in_progress')
+      };
+
+      if (isDraft && onSaveDraft) onSaveDraft(joData);
+      else onSubmit(joData);
+
     } else {
-      onSubmit(joData);
+      // Bulk Create Mode
+      if (selectedProductIds.length === 0) {
+        toast.error("Please select at least one product");
+        return;
+      }
+
+      if (!isDraft && hasInsufficientStock) {
+        toast.error("Insufficient stock for some ingredients. Please save as draft or restock.");
+        return;
+      }
+
+      const newJobOrders = selectedProductIds.map(pid => {
+        const product = products.find(p => (p.id || p.item_id) === pid);
+        const qty = quantities[pid] || 1;
+
+        const ingredients = product?.ingredients?.map(ing => {
+          const item = items.find(i => i.id === ing.item_id);
+          const reqQty = ing.quantity * qty;
+          return {
+            item_id: ing.item_id,
+            quantity_required: reqQty,
+            stock_before: item?.current_stock || 0,
+            stock_after: (item?.current_stock || 0) - reqQty,
+            isInsufficient: (item?.current_stock || 0) < reqQty
+          };
+        }) || [];
+
+        return {
+          product_id: pid,
+          quantity_to_produce: qty,
+          ingredients,
+          status: isDraft ? 'draft' : 'in_progress'
+        };
+      });
+
+      if (isDraft && onSaveDraft) {
+        // Note: consumer needs to handle array for bulk drafts if we want that, 
+        // or we loop here. For now let's assume one-by-one or array header support.
+        // But usually 'Safe Draft' is a single action. 
+        // Let's pass the array and let parent handle it.
+        onSaveDraft(newJobOrders);
+      } else {
+        onSubmit(newJobOrders);
+      }
     }
-    setIsDirty(false);
     onClose();
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {jobOrder ? 'Edit Job Order' : 'Create Job Order'}
-              {isEditingDraft && (
-                <Badge variant="outline" className="bg-slate-100 text-slate-700">
-                  Draft
-                </Badge>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {isEditing ? 'Edit Job Order' : 'Create Job Orders'}
+            {isEditingDraft && <Badge variant="outline">Draft</Badge>}
+          </DialogTitle>
+        </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Product Selection */}
-          <div className="space-y-2">
-            <Label>Product to Produce</Label>
-            <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a product" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-6">
 
-          {/* Quantity */}
-          <div className="space-y-2">
-            <Label>Quantity to Produce</Label>
-            <Input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value === '' ? '' : parseInt(e.target.value) || 1)}
-            />
-          </div>
-
-          {/* Ingredients Required */}
-          {product && ingredientRequirements.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Required Ingredients</Label>
-                {hasInsufficientStock && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                    <AlertTriangle className="w-3 h-3 mr-1" />
-                    Insufficient Stock
-                  </Badge>
-                )}
+          {/* Header Controls for Bulk Mode */}
+          {!isEditing && (
+            <div className="flex items-center justify-between pb-4 border-b">
+              <div className="space-y-1">
+                <h3 className="font-medium">Select Products</h3>
+                <p className="text-sm text-slate-500">
+                  {selectedProductIds.length} products selected
+                </p>
               </div>
-              
-              <div className="space-y-3">
-                {ingredientRequirements.map((ing, idx) => (
-                  <div 
-                    key={idx}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSelectLowStock}
+                className="text-teal-600 border-teal-200 hover:bg-teal-50"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Select Low Stock ({lowStockProducts.length})
+              </Button>
+            </div>
+          )}
+
+          {/* Product List / Selection */}
+          {!isEditing ? (
+            <div className="grid gap-3 max-h-[400px] overflow-y-auto">
+              {products.map(p => {
+                const isSelected = selectedProductIds.includes(p.id || p.item_id);
+                // Handle different ID keys if necessary. Usually p.id from products list.
+                const pid = p.id || p.item_id;
+                const minThreshold = p.min_threshold || 0;
+                const isLowStock = (p.current_stock || 0) <= minThreshold;
+
+                return (
+                  <div
+                    key={pid}
+                    onClick={() => toggleProduct(pid)}
                     className={cn(
-                      "p-4 rounded-xl border",
-                      ing.isInsufficient 
-                        ? "bg-red-50 border-red-200" 
-                        : "bg-slate-50 border-slate-200"
+                      "flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all",
+                      isSelected ? "border-teal-500 bg-teal-50" : "border-slate-200 hover:border-slate-300"
                     )}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-slate-900">{ing.item_name}</span>
-                      <Badge variant="outline" className={cn(
-                        ing.isInsufficient 
-                          ? "bg-red-100 text-red-700 border-red-200"
-                          : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                      )}>
-                        {ing.isInsufficient ? (
-                          <><AlertTriangle className="w-3 h-3 mr-1" /> Insufficient</>
-                        ) : (
-                          <><CheckCircle className="w-3 h-3 mr-1" /> Available</>
+                    <Checkbox checked={isSelected} />
+
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{p.name}</span>
+                        {isLowStock && (
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Low Stock
+                          </Badge>
                         )}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <p className="text-slate-500">Required</p>
-                        <p className="font-medium text-slate-900">
-                          {formatNumber(ing.quantity_required, 3)} {ing.unit}
-                        </p>
                       </div>
-                      <div>
-                        <p className="text-slate-500">Current Stock</p>
-                        <p className="font-medium text-slate-900">
-                          {ing.stock_before} {ing.unit}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">After Production</p>
-                        <p className={cn(
-                          "font-medium",
-                          ing.isInsufficient ? "text-red-600" : "text-emerald-600"
-                        )}>
-                          {formatNumber(ing.stock_after, 3)} {ing.unit}
-                        </p>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                        <span className={cn(isLowStock && "text-red-600 font-medium")}>
+                          Stock: {formatNumber(p.current_stock || 0)}
+                        </span>
+                        <span className="text-slate-400">|</span>
+                        <span>Min: {formatNumber(minThreshold)}</span>
                       </div>
                     </div>
-                    {ing.isInsufficient && (
-                      <p className="text-xs text-red-600 mt-2">
-                        Need {formatNumber(Math.abs(ing.stock_after), 3)} {ing.unit} more to complete this order
-                      </p>
+
+                    {isSelected && (
+                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        <Label className="text-xs">Qty:</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          className="w-24 h-8"
+                          value={quantities[pid] || 1}
+                          onChange={(e) => handleQuantityChange(pid, parseInt(e.target.value) || 0)}
+                        />
+                      </div>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            // Edit Mode - Single Product View
+            <div className="p-4 border rounded-xl bg-slate-50">
+              <div className="flex justify-between items-center mb-4">
+                <Label className="text-base font-medium">{products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.name}</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Quantity:</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    className="w-24"
+                    value={singleQuantity}
+                    onChange={(e) => setSingleQuantity(parseInt(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ingredient Requirements Summary */}
+          {(selectedProductIds.length > 0 || isEditing) && (
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-slate-900">Total Ingredients Required</h4>
+                {hasInsufficientStock && (
+                  <Badge variant="destructive">Insufficient Stock</Badge>
+                )}
+              </div>
+
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                {allIngredientRequirements.map(req => (
+                  <div key={req.item_id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg text-sm border border-slate-100">
+                    <div>
+                      <div className="font-medium">{req.item_name}</div>
+                      <div className="text-xs text-slate-500">
+                        For: {req.affected_products.length > 3
+                          ? `${req.affected_products.slice(0, 3).join(', ')} +${req.affected_products.length - 3} more`
+                          : req.affected_products.join(', ')}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={cn("font-medium", req.isInsufficient ? "text-red-600" : "text-emerald-600")}>
+                        {req.isInsufficient ? "Missing " : "Available "}
+                        {formatNumber(req.isInsufficient ? Math.abs(req.stock_after) : req.stock_after)} {req.unit}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Req: {formatNumber(req.quantity_required)} / Stock: {formatNumber(req.current_stock)}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
         </div>
 
-          <DialogFooter className="pt-8 flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleClose}>Cancel</Button>
-            {!jobOrder && onSaveDraft && (
+        <DialogFooter className="flex justify-between items-center mt-4">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <div className="flex gap-2">
+            {onSaveDraft && (
               <Button variant="outline" onClick={() => handleSubmit(true)}>
                 Save as Draft
               </Button>
             )}
-            {isEditingDraft ? (
-              <Button onClick={handleFinalize} disabled={!product} className="bg-teal-600 hover:bg-teal-700">
-                Finalize Job Order
-              </Button>
-            ) : (
-              <Button
-                onClick={() => handleSubmit(false)}
-                disabled={!product}
-                className="bg-teal-600 hover:bg-teal-700"
-              >
-                {jobOrder ? 'Update Job Order' : 'Create Job Order'}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <Button
+              onClick={() => handleSubmit(false)}
+              disabled={(!isEditing && selectedProductIds.length === 0) || hasInsufficientStock}
+              className={cn("bg-teal-600 hover:bg-teal-700", (!isEditing && selectedProductIds.length === 0) && "opacity-50")}
+            >
+              {isEditing ? 'Update Job Order' : `Create ${selectedProductIds.length} Job Order${selectedProductIds.length !== 1 ? 's' : ''}`}
+            </Button>
+          </div>
+        </DialogFooter>
 
-      <ConfirmationDialog
-        open={showConfirmation}
-        onOpenChange={setShowConfirmation}
-        title="Save Draft?"
-        message="You have unsaved changes. Would you like to save them as a draft?"
-        onSaveDraft={handleSaveDraft}
-        onDiscard={() => {
-          setIsDirty(false);
-          onClose();
-        }}
-        onContinueEditing={() => setShowConfirmation(false)}
-      />
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

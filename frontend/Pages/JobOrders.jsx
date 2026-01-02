@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -37,20 +37,49 @@ export default function JobOrders() {
   const [selectedJO, setSelectedJO] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [initialProductId, setInitialProductId] = useState(null);
+
+  // Check URL params for deep linking
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      const productId = params.get('productId');
+      if (productId) {
+        setInitialProductId(productId);
+      }
+      setShowCreateModal(true);
+      // Clean up URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const filteredJOs = useMemo(() => {
     if (!jobOrders) return [];
     return jobOrders.filter(jo => {
-      const matchesSearch = 
-        jo.jo_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (jo.product_name || jo.Product?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        (jo.jo_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (jo.product_name || jo.product?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || jo.status === statusFilter;
       return matchesSearch && matchesStatus;
     }).sort((a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at));
   }, [jobOrders, searchQuery, statusFilter]);
-  
+
   const products = useMemo(() => {
-    return (items || []).filter(item => item.category === 'product');
+    const prods = (items || []).filter(item => item.category === 'product');
+
+    // DEBUG: Log products received from backend
+    console.log('=== PRODUCTS IN FRONTEND (JobOrders.jsx) ===');
+    console.log('Total products:', prods.length);
+    prods.forEach(p => {
+      console.log(`Product: ${p.name} (id: ${p.id || p.item_id})`);
+      console.log(`  - has ingredients: ${!!p.ingredients}`);
+      console.log(`  - ingredients count: ${p.ingredients?.length || 0}`);
+      if (p.ingredients && p.ingredients.length > 0) {
+        console.log(`  - ingredients:`, p.ingredients);
+      }
+    });
+
+    return prods;
   }, [items]);
 
   const handleView = (jo) => {
@@ -60,19 +89,74 @@ export default function JobOrders() {
 
   const handleCreateJO = async (joData) => {
     try {
-      await createJobOrder(joData);
-      toast.success('Job order created successfully');
-      refetch();
-    setShowCreateModal(false);
+      if (Array.isArray(joData)) {
+        // Bulk Create
+        // We'll process them sequentially to ensure order and error handling
+        let successCount = 0;
+        const errors = [];
+
+        for (const data of joData) {
+          try {
+            await createJobOrder(data);
+            successCount++;
+          } catch (err) {
+            console.error('Failed to create JO:', err);
+            errors.push(data.product_id); // Track which product failed
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(`${successCount} Job Orders created successfully`);
+          refetch();
+          setShowCreateModal(false);
+        }
+
+        if (errors.length > 0) {
+          toast.error(`Failed to create ${errors.length} orders. Please check stock and try again.`);
+        }
+
+      } else {
+        // Single Create (e.g. from existing code or strict single mode)
+        await createJobOrder(joData);
+        toast.success('Job order created successfully');
+        refetch();
+        setShowCreateModal(false);
+      }
+
     } catch (error) {
-      toast.error(error.message || 'Failed to create job order');
+      const errorData = error.response?.data;
+
+      if (errorData?.insufficientIngredients) {
+        // Show detailed insufficient stock error
+        toast.error(
+          <div>
+            <p className="font-semibold">{errorData.message}</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {errorData.insufficientIngredients.map((ing, idx) => (
+                <li key={idx}>• {ing.message}</li>
+              ))}
+            </ul>
+          </div>,
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(errorData?.message || error.message || 'Failed to create job order');
+      }
     }
   };
 
   const handleSaveDraft = async (joData) => {
     try {
-      await createJobOrderDraft(joData);
-      toast.success('Job order draft saved successfully');
+      if (Array.isArray(joData)) {
+        // Bulk Draft
+        // Assuming we want to save all as drafts
+        await Promise.all(joData.map(data => createJobOrderDraft(data)));
+        toast.success(`${joData.length} drafts saved successfully`);
+      } else {
+        await createJobOrderDraft(joData);
+        toast.success('Job order draft saved successfully');
+      }
+
       refetch();
       setShowCreateModal(false);
     } catch (error) {
@@ -94,12 +178,18 @@ export default function JobOrders() {
 
   const handleCompleteProduction = async (jo) => {
     try {
-      await completeJobOrder(jo.jo_id || jo.id);
+      const completedJO = await completeJobOrder(jo.jo_id || jo.id);
       toast.success('Job order completed successfully');
+
+      // Update the selected JO with enriched data including ingredients_consumed
+      if (selectedJO?.jo_id === completedJO.jo_id) {
+        setSelectedJO(completedJO);
+      }
+
       refetch();
-    setShowDetailsModal(false);
     } catch (error) {
-      toast.error(error.message || 'Failed to complete job order');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to complete job order';
+      toast.error(errorMessage);
     }
   };
 
@@ -183,16 +273,18 @@ export default function JobOrders() {
                 const status = statusConfig[jo.status];
                 const StatusIcon = status.icon;
                 const hasInsufficientStock = (jo.ingredients_consumed || jo.ingredients || []).some(ing => (ing.stock_after || 0) < 0);
-                
+
                 return (
                   <tr key={jo.jo_id || jo.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
-                      <span className="font-semibold text-slate-900">{jo.jo_number}</span>
+                      <span className="font-semibold text-slate-900">
+                        {jo.jo_number || <span className="text-slate-400 italic">Draft #{jo.jo_id}</span>}
+                      </span>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <Factory className="w-4 h-4 text-slate-400" />
-                        <span className="text-slate-700">{jo.product_name || jo.Product?.name || 'N/A'}</span>
+                        <span className="text-slate-700">{jo.product_name || jo.product?.name || 'N/A'}</span>
                       </div>
                     </td>
                     <td className="p-4 font-medium text-slate-900">{jo.quantity_to_produce} units</td>
@@ -209,7 +301,7 @@ export default function JobOrders() {
                       </div>
                     </td>
                     <td className="p-4 text-slate-600">
-                      {jo.completion_date 
+                      {jo.completion_date
                         ? format(new Date(jo.completion_date), 'MMM d, yyyy h:mm a')
                         : '—'
                       }
@@ -220,8 +312,8 @@ export default function JobOrders() {
                           <Eye className="w-4 h-4" />
                         </Button>
                         {jo.status === 'draft' && (
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => handleStartProduction(jo)}
                             className="text-blue-600 border-blue-200 hover:bg-blue-50"
@@ -231,8 +323,8 @@ export default function JobOrders() {
                           </Button>
                         )}
                         {jo.status === 'in_progress' && (
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => {
                               setSelectedJO(jo);
@@ -258,14 +350,18 @@ export default function JobOrders() {
       {showCreateModal && (
         <JOCreateModal
           open={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setShowCreateModal(false);
+            setInitialProductId(null);
+          }}
           onSubmit={handleCreateJO}
           onSaveDraft={handleSaveDraft}
           products={products}
           items={items || []}
+          initialProductId={initialProductId}
         />
       )}
-      
+
       <JODetailsModal
         jo={selectedJO}
         open={showDetailsModal}

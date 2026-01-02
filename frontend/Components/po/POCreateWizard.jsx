@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +26,27 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { toast } from 'sonner';
 
-export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items }) {
+export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
   const [step, setStep] = useState(1);
   const [selectedItems, setSelectedItems] = useState([]);
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [supplierItemMapping, setSupplierItemMapping] = useState({});
   const [orderQuantities, setOrderQuantities] = useState({});
   const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [storageWarnings, setStorageWarnings] = useState([]);
+  const [showStorageWarning, setShowStorageWarning] = useState(false);
+
+  // Initialize with passed item
+  useEffect(() => {
+    if (open && initialItemId) {
+      setSelectedItems([parseInt(initialItemId)]);
+    } else if (open) {
+      // Reset if opened without initial item
+      setSelectedItems([]);
+    }
+  }, [open, initialItemId]);
 
   // Get items that need restocking
   const restockItems = useMemo(() => {
@@ -90,6 +104,18 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       });
   }, [selectedItems, suppliers, orderQuantities, restockItems]);
 
+  // Select all low stock items
+  const handleSelectAllLowStock = () => {
+    const lowStockIds = restockItems
+      .filter(item => {
+        const status = getStockStatus(item);
+        return status === 'critical' || status === 'warning';
+      })
+      .map(item => item.id);
+
+    setSelectedItems(prev => [...new Set([...prev, ...lowStockIds])]);
+  };
+
   const toggleItem = (itemId) => {
     setSelectedItems(prev =>
       prev.includes(itemId)
@@ -104,18 +130,44 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
 
   const toggleSupplier = (supplier) => {
     setSelectedSuppliers(prev => {
-      const isSelected = prev.some(s => s.id === supplier.id);
+      const isSelected = prev.some(s => (s.supplier_id || s.id) === (supplier.supplier_id || supplier.id));
       if (isSelected) {
         // Remove supplier and their item mappings
         const newMapping = { ...supplierItemMapping };
-        delete newMapping[supplier.id];
+        delete newMapping[supplier.supplier_id || supplier.id];
         setSupplierItemMapping(newMapping);
-        return prev.filter(s => s.id !== supplier.id);
+        return prev.filter(s => (s.supplier_id || s.id) !== (supplier.supplier_id || supplier.id));
       } else {
         // Add supplier and auto-assign items they can supply
         const newMapping = { ...supplierItemMapping };
-        newMapping[supplier.id] = supplier.canSupplyItems;
+        newMapping[supplier.supplier_id || supplier.id] = supplier.canSupplyItems;
         setSupplierItemMapping(newMapping);
+
+        // Check MOQ requirements and auto-adjust
+        const adjustments = [];
+        supplier.canSupplyItems.forEach(itemId => {
+          const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+          const currentQty = orderQuantities[itemId];
+          const moq = supplierItem?.moq;
+
+          if (moq && (!currentQty || currentQty < moq)) {
+            const item = items.find(i => i.id === itemId);
+            setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: moq }));
+            adjustments.push({ itemName: item?.name || 'Item', moq });
+          }
+        });
+
+        // Show toast notification for MOQ adjustments
+        if (adjustments.length > 0) {
+          const message = adjustments.length === 1
+            ? `Quantity for ${adjustments[0].itemName} adjusted to meet minimum order of ${adjustments[0].moq} units`
+            : `${adjustments.length} items adjusted to meet minimum order requirements`;
+          toast.info('MOQ Adjustment', {
+            description: message,
+            duration: 4000,
+          });
+        }
+
         return [...prev, supplier];
       }
     });
@@ -133,6 +185,54 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
     }));
   };
 
+  // Check storage limits before proceeding to next step
+  const checkStorageLimits = () => {
+    const warnings = [];
+
+    selectedItems.forEach(itemId => {
+      const item = items.find(i => i.id === itemId);
+      const qty = orderQuantities[itemId] || 0;
+
+      if (item && item.max_capacity) {
+        const projectedStock = parseFloat(item.current_stock || 0) + parseFloat(qty);
+        const maxCapacity = parseFloat(item.max_capacity);
+
+        if (projectedStock > maxCapacity) {
+          warnings.push({
+            itemName: item.name,
+            currentStock: item.current_stock,
+            orderQty: qty,
+            projectedStock,
+            maxCapacity,
+            excess: projectedStock - maxCapacity,
+            unit: item.unit_of_measure || 'units'
+          });
+        }
+      }
+    });
+
+    setStorageWarnings(warnings);
+    return warnings;
+  };
+
+  // Handle step transition with validation
+  const handleNextStep = () => {
+    if (step === 2) {
+      // Check storage limits before going to review
+      const warnings = checkStorageLimits();
+      if (warnings.length > 0) {
+        setShowStorageWarning(true);
+        return;
+      }
+    }
+    setStep(step + 1);
+  };
+
+  const proceedDespiteWarning = () => {
+    setShowStorageWarning(false);
+    setStep(step + 1);
+  };
+
   const handleSubmit = () => {
     if (selectedSuppliers.length === 0) return;
 
@@ -147,7 +247,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         return {
           item_id: itemId,
           item_name: item?.name || '',
-          quantity: qty,
+          quantity_ordered: qty,
           unit_price: supplierItem?.price_per_unit || 0,
           total_price: qty * (supplierItem?.price_per_unit || 0),
           quantity_received: 0,
@@ -160,7 +260,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       // Calculate bulk discount
       let discount = 0;
       if (supplier.bulk_discounts) {
-        const totalQty = poItems.reduce((sum, item) => sum + item.quantity, 0);
+        const totalQty = poItems.reduce((sum, item) => sum + item.quantity_ordered, 0);
         const applicableDiscount = supplier.bulk_discounts
           .filter(d => totalQty >= d.min_quantity)
           .sort((a, b) => b.discount_percent - a.discount_percent)[0];
@@ -170,9 +270,10 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       }
 
       onSubmit({
-        supplier_id: supplier.id,
+        supplier_id: supplier.supplier_id || supplier.id,
         supplier_name: supplier.name,
-        items: poItems,
+        line_items: poItems,
+        order_date: new Date().toISOString().split('T')[0],
         subtotal,
         discount,
         total_amount: subtotal - discount,
@@ -212,7 +313,17 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         {step === 1 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-slate-900">Select Items to Order</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="font-medium text-slate-900">Select Items to Order</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAllLowStock}
+                  className="h-7 text-xs border-dashed text-slate-500 hover:text-teal-600 hover:border-teal-200"
+                >
+                  Select Low Stock
+                </Button>
+              </div>
               <Badge variant="outline">{selectedItems.length} selected</Badge>
             </div>
             <div className="grid gap-3 max-h-96 overflow-y-auto">
@@ -280,7 +391,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto">
                 {supplierRecommendations.map((supplier, idx) => {
-                  const isSelected = selectedSuppliers.some(s => s.id === supplier.id);
+                  const isSelected = selectedSuppliers.some(s => (s.supplier_id || s.id) === (supplier.supplier_id || supplier.id));
                   return (
                     <div
                       key={supplier.id}
@@ -507,7 +618,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             {step < 3 ? (
               <Button
-                onClick={() => setStep(step + 1)}
+                onClick={handleNextStep}
                 disabled={(step === 1 && selectedItems.length === 0) || (step === 2 && selectedSuppliers.length === 0)}
                 className="bg-teal-600 hover:bg-teal-700"
               >
@@ -521,6 +632,66 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Storage Limit Warning Dialog */}
+      <Dialog open={showStorageWarning} onOpenChange={setShowStorageWarning}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="w-5 h-5" />
+              Storage Capacity Warning
+            </DialogTitle>
+            <DialogDescription>
+              The following items will exceed their storage capacity:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {storageWarnings.map((warning, idx) => (
+              <div key={idx} className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="font-medium text-slate-900 mb-2">{warning.itemName}</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-slate-500">Current Stock:</span>
+                    <span className="ml-2 font-medium">{formatNumber(warning.currentStock, 2)} {warning.unit}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Order Quantity:</span>
+                    <span className="ml-2 font-medium">{formatNumber(warning.orderQty, 2)} {warning.unit}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Projected Stock:</span>
+                    <span className="ml-2 font-medium text-amber-600">{formatNumber(warning.projectedStock, 2)} {warning.unit}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Max Capacity:</span>
+                    <span className="ml-2 font-medium">{formatNumber(warning.maxCapacity, 2)} {warning.unit}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-slate-500">Excess:</span>
+                    <span className="ml-2 font-medium text-red-600">+{formatNumber(warning.excess, 2)} {warning.unit} over limit</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowStorageWarning(false)}
+            >
+              Go Back to Adjust
+            </Button>
+            <Button
+              onClick={proceedDespiteWarning}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Continue Anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

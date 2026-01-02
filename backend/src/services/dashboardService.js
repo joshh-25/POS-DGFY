@@ -66,7 +66,8 @@ export const getLowStockItems = async () => {
     name: item.name,
     current_stock: item.current_stock,
     min_threshold: item.min_threshold,
-    max_capacity: item.max_capacity
+    max_capacity: item.max_capacity,
+    category: item.category
   }));
 };
 
@@ -81,12 +82,14 @@ export const getRecentMovements = async (limit = 10) => {
   });
 
   return movements.map(m => ({
-    movement_id: m.movement_id,
+    id: m.movement_id,
     item_name: m.item?.name,
     movement_type: m.movement_type,
     quantity: m.quantity,
-    timestamp: m.timestamp,
-    user_responsible: m.userResponsible?.username
+    created_date: m.timestamp,
+    user_responsible: m.userResponsible?.username,
+    reference_id: m.reference_id,
+    notes: m.notes
   }));
 };
 

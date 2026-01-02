@@ -1,0 +1,26 @@
+2026-01-02 18:56:28:5628 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:28 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 624 "-" "-"[39m
+2026-01-02 18:56:28:5628 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:28 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 634 "-" "-"[39m
+2026-01-02 18:56:28:5628 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:28 +0000] "POST /api/v1/purchase-orders HTTP/1.1" 201 671 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 624 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 634 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/purchase-orders HTTP/1.1" 201 616 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 624 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 634 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/purchase-orders HTTP/1.1" 422 171 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 624 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 634 "-" "-"[39m
+2026-01-02 18:56:29:5629 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [02/Jan/2026:10:56:29 +0000] "GET /api/v1/purchase-orders HTTP/1.1" 200 377 "-" "-"[39m
+PASS tests/purchaseOrder.test.js
+  Purchase Order API
+    POST /api/v1/purchase-orders
+      √ should create a purchase order successfully (252 ms)
+      √ should create a draft purchase order (197 ms)
+      √ should fail validation when required fields are missing for non-draft (221 ms)
+    GET /api/v1/purchase-orders
+      √ should retrieve a list of purchase orders (211 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       4 passed, 4 total
+Snapshots:   0 total
+Time:        2.872 s, estimated 3 s
+Ran all test suites matching /tests\\purchaseOrder.test.js/i.

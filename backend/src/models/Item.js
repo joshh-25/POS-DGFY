@@ -18,7 +18,7 @@ const Item = sequelize.define('Item', {
   },
   category: {
     type: DataTypes.ENUM('ingredient', 'product', 'packaging'),
-    allowNull: true
+    allowNull: false  // Match database schema requirement
   },
   product_folder: {
     type: DataTypes.STRING(100),

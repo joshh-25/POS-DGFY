@@ -26,7 +26,17 @@ export const createSupplierSchema = Joi.object({
     'number.min': 'Average delivery days must be 0 or greater'
   }),
   notes: Joi.string().allow(null, ''),
-  status: Joi.string().valid('draft', 'active', 'inactive').default('active')
+  status: Joi.string().valid('draft', 'active', 'inactive').default('active'),
+  items_supplied: Joi.array().items(Joi.object({
+    item_id: Joi.number().integer().required(),
+    item_name: Joi.string().allow('', null).optional(),  // Allow but will be ignored - fetched from DB
+    moq: Joi.number().integer().min(0).required(),
+    price_per_unit: Joi.number().min(0).required()
+  }).unknown(true)).optional(),
+  bulk_discounts: Joi.array().items(Joi.object({
+    min_quantity: Joi.number().integer().min(0).required(),
+    discount_percent: Joi.number().min(0).max(100).required()
+  })).optional()
 });
 
 // Draft schema - only requires name
@@ -43,7 +53,17 @@ export const createSupplierDraftSchema = Joi.object({
   quality_rating: Joi.number().min(0).max(5).allow(null),
   avg_delivery_days: Joi.number().integer().min(0).allow(null),
   notes: Joi.string().allow(null, ''),
-  status: Joi.string().valid('draft').default('draft')
+  status: Joi.string().valid('draft').default('draft'),
+  items_supplied: Joi.array().items(Joi.object({
+    item_id: Joi.number().integer().required(),
+    item_name: Joi.string().allow('', null).optional(),  // Allow but will be ignored - fetched from DB
+    moq: Joi.number().integer().min(0).required(),
+    price_per_unit: Joi.number().min(0).required()
+  }).unknown(true)).optional(),
+  bulk_discounts: Joi.array().items(Joi.object({
+    min_quantity: Joi.number().integer().min(0).required(),
+    discount_percent: Joi.number().min(0).max(100).required()
+  })).optional()
 });
 
 export const updateSupplierSchema = Joi.object({
@@ -55,11 +75,21 @@ export const updateSupplierSchema = Joi.object({
   quality_rating: Joi.number().min(0).max(5).allow(null),
   avg_delivery_days: Joi.number().integer().min(0).allow(null),
   notes: Joi.string().allow(null, ''),
-  status: Joi.string().valid('draft', 'active', 'inactive')
+  status: Joi.string().valid('draft', 'active', 'inactive'),
+  items_supplied: Joi.array().items(Joi.object({
+    item_id: Joi.number().integer().required(),
+    item_name: Joi.string().allow('', null).optional(),  // Allow but will be ignored - fetched from DB
+    moq: Joi.number().integer().min(0).required(),
+    price_per_unit: Joi.number().min(0).required()
+  }).unknown(true)).optional(),
+  bulk_discounts: Joi.array().items(Joi.object({
+    min_quantity: Joi.number().integer().min(0).required(),
+    discount_percent: Joi.number().min(0).max(100).required()
+  })).optional()
 });
 
 export const validateCreateSupplier = (req, res, next) => {
-  const { error, value } = createSupplierSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = createSupplierSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
 
   if (error) {
     const errors = error.details.map(detail => ({
@@ -81,7 +111,7 @@ export const validateCreateSupplier = (req, res, next) => {
 };
 
 export const validateCreateSupplierDraft = (req, res, next) => {
-  const { error, value } = createSupplierDraftSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = createSupplierDraftSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
 
   if (error) {
     const errors = error.details.map(detail => ({
@@ -103,7 +133,10 @@ export const validateCreateSupplierDraft = (req, res, next) => {
 };
 
 export const validateUpdateSupplier = (req, res, next) => {
-  const { error, value } = updateSupplierSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = updateSupplierSchema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true
+  });
 
   if (error) {
     const errors = error.details.map(detail => ({

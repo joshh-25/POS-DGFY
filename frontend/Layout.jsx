@@ -65,7 +65,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="lg:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setSidebarOpen(false)}
         />
@@ -73,7 +73,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 lg:translate-x-0",
+        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 lg:translate-x-0 flex flex-col",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6">
@@ -88,7 +88,7 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </div>
 
-        <nav className="px-4 space-y-1">
+        <nav className="px-4 space-y-1 flex-1 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = currentPageName === item.page;
             const Icon = item.icon;
@@ -99,8 +99,8 @@ export default function Layout({ children, currentPageName }) {
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
-                  isActive 
-                    ? "bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/30" 
+                  isActive
+                    ? "bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/30"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 )}
               >
@@ -111,7 +111,7 @@ export default function Layout({ children, currentPageName }) {
           })}
         </nav>
 
-        <div className="absolute bottom-6 left-4 right-4 space-y-3">
+        <div className="p-4 space-y-3 mt-auto border-t border-slate-100">
           {/* Logout Button */}
           <button
             onClick={handleLogout}

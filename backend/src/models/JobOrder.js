@@ -40,14 +40,6 @@ const JobOrder = sequelize.define('JobOrder', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
-  },
-  created_by: {
-    type: DataTypes.INTEGER,
-    allowNull: true
-  },
-  updated_by: {
-    type: DataTypes.INTEGER,
-    allowNull: true
   }
 }, {
   tableName: 'job_orders',

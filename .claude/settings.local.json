@@ -49,7 +49,14 @@
       "Bash(timeout:*)",
       "Bash(dir:*)",
       "Bash(tasklist:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(node -e:*)",
+      "Bash(dir /s /b \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\*.sql\")",
+      "Bash(node test-db.js:*)",
+      "Bash(node test-po.js:*)",
+      "Bash(node test-draft-creation.js:*)",
+      "Bash(/c/xampp/mysql/bin/mysql.exe:*)",
+      "Bash(npx shadcn@latest add:*)"
     ]
   }
 }

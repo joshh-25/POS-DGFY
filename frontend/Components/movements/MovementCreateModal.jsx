@@ -17,12 +17,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  ArrowDownCircle, 
-  ArrowUpCircle, 
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
   ArrowLeftRight,
   RotateCcw,
-  AlertCircle
+  AlertCircle,
+  ChevronsUpDown,
+  Check
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 
@@ -61,6 +76,8 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
     notes: '',
     loss_reason: ''
   });
+
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (preselectedItem) {
@@ -127,18 +144,64 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           {/* Item Selection */}
           <div className="space-y-2">
             <Label>Item</Label>
-            <Select value={formData.item_id} onValueChange={(v) => handleChange('item_id', v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an item" />
-              </SelectTrigger>
-              <SelectContent>
-                {items.map(item => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name} ({item.current_stock} {item.unit_of_measure} in stock)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={cn(
+                    "w-full justify-between font-normal",
+                    !formData.item_id && "text-slate-500"
+                  )}
+                >
+                  {formData.item_id
+                    ? items.find((item) => item.id === formData.item_id)?.name
+                    : "Search items..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Search items..."
+                    value={searchQuery}
+                    onValueChange={setSearchQuery}
+                  />
+                  <CommandList>
+                    <CommandEmpty>No items found.</CommandEmpty>
+                    <CommandGroup>
+                      {items
+                        .filter((item) =>
+                          item.name.toLowerCase().includes(searchQuery.toLowerCase())
+                        )
+                        .map((item) => (
+                          <CommandItem
+                            key={item.id}
+                            selected={formData.item_id === item.id}
+                            onSelect={() => {
+                              handleChange('item_id', item.id);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.item_id === item.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span>{item.name}</span>
+                              <span className="text-xs text-slate-500">
+                                {item.current_stock} {item.unit_of_measure} in stock
+                              </span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Quantity */}

@@ -54,13 +54,78 @@ export const getItems = async (queryParams) => {
 
   const { count, rows } = await Item.findAndCountAll({
     where,
+    include: [
+      {
+        model: ProductComposition,
+        as: 'productCompositions',
+        required: false, // LEFT JOIN - only load for products that have compositions
+        include: [{
+          model: Item,
+          as: 'ingredient',
+          attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock']
+        }]
+      }
+    ],
     limit: parseInt(limit),
     offset: parseInt(offset),
     order
   });
 
+  // DEBUG: Log what Sequelize returns
+  const productSample = rows.find(r => r.category === 'product');
+  if (productSample) {
+    console.log('=== PRODUCT SAMPLE (RAW FROM SEQUELIZE) ===');
+    console.log('Product name:', productSample.name);
+    console.log('Product category:', productSample.category);
+    console.log('Has productCompositions:', !!productSample.productCompositions);
+    console.log('ProductCompositions count:', productSample.productCompositions?.length || 0);
+    if (productSample.productCompositions && productSample.productCompositions.length > 0) {
+      console.log('First composition:', JSON.stringify(productSample.productCompositions[0].toJSON(), null, 2));
+    }
+  }
+
+  // Transform items to include 'id' field and format ingredients for products
+  const transformedItems = rows.map(item => {
+    const itemData = item.toJSON();
+
+    // Add 'id' field for frontend compatibility (maps item_id to id)
+    const transformed = {
+      ...itemData,
+      id: itemData.item_id
+    };
+
+    // For products, format ingredients if they exist
+    if (itemData.category === 'product' && itemData.productCompositions && itemData.productCompositions.length > 0) {
+      transformed.ingredients = itemData.productCompositions
+        .filter(comp => comp.composition_type === 'ingredient')
+        .map(comp => ({
+          item_id: comp.ingredient_id,
+          item_name: comp.ingredient?.name || '',
+          quantity: comp.quantity_required,
+          unit: comp.ingredient?.unit_of_measure || 'units'
+        }));
+
+      // Clean up - remove raw compositions from response
+      delete transformed.productCompositions;
+    } else {
+      delete transformed.productCompositions;
+    }
+
+    return transformed;
+  });
+
+  // DEBUG: Log transformed products
+  const transformedProduct = transformedItems.find(p => p.category === 'product');
+  if (transformedProduct) {
+    console.log('=== TRANSFORMED PRODUCT (AFTER MAPPING) ===');
+    console.log('Product name:', transformedProduct.name);
+    console.log('Has ingredients:', !!transformedProduct.ingredients);
+    console.log('Ingredients count:', transformedProduct.ingredients?.length || 0);
+    console.log('Ingredients:', JSON.stringify(transformedProduct.ingredients, null, 2));
+  }
+
   return {
-    items: rows,
+    items: transformedItems,
     pagination: {
       page: parseInt(page),
       limit: parseInt(limit),

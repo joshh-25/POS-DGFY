@@ -2,6 +2,7 @@ import request from 'supertest';
 import app from '../src/server.js';
 import User from '../src/models/User.js';
 import sequelize from '../src/config/database.js';
+import db from '../src/models/index.js';
 
 describe('Authentication API', () => {
   beforeAll(async () => {
@@ -11,13 +12,15 @@ describe('Authentication API', () => {
 
   afterAll(async () => {
     // Clean up and close connection
-    await User.destroy({ where: {}, truncate: true });
+    await db.PurchaseOrder.destroy({ where: {} }); // FK dependency
+    await db.User.destroy({ where: {}, truncate: true });
     await sequelize.close();
   });
 
   beforeEach(async () => {
     // Clean up before each test
-    await User.destroy({ where: {}, truncate: true });
+    await db.PurchaseOrder.destroy({ where: {} }); // FK dependency
+    await db.User.destroy({ where: {}, truncate: true });
   });
 
   describe('POST /api/v1/auth/register', () => {

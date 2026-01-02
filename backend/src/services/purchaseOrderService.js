@@ -1,4 +1,8 @@
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs/promises';
 import { Op } from 'sequelize';
+import sequelize from '../config/database.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import POLineItem from '../models/POLineItem.js';
 import Supplier from '../models/Supplier.js';
@@ -89,47 +93,89 @@ export const getPurchaseOrderById = async (poId) => {
 };
 
 export const createPurchaseOrder = async (poData, userId) => {
-  const { line_items, ...poMainData } = poData;
+  const transaction = await sequelize.transaction();
 
-  // Only generate PO number if not a draft
-  const isDraft = poData.status === 'draft';
-  const poNumber = isDraft ? null : `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  try {
+    const { line_items, ...poMainData } = poData;
 
-  // Calculate totals if line_items exist
-  let subtotal = 0;
-  if (line_items && line_items.length > 0) {
-    line_items.forEach(item => {
-      item.total_price = item.quantity_ordered * item.unit_price;
-      subtotal += item.total_price;
-    });
+    const isDraft = poData.status === 'draft';
+
+    // Generate PO number - always required (database constraint)
+    // Use DRAFT- prefix for drafts, PO- for finalized orders
+    const poNumber = isDraft
+      ? `DRAFT-${Date.now()}`
+      : `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+    // Calculate totals if line_items exist
+    let subtotal = 0;
+    const sanitizedLineItems = [];
+
+    if (line_items && line_items.length > 0) {
+      line_items.forEach(item => {
+        const qty = parseFloat(item.quantity_ordered);
+        const price = parseFloat(item.unit_price);
+        const total = qty * price;
+
+        subtotal += total;
+
+        sanitizedLineItems.push({
+          item_id: item.item_id,
+          quantity_ordered: qty,
+          unit_price: price,
+          total_price: total
+        });
+      });
+    }
+
+    const discount = parseFloat(poData.discount || 0);
+    const total_amount = subtotal - discount;
+
+    const po = await PurchaseOrder.create({
+      supplier_id: poMainData.supplier_id,
+      order_date: poMainData.order_date || new Date(),
+      expected_delivery_date: poMainData.expected_delivery_date,
+      notes: poMainData.notes,
+      po_number: poNumber,
+      subtotal,
+      discount,
+      total_amount,
+      created_by: userId,
+      // updated_by field does not exist in model
+      status: isDraft ? 'draft' : 'pending'
+    }, { transaction });
+
+    // Create line items if they exist
+    let createdLineItems = [];
+    if (sanitizedLineItems.length > 0) {
+      createdLineItems = await Promise.all(
+        sanitizedLineItems.map(item => POLineItem.create({
+          po_id: po.po_id,
+          ...item
+        }, { transaction }))
+      );
+    }
+
+    await transaction.commit();
+    return { ...po.toJSON(), lineItems: createdLineItems };
+
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    // Custom debug logging
+    try {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const logPath = join(__dirname, '../../logs/custom_error.log');
+      const timestamp = new Date().toISOString();
+      const logMessage = `\n[${timestamp}] Error creating PO:\n${error.stack}\nDetails: ${JSON.stringify(error, Object.getOwnPropertyNames(error))}\n`;
+      await fs.appendFile(logPath, logMessage);
+    } catch (logError) {
+      console.error('Failed to write to custom error log', logError);
+    }
+
+    throw error;
   }
-
-  const discount = poData.discount || 0;
-  const total_amount = subtotal - discount;
-
-  const po = await PurchaseOrder.create({
-    ...poMainData,
-    po_number: poNumber,
-    subtotal,
-    discount,
-    total_amount,
-    created_by: userId,
-    updated_by: userId,
-    status: isDraft ? 'draft' : 'pending'
-  });
-
-  // Create line items if they exist
-  let lineItems = [];
-  if (line_items && line_items.length > 0) {
-    lineItems = await Promise.all(
-      line_items.map(item => POLineItem.create({
-        po_id: po.po_id,
-        ...item
-      }))
-    );
-  }
-
-  return { ...po.toJSON(), lineItems };
 };
 
 export const finalizePurchaseOrder = async (poId, userId) => {
@@ -200,7 +246,7 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
     if (!lineItem) continue;
 
     const quantityReceived = receiptItem.quantity_received || lineItem.quantity_ordered;
-    
+
     // Update line item
     await lineItem.update({
       quantity_received: quantityReceived,
@@ -237,10 +283,10 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
   }
 
   // Update PO status
-  const allReceived = po.lineItems.every(li => 
+  const allReceived = po.lineItems.every(li =>
     parseFloat(li.quantity_received) >= parseFloat(li.quantity_ordered)
   );
-  
+
   await po.update({
     status: allReceived ? 'received' : 'partial',
     received_date: new Date()

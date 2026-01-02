@@ -25,6 +25,20 @@ export const errorHandler = (err, req, res, next) => {
     logger.info('Error Handled', logData);
   }
 
+  // Handle insufficient stock errors with detailed information
+  if (err.insufficientIngredients) {
+    return res.status(statusCode).json({
+      success: false,
+      data: null,
+      message,
+      insufficientIngredients: err.insufficientIngredients.map(ing => ({
+        item: ing.item_name,
+        message: `Required: ${ing.required} ${ing.unit}, Available: ${ing.available} ${ing.unit}, Shortage: ${ing.shortage} ${ing.unit}`
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
   res.status(statusCode).json({
     success: false,
     data: null,

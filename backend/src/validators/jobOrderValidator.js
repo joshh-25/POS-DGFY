@@ -4,7 +4,7 @@ export const createJobOrderSchema = Joi.object({
   product_id: Joi.number().integer().positive().required().messages({
     'number.base': 'Product ID must be a number',
     'number.positive': 'Product ID must be positive',
-    'any.required': 'Product ID is required'
+    'any.required': 'Product selection is required. Please select a product from the dropdown.'
   }),
   quantity_to_produce: Joi.number().positive().required().messages({
     'number.positive': 'Quantity to produce must be positive',

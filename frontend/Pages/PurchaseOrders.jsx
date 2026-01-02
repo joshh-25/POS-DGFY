@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,21 @@ export default function PurchaseOrders() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [initialItemId, setInitialItemId] = useState(null);
+
+  // Check URL params for deep linking
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      const itemId = params.get('itemId');
+      if (itemId) {
+        setInitialItemId(itemId);
+      }
+      setShowCreateWizard(true);
+      // Clean up URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const filteredPOs = useMemo(() => {
     if (!purchaseOrders) return [];
@@ -273,10 +288,14 @@ export default function PurchaseOrders() {
       {showCreateWizard && (
         <POCreateWizard
           open={showCreateWizard}
-          onClose={() => setShowCreateWizard(false)}
+          onClose={() => {
+            setShowCreateWizard(false);
+            setInitialItemId(null);
+          }}
           onSubmit={handleCreatePO}
           suppliers={suppliers || []}
           items={items || []}
+          initialItemId={initialItemId}
         />
       )}
 

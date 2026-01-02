@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  ArrowDownCircle, 
-  ArrowUpCircle, 
+import {
+  Plus,
+  Search,
+  Filter,
+  ArrowDownCircle,
+  ArrowUpCircle,
   ArrowLeftRight,
   RotateCcw,
   AlertCircle,
@@ -29,35 +29,35 @@ import MovementCreateModal from '@/components/movements/MovementCreateModal';
 import { toast } from 'sonner';
 
 const movementConfig = {
-  purchase_receipt: { 
-    icon: ArrowDownCircle, 
-    color: "text-emerald-600", 
-    bg: "bg-emerald-50 border-emerald-200", 
-    label: "Purchase Receipt" 
+  purchase_receipt: {
+    icon: ArrowDownCircle,
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+    label: "Purchase Receipt"
   },
-  production_consumption: { 
-    icon: ArrowUpCircle, 
-    color: "text-red-500", 
-    bg: "bg-red-50 border-red-200", 
-    label: "Production Consumption" 
+  production_consumption: {
+    icon: ArrowUpCircle,
+    color: "text-red-500",
+    bg: "bg-red-50 border-red-200",
+    label: "Production Consumption"
   },
-  transfer: { 
-    icon: ArrowLeftRight, 
-    color: "text-blue-500", 
-    bg: "bg-blue-50 border-blue-200", 
-    label: "Transfer" 
+  transfer: {
+    icon: ArrowLeftRight,
+    color: "text-blue-500",
+    bg: "bg-blue-50 border-blue-200",
+    label: "Transfer"
   },
-  return: { 
-    icon: RotateCcw, 
-    color: "text-blue-500", 
-    bg: "bg-blue-50 border-blue-200", 
-    label: "Return" 
+  return: {
+    icon: RotateCcw,
+    color: "text-blue-500",
+    bg: "bg-blue-50 border-blue-200",
+    label: "Return"
   },
-  calculated_loss: { 
-    icon: AlertCircle, 
-    color: "text-red-600", 
-    bg: "bg-red-50 border-red-200", 
-    label: "Calculated Loss" 
+  calculated_loss: {
+    icon: AlertCircle,
+    color: "text-red-600",
+    bg: "bg-red-50 border-red-200",
+    label: "Calculated Loss"
   }
 };
 
@@ -75,7 +75,7 @@ export default function StockMovements() {
     const params = new URLSearchParams(window.location.search);
     const itemId = params.get('item');
     const action = params.get('action');
-    
+
     if (itemId && items) {
       const item = items.find(i => (i.item_id || i.id) == itemId);
       if (item) {
@@ -91,8 +91,8 @@ export default function StockMovements() {
   const filteredMovements = useMemo(() => {
     if (!stockMovements) return [];
     return stockMovements.filter(mov => {
-      const matchesSearch = 
-        (mov.item_name || mov.Item?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch =
+        (mov.item_name || mov.item?.name || mov.Item?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (mov.notes || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (mov.reference_id || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = typeFilter === 'all' || mov.movement_type === typeFilter;
@@ -105,8 +105,8 @@ export default function StockMovements() {
       await createStockMovement(movementData);
       toast.success('Stock movement recorded successfully');
       refetch();
-    setShowCreateModal(false);
-    setPreselectedItem(null);
+      setShowCreateModal(false);
+      setPreselectedItem(null);
     } catch (error) {
       toast.error(error.message || 'Failed to create stock movement');
     }
@@ -194,7 +194,7 @@ export default function StockMovements() {
                 const config = movementConfig[mov.movement_type] || movementConfig.transfer;
                 const Icon = config.icon;
                 const isPositive = mov.movement_type === 'purchase_receipt' || mov.movement_type === 'return';
-                
+
                 return (
                   <tr key={mov.movement_id || mov.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
@@ -210,7 +210,7 @@ export default function StockMovements() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-900">{mov.item_name || mov.Item?.name || 'N/A'}</td>
+                    <td className="p-4 font-medium text-slate-900">{mov.item_name || mov.item?.name || mov.Item?.name || 'N/A'}</td>
                     <td className="p-4">
                       <Badge variant="outline" className={cn("flex items-center gap-1 w-fit", config.bg)}>
                         <Icon className={cn("w-3 h-3", config.color)} />

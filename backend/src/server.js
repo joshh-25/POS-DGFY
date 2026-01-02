@@ -17,16 +17,37 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Security middleware
-app.use(helmet());
-
-// CORS configuration
+// CORS configuration - must be applied before helmet
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // Allow requests from localhost and any network IP on port 5173 (development)
+  // For production, set CORS_ORIGIN env var to a comma-separated list of allowed origins
+  origin: process.env.CORS_ORIGIN ? (origin, callback) => {
+    const allowed = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+    if (allowed.includes(origin) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  } : (origin, callback) => {
+    // In development, allow localhost and any IP on port 5173
+    if (!origin ||
+      origin.startsWith('http://localhost:5173') ||
+      origin.startsWith('http://127.0.0.1:5173') ||
+      /^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:5173$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
+
+// Security middleware - applied after CORS
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Body parsing middleware
 app.use(express.json());
@@ -152,7 +173,7 @@ const startServer = async () => {
       });
     }
 
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🌐 API Base URL: http://localhost:${PORT}/api/v1`);
@@ -161,10 +182,10 @@ const startServer = async () => {
     // Graceful shutdown
     const gracefulShutdown = async (signal) => {
       logger.info(`${signal} received. Starting graceful shutdown...`);
-      
+
       // Close Redis connection
       await closeRedis();
-      
+
       server.close(() => {
         logger.info('HTTP server closed.');
         process.exit(0);
@@ -197,7 +218,9 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 export default app;
 

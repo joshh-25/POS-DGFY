@@ -35,6 +35,8 @@ export const generalLimiter = rateLimit({
   skip: (req) => {
     // Skip rate limiting for health check endpoint
     if (req.path === '/health') return true;
+    // Skip in test environment
+    if (process.env.NODE_ENV === 'test') return true;
     // Skip rate limiting entirely in development if explicitly disabled
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
     return false;
@@ -56,7 +58,10 @@ export const authLimiter = rateLimit({
     });
     res.status(429).json(createRateLimitError('Too many authentication attempts, please try again later.'));
   },
-  skipSuccessfulRequests: false, // Count all requests, not just failed ones
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test') return true;
+    return false;
+  },
 });
 
 export default {

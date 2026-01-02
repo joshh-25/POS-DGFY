@@ -9,17 +9,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Star, 
-  Truck, 
-  Mail, 
-  Phone, 
-  MapPin, 
+import {
+  Star,
+  Truck,
+  Mail,
+  Phone,
+  MapPin,
   FilePlus,
   Package,
   Percent
 } from 'lucide-react';
-  import { cn } from "../../src/lib/utils.js";
+import { cn } from "../../src/lib/utils.js";
 import { getQualityColor, getQualityBgColor, dummyPurchaseOrders } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 
@@ -28,8 +28,11 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
 
   const qualityColor = getQualityColor(supplier.quality_rating);
   const qualityBgColor = getQualityBgColor(supplier.quality_rating);
-  const recentDeliveries = dummyPurchaseOrders
-    .filter(po => po.supplier_id === supplier.id && po.status === 'received')
+
+  // Try to use real supplier_id for filtering
+  const sid = supplier.supplier_id || supplier.id;
+  const recentDeliveries = (dummyPurchaseOrders || [])
+    .filter(po => (po.supplier_id === sid) && po.status === 'received')
     .slice(0, 5);
 
   return (
@@ -147,7 +150,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
 
           {/* Actions */}
           <div className="pt-8 pb-6 border-t border-slate-200">
-            <Link to={createPageUrl("PurchaseOrders") + `?supplier=${supplier.id}&action=create`}>
+            <Link to={createPageUrl("PurchaseOrders") + `?supplier=${supplier.supplier_id || supplier.id}&action=create`}>
               <Button className="w-full bg-teal-600 hover:bg-teal-700">
                 <FilePlus className="w-4 h-4 mr-2" />
                 Create Purchase Order

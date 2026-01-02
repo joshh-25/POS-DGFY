@@ -36,11 +36,40 @@ export const getSuppliers = async (queryParams) => {
     where,
     limit: parseInt(limit),
     offset: parseInt(offset),
-    order
+    order,
+    include: [
+      {
+        model: SupplierItem,
+        as: 'supplierItems',
+        include: [{ model: Item, as: 'item', required: false }]
+      },
+      {
+        model: BulkDiscount,
+        as: 'bulkDiscounts'
+      }
+    ],
+    distinct: true
+  });
+
+  const formattedRows = rows.map(supplier => {
+    const formatted = supplier.toJSON();
+    formatted.items_supplied = formatted.supplierItems?.map(si => ({
+      id: si.item?.item_id,
+      item_id: si.item?.item_id,
+      item_name: si.item?.name,
+      moq: si.moq,
+      price_per_unit: si.price_per_unit,
+      last_price_update: si.last_price_update
+    })) || [];
+    formatted.id = formatted.supplier_id;
+    formatted.bulk_discounts = formatted.bulkDiscounts || [];
+    delete formatted.supplierItems;
+    delete formatted.bulkDiscounts;
+    return formatted;
   });
 
   return {
-    suppliers: rows,
+    suppliers: formattedRows,
     pagination: {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -78,13 +107,15 @@ export const getSupplierById = async (supplierId) => {
   }
 
   const formatted = supplier.toJSON();
-  formatted.items = formatted.supplierItems?.map(si => ({
+  formatted.items_supplied = formatted.supplierItems?.map(si => ({
+    id: si.item?.item_id,
     item_id: si.item?.item_id,
     item_name: si.item?.name,
     moq: si.moq,
     price_per_unit: si.price_per_unit,
     last_price_update: si.last_price_update
   })) || [];
+  formatted.id = formatted.supplier_id;
 
   delete formatted.supplierItems;
 
@@ -92,14 +123,39 @@ export const getSupplierById = async (supplierId) => {
 };
 
 export const createSupplier = async (supplierData, userId = null) => {
+  // Extract items_supplied and bulk_discounts before creating supplier
+  const { items_supplied, bulk_discounts, ...supplierFields } = supplierData;
+
   // Add created_by if userId provided
-  const dataToCreate = { ...supplierData };
+  const dataToCreate = { ...supplierFields };
   if (userId) {
     dataToCreate.created_by = userId;
     dataToCreate.updated_by = userId;
   }
 
   const supplier = await Supplier.create(dataToCreate);
+
+  // Create supplier items if provided
+  if (items_supplied && items_supplied.length > 0) {
+    const supplierItems = items_supplied.map(item => ({
+      supplier_id: supplier.supplier_id,
+      item_id: item.item_id,
+      moq: item.moq,
+      price_per_unit: item.price_per_unit
+    }));
+    await SupplierItem.bulkCreate(supplierItems);
+  }
+
+  // Create bulk discounts if provided
+  if (bulk_discounts && bulk_discounts.length > 0) {
+    const discounts = bulk_discounts.map(discount => ({
+      supplier_id: supplier.supplier_id,
+      min_quantity: discount.min_quantity,
+      discount_percent: discount.discount_percent
+    }));
+    await BulkDiscount.bulkCreate(discounts);
+  }
+
   return supplier;
 };
 
@@ -111,13 +167,54 @@ export const updateSupplier = async (supplierId, supplierData, userId = null) =>
     throw error;
   }
 
+  // Extract items_supplied and bulk_discounts before updating supplier
+  const { items_supplied, bulk_discounts, ...supplierFields } = supplierData;
+
   // Add updated_by if userId provided
-  const dataToUpdate = { ...supplierData };
+  const dataToUpdate = { ...supplierFields };
   if (userId) {
     dataToUpdate.updated_by = userId;
   }
 
   await supplier.update(dataToUpdate);
+
+  // Update supplier items if provided
+  if (items_supplied !== undefined) {
+    // Delete existing items
+    await SupplierItem.destroy({
+      where: { supplier_id: supplierId }
+    });
+
+    // Create new items
+    if (items_supplied.length > 0) {
+      const supplierItems = items_supplied.map(item => ({
+        supplier_id: supplierId,
+        item_id: item.item_id,
+        moq: item.moq,
+        price_per_unit: item.price_per_unit
+      }));
+      await SupplierItem.bulkCreate(supplierItems);
+    }
+  }
+
+  // Update bulk discounts if provided
+  if (bulk_discounts !== undefined) {
+    // Delete existing discounts
+    await BulkDiscount.destroy({
+      where: { supplier_id: supplierId }
+    });
+
+    // Create new discounts
+    if (bulk_discounts.length > 0) {
+      const discounts = bulk_discounts.map(discount => ({
+        supplier_id: supplierId,
+        min_quantity: discount.min_quantity,
+        discount_percent: discount.discount_percent
+      }));
+      await BulkDiscount.bulkCreate(discounts);
+    }
+  }
+
   return supplier;
 };
 

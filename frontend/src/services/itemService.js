@@ -1,13 +1,33 @@
 import api from './api.js';
 
+// Transform items to ensure both 'id' and 'item_id' fields exist (defensive)
+const transformItem = (item) => ({
+  ...item,
+  id: item.id || item.item_id, // Support both field names
+  item_id: item.item_id || item.id
+});
+
 export const getItems = async (params = {}) => {
   const response = await api.get('/items', { params });
-  return response.data.data;
+  const data = response.data.data;
+
+  // Transform items defensively to ensure compatibility
+  if (data.items && Array.isArray(data.items)) {
+    return {
+      ...data,
+      items: data.items.map(transformItem)
+    };
+  }
+
+  return data;
 };
 
 export const getItemById = async (itemId) => {
   const response = await api.get(`/items/${itemId}`);
-  return response.data.data;
+  const item = response.data.data;
+
+  // Transform to ensure both id fields exist
+  return transformItem(item);
 };
 
 export const createItem = async (itemData) => {
