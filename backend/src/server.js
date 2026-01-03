@@ -25,6 +25,10 @@ import './models/index.js'; // Initialize model associations
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy - required when running behind nginx/apache reverse proxy
+// This allows Express to correctly read X-Forwarded-For headers
+app.set('trust proxy', true);
+
 // CORS configuration - must be applied before helmet
 const corsOptions = {
   // Allow requests from localhost and any network IP on port 5173 (development)
