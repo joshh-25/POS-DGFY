@@ -21,7 +21,7 @@ module.exports = {
         {
             name: 'sku-frontend',
             script: os.platform() === 'win32' ? 'cmd.exe' : 'npm',
-            args: os.platform() === 'win32' ? '/c npm run dev' : 'run dev',
+            args: os.platform() === 'win32' ? '/c npm run preview' : 'run preview',
             cwd: './frontend',
             interpreter: 'none',
             watch: false, // Relies on Vite for HMR
