@@ -23,6 +23,13 @@ export default defineConfig({
   },
   server: {
     allowedHosts: ['skupervisor.surebizcorp.com'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 })
 

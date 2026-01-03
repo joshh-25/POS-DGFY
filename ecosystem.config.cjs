@@ -11,9 +11,11 @@ module.exports = {
             watch: false, // Relies on nodemon for reloading
             env: {
                 NODE_ENV: 'development',
+                CORS_ORIGIN: 'http://localhost:5173,https://skupervisor.surebizcorp.com',
             },
             env_production: {
                 NODE_ENV: 'production',
+                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com',
             },
         },
         {
