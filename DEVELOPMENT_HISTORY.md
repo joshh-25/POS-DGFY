@@ -557,6 +557,159 @@
 
 ---
 
+## Phase 16: Production Deployment Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-03
+
+### Issue: 500 Internal Server Errors on Production
+Multiple API endpoints were returning 500 errors on the production server at `skupervisor.surebizcorp.com`:
+- `/api/v1/dashboard/low-stock`
+- `/api/v1/purchase-orders`
+- `/api/v1/suppliers`
+- `/api/v1/job-orders`
+- `/api/v1/items`
+
+### Root Causes Identified
+
+#### 1. Database Schema Mismatch
+The production database was missing columns that the code expected:
+- **Items table**: Missing `deleted_by` and `deleted_at` columns
+- **Suppliers table**: Missing `deleted_by` and `deleted_at` columns
+- **Purchase Orders table**: Missing `archived_by` and `archived_at` columns
+- **Job Orders table**: Missing `archived_by` and `archived_at` columns
+
+**Error Messages**:
+```
+Unknown column 'deleted_by' in 'field list'
+Unknown column 'archived_at' in 'where clause'
+```
+
+#### 2. Express Trust Proxy Misconfiguration
+The application runs behind a reverse proxy (nginx/apache) on production, but Express wasn't configured to handle proxied requests properly.
+
+**Error Messages**:
+```
+ValidationError: The 'X-Forwarded-For' header is set but the Express 'trust proxy' setting is false
+ValidationError: The Express 'trust proxy' setting is true, which allows anyone to bypass IP-based rate limiting
+```
+
+### Backend Fixes
+
+#### 1. Database Schema Updates
+- [x] Added missing columns to production database using SQL ALTER statements:
+  ```sql
+  USE sku_inventory_manager;
+  
+  ALTER TABLE job_orders ADD COLUMN archived_at DATETIME NULL;
+  ALTER TABLE items ADD COLUMN deleted_by INT NULL;
+  ALTER TABLE items ADD COLUMN deleted_at DATETIME NULL;
+  ALTER TABLE suppliers ADD COLUMN deleted_by INT NULL;
+  ALTER TABLE suppliers ADD COLUMN deleted_at DATETIME NULL;
+  ALTER TABLE purchase_orders ADD COLUMN archived_by INT NULL;
+  ALTER TABLE purchase_orders ADD COLUMN archived_at DATETIME NULL;
+  ```
+- [x] Columns added manually via HeidiSQL on production database
+- [x] Verified schema consistency between development and production
+
+#### 2. Express Trust Proxy Configuration
+- [x] Updated `backend/src/server.js`:
+  - Added `app.set('trust proxy', true)` after app initialization (line 28)
+  - Enables Express to correctly read `X-Forwarded-For` headers from reverse proxy
+  - Required for accurate IP-based rate limiting in production
+
+**File**: `backend/src/server.js`
+```javascript
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Trust proxy - required when running behind nginx/apache reverse proxy
+// This allows Express to correctly read X-Forwarded-For headers
+app.set('trust proxy', true);
+```
+
+#### 3. Rate Limiter Validation Warnings
+- [x] Updated `backend/src/middleware/rateLimiter.js`:
+  - Added `validate: { trustProxy: false, xForwardedForHeader: false }` to both rate limiters
+  - Disables validation warnings for proxy configuration
+  - Maintains security while acknowledging reverse proxy setup
+
+**File**: `backend/src/middleware/rateLimiter.js`
+```javascript
+// General API rate limiter
+export const generalLimiter = rateLimit({
+  // ... other config
+  validate: { trustProxy: false, xForwardedForHeader: false },
+  // ...
+});
+
+// Auth rate limiter
+export const authLimiter = rateLimit({
+  // ... other config
+  validate: { trustProxy: false, xForwardedForHeader: false },
+  // ...
+});
+```
+
+### Deployment Process
+
+1. **Database Migration**:
+   - Connected to production database via HeidiSQL
+   - Ran ALTER TABLE statements one by one
+   - Ignored duplicate column errors (columns already existed from partial migration)
+
+2. **Code Deployment**:
+   - Edited files directly on production server using `nano`
+   - Updated `/var/www/skupervisor/backend/src/server.js`
+   - Updated `/var/www/skupervisor/backend/src/middleware/rateLimiter.js`
+
+3. **Service Restart**:
+   - Restarted backend using PM2: `pm2 restart sku-backend`
+   - Verified logs: `pm2 logs sku-backend --lines 30`
+   - Confirmed no more 500 errors or validation warnings
+
+### Verification
+
+- [x] Dashboard loads correctly with stats and low stock items
+- [x] Items page displays without errors
+- [x] Suppliers page accessible
+- [x] Purchase Orders page functional
+- [x] Job Orders page working (was primary failing endpoint)
+- [x] No validation warnings in server logs
+- [x] All API endpoints return 200 status codes
+
+### Lessons Learned
+
+1. **Database Migration Strategy**: Production migrations must be tracked and synchronized. Consider implementing:
+   - Automated migration tracking with Sequelize CLI
+   - Migration status verification scripts
+   - Pre-deployment database schema validation
+
+2. **Reverse Proxy Configuration**: When deploying behind a reverse proxy:
+   - Always set `app.set('trust proxy', true)` in Express
+   - Configure rate limiters to acknowledge proxy setup
+   - Document proxy configuration in deployment guides
+
+3. **Environment Parity**: Development and production environments should have:
+   - Identical database schemas
+   - Same environment variables
+   - Consistent middleware configurations
+
+### Related Files Modified
+
+- `backend/src/server.js` - Added trust proxy setting
+- `backend/src/middleware/rateLimiter.js` - Updated validation config
+- Production database `sku_inventory_manager` - Added missing columns
+
+### Documentation Updates
+
+- [x] Updated DEVELOPMENT_HISTORY.md with Phase 16
+- [x] Documented database schema fixes
+- [x] Documented reverse proxy configuration
+- [ ] TODO: Create DEPLOYMENT_GUIDE.md with production checklist
+- [ ] TODO: Create database migration verification script
+
+---
+
 ## Tech Stack Summary
 
 ### Frontend
