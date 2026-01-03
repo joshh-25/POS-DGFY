@@ -140,3 +140,44 @@ export const useFinalizeJobOrder = () => {
   return { finalizeJobOrder, loading, error };
 };
 
+export const useArchiveJobOrder = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const archiveJobOrder = useCallback(async (joId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await jobOrderService.archiveJobOrder(joId);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to archive job order');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { archiveJobOrder, loading, error };
+};
+
+export const useRestoreJobOrder = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const restoreJobOrder = useCallback(async (joId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await jobOrderService.restoreJobOrder(joId);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to restore job order');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { restoreJobOrder, loading, error };
+};

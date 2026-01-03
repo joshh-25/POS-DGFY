@@ -2,20 +2,22 @@ module.exports = {
     apps: [
         {
             name: 'sku-backend',
-            script: 'npm',
-            args: 'run dev',
+            script: 'cmd.exe',
+            args: '/c npm run dev',
             cwd: './backend',
-            watch: false, // nodemon is already watching
+            interpreter: 'none',
+            watch: false, // Relies on nodemon for reloading
             env: {
                 NODE_ENV: 'development',
             },
         },
         {
             name: 'sku-frontend',
-            script: 'npm',
-            args: 'run dev',
+            script: 'cmd.exe',
+            args: '/c npm run dev',
             cwd: './frontend',
-            watch: false, // vite is already watching
+            interpreter: 'none',
+            watch: false, // Relies on Vite for HMR
             env: {
                 NODE_ENV: 'development',
             },

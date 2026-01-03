@@ -30,3 +30,12 @@ export const receivePurchaseOrder = async (poId, receiptData) => {
   return response.data.data;
 };
 
+export const archivePurchaseOrder = async (poId) => {
+  const response = await api.post(`/purchase-orders/${poId}/archive`);
+  return response.data;
+};
+
+export const restorePurchaseOrder = async (poId) => {
+  const response = await api.post(`/purchase-orders/${poId}/restore`);
+  return response.data;
+};

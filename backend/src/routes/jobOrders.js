@@ -24,5 +24,9 @@ router.post('/:jo_id/complete', authorize('admin', 'manager'), jobOrderControlle
 // Finalize draft - managers and admins only
 router.patch('/:jo_id/finalize', authorize('admin', 'manager'), jobOrderController.finalizeJobOrder);
 
+// Archive/restore - managers and admins only
+router.post('/:jo_id/archive', authorize('admin', 'manager'), jobOrderController.archiveJobOrder);
+router.post('/:jo_id/restore', authorize('admin', 'manager'), jobOrderController.restoreJobOrder);
+
 export default router;
 

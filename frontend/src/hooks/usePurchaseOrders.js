@@ -140,3 +140,44 @@ export const useFinalizePurchaseOrder = () => {
   return { finalizePurchaseOrder, loading, error };
 };
 
+export const useArchivePurchaseOrder = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const archivePurchaseOrder = useCallback(async (poId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await purchaseOrderService.archivePurchaseOrder(poId);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to archive purchase order');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { archivePurchaseOrder, loading, error };
+};
+
+export const useRestorePurchaseOrder = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const restorePurchaseOrder = useCallback(async (poId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await purchaseOrderService.restorePurchaseOrder(poId);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to restore purchase order');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { restorePurchaseOrder, loading, error };
+};

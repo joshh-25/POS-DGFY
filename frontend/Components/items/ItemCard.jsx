@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { Package, Beaker, Box, MoreVertical, Eye, Edit, History, FileEdit } from 'lucide-react';
+import { Package, Beaker, Box, MoreVertical, Eye, Edit, History, FileEdit, Trash2 } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700 border-blue-200" }
 };
 
-export default function ItemCard({ item, onView, onEdit }) {
+export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRole }) {
   const category = categoryConfig[item.category] || categoryConfig.ingredient;
   const isDraft = item.status === 'draft';
   const status = isDraft ? 'draft' : getStockStatus(item);
@@ -67,6 +67,14 @@ export default function ItemCard({ item, onView, onEdit }) {
                 <History className="w-4 h-4 mr-2" /> Movement History
               </Link>
             </DropdownMenuItem>
+            {currentUserRole === 'admin' && onDelete && (
+              <DropdownMenuItem
+                onClick={() => onDelete(item)}
+                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Item
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

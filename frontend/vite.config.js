@@ -21,5 +21,8 @@ export default defineConfig({
     ],
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
+  server: {
+    allowedHosts: ['skupervisor.surebizcorp.com'],
+  },
 })
 

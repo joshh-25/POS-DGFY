@@ -98,3 +98,30 @@ export const addSupplierItem = async (req, res, next) => {
   }
 };
 
+export const deleteSupplier = async (req, res, next) => {
+  try {
+    const { supplier_id } = req.params;
+    const userId = req.user.user_id;
+
+    await supplierService.deleteSupplier(supplier_id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: null,
+      message: 'Supplier deleted successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    // If error has details array (from validation), include it in response
+    if (error.details) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        message: error.message,
+        details: error.details,
+        timestamp: new Date().toISOString()
+      });
+    }
+    next(error);
+  }
+};
+

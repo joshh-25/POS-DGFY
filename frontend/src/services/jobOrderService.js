@@ -30,3 +30,12 @@ export const completeJobOrder = async (joId) => {
   return response.data.data;
 };
 
+export const archiveJobOrder = async (joId) => {
+  const response = await api.post(`/job-orders/${joId}/archive`);
+  return response.data;
+};
+
+export const restoreJobOrder = async (joId) => {
+  const response = await api.post(`/job-orders/${joId}/restore`);
+  return response.data;
+};

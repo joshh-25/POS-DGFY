@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,10 @@ import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
 import ProductCreateWizard from '@/components/products/ProductCreateWizard';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { getStockStatus } from '@/components/data/dummyData';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem } from '@/hooks/useItems.js';
+import { getCurrentUser } from '../src/services/userService.js';
 import { toast } from 'sonner';
 import { cn } from "../src/lib/utils.js";
 import { formatNumber } from '../src/lib/numberUtils.js';
@@ -40,6 +42,23 @@ export default function Items() {
   const [showFormModal, setShowFormModal] = useState(false);
   const [showProductWizard, setShowProductWizard] = useState(false);
   const [folderFilter, setFolderFilter] = useState('all');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [deleteErrors, setDeleteErrors] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Fetch current user
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Check URL params for filter
   React.useEffect(() => {
@@ -64,10 +83,10 @@ export default function Items() {
     return items
       .filter(item => {
         const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (item.sku_code || '').toLowerCase().includes(searchQuery.toLowerCase());
+          (item.sku_code || '').toLowerCase().includes(searchQuery.toLowerCase());
         const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
         const matchesFolder = folderFilter === 'all' ||
-                             (item.category === 'product' && item.product_folder === folderFilter);
+          (item.category === 'product' && item.product_folder === folderFilter);
 
         // Handle draft status filter
         if (statusFilter === 'draft') {
@@ -76,8 +95,8 @@ export default function Items() {
 
         const status = getStockStatus(item);
         const matchesStatus = statusFilter === 'all' ||
-                             (statusFilter === 'critical' && (status === 'critical' || status === 'warning')) ||
-                             status === statusFilter;
+          (statusFilter === 'critical' && (status === 'critical' || status === 'warning')) ||
+          status === statusFilter;
         return matchesSearch && matchesCategory && matchesStatus && matchesFolder && item.status !== 'draft';
       })
       .sort((a, b) => {
@@ -162,7 +181,12 @@ export default function Items() {
       setShowProductWizard(false);
       setEditingProduct(null);
     } catch (error) {
-      toast.error(error.message || 'Failed to save product');
+      console.error('Save product error:', error);
+      const errorMessage = error.response?.data?.errors?.map(e => e.message).join(', ') ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to save product';
+      toast.error(errorMessage);
     }
   };
 
@@ -180,18 +204,18 @@ export default function Items() {
       setEditingProduct(null);
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ')
-                           || error.message
-                           || 'Failed to save draft';
+        || error.message
+        || 'Failed to save draft';
       toast.error(errorMessage);
     }
   };
 
   const handleSave = async (itemData) => {
     try {
-    if (editingItem) {
+      if (editingItem) {
         await updateItem(editingItem.item_id, itemData);
         toast.success('Item updated successfully');
-    } else {
+      } else {
         await createItem(itemData);
         toast.success('Item created successfully');
       }
@@ -216,17 +240,39 @@ export default function Items() {
     }
   };
 
-  const handleDelete = async (itemId) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) {
-      return;
-    }
+  const handleDeleteClick = (item) => {
+    setItemToDelete(item);
+    setDeleteErrors(null);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+
     try {
-      await deleteItem(itemId);
+      await deleteItem(itemToDelete.item_id);
       toast.success('Item deleted successfully');
+      setShowDeleteDialog(false);
+      setItemToDelete(null);
+      setDeleteErrors(null);
       refetch();
     } catch (error) {
-      toast.error(error.message || 'Failed to delete item');
+      // Check if error response has details array
+      const errorDetails = error.response?.data?.details;
+      if (errorDetails && Array.isArray(errorDetails)) {
+        setDeleteErrors(errorDetails);
+      } else {
+        toast.error(error.response?.data?.message || error.message || 'Failed to delete item');
+        setShowDeleteDialog(false);
+        setItemToDelete(null);
+      }
     }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setItemToDelete(null);
+    setDeleteErrors(null);
   };
 
   if (loading) {
@@ -246,7 +292,7 @@ export default function Items() {
         </div>
       </div>
     );
-    }
+  }
 
   return (
     <div className="space-y-6">
@@ -353,11 +399,13 @@ export default function Items() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map(item => (
-            <ItemCard 
-              key={item.item_id || item.id} 
-              item={item} 
+            <ItemCard
+              key={item.item_id || item.id}
+              item={item}
               onView={handleView}
               onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              currentUserRole={currentUser?.role}
             />
           ))}
         </div>
@@ -384,8 +432,8 @@ export default function Items() {
                   surplus: "bg-blue-100 text-blue-700"
                 };
                 return (
-                  <tr 
-                    key={item.item_id || item.id} 
+                  <tr
+                    key={item.item_id || item.id}
                     className="hover:bg-slate-50 cursor-pointer transition-colors"
                     onClick={() => handleView(item)}
                   >
@@ -445,6 +493,22 @@ export default function Items() {
           folders={productFolders}
         />
       )}
+      <DeleteConfirmDialog
+        open={showDeleteDialog}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        title="Delete Item"
+        description={
+          <>
+            Are you sure you want to delete <strong>{itemToDelete?.name}</strong>?
+            This will set the item status to inactive. This action cannot be undone.
+          </>
+        }
+        confirmText="Delete Item"
+        variant="destructive"
+        loading={deleting}
+        errors={deleteErrors}
+      />
     </div>
   );
 }

@@ -24,5 +24,9 @@ router.post('/:po_id/receive', authorize('admin', 'manager'), purchaseOrderContr
 // Finalize draft - managers and admins only
 router.patch('/:po_id/finalize', authorize('admin', 'manager'), purchaseOrderController.finalizePurchaseOrder);
 
+// Archive/restore - managers and admins only
+router.post('/:po_id/archive', authorize('admin', 'manager'), purchaseOrderController.archivePurchaseOrder);
+router.post('/:po_id/restore', authorize('admin', 'manager'), purchaseOrderController.restorePurchaseOrder);
+
 export default router;
 

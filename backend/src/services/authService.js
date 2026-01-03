@@ -108,10 +108,12 @@ export const registerUser = async (userData) => {
 };
 
 export const loginUser = async (email, password) => {
+  console.log(`[AuthDebug] Attempting login for: ${email}`); // DEBUG LOG
   // Find user by email
   const user = await User.findOne({ where: { email } });
 
   if (!user) {
+    console.log(`[AuthDebug] User not found: ${email}`); // DEBUG LOG
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;
@@ -119,6 +121,7 @@ export const loginUser = async (email, password) => {
 
   // Check if user is active
   if (!user.is_active) {
+    console.log(`[AuthDebug] User inactive: ${email}`); // DEBUG LOG
     const error = new Error('User account is inactive');
     error.statusCode = 403;
     throw error;
@@ -128,6 +131,7 @@ export const loginUser = async (email, password) => {
   const isPasswordValid = await comparePassword(password, user.password_hash);
 
   if (!isPasswordValid) {
+    console.log(`[AuthDebug] Password invalid for: ${email}`); // DEBUG LOG
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;

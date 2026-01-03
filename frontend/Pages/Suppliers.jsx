@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
 import { Plus, Search, Loader2, Filter } from 'lucide-react';
@@ -14,7 +14,9 @@ import {
 import SupplierCard from '@/components/suppliers/SupplierCard';
 import SupplierDetailsModal from '@/components/suppliers/SupplierDetailsModal';
 import SupplierFormModal from '@/components/suppliers/SupplierFormModal';
-import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDraft, useFinalizeSupplier } from '@/hooks/useSuppliers.js';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
+import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDraft, useFinalizeSupplier, useDeleteSupplier } from '@/hooks/useSuppliers.js';
+import { getCurrentUser } from '../src/services/authService.js';
 import { toast } from 'sonner';
 
 export default function Suppliers() {
@@ -23,12 +25,29 @@ export default function Suppliers() {
   const { updateSupplier, loading: updating } = useUpdateSupplier();
   const { createSupplierDraft } = useCreateSupplierDraft();
   const { finalizeSupplier } = useFinalizeSupplier();
+  const { deleteSupplier, loading: deleting } = useDeleteSupplier();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState(null);
+  const [deleteErrors, setDeleteErrors] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const filteredSuppliers = useMemo(() => {
     if (!suppliers) return [];
@@ -71,10 +90,10 @@ export default function Suppliers() {
 
   const handleSave = async (supplierData) => {
     try {
-    if (editingSupplier) {
+      if (editingSupplier) {
         await updateSupplier(editingSupplier.supplier_id || editingSupplier.id, supplierData);
         toast.success('Supplier updated successfully');
-    } else {
+      } else {
         await createSupplier(supplierData);
         toast.success('Supplier created successfully');
       }
@@ -82,7 +101,12 @@ export default function Suppliers() {
       setShowFormModal(false);
       setEditingSupplier(null);
     } catch (error) {
-      toast.error(error.message || 'Failed to save supplier');
+      console.error('Save supplier error:', error);
+      const errorMessage = error.response?.data?.errors?.map(e => e.message).join(', ') ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to save supplier';
+      toast.error(errorMessage);
     }
   };
 
@@ -95,6 +119,34 @@ export default function Suppliers() {
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save draft';
       toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteClick = (supplier) => {
+    setSupplierToDelete(supplier);
+    setDeleteErrors(null);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!supplierToDelete) return;
+
+    try {
+      await deleteSupplier(supplierToDelete.supplier_id || supplierToDelete.id);
+      toast.success('Supplier deleted successfully');
+      setShowDeleteDialog(false);
+      setSupplierToDelete(null);
+      setDeleteErrors(null);
+      refetch();
+    } catch (error) {
+      const errorDetails = error.response?.data?.details;
+      if (errorDetails && Array.isArray(errorDetails)) {
+        setDeleteErrors(errorDetails);
+      } else {
+        toast.error(error.response?.data?.message || error.message);
+        setShowDeleteDialog(false);
+        setSupplierToDelete(null);
+      }
     }
   };
 
@@ -115,7 +167,7 @@ export default function Suppliers() {
         </div>
       </div>
     );
-    }
+  }
 
   return (
     <div className="space-y-6">
@@ -166,12 +218,14 @@ export default function Suppliers() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredSuppliers.map(supplier => (
-            <SupplierCard 
-              key={supplier.supplier_id || supplier.id} 
-              supplier={supplier} 
+            <SupplierCard
+              key={supplier.supplier_id || supplier.id}
+              supplier={supplier}
               onView={handleView}
               onEdit={handleEdit}
               onCreatePO={handleCreatePO}
+              onDelete={handleDeleteClick}
+              currentUserRole={currentUser?.role}
             />
           ))}
         </div>
@@ -189,6 +243,25 @@ export default function Suppliers() {
         onClose={() => setShowFormModal(false)}
         onSave={handleSave}
         onSaveDraft={handleSaveDraft}
+      />
+      <DeleteConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setSupplierToDelete(null);
+          setDeleteErrors(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Supplier"
+        description={
+          supplierToDelete
+            ? `Are you sure you want to delete ${supplierToDelete.name}? This will set the supplier status to inactive. This action cannot be undone.`
+            : ''
+        }
+        confirmText="Delete Supplier"
+        variant="destructive"
+        loading={deleting}
+        errors={deleteErrors}
       />
     </div>
   );

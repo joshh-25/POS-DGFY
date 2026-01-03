@@ -93,8 +93,10 @@ export const finalizeItem = async (req, res, next) => {
 export const deleteItem = async (req, res, next) => {
   try {
     const { item_id } = req.params;
-    await itemService.deleteItem(item_id);
-    
+    const userId = req.user.user_id;
+
+    await itemService.deleteItem(item_id, userId);
+
     res.status(200).json({
       success: true,
       data: null,
@@ -102,6 +104,15 @@ export const deleteItem = async (req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    // If error has details array (from validation), include it in response
+    if (error.details) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        message: error.message,
+        details: error.details,
+        timestamp: new Date().toISOString()
+      });
+    }
     next(error);
   }
 };

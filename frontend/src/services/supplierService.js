@@ -35,3 +35,7 @@ export const addSupplierItem = async (supplierId, itemData) => {
   return response.data.data;
 };
 
+export const deleteSupplier = async (supplierId) => {
+  const response = await api.delete(`/suppliers/${supplierId}`);
+  return response.data;
+};

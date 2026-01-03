@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,15 +18,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "../src/lib/utils.js";
-import { usePurchaseOrders, useCreatePurchaseOrder, useReceivePurchaseOrder } from '@/hooks/usePurchaseOrders.js';
+import { usePurchaseOrders, useCreatePurchaseOrder, useReceivePurchaseOrder, useArchivePurchaseOrder, useRestorePurchaseOrder } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useItems } from '@/hooks/useItems.js';
 import * as purchaseOrderService from '../src/services/purchaseOrderService.js';
 import POCreateWizard from '@/components/po/POCreateWizard';
 import PODetailsModal from '@/components/po/PODetailsModal';
 import POReceiptModal from '@/components/po/POReceiptModal';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { formatNumber } from '../src/lib/numberUtils.js';
+import { getCurrentUser } from '../src/services/authService.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -37,11 +39,14 @@ const statusConfig = {
 };
 
 export default function PurchaseOrders() {
-  const { purchaseOrders, loading, error, refetch } = usePurchaseOrders();
+  const [showArchivedTab, setShowArchivedTab] = useState(false);
+  const { purchaseOrders, loading, error, refetch } = usePurchaseOrders({ archived: showArchivedTab ? 'true' : 'false' });
   const { suppliers, loading: suppliersLoading } = useSuppliers();
   const { items, loading: itemsLoading } = useItems();
   const { createPurchaseOrder, loading: creating } = useCreatePurchaseOrder();
   const { receivePurchaseOrder, loading: receiving } = useReceivePurchaseOrder();
+  const { archivePurchaseOrder, loading: archiving } = useArchivePurchaseOrder();
+  const { restorePurchaseOrder, loading: restoring } = useRestorePurchaseOrder();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedPO, setSelectedPO] = useState(null);
@@ -49,6 +54,22 @@ export default function PurchaseOrders() {
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [initialItemId, setInitialItemId] = useState(null);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [poToArchive, setPoToArchive] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Fetch current user for role-based access
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Check URL params for deep linking
   useEffect(() => {
@@ -163,6 +184,39 @@ export default function PurchaseOrders() {
     }
   };
 
+  const handleArchiveClick = (po) => {
+    setPoToArchive(po);
+    setShowArchiveDialog(true);
+  };
+
+  const handleConfirmArchive = async () => {
+    if (!poToArchive) return;
+
+    try {
+      await archivePurchaseOrder(poToArchive.po_id || poToArchive.id);
+      toast.success('Purchase Order archived successfully');
+      setShowArchiveDialog(false);
+      setPoToArchive(null);
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+      setShowArchiveDialog(false);
+      setPoToArchive(null);
+    }
+  };
+
+  const handleRestore = async (po) => {
+    try {
+      await restorePurchaseOrder(po.po_id || po.id);
+      toast.success('Purchase Order restored successfully');
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
+
+  const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+
   if (loading || suppliersLoading || itemsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -196,6 +250,25 @@ export default function PurchaseOrders() {
         </Button>
       </div>
 
+      {/* Archive Toggle */}
+      <div className="flex gap-2">
+        <Button
+          variant={!showArchivedTab ? 'default' : 'outline'}
+          onClick={() => setShowArchivedTab(false)}
+          className={!showArchivedTab ? 'bg-teal-600 hover:bg-teal-700' : ''}
+        >
+          Active Purchase Orders
+        </Button>
+        <Button
+          variant={showArchivedTab ? 'default' : 'outline'}
+          onClick={() => setShowArchivedTab(true)}
+          className={showArchivedTab ? 'bg-slate-600 hover:bg-slate-700' : ''}
+        >
+          <Archive className="w-4 h-4 mr-2" />
+          Archived
+        </Button>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4">
         <div className="flex flex-col md:flex-row gap-4">
@@ -215,9 +288,11 @@ export default function PurchaseOrders() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="partial">Partial</SelectItem>
               <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -264,7 +339,7 @@ export default function PurchaseOrders() {
                         <Button variant="ghost" size="sm" onClick={() => handleView(po)}>
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {po.status !== 'received' && (
+                        {!showArchivedTab && po.status !== 'received' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -272,6 +347,28 @@ export default function PurchaseOrders() {
                             className="text-teal-600 border-teal-200 hover:bg-teal-50"
                           >
                             Receive
+                          </Button>
+                        )}
+                        {!showArchivedTab && canArchive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleArchiveClick(po)}
+                            className="text-slate-600 border-slate-200 hover:bg-slate-50"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {showArchivedTab && canArchive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestore(po)}
+                            disabled={restoring}
+                            className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                          >
+                            <ArchiveRestore className="w-4 h-4 mr-1" />
+                            Restore
                           </Button>
                         )}
                       </div>
@@ -313,6 +410,25 @@ export default function PurchaseOrders() {
           onConfirm={handleReceiptConfirm}
         />
       )}
+
+      {/* Archive Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={showArchiveDialog}
+        onClose={() => {
+          setShowArchiveDialog(false);
+          setPoToArchive(null);
+        }}
+        onConfirm={handleConfirmArchive}
+        title="Archive Purchase Order"
+        description={
+          poToArchive
+            ? `Are you sure you want to archive Purchase Order ${poToArchive.po_number}? You can restore it later from the Archived tab.`
+            : ''
+        }
+        confirmText="Archive Purchase Order"
+        variant="destructive"
+        loading={archiving}
+      />
     </div>
   );
 }

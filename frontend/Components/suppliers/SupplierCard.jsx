@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Truck, Package, MoreVertical, Eye, Edit, FilePlus, FileEdit } from 'lucide-react';
+import { Star, Truck, Package, MoreVertical, Eye, Edit, FilePlus, FileEdit, Trash2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,7 +12,7 @@ import { cn } from "../../src/lib/utils.js";
 import { getQualityColor, getQualityBgColor } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 
-export default function SupplierCard({ supplier, onView, onEdit, onCreatePO }) {
+export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onDelete, currentUserRole }) {
   const qualityColor = getQualityColor(supplier.quality_rating);
   const qualityBgColor = getQualityBgColor(supplier.quality_rating);
   const isDraft = supplier.status === 'draft';
@@ -48,6 +48,14 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO }) {
             <DropdownMenuItem onClick={() => onCreatePO(supplier)}>
               <FilePlus className="w-4 h-4 mr-2" /> Create PO
             </DropdownMenuItem>
+            {currentUserRole === 'admin' && onDelete && (
+              <DropdownMenuItem
+                onClick={() => onDelete(supplier)}
+                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Supplier
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -18,11 +18,19 @@ export const getPurchaseOrders = async (queryParams) => {
     status,
     supplier_id,
     startDate,
-    endDate
+    endDate,
+    archived = 'false'
   } = queryParams;
 
   const offset = (page - 1) * limit;
   const where = {};
+
+  // Filter archived POs
+  if (archived === 'true') {
+    where.archived_at = { [Op.not]: null };
+  } else {
+    where.archived_at = null;
+  }
 
   if (status) where.status = status;
   if (supplier_id) where.supplier_id = supplier_id;
@@ -40,7 +48,7 @@ export const getPurchaseOrders = async (queryParams) => {
     ],
     limit: parseInt(limit),
     offset: parseInt(offset),
-    order: [['order_date', 'DESC']]
+    order: [['order_date', 'DESC'], ['po_id', 'DESC']]
   });
 
   const formatted = rows.map(po => {
@@ -55,7 +63,9 @@ export const getPurchaseOrders = async (queryParams) => {
       received_date: p.received_date,
       status: p.status,
       total_amount: p.total_amount,
-      created_by: p.creator?.username
+      created_by: p.creator?.username,
+      archived_at: p.archived_at,
+      archived_by: p.archived_by
     };
   });
 
@@ -98,13 +108,9 @@ export const createPurchaseOrder = async (poData, userId) => {
   try {
     const { line_items, ...poMainData } = poData;
 
-    const isDraft = poData.status === 'draft';
-
     // Generate PO number - always required (database constraint)
-    // Use DRAFT- prefix for drafts, PO- for finalized orders
-    const poNumber = isDraft
-      ? `DRAFT-${Date.now()}`
-      : `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    // Always use PO- prefix for all purchase orders
+    const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
     // Calculate totals if line_items exist
     let subtotal = 0;
@@ -141,7 +147,7 @@ export const createPurchaseOrder = async (poData, userId) => {
       total_amount,
       created_by: userId,
       // updated_by field does not exist in model
-      status: isDraft ? 'draft' : 'pending'
+      status: 'pending'
     }, { transaction });
 
     // Create line items if they exist
@@ -295,3 +301,48 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
   return po;
 };
 
+export const archivePurchaseOrder = async (poId, userId) => {
+  const po = await PurchaseOrder.findByPk(poId);
+
+  if (!po) {
+    const error = new Error('Purchase Order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (po.archived_at) {
+    const error = new Error('Purchase Order is already archived');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await po.update({
+    archived_at: new Date(),
+    archived_by: userId
+  });
+
+  return po;
+};
+
+export const restorePurchaseOrder = async (poId) => {
+  const po = await PurchaseOrder.findByPk(poId);
+
+  if (!po) {
+    const error = new Error('Purchase Order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!po.archived_at) {
+    const error = new Error('Purchase Order is not archived');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await po.update({
+    archived_at: null,
+    archived_by: null
+  });
+
+  return po;
+};

@@ -78,12 +78,33 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
 
   const isEditingDraft = product?.status === 'draft';
 
+  // Helper to parse JSON string fields that may be stored as strings in the database
+  const parseJsonField = (value, fallback = {}) => {
+    if (!value) return fallback;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch (e) {
+        console.warn('Failed to parse JSON field:', e);
+        return fallback;
+      }
+    }
+    return value;
+  };
+
   // Initialize from product (for editing/resuming drafts)
   useEffect(() => {
     if (product && open) {
       const loadedData = {
         ...defaultProductData,
         ...product,
+        // Parse nested JSON fields that may be stored as strings
+        nutritional_info: parseJsonField(product.nutritional_info, {}),
+        physical_properties: parseJsonField(product.physical_properties, {}),
+        shelf_life: parseJsonField(product.shelf_life, {}),
+        packaging_info: parseJsonField(product.packaging_info, {}),
+        quality_control: parseJsonField(product.quality_control, {}),
+        regulatory_compliance: parseJsonField(product.regulatory_compliance, {}),
         wizard_metadata: product.wizard_metadata || null
       };
 

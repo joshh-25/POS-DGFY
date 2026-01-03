@@ -15,6 +15,10 @@ import SupplierItem from '../models/SupplierItem.js';
 import Supplier from '../models/Supplier.js';
 import StockMovement from '../models/StockMovement.js';
 import User from '../models/User.js';
+import PurchaseOrder from '../models/PurchaseOrder.js';
+import POLineItem from '../models/POLineItem.js';
+import JobOrder from '../models/JobOrder.js';
+import JOIngredient from '../models/JOIngredient.js';
 
 export const getItems = async (queryParams) => {
   const {
@@ -517,7 +521,7 @@ export const updateItem = async (itemId, itemData, userId = null) => {
   }
 };
 
-export const deleteItem = async (itemId) => {
+export const deleteItem = async (itemId, userId) => {
   const item = await Item.findByPk(itemId);
 
   if (!item) {
@@ -526,8 +530,73 @@ export const deleteItem = async (itemId) => {
     throw error;
   }
 
-  // Soft delete by setting status to inactive
-  await item.update({ status: 'inactive' });
+  // Comprehensive pre-delete safety checks
+  const errors = [];
+
+  // Check 1: Item used as ingredient in products
+  const productCompositions = await ProductComposition.findAll({
+    where: { ingredient_id: itemId },
+    include: [{
+      model: Item,
+      as: 'Product',
+      attributes: ['name', 'sku_code']
+    }]
+  });
+
+  if (productCompositions.length > 0) {
+    const productNames = productCompositions.map(pc =>
+      `${pc.Product.name} (${pc.Product.sku_code})`
+    ).join(', ');
+    errors.push(`Used as ingredient in ${productCompositions.length} product(s): ${productNames}`);
+  }
+
+  // Check 2: Item in ANY Purchase Orders
+  const poLineItems = await POLineItem.findAll({
+    where: { item_id: itemId },
+    include: [{
+      model: PurchaseOrder,
+      attributes: ['po_number', 'status']
+    }]
+  });
+
+  if (poLineItems.length > 0) {
+    const poNumbers = poLineItems.map(po =>
+      `${po.PurchaseOrder.po_number} (${po.PurchaseOrder.status})`
+    ).join(', ');
+    errors.push(`Referenced in ${poLineItems.length} purchase order(s): ${poNumbers}`);
+  }
+
+  // Check 3: Item in ANY Job Orders
+  const joIngredients = await JOIngredient.findAll({
+    where: { ingredient_id: itemId },
+    include: [{
+      model: JobOrder,
+      attributes: ['jo_number', 'status']
+    }]
+  });
+
+  if (joIngredients.length > 0) {
+    const joNumbers = joIngredients.map(jo =>
+      `${jo.JobOrder.jo_number} (${jo.JobOrder.status})`
+    ).join(', ');
+    errors.push(`Referenced in ${joIngredients.length} job order(s): ${joNumbers}`);
+  }
+
+  // If any errors, throw with detailed message
+  if (errors.length > 0) {
+    const error = new Error(`Cannot delete item "${item.name}". Reasons:\n- ${errors.join('\n- ')}`);
+    error.statusCode = 400;
+    error.details = errors;
+    throw error;
+  }
+
+  // Soft delete with audit trail
+  await item.update({
+    status: 'inactive',
+    deleted_by: userId,
+    deleted_at: new Date()
+  });
+
   return true;
 };
 

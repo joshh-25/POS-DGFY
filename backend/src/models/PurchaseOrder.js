@@ -60,7 +60,18 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
-
+  archived_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
+  },
+  archived_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  }
 }, {
   tableName: 'purchase_orders',
   timestamps: true,

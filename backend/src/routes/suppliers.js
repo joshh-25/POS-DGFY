@@ -25,5 +25,8 @@ router.post('/:supplier_id/items', authorize('admin', 'manager'), supplierContro
 // Finalize draft - managers and admins only
 router.patch('/:supplier_id/finalize', authorize('admin', 'manager'), supplierController.finalizeSupplier);
 
+// Delete supplier - admins only
+router.delete('/:supplier_id', authorize('admin'), supplierController.deleteSupplier);
+
 export default router;
 

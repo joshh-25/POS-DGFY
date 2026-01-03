@@ -80,3 +80,37 @@ export const receivePurchaseOrder = async (req, res, next) => {
   }
 };
 
+export const archivePurchaseOrder = async (req, res, next) => {
+  try {
+    const { po_id } = req.params;
+    const userId = req.user.user_id;
+
+    const po = await purchaseOrderService.archivePurchaseOrder(po_id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: po,
+      message: 'Purchase Order archived successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restorePurchaseOrder = async (req, res, next) => {
+  try {
+    const { po_id } = req.params;
+
+    const po = await purchaseOrderService.restorePurchaseOrder(po_id);
+
+    res.status(200).json({
+      success: true,
+      data: po,
+      message: 'Purchase Order restored successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -138,3 +138,23 @@ export const useFinalizeSupplier = () => {
   return { finalizeSupplier, loading, error };
 };
 
+export const useDeleteSupplier = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const deleteSupplier = useCallback(async (supplierId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await supplierService.deleteSupplier(supplierId);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to delete supplier');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { deleteSupplier, loading, error };
+};

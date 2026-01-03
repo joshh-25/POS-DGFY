@@ -40,6 +40,18 @@ const JobOrder = sequelize.define('JobOrder', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  archived_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
+  },
+  archived_at: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   tableName: 'job_orders',

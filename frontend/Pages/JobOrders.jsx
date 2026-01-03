@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +12,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "../src/lib/utils.js";
-import { useJobOrders, useCreateJobOrder, useCompleteJobOrder, useCreateJobOrderDraft, useFinalizeJobOrder } from '@/hooks/useJobOrders.js';
+import { useJobOrders, useCreateJobOrder, useCompleteJobOrder, useCreateJobOrderDraft, useFinalizeJobOrder, useArchiveJobOrder, useRestoreJobOrder } from '@/hooks/useJobOrders.js';
 import { useItems } from '@/hooks/useItems.js';
 import JOCreateModal from '@/components/jo/JOCreateModal';
 import JODetailsModal from '@/components/jo/JODetailsModal';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
+import { getCurrentUser } from '../src/services/authService.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Clock },
@@ -26,18 +28,37 @@ const statusConfig = {
 };
 
 export default function JobOrders() {
-  const { jobOrders, loading, error, refetch } = useJobOrders();
+  const [showArchivedTab, setShowArchivedTab] = useState(false);
+  const { jobOrders, loading, error, refetch } = useJobOrders({ archived: showArchivedTab ? 'true' : 'false' });
   const { items, loading: itemsLoading } = useItems();
   const { createJobOrder, loading: creating } = useCreateJobOrder();
   const { completeJobOrder, loading: completing } = useCompleteJobOrder();
   const { createJobOrderDraft } = useCreateJobOrderDraft();
   const { finalizeJobOrder } = useFinalizeJobOrder();
+  const { archiveJobOrder, loading: archiving } = useArchiveJobOrder();
+  const { restoreJobOrder, loading: restoring } = useRestoreJobOrder();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedJO, setSelectedJO] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [initialProductId, setInitialProductId] = useState(null);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [joToArchive, setJoToArchive] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Fetch current user for role-based access
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Check URL params for deep linking
   useEffect(() => {
@@ -193,6 +214,39 @@ export default function JobOrders() {
     }
   };
 
+  const handleArchiveClick = (jo) => {
+    setJoToArchive(jo);
+    setShowArchiveDialog(true);
+  };
+
+  const handleConfirmArchive = async () => {
+    if (!joToArchive) return;
+
+    try {
+      await archiveJobOrder(joToArchive.jo_id || joToArchive.id);
+      toast.success('Job Order archived successfully');
+      setShowArchiveDialog(false);
+      setJoToArchive(null);
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+      setShowArchiveDialog(false);
+      setJoToArchive(null);
+    }
+  };
+
+  const handleRestore = async (jo) => {
+    try {
+      await restoreJobOrder(jo.jo_id || jo.id);
+      toast.success('Job Order restored successfully');
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
+
+  const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+
   if (loading || itemsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -226,6 +280,25 @@ export default function JobOrders() {
         </Button>
       </div>
 
+      {/* Archive Toggle */}
+      <div className="flex gap-2">
+        <Button
+          variant={!showArchivedTab ? 'default' : 'outline'}
+          onClick={() => setShowArchivedTab(false)}
+          className={!showArchivedTab ? 'bg-teal-600 hover:bg-teal-700' : ''}
+        >
+          Active Job Orders
+        </Button>
+        <Button
+          variant={showArchivedTab ? 'default' : 'outline'}
+          onClick={() => setShowArchivedTab(true)}
+          className={showArchivedTab ? 'bg-slate-600 hover:bg-slate-700' : ''}
+        >
+          <Archive className="w-4 h-4 mr-2" />
+          Archived
+        </Button>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4">
         <div className="flex flex-col md:flex-row gap-4">
@@ -248,6 +321,7 @@ export default function JobOrders() {
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -311,7 +385,7 @@ export default function JobOrders() {
                         <Button variant="ghost" size="sm" onClick={() => handleView(jo)}>
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {jo.status === 'draft' && (
+                        {!showArchivedTab && jo.status === 'draft' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -322,7 +396,7 @@ export default function JobOrders() {
                             Start
                           </Button>
                         )}
-                        {jo.status === 'in_progress' && (
+                        {!showArchivedTab && jo.status === 'in_progress' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -334,6 +408,28 @@ export default function JobOrders() {
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
                             Complete
+                          </Button>
+                        )}
+                        {!showArchivedTab && canArchive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleArchiveClick(jo)}
+                            className="text-slate-600 border-slate-200 hover:bg-slate-50"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {showArchivedTab && canArchive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestore(jo)}
+                            disabled={restoring}
+                            className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                          >
+                            <ArchiveRestore className="w-4 h-4 mr-1" />
+                            Restore
                           </Button>
                         )}
                       </div>
@@ -367,6 +463,25 @@ export default function JobOrders() {
         open={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
         onComplete={handleCompleteProduction}
+      />
+
+      {/* Archive Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={showArchiveDialog}
+        onClose={() => {
+          setShowArchiveDialog(false);
+          setJoToArchive(null);
+        }}
+        onConfirm={handleConfirmArchive}
+        title="Archive Job Order"
+        description={
+          joToArchive
+            ? `Are you sure you want to archive Job Order ${joToArchive.jo_number || 'Draft #' + joToArchive.jo_id}? You can restore it later from the Archived tab.`
+            : ''
+        }
+        confirmText="Archive Job Order"
+        variant="destructive"
+        loading={archiving}
       />
     </div>
   );

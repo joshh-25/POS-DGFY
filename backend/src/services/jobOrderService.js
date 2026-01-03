@@ -9,9 +9,17 @@ import StockMovement from '../models/StockMovement.js';
 import BatchTransaction from '../models/BatchTransaction.js';
 
 export const getJobOrders = async (queryParams) => {
-  const { page = 1, limit = 20, status } = queryParams;
+  const { page = 1, limit = 20, status, archived = 'false' } = queryParams;
   const offset = (page - 1) * limit;
   const where = {};
+
+  // Filter archived JOs
+  if (archived === 'true') {
+    where.archived_at = { [Op.not]: null };
+  } else {
+    where.archived_at = null;
+  }
+
   if (status) where.status = status;
 
   const { count, rows } = await JobOrder.findAndCountAll({
@@ -270,7 +278,7 @@ export const completeJobOrder = async (joId, userId) => {
         if (remaining <= 0) break;
         const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
         const consume = Math.min(remaining, available);
-        
+
         await batch.update({
           quantity_consumed: parseFloat(batch.quantity_consumed) + consume
         });
@@ -378,3 +386,48 @@ export const completeJobOrder = async (joId, userId) => {
   };
 };
 
+export const archiveJobOrder = async (joId, userId) => {
+  const jo = await JobOrder.findByPk(joId);
+
+  if (!jo) {
+    const error = new Error('Job Order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (jo.archived_at) {
+    const error = new Error('Job Order is already archived');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await jo.update({
+    archived_at: new Date(),
+    archived_by: userId
+  });
+
+  return jo;
+};
+
+export const restoreJobOrder = async (joId) => {
+  const jo = await JobOrder.findByPk(joId);
+
+  if (!jo) {
+    const error = new Error('Job Order not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!jo.archived_at) {
+    const error = new Error('Job Order is not archived');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await jo.update({
+    archived_at: null,
+    archived_by: null
+  });
+
+  return jo;
+};

@@ -30,3 +30,7 @@ export const refreshToken = async () => {
   return token;
 };
 
+export const getCurrentUser = async () => {
+  const response = await api.get('/users/me');
+  return response.data.data;
+};

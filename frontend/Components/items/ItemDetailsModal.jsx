@@ -281,21 +281,6 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Recipe & Ingredients */}
-            {hasRecipeData(item) && (
-              <AccordionItem value="recipe">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <UtensilsCrossed className="w-5 h-5 text-blue-600" />
-                    <span className="font-semibold">Recipe & Ingredients</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <RecipeIngredientsSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
-
             {/* Yield Management */}
             {hasYieldManagement(item) && (
               <AccordionItem value="yield">
@@ -326,65 +311,44 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </AccordionItem>
             )}
 
-            {/* Allergen Information */}
-            {hasAllergens(item) && (
-              <AccordionItem value="allergens">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-600 text-lg">⚠</span>
-                    <span className="font-semibold">Allergen Information</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <AllergenSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
-
             {/* Physical Properties */}
-            {hasPhysicalProperties(item) && (
-              <AccordionItem value="properties">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <Droplet className="w-5 h-5 text-cyan-600" />
-                    <span className="font-semibold">Physical Properties</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <PhysicalPropertiesSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <AccordionItem value="properties">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <Droplet className="w-5 h-5 text-cyan-600" />
+                  <span className="font-semibold">Physical Properties</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <PhysicalPropertiesSection item={item} />
+              </AccordionContent>
+            </AccordionItem>
 
             {/* Shelf Life */}
-            {hasShelfLife(item) && (
-              <AccordionItem value="shelf-life">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-purple-600" />
-                    <span className="font-semibold">Shelf Life & Storage</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <ShelfLifeSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <AccordionItem value="shelf-life">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-purple-600" />
+                  <span className="font-semibold">Shelf Life & Storage</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <ShelfLifeSection item={item} />
+              </AccordionContent>
+            </AccordionItem>
 
             {/* Packaging Information */}
-            {hasPackagingInfo(item) && (
-              <AccordionItem value="packaging">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <BoxIcon className="w-5 h-5 text-amber-600" />
-                    <span className="font-semibold">Packaging & Labeling</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <PackagingInfoSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <AccordionItem value="packaging">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <BoxIcon className="w-5 h-5 text-amber-600" />
+                  <span className="font-semibold">Packaging & Labeling</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <PackagingInfoSection item={item} />
+              </AccordionContent>
+            </AccordionItem>
 
             {/* Cost & Financial */}
             <AccordionItem value="cost">
@@ -400,34 +364,30 @@ export default function ItemDetailsModal({ item, open, onClose }) {
             </AccordionItem>
 
             {/* Quality Control */}
-            {hasQualityControl(item) && (
-              <AccordionItem value="quality">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <ClipboardCheck className="w-5 h-5 text-indigo-600" />
-                    <span className="font-semibold">Quality Control</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <QualityControlSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <AccordionItem value="quality">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                  <span className="font-semibold">Quality Control</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <QualityControlSection item={item} />
+              </AccordionContent>
+            </AccordionItem>
 
             {/* Regulatory Compliance */}
-            {hasRegulatoryCompliance(item) && (
-              <AccordionItem value="compliance">
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-teal-600" />
-                    <span className="font-semibold">Regulatory Compliance</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <RegulatoryComplianceSection item={item} />
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <AccordionItem value="compliance">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-teal-600" />
+                  <span className="font-semibold">Regulatory Compliance</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <RegulatoryComplianceSection item={item} />
+              </AccordionContent>
+            </AccordionItem>
 
             {/* FIFO Batches */}
             {item.fifo_enabled && (

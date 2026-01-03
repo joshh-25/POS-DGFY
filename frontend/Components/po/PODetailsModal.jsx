@@ -117,15 +117,15 @@ export default function PODetailsModal({ po, open, onClose }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {po.items.map((item, idx) => (
+                  {(po.items || []).map((item, idx) => (
                     <tr key={idx}>
                       <td className="p-3 font-medium text-slate-900">{item.item_name}</td>
                       <td className="p-3 text-right text-slate-600">{item.quantity}</td>
                       <td className="p-3 text-right">
                         <span className={cn(
                           "font-medium",
-                          item.quantity_received === item.quantity ? "text-emerald-600" : 
-                          item.quantity_received > 0 ? "text-amber-600" : "text-slate-400"
+                          item.quantity_received === item.quantity ? "text-emerald-600" :
+                            item.quantity_received > 0 ? "text-amber-600" : "text-slate-400"
                         )}>
                           {item.quantity_received}
                         </span>
@@ -165,8 +165,8 @@ export default function PODetailsModal({ po, open, onClose }) {
                   <span className="text-sm text-slate-500">Delivery Rating:</span>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map(star => (
-                      <Star 
-                        key={star} 
+                      <Star
+                        key={star}
                         className={cn(
                           "w-4 h-4",
                           star <= po.delivery_rating ? "text-amber-500" : "text-slate-200"

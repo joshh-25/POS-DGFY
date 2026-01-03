@@ -151,8 +151,8 @@ describe('Purchase Order API', () => {
                 .expect(201);
 
             expect(response.body.success).toBe(true);
-            expect(response.body.data.status).toBe('draft');
-            expect(response.body.data.po_number).toMatch(/^DRAFT-/);
+            expect(response.body.data.status).toBe('pending');
+            expect(response.body.data.po_number).toMatch(/^PO-/);
         });
 
         it('should fail validation when required fields are missing for non-draft', async () => {

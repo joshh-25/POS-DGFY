@@ -15,6 +15,8 @@ export default function CostFinancialStep({ data, updateData, items }) {
 
   const ingredientItems = items?.filter(item => item.category === 'ingredient') || [];
   const packagingItemsList = items?.filter(item => item.category === 'packaging') || [];
+  const batchSize = Number(data.batch_size) || 1;
+
   // Calculate ingredient cost from selected ingredients
   const ingredientCost = useMemo(() => {
     const ingredients = data.ingredients || [];
@@ -22,9 +24,9 @@ export default function CostFinancialStep({ data, updateData, items }) {
       const item = ingredientItems.find(i => i.item_id === Number(ing.item_id));
       const cost = Number(item?.cost_per_unit || 0);
       const qty = Number(ing.quantity || 0);
-      return sum + (cost * qty);
+      return sum + (cost * qty * batchSize);
     }, 0);
-  }, [data.ingredients, ingredientItems]);
+  }, [data.ingredients, ingredientItems, batchSize]);
 
   // Calculate packaging cost from selected packaging items
   const packagingCost = useMemo(() => {
@@ -33,9 +35,9 @@ export default function CostFinancialStep({ data, updateData, items }) {
       const item = packagingItemsList.find(i => i.item_id === Number(pkg.item_id));
       const cost = Number(item?.cost_per_unit || 0);
       const qty = Number(pkg.quantity || 0);
-      return sum + (cost * qty);
+      return sum + (cost * qty * batchSize);
     }, 0);
-  }, [data.packaging_items, packagingItemsList]);
+  }, [data.packaging_items, packagingItemsList, batchSize]);
 
   // Total COGS Calculation
   const calculation = useMemo(() => {
@@ -76,7 +78,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
     };
   }, [ingredientCost, packagingCost, laborCost, overheadCost, additionalPackagingCost, data.batch_size, data.yield_percentage, data.processing_loss, desiredMargin]);
 
-  const { totalCOGS, costPerUnit, suggestedPrice, batchSize, packaging: totalPackagingCost } = calculation;
+  const { totalCOGS, costPerUnit, suggestedPrice, batchSize: cBatchSize, packaging: totalPackagingCost } = calculation;
 
   React.useEffect(() => {
     // Sync calculations back to parent data
@@ -180,18 +182,22 @@ export default function CostFinancialStep({ data, updateData, items }) {
           <div>
             <p className="text-xs text-slate-400">Raw Materials</p>
             <p className="text-lg font-bold">₱{formatNumber(ingredientCost, 2)}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(ingredientCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Packaging</p>
             <p className="text-lg font-bold">₱{formatNumber(totalPackagingCost, 2)}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(totalPackagingCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Labor</p>
             <p className="text-lg font-bold">₱{formatNumber(laborCost, 2)}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(laborCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Overhead</p>
             <p className="text-lg font-bold">₱{formatNumber(overheadCost, 2)}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(overheadCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
           </div>
           <div className="bg-white/10 rounded-lg p-2 -m-2">
             <p className="text-xs text-slate-300">Total COGS</p>

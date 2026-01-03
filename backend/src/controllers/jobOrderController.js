@@ -76,3 +76,37 @@ export const completeJobOrder = async (req, res, next) => {
   }
 };
 
+export const archiveJobOrder = async (req, res, next) => {
+  try {
+    const { jo_id } = req.params;
+    const userId = req.user.user_id;
+
+    const jo = await jobOrderService.archiveJobOrder(jo_id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: jo,
+      message: 'Job Order archived successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreJobOrder = async (req, res, next) => {
+  try {
+    const { jo_id } = req.params;
+
+    const jo = await jobOrderService.restoreJobOrder(jo_id);
+
+    res.status(200).json({
+      success: true,
+      data: jo,
+      message: 'Job Order restored successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};

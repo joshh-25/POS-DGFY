@@ -111,6 +111,18 @@ const Item = sequelize.define('Item', {
       }
       return rawValue;
     }
+  },
+  deleted_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
+  },
+  deleted_at: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 
 }, {

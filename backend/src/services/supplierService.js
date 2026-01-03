@@ -3,6 +3,7 @@ import Supplier from '../models/Supplier.js';
 import SupplierItem from '../models/SupplierItem.js';
 import BulkDiscount from '../models/BulkDiscount.js';
 import Item from '../models/Item.js';
+import PurchaseOrder from '../models/PurchaseOrder.js';
 
 export const getSuppliers = async (queryParams) => {
   const {
@@ -282,3 +283,35 @@ export const addSupplierItem = async (supplierId, itemData) => {
   return supplierItem;
 };
 
+export const deleteSupplier = async (supplierId, userId) => {
+  const supplier = await Supplier.findByPk(supplierId);
+  if (!supplier) {
+    const error = new Error('Supplier not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Check for active purchase orders
+  const activePOs = await PurchaseOrder.count({
+    where: {
+      supplier_id: supplierId,
+      status: { [Op.in]: ['draft', 'pending', 'partial'] }
+    }
+  });
+
+  if (activePOs > 0) {
+    const error = new Error(`Cannot delete supplier "${supplier.name}"`);
+    error.statusCode = 400;
+    error.details = [`Supplier has ${activePOs} active purchase order(s) that must be completed or cancelled first`];
+    throw error;
+  }
+
+  // Soft delete with audit trail
+  await supplier.update({
+    status: 'inactive',
+    deleted_by: userId,
+    deleted_at: new Date()
+  });
+
+  return true;
+};

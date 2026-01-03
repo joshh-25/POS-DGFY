@@ -54,6 +54,18 @@ const Supplier = sequelize.define('Supplier', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  deleted_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
+  },
+  deleted_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  }
 
 }, {
   tableName: 'suppliers',
