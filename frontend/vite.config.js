@@ -23,6 +23,11 @@ export default defineConfig({
   },
   server: {
     allowedHosts: ['skupervisor.surebizcorp.com'],
+    hmr: {
+      host: 'skupervisor.surebizcorp.com',
+      clientPort: 443,
+      protocol: 'wss',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
