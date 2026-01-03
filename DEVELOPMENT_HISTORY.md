@@ -549,6 +549,12 @@
   - **Fix**: Updated `handleSave` in `Suppliers.jsx` and `handleProductSubmit` in `Items.jsx` to parse `error.response.data.errors` and display the specific validation messages in the toast notification.
   - **Impact**: greatly improved user experience by telling them exactly what data is missing or invalid.
 
+### Infrastructure Updates (2026-01-03)
+- [x] Configure Cross-Platform PM2 Ecosystem
+  - Updated `ecosystem.config.cjs` to support both Windows (`cmd.exe`) and Linux (`npm`) execution.
+  - Added `env_production` block to support running on Linux hosting environments.
+  - Uses `os.platform()` to dynamically determine the correct script and arguments.
+
 ---
 
 ## Tech Stack Summary
