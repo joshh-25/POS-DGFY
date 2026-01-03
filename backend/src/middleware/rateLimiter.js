@@ -24,6 +24,8 @@ export const generalLimiter = rateLimit({
   message: createRateLimitError('Too many requests from this IP, please try again later.'),
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  // Disable validation warnings when running behind reverse proxy
+  validate: { trustProxy: false, xForwardedForHeader: false },
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,
@@ -50,6 +52,8 @@ export const authLimiter = rateLimit({
   message: createRateLimitError('Too many authentication attempts, please try again later.'),
   standardHeaders: true,
   legacyHeaders: false,
+  // Disable validation warnings when running behind reverse proxy
+  validate: { trustProxy: false, xForwardedForHeader: false },
   handler: (req, res) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,
