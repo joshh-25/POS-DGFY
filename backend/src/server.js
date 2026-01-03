@@ -1,8 +1,19 @@
+// Load environment variables FIRST - before any other imports
+// This ensures JWT_SECRET and other env vars are available when authService.js loads
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env from the backend directory (parent of src)
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { testConnection } from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
@@ -10,9 +21,6 @@ import logger from './config/logger.js';
 import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import './models/index.js'; // Initialize model associations
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
