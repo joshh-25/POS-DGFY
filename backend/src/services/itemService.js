@@ -43,6 +43,9 @@ export const getItems = async (queryParams) => {
   // Filter by status (draft/active/inactive)
   if (status) {
     where.status = status;
+  } else {
+    // By default, exclude inactive (deleted) items
+    where.status = { [Op.ne]: 'inactive' };
   }
 
   // Search filter
@@ -539,14 +542,14 @@ export const deleteItem = async (itemId, userId) => {
     where: { ingredient_id: itemId },
     include: [{
       model: Item,
-      as: 'Product',
+      as: 'product',
       attributes: ['name', 'sku_code']
     }]
   });
 
   if (productCompositions.length > 0) {
     const productNames = productCompositions.map(pc =>
-      `${pc.Product.name} (${pc.Product.sku_code})`
+      `${pc.product.name} (${pc.product.sku_code})`
     ).join(', ');
     errors.push(`Used as ingredient in ${productCompositions.length} product(s): ${productNames}`);
   }
@@ -556,29 +559,31 @@ export const deleteItem = async (itemId, userId) => {
     where: { item_id: itemId },
     include: [{
       model: PurchaseOrder,
+      as: 'purchaseOrder',
       attributes: ['po_number', 'status']
     }]
   });
 
   if (poLineItems.length > 0) {
     const poNumbers = poLineItems.map(po =>
-      `${po.PurchaseOrder.po_number} (${po.PurchaseOrder.status})`
+      `${po.purchaseOrder.po_number} (${po.purchaseOrder.status})`
     ).join(', ');
     errors.push(`Referenced in ${poLineItems.length} purchase order(s): ${poNumbers}`);
   }
 
   // Check 3: Item in ANY Job Orders
   const joIngredients = await JOIngredient.findAll({
-    where: { ingredient_id: itemId },
+    where: { item_id: itemId },
     include: [{
       model: JobOrder,
+      as: 'jobOrder',
       attributes: ['jo_number', 'status']
     }]
   });
 
   if (joIngredients.length > 0) {
     const joNumbers = joIngredients.map(jo =>
-      `${jo.JobOrder.jo_number} (${jo.JobOrder.status})`
+      `${jo.jobOrder.jo_number} (${jo.jobOrder.status})`
     ).join(', ');
     errors.push(`Referenced in ${joIngredients.length} job order(s): ${joNumbers}`);
   }

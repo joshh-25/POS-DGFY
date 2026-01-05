@@ -291,18 +291,17 @@ export const deleteSupplier = async (supplierId, userId) => {
     throw error;
   }
 
-  // Check for active purchase orders
-  const activePOs = await PurchaseOrder.count({
+  // Check for ANY purchase orders (including completed/received)
+  const anyPOs = await PurchaseOrder.count({
     where: {
-      supplier_id: supplierId,
-      status: { [Op.in]: ['draft', 'pending', 'partial'] }
+      supplier_id: supplierId
     }
   });
 
-  if (activePOs > 0) {
+  if (anyPOs > 0) {
     const error = new Error(`Cannot delete supplier "${supplier.name}"`);
     error.statusCode = 400;
-    error.details = [`Supplier has ${activePOs} active purchase order(s) that must be completed or cancelled first`];
+    error.details = [`Supplier has ${anyPOs} purchase order(s) in the system. Suppliers with purchase history cannot be deleted to maintain data integrity.`];
     throw error;
   }
 

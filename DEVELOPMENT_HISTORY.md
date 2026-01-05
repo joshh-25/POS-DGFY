@@ -856,7 +856,67 @@ Enable products to be used as ingredients for other products with full batch lin
 
 ---
 
+## Phase 17.1: Nested Products - Validation Bugfix & Deployment
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-05
+
+### Issue
+When creating nested products, the frontend was sending additional metadata fields (`is_product`, `nesting_level`) in the ingredients array that were not defined in the backend Joi validation schema. This caused a `422 Unprocessable Entity` error.
+
+### Root Cause
+The `itemValidator.js` validation schema for `createItemSchema` and `createItemDraftSchema` was configured with strict validation that rejected unknown fields by default.
+
+### Fix Applied
+- **File**: `backend/src/validators/itemValidator.js`
+- **Change**: Added `stripUnknown: true` option to validation in two functions:
+  - `validateCreateItem` - Line ~332
+  - `validateCreateItemDraft` - Line ~378
+
+**Before:**
+```javascript
+const { error, value } = createItemSchema.validate(req.body, { abortEarly: false });
+```
+
+**After:**
+```javascript
+const { error, value } = createItemSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+```
+
+This allows the backend to safely ignore extra metadata sent by the frontend while still validating required fields.
+
+### Deployment Notes
+
+#### Production Deployment Steps
+1. **Pull Code**: `git pull origin master`
+2. **Backend Dependencies**: `cd backend && npm install`
+3. **Run Migrations**: `npx sequelize-cli db:migrate`  
+   *Note: If old migrations conflict, isolate new ones temporarily*
+4. **Calculate Nesting Levels**: `node src/scripts/calculateNestingLevels.js`
+5. **Frontend Build**: `cd ../frontend && npm install && npm run build`
+6. **Restart Services**: `pm2 restart all`
+
+#### Common Deployment Issues
+
+**Migration Conflicts**
+- **Problem**: Old migrations fail with "Duplicate key" errors
+- **Solution**: Temporarily move old migration files aside:
+  ```bash
+  cd backend
+  mkdir -p src/migrations_temp
+  mv src/migrations/* src/migrations_temp/
+  mv src/migrations_temp/20250105* src/migrations/
+  npx sequelize-cli db:migrate
+  mv src/migrations_temp/* src/migrations/
+  rmdir src/migrations_temp
+  ```
+
+**502 Bad Gateway After Deployment**
+- **Problem**: Backend crashes with syntax errors
+- **Solution**: Check PM2 logs (`pm2 logs sku-backend --lines 50`) and verify file integrity. If manual edits were corrupted, restore from Git: `git checkout backend/src/validators/itemValidator.js`
+
+---
+
 **Last Updated**: 2026-01-05  
-**Version**: 1.1.0  
+**Version**: 1.1.1  
 **Project Status**: Production Ready
 
