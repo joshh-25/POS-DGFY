@@ -15,6 +15,9 @@ router.get('/:item_id/stock-history', itemController.getItemStockHistory);
 router.get('/:item_id/batches', itemController.getItemBatches);
 router.get('/:item_id/movements', itemController.getItemMovements);
 
+// Composition validation - for nested products feature
+router.post('/validate-composition', authorize('admin', 'manager'), itemController.validateComposition);
+
 // Create/Update operations - managers and admins only
 router.post('/', authorize('admin', 'manager'), (req, res, next) => {
   // Use draft validator if save_as_draft query param is true

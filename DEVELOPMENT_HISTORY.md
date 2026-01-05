@@ -809,9 +809,54 @@ export const authLimiter = rateLimit({
 - **[phase3n4.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/phase3n4.md)** - Delete/archive implementation guide
 - **[SETUP.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/SETUP.md)** - Complete setup instructions
 - **[spec-kit/](file:///c:/xampp/htdocs/SKU-Inventory-Manager/spec-kit/)** - Full technical specifications
+- **[docs/NESTED_PRODUCTS.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/docs/NESTED_PRODUCTS.md)** - Nested products feature documentation
 
 ---
 
-**Last Updated**: 2026-01-03  
-**Version**: 1.0.0  
+## Phase 17: Nested Products Feature
+**Status**: ✅ COMPLETE
+
+### Overview
+Enable products to be used as ingredients for other products with full batch lineage tracking, circular dependency prevention, and 3-level depth limiting.
+
+### Database Schema
+- [x] Create batch_lineage table for tracking parent-child batch relationships
+- [x] Add nesting metadata to items table (nesting_level, max_child_depth, is_leaf_node)
+- [x] Add is_subproduct column to product_composition table
+- [x] Add appropriate indexes for performance
+
+### Backend Services
+- [x] Create compositionValidationService.js
+  - [x] Circular dependency detection using DFS algorithm
+  - [x] Nesting level calculation
+  - [x] Depth limit enforcement (max 3 levels)
+  - [x] Redis caching for dependency graph
+- [x] Create batchLineageService.js
+  - [x] Batch ancestry queries
+  - [x] Batch descendants queries
+  - [x] Full lineage tree traversal
+- [x] Update itemService.js with composition validation
+- [x] Add POST /api/v1/items/validate-composition endpoint
+
+### Frontend Components
+- [x] Rewrite RecipeFormulationStep.jsx
+  - [x] Split into Raw Ingredients and Product Components tabs
+  - [x] Add search bars for each tab
+  - [x] Visual distinction with icons (Beaker for raw, Package for products)
+  - [x] Nesting level badges
+  - [x] Info box explaining nesting rules
+- [x] Create compositionValidation.js utility
+- [x] Update ProductCreateWizard.jsx with async validation
+
+### Migration Scripts
+- [x] Create calculateNestingLevels.js script for existing products
+
+### Documentation
+- [x] Create docs/NESTED_PRODUCTS.md
+
+---
+
+**Last Updated**: 2026-01-05  
+**Version**: 1.1.0  
 **Project Status**: Production Ready
+

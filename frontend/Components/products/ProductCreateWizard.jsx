@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 
 // Import step components
 import BasicInfoStep from './wizard/BasicInfoStep';
@@ -230,7 +231,7 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
     onClose();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Common cleanup function to ensure data validity before submission
     const getSanitizedData = (data) => {
       const sanitized = { ...data };
@@ -267,6 +268,19 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
 
       return sanitized;
     };
+
+    // Validate composition for nested products (circular dependencies and depth limits)
+    if (productData.ingredients && productData.ingredients.length > 0) {
+      const validation = await validateComposition(
+        product?.item_id || null,
+        productData.ingredients
+      );
+
+      if (!validation.valid) {
+        showValidationErrors(validation.errors);
+        return; // Don't submit
+      }
+    }
 
     if (product) {
       // Updating existing product

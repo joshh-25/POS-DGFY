@@ -329,7 +329,7 @@ export const updateItemSchema = Joi.object({
 }).unknown(true); // Allow unknown properties (e.g., from getItemById associations)
 
 export const validateCreateItem = (req, res, next) => {
-  const { error, value } = createItemSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = createItemSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
 
   if (error) {
     const errors = error.details.map(detail => ({
@@ -376,7 +376,7 @@ export const validateUpdateItem = (req, res, next) => {
 };
 
 export const validateCreateItemDraft = (req, res, next) => {
-  const { error, value } = createItemDraftSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = createItemDraftSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
 
   if (error) {
     const errors = error.details.map(detail => ({

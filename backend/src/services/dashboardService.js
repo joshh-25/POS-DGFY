@@ -24,16 +24,17 @@ export const getDashboardStats = async () => {
   const activeJOs = await JobOrder.count({ where: { status: 'in_progress' } });
 
   // Calculate total inventory value
-  const items = await Item.findAll({
+  // Calculate total inventory value
+  // Optimized to use Database Aggregation to avoid fetching all items
+  const inventoryValueResult = await Item.findAll({
     where: { status: 'active' },
-    attributes: ['current_stock', 'cost_per_unit']
+    attributes: [
+      [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
+    ],
+    raw: true
   });
 
-  const totalValue = items.reduce((sum, item) => {
-    const stock = parseFloat(item.current_stock) || 0;
-    const cost = parseFloat(item.cost_per_unit) || 0;
-    return sum + (stock * cost);
-  }, 0);
+  const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
 
   return {
     total_items: totalItems,

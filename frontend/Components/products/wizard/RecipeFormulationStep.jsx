@@ -1,32 +1,63 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Beaker, Package, Info, Search } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
 import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function RecipeFormulationStep({ data, updateData, items }) {
   const ingredients = data.ingredients || [];
   const batchSize = data.batch_size || 1;
+  const [rawIngredientSearch, setRawIngredientSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
 
-  const ingredientItems = useMemo(() => {
+  // Separate raw ingredients from product components
+  const rawIngredientItems = useMemo(() => {
     return items?.filter(item => item.category === 'ingredient') || [];
   }, [items]);
 
+  const productComponentItems = useMemo(() => {
+    return items?.filter(item => item.category === 'product' && item.status === 'active') || [];
+  }, [items]);
+
+  // Filtered lists based on search
+  const filteredRawIngredients = useMemo(() => {
+    if (!rawIngredientSearch) return rawIngredientItems;
+    const search = rawIngredientSearch.toLowerCase();
+    return rawIngredientItems.filter(item =>
+      item.name?.toLowerCase().includes(search) ||
+      item.sku_code?.toLowerCase().includes(search)
+    );
+  }, [rawIngredientItems, rawIngredientSearch]);
+
+  const filteredProductComponents = useMemo(() => {
+    if (!productSearch) return productComponentItems;
+    const search = productSearch.toLowerCase();
+    return productComponentItems.filter(item =>
+      item.name?.toLowerCase().includes(search) ||
+      item.sku_code?.toLowerCase().includes(search)
+    );
+  }, [productComponentItems, productSearch]);
+
+  // Combined list for Select dropdowns
+  const allIngredientItems = useMemo(() => {
+    return [...rawIngredientItems, ...productComponentItems];
+  }, [rawIngredientItems, productComponentItems]);
+
   // Auto-fix ingredients that have item_id but missing item_name (data corruption fix)
   React.useEffect(() => {
-    if (ingredients.length > 0 && ingredientItems.length > 0) {
+    if (ingredients.length > 0 && allIngredientItems.length > 0) {
       let needsUpdate = false;
       const fixed = ingredients.map(ing => {
         if (ing.item_id && !ing.item_name) {
-          const item = ingredientItems.find(i => i.item_id === ing.item_id);
+          const item = allIngredientItems.find(i => i.item_id === ing.item_id);
           if (item) {
             needsUpdate = true;
-            return { ...ing, item_name: item.name };
+            return { ...ing, item_name: item.name, is_product: item.category === 'product' };
           }
         }
         return ing;
@@ -36,11 +67,25 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
         updateData({ ingredients: fixed });
       }
     }
-  }, [ingredients, ingredientItems]);
+  }, [ingredients, allIngredientItems]);
 
-  const addIngredient = () => {
+  const addIngredientById = (itemId) => {
+    const item = allIngredientItems.find(i => i.item_id === parseInt(itemId));
+    if (!item) return;
+
+    // Check if already added
+    if (ingredients.some(ing => ing.item_id === item.item_id)) {
+      return; // Already exists
+    }
+
     updateData({
-      ingredients: [...ingredients, { item_id: '', item_name: '', quantity: 0 }]
+      ingredients: [...ingredients, {
+        item_id: item.item_id,
+        item_name: item.name,
+        quantity: 0,
+        is_product: item.category === 'product',
+        nesting_level: item.nesting_level || 0
+      }]
     });
   };
 
@@ -54,11 +99,13 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
     const updated = [...ingredients];
     if (field === 'item_id') {
       const itemId = parseInt(value);
-      const selectedItem = ingredientItems.find(item => item.item_id === itemId);
+      const selectedItem = allIngredientItems.find(item => item.item_id === itemId);
       updated[index] = {
         ...updated[index],
         item_id: itemId,
-        item_name: selectedItem?.name || ''
+        item_name: selectedItem?.name || '',
+        is_product: selectedItem?.category === 'product',
+        nesting_level: selectedItem?.nesting_level || 0
       };
     } else {
       updated[index] = { ...updated[index], [field]: value };
@@ -68,56 +115,96 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
 
   const totalIngredientCost = useMemo(() => {
     return ingredients.reduce((sum, ing) => {
-      const item = ingredientItems.find(i => i.item_id === ing.item_id);
+      const item = allIngredientItems.find(i => i.item_id === ing.item_id);
       return sum + ((item?.cost_per_unit || 0) * ing.quantity * batchSize);
     }, 0);
-  }, [ingredients, ingredientItems, batchSize]);
+  }, [ingredients, allIngredientItems, batchSize]);
 
   const canProduceUnits = useMemo(() => {
     if (ingredients.length === 0) return 0;
     return Math.min(
       ...ingredients.map(ing => {
-        const item = ingredientItems.find(i => i.item_id === ing.item_id);
+        const item = allIngredientItems.find(i => i.item_id === ing.item_id);
         if (!item || ing.quantity === 0) return 0;
         return Math.floor(item.current_stock / (ing.quantity * batchSize));
       })
     );
-  }, [ingredients, ingredientItems, batchSize]);
+  }, [ingredients, allIngredientItems, batchSize]);
 
   // Per-Batch Cost (for ONE batch unit)
   const perBatchCosts = useMemo(() => {
     return ingredients.map(ing => {
-      const item = ingredientItems.find(i => i.item_id === ing.item_id);
+      const item = allIngredientItems.find(i => i.item_id === ing.item_id);
       return {
         item_name: ing.item_name,
         quantity: ing.quantity,
         unit: item?.unit_of_measure || 'units',
         cost_per_unit: item?.cost_per_unit || 0,
-        total_cost: (item?.cost_per_unit || 0) * ing.quantity
+        total_cost: (item?.cost_per_unit || 0) * ing.quantity,
+        is_product: ing.is_product
       };
     });
-  }, [ingredients, ingredientItems]);
+  }, [ingredients, allIngredientItems]);
 
   // Per-Ingredient Cost (total for all batches)
   const perIngredientCosts = useMemo(() => {
     return ingredients.map(ing => {
-      const item = ingredientItems.find(i => i.item_id === ing.item_id);
+      const item = allIngredientItems.find(i => i.item_id === ing.item_id);
       return {
         item_name: ing.item_name,
         quantity_per_batch: ing.quantity,
         total_quantity: ing.quantity * batchSize,
         unit: item?.unit_of_measure || 'units',
         cost_per_unit: item?.cost_per_unit || 0,
-        total_cost: (item?.cost_per_unit || 0) * ing.quantity * batchSize
+        total_cost: (item?.cost_per_unit || 0) * ing.quantity * batchSize,
+        is_product: ing.is_product
       };
     });
-  }, [ingredients, ingredientItems, batchSize]);
+  }, [ingredients, allIngredientItems, batchSize]);
+
+  // Render ingredient item for selection
+  const renderIngredientItem = (item, type) => (
+    <div
+      key={item.item_id}
+      className={cn(
+        "flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-slate-50 transition-colors",
+        ingredients.some(ing => ing.item_id === item.item_id) && "bg-slate-100 border-slate-300"
+      )}
+      onClick={() => addIngredientById(item.item_id)}
+    >
+      <div className="flex items-center gap-3">
+        {type === 'raw' ? (
+          <Beaker className="w-5 h-5 text-emerald-600" />
+        ) : (
+          <Package className="w-5 h-5 text-blue-600" />
+        )}
+        <div>
+          <p className="font-medium text-slate-900">{item.name}</p>
+          <p className="text-sm text-slate-500">{item.sku_code} • {item.current_stock} {item.unit_of_measure}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {type === 'product' && item.nesting_level !== undefined && (
+          <Badge variant="outline" className="bg-blue-50 text-blue-700">
+            Level {item.nesting_level}
+          </Badge>
+        )}
+        {ingredients.some(ing => ing.item_id === item.item_id) ? (
+          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">Added</Badge>
+        ) : (
+          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); addIngredientById(item.item_id); }}>
+            <Plus className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
         <h3 className="font-semibold text-teal-900 mb-1">Recipe Formulation & Ingredient Ratios</h3>
-        <p className="text-sm text-teal-700">Define the ingredients and their quantities per batch.</p>
+        <p className="text-sm text-teal-700">Define the ingredients and their quantities per batch. You can use both raw ingredients and other products as components.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -130,7 +217,6 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
             value={batchSize}
             onChange={(e) => {
               const value = e.target.value;
-              // Allow empty string while typing
               if (value === '') {
                 updateData({ batch_size: '' });
               } else {
@@ -141,7 +227,6 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
               }
             }}
             onBlur={() => {
-              // Ensure we have at least 1 when user leaves the field
               if (!batchSize || batchSize < 1) {
                 updateData({ batch_size: 1 });
               }
@@ -156,22 +241,79 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
         </div>
       </div>
 
+      {/* Ingredient Selection Tabs */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label>Ingredients *</Label>
-          <Button variant="outline" size="sm" onClick={addIngredient}>
-            <Plus className="w-4 h-4 mr-2" /> Add Ingredient
-          </Button>
-        </div>
+        <Label>Select Ingredients *</Label>
+        <Tabs defaultValue="raw-ingredients" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="raw-ingredients" className="flex items-center gap-2">
+              <Beaker className="w-4 h-4" />
+              Raw Ingredients ({rawIngredientItems.length})
+            </TabsTrigger>
+            <TabsTrigger value="product-components" className="flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Product Components ({productComponentItems.length})
+            </TabsTrigger>
+          </TabsList>
 
-        {ingredients.length === 0 ? (
-          <div className="text-center p-8 border-2 border-dashed border-slate-200 rounded-xl">
-            <p className="text-slate-500">No ingredients added yet. Click "Add Ingredient" to start.</p>
+          <TabsContent value="raw-ingredients" className="space-y-3 mt-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                type="search"
+                placeholder="Search raw ingredients..."
+                className="pl-10"
+                value={rawIngredientSearch}
+                onChange={(e) => setRawIngredientSearch(e.target.value)}
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {filteredRawIngredients.length === 0 ? (
+                <p className="text-center text-slate-500 py-4">No raw ingredients found</p>
+              ) : (
+                filteredRawIngredients.map(item => renderIngredientItem(item, 'raw'))
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="product-components" className="space-y-3 mt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium">Nested Products</p>
+                <p>You can use other products as ingredients. Maximum nesting depth is 3 levels. Circular dependencies are automatically prevented.</p>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                type="search"
+                placeholder="Search product components..."
+                className="pl-10"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {filteredProductComponents.length === 0 ? (
+                <p className="text-center text-slate-500 py-4">No product components found</p>
+              ) : (
+                filteredProductComponents.map(item => renderIngredientItem(item, 'product'))
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Selected Ingredients List */}
+      {ingredients.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label>Selected Ingredients ({ingredients.length})</Label>
           </div>
-        ) : (
           <div className="space-y-3">
             {ingredients.map((ing, index) => {
-              const item = ingredientItems.find(i => i.item_id === ing.item_id);
+              const item = allIngredientItems.find(i => i.item_id === ing.item_id);
               const totalNeeded = ing.quantity * batchSize;
               const hasEnough = item && item.current_stock >= totalNeeded;
 
@@ -179,7 +321,21 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                 <div key={index} className="border border-slate-200 rounded-lg p-4 space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-2">
-                      <Label className="text-xs">Ingredient</Label>
+                      <div className="flex items-center gap-2">
+                        {ing.is_product ? (
+                          <Package className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <Beaker className="w-4 h-4 text-emerald-600" />
+                        )}
+                        <Label className="text-xs">
+                          {ing.is_product ? 'Product Component' : 'Raw Ingredient'}
+                        </Label>
+                        {ing.is_product && ing.nesting_level !== undefined && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 text-xs">
+                            Level {ing.nesting_level}
+                          </Badge>
+                        )}
+                      </div>
                       <Select
                         value={ing.item_id ? String(ing.item_id) : ''}
                         onValueChange={(val) => updateIngredient(index, 'item_id', val)}
@@ -194,9 +350,16 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {ingredientItems.map(item => (
+                          {allIngredientItems.map(item => (
                             <SelectItem key={item.item_id} value={String(item.item_id)}>
-                              {item.name} ({item.current_stock} {item.unit_of_measure} available)
+                              <div className="flex items-center gap-2">
+                                {item.category === 'product' ? (
+                                  <Package className="w-3 h-3 text-blue-600" />
+                                ) : (
+                                  <Beaker className="w-3 h-3 text-emerald-600" />
+                                )}
+                                {item.name} ({item.current_stock} {item.unit_of_measure})
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -240,8 +403,8 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Enhanced Cost Breakdown */}
       {ingredients.length > 0 && (
@@ -260,11 +423,18 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                 </h4>
                 {perBatchCosts.map((cost, idx) => (
                   <div key={idx} className="flex justify-between items-center py-2 border-b border-blue-100 last:border-0">
-                    <div>
-                      <p className="font-medium text-slate-900">{cost.item_name}</p>
-                      <p className="text-sm text-slate-600">
-                        {formatNumber(cost.quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      {cost.is_product ? (
+                        <Package className="w-4 h-4 text-blue-600" />
+                      ) : (
+                        <Beaker className="w-4 h-4 text-emerald-600" />
+                      )}
+                      <div>
+                        <p className="font-medium text-slate-900">{cost.item_name}</p>
+                        <p className="text-sm text-slate-600">
+                          {formatNumber(cost.quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
+                        </p>
+                      </div>
                     </div>
                     <p className="font-semibold text-slate-900">₱{formatNumber(cost.total_cost, 2)}</p>
                   </div>
@@ -288,14 +458,21 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                 </h4>
                 {perIngredientCosts.map((cost, idx) => (
                   <div key={idx} className="flex justify-between items-start py-2 border-b border-emerald-100 last:border-0">
-                    <div>
-                      <p className="font-medium text-slate-900">{cost.item_name}</p>
-                      <p className="text-sm text-slate-600">
-                        {formatNumber(cost.quantity_per_batch, 2)} {cost.unit}/batch × {batchSize} batches = {formatNumber(cost.total_quantity, 2)} {cost.unit}
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        {formatNumber(cost.total_quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
-                      </p>
+                    <div className="flex items-start gap-2">
+                      {cost.is_product ? (
+                        <Package className="w-4 h-4 text-blue-600 mt-1" />
+                      ) : (
+                        <Beaker className="w-4 h-4 text-emerald-600 mt-1" />
+                      )}
+                      <div>
+                        <p className="font-medium text-slate-900">{cost.item_name}</p>
+                        <p className="text-sm text-slate-600">
+                          {formatNumber(cost.quantity_per_batch, 2)} {cost.unit}/batch × {batchSize} batches = {formatNumber(cost.total_quantity, 2)} {cost.unit}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {formatNumber(cost.total_quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
+                        </p>
+                      </div>
                     </div>
                     <p className="font-semibold text-slate-900">₱{formatNumber(cost.total_cost, 2)}</p>
                   </div>

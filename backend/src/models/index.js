@@ -22,6 +22,7 @@ import JOIngredient from './JOIngredient.js';
 import BatchTransaction from './BatchTransaction.js';
 import AuditLog from './AuditLog.js';
 import SystemSetting from './SystemSetting.js';
+import BatchLineage from './BatchLineage.js';
 
 // Define associations
 // User associations
@@ -83,6 +84,12 @@ FIFOBatch.hasMany(BatchTransaction, { foreignKey: 'batch_id', as: 'batchTransact
 // BatchTransaction associations
 BatchTransaction.belongsTo(StockMovement, { foreignKey: 'movement_id', as: 'movement' });
 BatchTransaction.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
+
+// BatchLineage associations (for nested products)
+BatchLineage.belongsTo(FIFOBatch, { foreignKey: 'parent_batch_id', as: 'parentBatch' });
+BatchLineage.belongsTo(FIFOBatch, { foreignKey: 'child_batch_id', as: 'childBatch' });
+FIFOBatch.hasMany(BatchLineage, { foreignKey: 'parent_batch_id', as: 'asParent' });
+FIFOBatch.hasMany(BatchLineage, { foreignKey: 'child_batch_id', as: 'asChild' });
 
 // SupplierItem associations
 SupplierItem.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
@@ -147,7 +154,8 @@ const db = {
   JOIngredient,
   BatchTransaction,
   AuditLog,
-  SystemSetting
+  SystemSetting,
+  BatchLineage
 };
 
 export default db;

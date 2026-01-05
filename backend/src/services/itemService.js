@@ -19,6 +19,7 @@ import PurchaseOrder from '../models/PurchaseOrder.js';
 import POLineItem from '../models/POLineItem.js';
 import JobOrder from '../models/JobOrder.js';
 import JOIngredient from '../models/JOIngredient.js';
+import { validateComposition, invalidateDependencyGraphCache } from './compositionValidationService.js';
 
 export const getItems = async (queryParams) => {
   const {
@@ -621,7 +622,7 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
 
   // 2. Allergens - convert arrays to rows
   if ((wizardData.allergens && wizardData.allergens.length > 0) ||
-      (wizardData.may_contain_allergens && wizardData.may_contain_allergens.length > 0)) {
+    (wizardData.may_contain_allergens && wizardData.may_contain_allergens.length > 0)) {
     // Delete existing allergens for this item
     promises.push(
       ItemAllergen.destroy({ where: { item_id: itemId }, transaction })
@@ -720,12 +721,44 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
 
   // 9. Ingredients (ProductComposition with type='ingredient')
   if (wizardData.ingredients && wizardData.ingredients.length > 0) {
+    // Extract ingredient IDs for validation
+    const ingredientIds = wizardData.ingredients
+      .filter(ing => ing.item_id)
+      .map(ing => parseInt(ing.item_id, 10));
+
+    // Validate composition for circular dependencies and depth limits
+    if (ingredientIds.length > 0) {
+      const validation = await validateComposition(itemId, ingredientIds);
+
+      if (!validation.valid) {
+        const error = new Error('Invalid product composition');
+        error.statusCode = 400;
+        error.details = validation.errors.map(e => e.message);
+        throw error;
+      }
+
+      // Update item nesting metadata
+      await Item.update({
+        nesting_level: validation.nestingLevel,
+        max_child_depth: Math.max(0, validation.nestingLevel - 1)
+      }, { where: { item_id: itemId }, transaction });
+    }
+
     // Delete existing ingredient compositions
     promises.push(
       ProductComposition.destroy({
         where: { product_id: itemId, composition_type: 'ingredient' },
         transaction
       })
+    );
+
+    // Determine is_subproduct for each ingredient
+    const ingredientItems = await Item.findAll({
+      where: { item_id: ingredientIds },
+      attributes: ['item_id', 'category']
+    });
+    const ingredientCategoryMap = new Map(
+      ingredientItems.map(i => [i.item_id, i.category])
     );
 
     const ingredientRows = wizardData.ingredients
@@ -735,13 +768,17 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
         ingredient_id: ing.item_id,
         composition_type: 'ingredient',
         quantity_required: ing.quantity,
-        unit_of_measure: ing.unit_of_measure || null
+        unit_of_measure: ing.unit_of_measure || null,
+        is_subproduct: ingredientCategoryMap.get(parseInt(ing.item_id, 10)) === 'product'
       }));
 
     if (ingredientRows.length > 0) {
       promises.push(
         ProductComposition.bulkCreate(ingredientRows, { transaction })
       );
+
+      // Invalidate dependency graph cache since composition changed
+      promises.push(invalidateDependencyGraphCache());
     }
   }
 

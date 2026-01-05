@@ -1,9 +1,10 @@
 import * as itemService from '../services/itemService.js';
+import { validateComposition as validateCompositionService } from '../services/compositionValidationService.js';
 
 export const getItems = async (req, res, next) => {
   try {
     const result = await itemService.getItems(req.query);
-    
+
     res.status(200).json({
       success: true,
       data: result,
@@ -18,7 +19,7 @@ export const getItemById = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const item = await itemService.getItemById(item_id);
-    
+
     res.status(200).json({
       success: true,
       data: item,
@@ -121,7 +122,7 @@ export const getItemStockHistory = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const movements = await itemService.getItemStockHistory(item_id, req.query);
-    
+
     res.status(200).json({
       success: true,
       data: { movements },
@@ -136,7 +137,7 @@ export const getItemBatches = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const batches = await itemService.getItemBatches(item_id);
-    
+
     res.status(200).json({
       success: true,
       data: { batches },
@@ -151,10 +152,34 @@ export const getItemMovements = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const movements = await itemService.getItemMovements(item_id);
-    
+
     res.status(200).json({
       success: true,
       data: { movements },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const validateComposition = async (req, res, next) => {
+  try {
+    const { product_id, ingredient_ids } = req.body;
+
+    if (!ingredient_ids || !Array.isArray(ingredient_ids)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ingredient_ids must be an array',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const result = await validateCompositionService(product_id, ingredient_ids);
+
+    res.status(200).json({
+      success: true,
+      data: result,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
