@@ -27,25 +27,23 @@ export default function DeleteConfirmDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-2">
-              <div>{description}</div>
-              {errors && errors.length > 0 && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm font-medium text-red-800 mb-2">
-                    Cannot delete. The following issues must be resolved:
-                  </p>
-                  <ul className="list-disc list-inside space-y-1">
-                    {errors.map((error, index) => (
-                      <li key={index} className="text-sm text-red-700">
-                        {error}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+          <DialogDescription>
+            {description}
           </DialogDescription>
+          {errors && errors.length > 0 && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm font-medium text-red-800 mb-2">
+                Cannot delete. The following issues must be resolved:
+              </p>
+              <ul className="list-disc list-inside space-y-1">
+                {errors.map((error, index) => (
+                  <li key={index} className="text-sm text-red-700">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onClose(false)} disabled={loading}>

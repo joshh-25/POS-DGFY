@@ -226,9 +226,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
   };
 
   const handleSubmit = (isDraft = false) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:130', message: 'handleSubmit called - formData before cleaning', data: { formData }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
     // Convert empty strings to 0 for number fields, but validate max_capacity is positive
     const cleanedData = {
       ...formData,
@@ -246,9 +243,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
 
     // Validate max_capacity is positive before submitting (skip validation for drafts)
     if (!isDraft && (!cleanedData.max_capacity || cleanedData.max_capacity <= 0)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:152', message: 'Validation failed - max_capacity must be positive', data: { max_capacity: cleanedData.max_capacity }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-      // #endregion
       alert('Max Capacity must be a positive number greater than 0');
       return;
     }
@@ -282,15 +276,9 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
       status: isDraft ? 'draft' : (item?.status || 'active'),
       ...(cleanedData.category === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:208', message: 'Processing packaging_specs', data: { packaging_specs: cleanedData.packaging_specs, isArray: Array.isArray(cleanedData.packaging_specs), type: typeof cleanedData.packaging_specs }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-          // #endregion
 
           // Ensure packaging_specs is an object, not an array
           if (Array.isArray(cleanedData.packaging_specs)) {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:213', message: 'packaging_specs is array, converting to object', data: { original: cleanedData.packaging_specs }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-            // #endregion
             return {
               height: '',
               width: '',
@@ -312,18 +300,10 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
             contents: cleanedData.packaging_specs?.contents || ''
           };
 
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:270', message: 'Final packaging_specs object', data: { cleanSpecs, isArray: Array.isArray(cleanSpecs), keys: Object.keys(cleanSpecs) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-          // #endregion
-
           return cleanSpecs;
         })() : null
       } : {})
     };
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:195', message: 'Sending validFields to backend', data: { validFields, fieldTypes: Object.keys(validFields).reduce((acc, key) => { acc[key] = typeof validFields[key]; return acc; }, {}) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
 
     if (isDraft && onSaveDraft) {
       onSaveDraft(validFields);

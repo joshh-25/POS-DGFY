@@ -710,6 +710,148 @@ export const authLimiter = rateLimit({
 
 ---
 
+## Phase 17: Delete Functionality Audit & Bug Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-05
+
+### Investigation Summary
+Comprehensive audit of all delete and archive functionality across the system to ensure proper operation and data integrity.
+
+### Critical Bugs Fixed
+
+#### 1. Supplier Delete Safety Check Bug
+**Issue**: Supplier delete only checked for ACTIVE purchase orders (draft, pending, partial), allowing deletion of suppliers with completed/received POs.
+
+**Impact**: 
+- Risk of data integrity loss
+- Historical purchase data could be orphaned
+- Inconsistent with item delete behavior
+
+**Fix**:
+- Updated `supplierService.js` deleteSupplier() function (lines 286-317)
+- Changed from checking `status: { [Op.in]: ['draft', 'pending', 'partial'] }` to checking ALL POs
+- Now prevents deletion if supplier has ANY purchase orders, regardless of status
+- Updated error message: "Supplier has X purchase order(s) in the system. Suppliers with purchase history cannot be deleted to maintain data integrity."
+
+**Files Modified**:
+- `backend/src/services/supplierService.js`
+
+#### 2. Item Delete 500 Internal Server Errors
+**Issue**: Item delete endpoint returned 500 errors due to incorrect Sequelize association aliases in the safety check queries.
+
+**Root Causes**:
+1. ProductComposition query used `as: 'Product'` (capital P) but model defines `as: 'product'` (lowercase)
+2. POLineItem query missing `as: 'purchaseOrder'` alias
+3. JOIngredient query missing `as: 'jobOrder'` alias
+4. JOIngredient query used `ingredient_id` column but table uses `item_id`
+
+**Fixes**:
+- Line 542: Changed `as: 'Product'` to `as: 'product'`
+- Line 549: Changed `pc.Product.name` to `pc.product.name`
+- Line 558: Added `as: 'purchaseOrder'` to PurchaseOrder include
+- Line 565: Changed `po.PurchaseOrder.po_number` to `po.purchaseOrder.po_number`
+- Line 573: Changed `where: { ingredient_id: itemId }` to `where: { item_id: itemId }`
+- Line 575: Added `as: 'jobOrder'` to JobOrder include
+- Line 582: Changed `jo.JobOrder.jo_number` to `jo.jobOrder.jo_number`
+
+**Files Modified**:
+- `backend/src/services/itemService.js`
+
+#### 3. Deleted Items Still Showing in UI
+**Issue**: Item delete worked (status changed to 'inactive') but items still appeared in the items list.
+
+**Root Cause**: Backend `getItems()` function didn't filter out inactive items by default.
+
+**Fix**:
+- Updated `itemService.js` getItems() function (lines 43-48)
+- Added default filter: `where.status = { [Op.ne]: 'inactive' }` when no status parameter provided
+- Inactive items only shown when explicitly requested via `status=inactive` query parameter
+
+**Files Modified**:
+- `backend/src/services/itemService.js`
+
+### Console Cleanup
+
+#### 4. React Warning: validateDOMNesting
+**Issue**: Console warning about `<div>` appearing as descendant of `<p>` in DeleteConfirmDialog.
+
+**Root Cause**: DialogDescription was using `asChild` prop to wrap error display, creating invalid HTML nesting.
+
+**Fix**:
+- Updated `DeleteConfirmDialog.jsx` (lines 28-48)
+- Removed `asChild` prop from DialogDescription
+- Moved error display div outside of DialogDescription as sibling element
+- Maintains same visual layout without DOM nesting violations
+
+**Files Modified**:
+- `frontend/Components/ui/DeleteConfirmDialog.jsx`
+
+#### 5. ERR_CONNECTION_REFUSED Analytics Errors
+**Issue**: Multiple console errors trying to POST to `http://127.0.0.1:7243/ingest/...`
+
+**Root Cause**: Debug/analytics fetch calls left in ItemFormModal from previous development.
+
+**Fix**:
+- Removed 7 debug fetch calls from `ItemFormModal.jsx`:
+  - Lines 230-231: handleSubmit start log
+  - Lines 244-245: cleanedData conversion log
+  - Lines 250-251: validation failure log
+  - Lines 286-287: packaging_specs processing log
+  - Lines 292-293: array conversion log
+  - Lines 316-317: final packaging_specs log
+  - Lines 325-326: validFields submission log
+
+**Files Modified**:
+- `frontend/Components/items/ItemFormModal.jsx`
+
+### Verification & Testing
+
+**Backend Verification**:
+- [x] Supplier delete now properly prevents deletion with ANY POs
+- [x] Item delete safety checks work correctly
+- [x] Inactive items filtered from default queries
+- [x] All association aliases match model definitions
+
+**Frontend Verification**:
+- [x] DeleteConfirmDialog displays without React warnings
+- [x] No ERR_CONNECTION_REFUSED errors in console
+- [x] Item delete shows success toast and removes item from UI
+- [x] Supplier delete shows proper error messages when blocked
+- [x] Console is clean (no errors/warnings)
+
+**Archive/Restore Verification**:
+- [x] Purchase Orders have full archive/restore UI (Active/Archived tabs)
+- [x] Job Orders have full archive/restore UI (Active/Archived tabs)
+- [x] Archive buttons visible for admin/manager roles only
+- [x] Archive confirmation dialogs working
+- [x] Restore functionality operational
+
+### Documentation Updates
+
+- [x] Created `task.md` artifact tracking all investigation items
+- [x] Created `implementation_plan.md` with detailed fix proposals
+- [x] Created `walkthrough.md` documenting all fixes applied
+- [x] Updated DEVELOPMENT_HISTORY.md with Phase 17
+
+### Files Modified Summary
+
+**Backend**:
+- `backend/src/services/supplierService.js` - Fixed delete safety check
+- `backend/src/services/itemService.js` - Fixed association aliases, column names, and inactive filter
+
+**Frontend**:
+- `frontend/Components/ui/DeleteConfirmDialog.jsx` - Fixed React DOM nesting warnings
+- `frontend/Components/items/ItemFormModal.jsx` - Removed debug analytics calls
+
+### Impact
+
+**Data Integrity**: ✅ Critical supplier delete bug fixed - no risk of orphaned purchase data  
+**Functionality**: ✅ Item delete fully operational with comprehensive safety checks  
+**User Experience**: ✅ Clean console with no errors or warnings  
+**Code Quality**: ✅ Proper Sequelize associations and cleaner codebase
+
+---
+
 ## Tech Stack Summary
 
 ### Frontend
