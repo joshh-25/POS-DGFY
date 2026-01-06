@@ -375,6 +375,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                     <SelectItem value="g">Grams (g)</SelectItem>
                     <SelectItem value="units">Units</SelectItem>
                     <SelectItem value="liters">Liters</SelectItem>
+                    <SelectItem value="ml">Milliliters (ml)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

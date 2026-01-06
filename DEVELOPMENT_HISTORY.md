@@ -1160,9 +1160,61 @@ const productCompositions = await ProductComposition.findAll({
 - `frontend/Components/items/ItemFormModal.jsx` - Removed debug analytics code
 - Database: Dropped `sku_code` unique index
 
+
+---
+
+## Phase 19: Unit of Measure Enhancement
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-06
+
+### Issue
+The "Create New Item" modal for ingredients and packaging was missing the "Milliliters (ml)" unit of measure option, which was already available in the Product Creation Wizard.
+
+### Fix Applied
+
+#### File: `frontend/Components/items/ItemFormModal.jsx`
+Added "Milliliters (ml)" as a new unit of measure option in the Select dropdown (line 378):
+
+**Before:**
+```jsx
+<SelectContent>
+  <SelectItem value="kg">Kilograms (kg)</SelectItem>
+  <SelectItem value="g">Grams (g)</SelectItem>
+  <SelectItem value="units">Units</SelectItem>
+  <SelectItem value="liters">Liters</SelectItem>
+</SelectContent>
+```
+
+**After:**
+```jsx
+<SelectContent>
+  <SelectItem value="kg">Kilograms (kg)</SelectItem>
+  <SelectItem value="g">Grams (g)</SelectItem>
+  <SelectItem value="units">Units</SelectItem>
+  <SelectItem value="liters">Liters</SelectItem>
+  <SelectItem value="ml">Milliliters (ml)</SelectItem>
+</SelectContent>
+```
+
+### Note
+The backend validator (`itemValidator.js`) already accepts any string for `unit_of_measure` (1-50 characters), so no backend changes were required.
+
+### Available Units of Measure
+
+| Value | Display Name | Components Using |
+|-------|--------------|------------------|
+| `kg` | Kilograms (kg) | ItemFormModal, BasicInfoStep |
+| `g` | Grams (g) | ItemFormModal, BasicInfoStep |
+| `units` | Units | ItemFormModal, BasicInfoStep |
+| `liters` | Liters | ItemFormModal |
+| `L` | Liters (L) | BasicInfoStep |
+| `lbs` | Pounds (lbs) | BasicInfoStep |
+| `oz` | Ounces (oz) | BasicInfoStep |
+| `ml` | Milliliters (ml) | ItemFormModal, BasicInfoStep |
+
 ---
 
 **Last Updated**: 2026-01-06  
-**Version**: 1.1.2  
+**Version**: 1.1.3  
 **Project Status**: Production Ready
 
