@@ -237,9 +237,6 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
         quantity: ing.quantity === '' ? 0 : (typeof ing.quantity === 'string' ? parseFloat(ing.quantity) || 0 : ing.quantity)
       }))
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fcbbdf73-8390-47c4-a877-2a6264efb314', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ItemFormModal.jsx:144', message: 'cleanedData after conversion', data: { cleanedData, max_capacity_type: typeof cleanedData.max_capacity, max_capacity_value: cleanedData.max_capacity }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
 
     // Validate max_capacity is positive before submitting (skip validation for drafts)
     if (!isDraft && (!cleanedData.max_capacity || cleanedData.max_capacity <= 0)) {

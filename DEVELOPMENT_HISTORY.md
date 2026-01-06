@@ -1058,7 +1058,111 @@ This allows the backend to safely ignore extra metadata sent by the frontend whi
 
 ---
 
-**Last Updated**: 2026-01-05  
-**Version**: 1.1.1  
+## Phase 18: SKU Code Reuse & Delete Dependency Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-06
+
+### Issue 1: SKU Code Conflict After Deletion (409 Error)
+**Problem**: When deleting an item and trying to create a new item with the same SKU code, the system returned a `409 Conflict` error: "Item with this SKU code already exists".
+
+**Root Causes**:
+1. **Application Level**: `itemService.js` uniqueness checks only excluded `draft` status, not `inactive` (deleted) items
+2. **Database Level**: A unique constraint `sku_code` still existed on the items table despite the migration that removed `idx_sku_code`
+
+**Fixes Applied**:
+
+#### 1. Application-Level Fix (`itemService.js`)
+Updated three functions to use `Op.notIn: ['draft', 'inactive']` instead of `Op.ne: 'draft'`:
+
+- **`createItem`** (line 332): Exclude inactive items from uniqueness check
+- **`updateItem`** (line 438): Exclude inactive items from uniqueness check  
+- **`finalizeItem`** (line 891): Exclude inactive items from uniqueness check
+
+**Before:**
+```javascript
+status: { [Op.ne]: 'draft' }
+```
+
+**After:**
+```javascript
+status: { [Op.notIn]: ['draft', 'inactive'] }
+```
+
+#### 2. Database-Level Fix
+Dropped the remaining unique constraint on `sku_code`:
+```sql
+ALTER TABLE items DROP INDEX sku_code;
+```
+
+**Note**: The non-unique index `idx_sku_code` remains for query performance.
+
+---
+
+### Issue 2: Cannot Delete Ingredient Used by Deleted Products
+**Problem**: When trying to delete an ingredient, the system blocked deletion saying it was "Used as ingredient in 2 product(s)" even though those products had already been deleted.
+
+**Root Cause**: The `deleteItem` function checked `ProductComposition` references without filtering by the parent product's status. Soft-deleted products (status = 'inactive') were still blocking ingredient deletion.
+
+**Fix Applied** (`itemService.js` lines 540-556):
+Updated the ProductComposition query to only consider active products:
+
+**Before:**
+```javascript
+const productCompositions = await ProductComposition.findAll({
+  where: { ingredient_id: itemId },
+  include: [{
+    model: Item,
+    as: 'product',
+    attributes: ['name', 'sku_code']
+  }]
+});
+```
+
+**After:**
+```javascript
+const productCompositions = await ProductComposition.findAll({
+  where: { ingredient_id: itemId },
+  include: [{
+    model: Item,
+    as: 'product',
+    attributes: ['name', 'sku_code', 'status'],
+    where: { status: 'active' } // Only check active products
+  }]
+});
+```
+
+---
+
+### Issue 3: Console Noise (ERR_CONNECTION_REFUSED)
+**Problem**: Browser console showed errors trying to POST to `http://127.0.0.1:7243/ingest/...`
+
+**Root Cause**: Leftover debug/analytics fetch call in `ItemFormModal.jsx` from previous development.
+
+**Fix Applied**:
+- Removed debug fetch block from `ItemFormModal.jsx` (lines 240-242)
+- This was a telemetry endpoint that was never intended for production
+
+---
+
+### SKU Uniqueness Rules (Post-Fix)
+
+| Scenario | Allowed? | Reason |
+|----------|----------|--------|
+| Two **active** items with same SKU | ❌ No | Application validates uniqueness |
+| Active + **deleted** item with same SKU | ✅ Yes | Deleted items shouldn't block reuse |
+| Active + **draft** item with same SKU | ✅ Yes | Drafts are temporary/incomplete |
+| Multiple **drafts** with same SKU | ✅ Yes | Drafts are temporary |
+
+---
+
+### Files Modified
+- `backend/src/services/itemService.js` - SKU uniqueness and delete composition checks
+- `frontend/Components/items/ItemFormModal.jsx` - Removed debug analytics code
+- Database: Dropped `sku_code` unique index
+
+---
+
+**Last Updated**: 2026-01-06  
+**Version**: 1.1.2  
 **Project Status**: Production Ready
 

@@ -329,7 +329,7 @@ export const createItem = async (itemData, userId = null) => {
       const existingItem = await Item.findOne({
         where: {
           sku_code: itemData.sku_code,
-          status: { [Op.ne]: 'draft' } // Exclude drafts from uniqueness check
+          status: { [Op.notIn]: ['draft', 'inactive'] } // Exclude drafts AND soft-deleted items
         }
       });
 
@@ -436,7 +436,7 @@ export const updateItem = async (itemId, itemData, userId = null) => {
       const existingItem = await Item.findOne({
         where: {
           sku_code: itemData.sku_code,
-          status: { [Op.ne]: 'draft' },
+          status: { [Op.notIn]: ['draft', 'inactive'] }, // Exclude drafts AND soft-deleted items
           item_id: { [Op.ne]: itemId }
         }
       });
@@ -537,13 +537,15 @@ export const deleteItem = async (itemId, userId) => {
   // Comprehensive pre-delete safety checks
   const errors = [];
 
-  // Check 1: Item used as ingredient in products
+  // Check 1: Item used as ingredient in ACTIVE products only
+  // (Soft-deleted products should not block ingredient deletion)
   const productCompositions = await ProductComposition.findAll({
     where: { ingredient_id: itemId },
     include: [{
       model: Item,
       as: 'product',
-      attributes: ['name', 'sku_code']
+      attributes: ['name', 'sku_code', 'status'],
+      where: { status: 'active' } // Only check active products, not drafts or deleted
     }]
   });
 
@@ -551,7 +553,7 @@ export const deleteItem = async (itemId, userId) => {
     const productNames = productCompositions.map(pc =>
       `${pc.product.name} (${pc.product.sku_code})`
     ).join(', ');
-    errors.push(`Used as ingredient in ${productCompositions.length} product(s): ${productNames}`);
+    errors.push(`Used as ingredient in ${productCompositions.length} active product(s): ${productNames}`);
   }
 
   // Check 2: Item in ANY Purchase Orders
@@ -890,7 +892,7 @@ export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
     const existingItem = await Item.findOne({
       where: {
         sku_code: mergedData.sku_code,
-        status: { [Op.ne]: 'draft' },
+        status: { [Op.notIn]: ['draft', 'inactive'] }, // Exclude drafts AND soft-deleted items
         item_id: { [Op.ne]: itemId }
       },
       transaction
