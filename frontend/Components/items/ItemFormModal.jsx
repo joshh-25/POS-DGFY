@@ -34,6 +34,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
     max_capacity: 0,
     current_stock: 0,
     fifo_enabled: false,
+    shelf_life_days: '',
+    opened_shelf_life_days: '',
     product_folder: '',
     ingredients: [],
     packaging_specs: {
@@ -65,6 +67,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
         min_threshold: item.min_threshold ?? 0,
         purchase_allowance: item.purchase_allowance ?? 0,
         fifo_enabled: item.fifo_enabled || false,
+        shelf_life_days: item.shelf_life_days ?? '',
+        opened_shelf_life_days: item.opened_shelf_life_days ?? '',
         ingredients: item.ingredients || [],
         packaging_specs: (() => {
           // Parse packaging_specs if it's a string (from database)
@@ -129,6 +133,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
         min_threshold: 0,
         purchase_allowance: 0,
         fifo_enabled: false,
+        shelf_life_days: '',
+        opened_shelf_life_days: '',
         product_folder: '',
         ingredients: [],
         packaging_specs: {
@@ -270,6 +276,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
       yield_percentage: toNumberOrNull(cleanedData.yield_percentage),
       processing_loss: toNumberOrNull(cleanedData.processing_loss),
       production_notes: cleanedData.production_notes || null,
+      shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
+      opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
       status: isDraft ? 'draft' : (item?.status || 'active'),
       ...(cleanedData.category === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
@@ -461,6 +469,42 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                     onCheckedChange={(checked) => handleChange('fifo_enabled', checked)}
                   />
                 </div>
+
+                {/* Shelf Life Fields - shown when FIFO is enabled */}
+                {formData.fifo_enabled && (
+                  <div className="mt-4 pt-4 border-t border-blue-200 grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="shelf_life_days" className="text-sm font-medium text-slate-700">
+                        Shelf Life (Days) *
+                      </Label>
+                      <Input
+                        id="shelf_life_days"
+                        type="number"
+                        min="1"
+                        value={formData.shelf_life_days}
+                        onChange={(e) => handleChange('shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                        placeholder="e.g., 90"
+                        className="bg-white"
+                      />
+                      <p className="text-xs text-slate-500">Days until expiry (unopened)</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="opened_shelf_life_days" className="text-sm font-medium text-slate-700">
+                        Opened Shelf Life (Days)
+                      </Label>
+                      <Input
+                        id="opened_shelf_life_days"
+                        type="number"
+                        min="1"
+                        value={formData.opened_shelf_life_days}
+                        onChange={(e) => handleChange('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                        placeholder="e.g., 7"
+                        className="bg-white"
+                      />
+                      <p className="text-xs text-slate-500">Days after opening</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

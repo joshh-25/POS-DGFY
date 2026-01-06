@@ -18,16 +18,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Star, CheckCircle, XCircle } from 'lucide-react';
+import { Star, CheckCircle, XCircle, Calendar } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import { format, addDays } from 'date-fns';
 
 export default function POReceiptModal({ po, open, onClose, onConfirm }) {
   const [items, setItems] = useState(
-    po.items.map(item => ({
-      ...item,
-      quantity_received: item.quantity_received || item.quantity,
-      quality_check: item.quality_check || 'pass'
-    }))
+    po.items.map(item => {
+      // Auto-calculate expiry date if item has shelf_life_days
+      let calculatedExpiry = null;
+      if (item.fifo_enabled && item.shelf_life_days) {
+        calculatedExpiry = format(addDays(new Date(), item.shelf_life_days), 'yyyy-MM-dd');
+      }
+      return {
+        ...item,
+        quantity_received: item.quantity_received || item.quantity,
+        quality_check: item.quality_check || 'pass',
+        expiry_date: item.expiry_date || calculatedExpiry || ''
+      };
+    })
   );
   const [deliveryRating, setDeliveryRating] = useState(5);
   const [notes, setNotes] = useState(po.notes || '');
@@ -44,11 +53,12 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
     // Convert empty strings to 0 for number fields
     const cleanedItems = items.map(item => ({
       ...item,
-      quantity_received: item.quantity_received === '' ? 0 : item.quantity_received
+      quantity_received: item.quantity_received === '' ? 0 : item.quantity_received,
+      expiry_date: item.expiry_date || null // Include expiry date
     }));
     const allReceived = cleanedItems.every(item => item.quantity_received === item.quantity);
     const anyReceived = cleanedItems.some(item => item.quantity_received > 0);
-    
+
     onConfirm({
       items: cleanedItems,
       status: allReceived ? 'received' : (anyReceived ? 'partial' : 'pending'),
@@ -104,8 +114,8 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Quality Check</Label>
-                    <Select 
-                      value={item.quality_check} 
+                    <Select
+                      value={item.quality_check}
                       onValueChange={(v) => updateItem(idx, 'quality_check', v)}
                     >
                       <SelectTrigger>
@@ -128,6 +138,29 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                     </Select>
                   </div>
                 </div>
+
+                {/* Expiry Date - shown for FIFO-enabled items */}
+                {item.fifo_enabled && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-blue-500" />
+                        <Label className="text-xs font-medium text-blue-700">Expiry Date</Label>
+                        {item.shelf_life_days && (
+                          <span className="text-xs text-slate-500">
+                            (Auto: +{item.shelf_life_days} days)
+                          </span>
+                        )}
+                      </div>
+                      <Input
+                        type="date"
+                        value={item.expiry_date || ''}
+                        onChange={(e) => updateItem(idx, 'expiry_date', e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -142,7 +175,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                   onClick={() => setDeliveryRating(star)}
                   className="focus:outline-none"
                 >
-                  <Star 
+                  <Star
                     className={cn(
                       "w-8 h-8 transition-colors",
                       star <= deliveryRating ? "text-amber-500" : "text-slate-200"

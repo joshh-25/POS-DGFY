@@ -56,7 +56,8 @@
       "Bash(node test-po.js:*)",
       "Bash(node test-draft-creation.js:*)",
       "Bash(/c/xampp/mysql/bin/mysql.exe:*)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(timeout /t 3)"
     ]
   }
 }

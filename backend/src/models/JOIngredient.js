@@ -30,6 +30,11 @@ const JOIngredient = sequelize.define('JOIngredient', {
   stock_after: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true
+  },
+  batch_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Reference to the FIFO batch that was consumed'
   }
 }, {
   tableName: 'jo_ingredients',

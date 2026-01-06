@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { Package, Beaker, Box, MoreVertical, Eye, Edit, History, FileEdit, Trash2 } from 'lucide-react';
+import { Package, Beaker, Box, MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
+import { format } from 'date-fns';
 
 const categoryConfig = {
   ingredient: { icon: Beaker, color: "bg-purple-100 text-purple-700" },
@@ -36,6 +38,10 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
   const percentage = isDraft ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
+
+  // Calculate expiry information
+  const nextExpiry = getNextExpiryDate(item);
+  const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:border-slate-300 transition-all duration-300">
@@ -80,7 +86,7 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
             {isDraft && statusStyle.icon && <statusStyle.icon className="w-3 h-3 mr-1" />}
             {statusStyle.label}
@@ -88,6 +94,27 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
           <Badge variant="outline" className={category.color}>
             {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
           </Badge>
+          {item.fifo_enabled && (
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+              <Check className="w-3 h-3 mr-1" />
+              FIFO
+            </Badge>
+          )}
+          {nextExpiry && daysUntilExpiry !== null && (
+            <Badge variant="outline" className={cn(
+              "flex items-center gap-1",
+              daysUntilExpiry < 0
+                ? "bg-red-100 text-red-700 border-red-200"
+                : daysUntilExpiry <= 7
+                ? "bg-red-100 text-red-700 border-red-200"
+                : daysUntilExpiry <= 30
+                ? "bg-amber-100 text-amber-700 border-amber-200"
+                : "bg-emerald-100 text-emerald-700 border-emerald-200"
+            )}>
+              <Clock className="w-3 h-3" />
+              {daysUntilExpiry < 0 ? 'Expired' : `${daysUntilExpiry}d left`}
+            </Badge>
+          )}
         </div>
 
         <div>
@@ -107,9 +134,28 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-sm text-slate-500">Unit Cost</span>
-          <span className="font-semibold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</span>
+        <div className="pt-4 border-t border-slate-100 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">Unit Cost</span>
+            <span className="font-semibold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</span>
+          </div>
+          {nextExpiry && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Next Expiry</span>
+              <span className={cn(
+                "text-sm font-medium",
+                daysUntilExpiry < 0
+                  ? "text-red-700"
+                  : daysUntilExpiry <= 7
+                  ? "text-red-700"
+                  : daysUntilExpiry <= 30
+                  ? "text-amber-700"
+                  : "text-emerald-700"
+              )}>
+                {format(new Date(nextExpiry), 'MMM d, yyyy')}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

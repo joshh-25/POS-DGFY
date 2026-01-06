@@ -4,26 +4,16 @@ import { Calendar, Package, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { isNearExpiry, isExpired } from '@/components/utils/expiryHelpers.js';
 
 export default function FIFOBatchViewer({ item }) {
   if (!item.fifo_enabled || !item.fifo_batches || item.fifo_batches.length === 0) {
     return null;
   }
 
-  const sortedBatches = [...item.fifo_batches].sort((a, b) => 
+  const sortedBatches = [...item.fifo_batches].sort((a, b) =>
     new Date(a.received_date) - new Date(b.received_date)
   );
-
-  const isNearExpiry = (expiryDate) => {
-    if (!expiryDate) return false;
-    const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
-    return daysUntilExpiry <= 30 && daysUntilExpiry > 0;
-  };
-
-  const isExpired = (expiryDate) => {
-    if (!expiryDate) return false;
-    return new Date(expiryDate) < new Date();
-  };
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">

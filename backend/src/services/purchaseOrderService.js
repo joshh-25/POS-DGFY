@@ -267,25 +267,52 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
 
     // Create FIFO batch if enabled
     if (item.fifo_enabled) {
-      await FIFOBatch.create({
+      const receivedDate = new Date();
+
+      // Calculate expiry date: use override if provided, otherwise auto-calculate from shelf_life_days
+      let expiryDate = receiptItem.expiry_date || null;
+      if (!expiryDate && item.shelf_life_days) {
+        const expiryDateObj = new Date(receivedDate);
+        expiryDateObj.setDate(expiryDateObj.getDate() + item.shelf_life_days);
+        expiryDate = expiryDateObj.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      }
+
+      const batch = await FIFOBatch.create({
         item_id: item.item_id,
         quantity: quantityReceived,
         cost_per_unit: lineItem.unit_price,
-        received_date: new Date(),
-        expiry_date: receiptItem.expiry_date,
+        received_date: receivedDate,
+        expiry_date: expiryDate,
         po_number: po.po_number
       });
-    }
 
-    // Create stock movement
-    await StockMovement.create({
-      item_id: item.item_id,
-      movement_type: 'purchase_receipt',
-      quantity: quantityReceived,
-      reference_id: po.po_number,
-      reference_type: 'PO',
-      user_responsible: userId
-    });
+      // Save expiry_date to line item for reference
+      if (expiryDate) {
+        await lineItem.update({ expiry_date: expiryDate });
+      }
+
+      // Create stock movement with batch reference
+      await StockMovement.create({
+        item_id: item.item_id,
+        movement_type: 'purchase_receipt',
+        quantity: quantityReceived,
+        reference_id: po.po_number,
+        reference_type: 'PO',
+        user_responsible: userId,
+        batch_id: batch.batch_id,
+        expiry_date: expiryDate
+      });
+    } else {
+      // Create stock movement without batch reference for non-FIFO items
+      await StockMovement.create({
+        item_id: item.item_id,
+        movement_type: 'purchase_receipt',
+        quantity: quantityReceived,
+        reference_id: po.po_number,
+        reference_type: 'PO',
+        user_responsible: userId
+      });
+    }
   }
 
   // Update PO status

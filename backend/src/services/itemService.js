@@ -201,12 +201,7 @@ export const getItemById = async (itemId) => {
       {
         model: FIFOBatch,
         as: 'fifoBatches',
-        required: false,
-        where: sequelize.where(
-          sequelize.col('fifoBatches.quantity'),
-          Op.gt,
-          sequelize.col('fifoBatches.quantity_consumed')
-        )
+        required: false
       },
       {
         model: SupplierItem,
@@ -315,6 +310,12 @@ export const getItemById = async (itemId) => {
       }));
 
     delete formattedItem.productCompositions;
+  }
+
+  // Format FIFO batches to match frontend expectation (snake_case)
+  if (formattedItem.fifoBatches) {
+    formattedItem.fifo_batches = formattedItem.fifoBatches;
+    delete formattedItem.fifoBatches;
   }
 
   return formattedItem;
@@ -949,6 +950,12 @@ export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
         { model: ItemQualityControl, as: 'qualityControl', required: false },
         { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
         { model: ItemCostBreakdown, as: 'costBreakdown', required: false },
+        {
+          model: FIFOBatch,
+          as: 'fifoBatches',
+          required: false,
+          include: [{ model: Item, as: 'item', attributes: ['unit_of_measure'] }] // Optional: ensure unit is available if needed
+        },
         {
           model: ProductComposition,
           as: 'productCompositions',

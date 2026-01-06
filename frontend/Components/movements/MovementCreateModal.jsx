@@ -40,6 +40,8 @@ import {
   Check
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import * as itemService from '../../src/services/itemService.js';
+import { format } from 'date-fns';
 
 const movementTypes = [
   { value: 'purchase_receipt', label: 'Purchase Receipt', icon: ArrowDownCircle, color: 'text-emerald-600' },
@@ -74,10 +76,42 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
     to_location: '',
     reference_id: '',
     notes: '',
-    loss_reason: ''
+    loss_reason: '',
+    batch_id: '',
+    expiry_date: ''
   });
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [batches, setBatches] = useState([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+
+  // Fetch batches when item changes if FIFO is enabled
+  useEffect(() => {
+    const fetchBatches = async () => {
+      if (!formData.item_id) {
+        setBatches([]);
+        return;
+      }
+
+      const selectedItem = items.find(i => i.id === formData.item_id);
+      if (selectedItem?.fifo_enabled) {
+        setLoadingBatches(true);
+        try {
+          const itemDetails = await itemService.getItemById(formData.item_id);
+          setBatches(itemDetails.fifo_batches || []);
+        } catch (error) {
+          console.error("Failed to fetch batches:", error);
+          setBatches([]);
+        } finally {
+          setLoadingBatches(false);
+        }
+      } else {
+        setBatches([]);
+      }
+    };
+
+    fetchBatches();
+  }, [formData.item_id, items]);
 
   useEffect(() => {
     if (preselectedItem) {
@@ -215,6 +249,41 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             />
           </div>
 
+          {/* Expiry Date (For Purchase Receipts / Additions) */}
+          {formData.movement_type === 'purchase_receipt' && (
+            <div className="space-y-2">
+              <Label>Expiry Date (Optional)</Label>
+              <Input
+                type="date"
+                value={formData.expiry_date}
+                onChange={(e) => handleChange('expiry_date', e.target.value)}
+              />
+              <p className="text-xs text-slate-500">
+                Leave blank to auto-calculate based on shelf life.
+              </p>
+            </div>
+          )}
+
+          {/* Batch Selection (For Deductions) */}
+          {['calculated_loss', 'production_consumption', 'return'].includes(formData.movement_type) && batches.length > 0 && (
+            <div className="space-y-2">
+              <Label>Deduct from specific Batch (Optional)</Label>
+              <Select value={formData.batch_id} onValueChange={(v) => handleChange('batch_id', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select batch (Default: Oldest)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="oldest">Auto-select Oldest</SelectItem>
+                  {batches.map(batch => (
+                    <SelectItem key={batch.batch_id} value={batch.batch_id.toString()}>
+                      #{batch.batch_id} - Qty: {parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed)} - Exp: {batch.expiry_date ? format(new Date(batch.expiry_date), 'MMM d, yyyy') : 'N/A'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Transfer Locations */}
           {showTransferLocations && (
             <div className="grid grid-cols-2 gap-4">
@@ -251,8 +320,8 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           {showSingleLocation && (
             <div className="space-y-2">
               <Label>{formData.movement_type === 'purchase_receipt' ? 'To Location' : 'From Location'}</Label>
-              <Select 
-                value={formData.movement_type === 'purchase_receipt' ? formData.to_location : formData.from_location} 
+              <Select
+                value={formData.movement_type === 'purchase_receipt' ? formData.to_location : formData.from_location}
                 onValueChange={(v) => handleChange(formData.movement_type === 'purchase_receipt' ? 'to_location' : 'from_location', v)}
               >
                 <SelectTrigger>
@@ -308,7 +377,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
 
         <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button 
+          <Button
             onClick={handleSubmit}
             disabled={!formData.item_id || formData.quantity <= 0}
             className="bg-teal-600 hover:bg-teal-700"

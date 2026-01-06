@@ -1,23 +1,26 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { 
-  Package, 
-  AlertTriangle, 
-  TrendingUp, 
-  Truck, 
+import {
+  Package,
+  AlertTriangle,
+  TrendingUp,
+  Truck,
   ClipboardList,
   Calendar,
   DollarSign,
-  Loader2
+  Loader2,
+  Clock
 } from 'lucide-react';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AlertBanner from '@/components/dashboard/AlertBanner';
 import RecentMovements from '@/components/dashboard/RecentMovements';
 import LowStockList from '@/components/dashboard/LowStockList';
+import ExpiringBatchesList from '@/components/dashboard/ExpiringBatchesList';
 import { useDashboardStats, useLowStockItems, useRecentMovements } from '@/hooks/useDashboard.js';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
+import { useExpiryAlerts } from '@/hooks/useAlerts.js';
 
 export default function Dashboard() {
   const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
@@ -25,16 +28,17 @@ export default function Dashboard() {
   const { movements: recentMovements, loading: movementsLoading } = useRecentMovements(10);
   const { purchaseOrders, loading: poLoading } = usePurchaseOrders();
   const { suppliers, loading: suppliersLoading } = useSuppliers();
-  
+  const { alerts: expiryAlerts, loading: alertsLoading } = useExpiryAlerts();
+
   const pendingPOs = purchaseOrders?.filter(po => po.status === 'pending').length || 0;
   const activeSuppliers = suppliers?.length || 0;
-  
+
   // Check if within 7 days of month start
   const today = new Date();
   const dayOfMonth = today.getDate();
   const showProcurementReminder = dayOfMonth <= 7;
-  
-  const loading = statsLoading || lowStockLoading || movementsLoading || poLoading || suppliersLoading;
+
+  const loading = statsLoading || lowStockLoading || movementsLoading || poLoading || suppliersLoading || alertsLoading;
   
   if (loading) {
     return (
@@ -65,6 +69,11 @@ export default function Dashboard() {
     totalValue: 0
   };
 
+  // Calculate expiry statistics
+  const criticalExpiryCount = expiryAlerts?.filter(a => a.severity === 'critical').length || 0;
+  const warningExpiryCount = expiryAlerts?.filter(a => a.severity === 'warning').length || 0;
+  const totalExpiringCount = criticalExpiryCount + warningExpiryCount;
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -76,14 +85,30 @@ export default function Dashboard() {
       {/* Alerts */}
       <div className="space-y-3">
         {displayStats.lowStockCount > 0 && (
-          <AlertBanner 
+          <AlertBanner
             type="critical"
             title={`${displayStats.lowStockCount} items below minimum threshold`}
             message="Review your inventory levels and create purchase orders to restock."
           />
         )}
+        {criticalExpiryCount > 0 && (
+          <AlertBanner
+            type="critical"
+            icon={Clock}
+            title={`${criticalExpiryCount} batch${criticalExpiryCount !== 1 ? 'es' : ''} expiring within 7 days`}
+            message="Review batches and plan usage to minimize waste."
+          />
+        )}
+        {warningExpiryCount > 0 && criticalExpiryCount === 0 && (
+          <AlertBanner
+            type="warning"
+            icon={Clock}
+            title={`${warningExpiryCount} batch${warningExpiryCount !== 1 ? 'es' : ''} expiring within 30 days`}
+            message="Monitor these batches and plan usage accordingly."
+          />
+        )}
         {showProcurementReminder && (
-          <AlertBanner 
+          <AlertBanner
             type="info"
             icon={Calendar}
             title="Monthly Procurement Reminder"
@@ -93,29 +118,36 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatsCard 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <StatsCard
           title="Total Items"
           value={displayStats.totalItems || 0}
           subtitle="In inventory"
           icon={Package}
           color="teal"
         />
-        <StatsCard 
+        <StatsCard
           title="Low Stock"
           value={displayStats.lowStockCount || 0}
           subtitle="Below threshold"
           icon={AlertTriangle}
           color={displayStats.lowStockCount > 0 ? "red" : "emerald"}
         />
-        <StatsCard 
+        <StatsCard
+          title="Expiring Soon"
+          value={totalExpiringCount}
+          subtitle="Within 30 days"
+          icon={Clock}
+          color={totalExpiringCount > 0 ? "amber" : "emerald"}
+        />
+        <StatsCard
           title="Pending Orders"
           value={pendingPOs}
           subtitle="Awaiting delivery"
           icon={ClipboardList}
           color="amber"
         />
-        <StatsCard 
+        <StatsCard
           title="Inventory Value"
           value={`₱${(displayStats.totalValue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle="Total stock value"
@@ -186,6 +218,11 @@ export default function Dashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <LowStockList items={lowStockItems || []} />
+        <ExpiringBatchesList alerts={expiryAlerts || []} />
+      </div>
+
+      {/* Recent Movements - Full Width */}
+      <div>
         <RecentMovements movements={recentMovements || []} />
       </div>
     </div>

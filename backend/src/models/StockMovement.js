@@ -55,6 +55,16 @@ const StockMovement = sequelize.define('StockMovement', {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW
+  },
+  batch_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Reference to the FIFO batch affected by this movement'
+  },
+  expiry_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Expiry date for manual stock additions'
   }
 }, {
   tableName: 'stock_movements',

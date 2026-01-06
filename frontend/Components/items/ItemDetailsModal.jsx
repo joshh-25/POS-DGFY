@@ -199,6 +199,30 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </div>
             )}
 
+            {/* Shelf Life Info */}
+            {item.fifo_enabled && (
+              <div className="bg-purple-50 rounded-lg p-4 space-y-3">
+                <h4 className="font-medium text-purple-900 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Shelf Life Information
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white rounded-lg p-3 border border-purple-100">
+                    <p className="text-xs text-slate-500">Unopened Shelf Life</p>
+                    <p className="font-medium text-slate-900">
+                      {item.shelf_life_days ? `${item.shelf_life_days} Days` : 'Not set'}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-purple-100">
+                    <p className="text-xs text-slate-500">Opened Shelf Life</p>
+                    <p className="font-medium text-slate-900">
+                      {item.opened_shelf_life_days ? `${item.opened_shelf_life_days} Days` : 'Not set'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* FIFO Batch Viewer */}
             {item.fifo_enabled && <FIFOBatchViewer item={item} />}
 

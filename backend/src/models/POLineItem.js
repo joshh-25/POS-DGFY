@@ -38,6 +38,11 @@ const POLineItem = sequelize.define('POLineItem', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  expiry_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Optional expiry date override when receiving'
   }
 }, {
   tableName: 'po_line_items',

@@ -52,7 +52,10 @@ export const getJobOrderById = async (joId) => {
       {
         model: JOIngredient,
         as: 'ingredients',
-        include: [{ model: Item, as: 'item' }]
+        include: [
+          { model: Item, as: 'item' },
+          { model: FIFOBatch, as: 'batch' }
+        ]
       }
     ]
   });
@@ -221,7 +224,7 @@ export const finalizeJobOrder = async (joId, userId) => {
   return jo;
 };
 
-export const completeJobOrder = async (joId, userId) => {
+export const completeJobOrder = async (joId, userId, expiryDateOverride = null) => {
   const jo = await JobOrder.findByPk(joId, {
     include: [
       { model: Item, as: 'product' },
@@ -257,7 +260,18 @@ export const completeJobOrder = async (joId, userId) => {
       throw error;
     }
 
+    // Create stock movement FIRST (before FIFO consumption)
+    const movement = await StockMovement.create({
+      item_id: item.item_id,
+      movement_type: 'production_consumption',
+      quantity: -quantityRequired,
+      reference_id: jo.jo_number,
+      reference_type: 'JO',
+      user_responsible: userId
+    });
+
     // FIFO consumption
+    let primaryBatchId = null; // Track the first batch consumed for this ingredient
     if (item.fifo_enabled) {
       let remaining = quantityRequired;
       const batches = await FIFOBatch.findAll({
@@ -279,12 +293,18 @@ export const completeJobOrder = async (joId, userId) => {
         const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
         const consume = Math.min(remaining, available);
 
+        // Track the first batch used (for jo_ingredient.batch_id)
+        if (primaryBatchId === null) {
+          primaryBatchId = batch.batch_id;
+        }
+
         await batch.update({
           quantity_consumed: parseFloat(batch.quantity_consumed) + consume
         });
 
+        // Create BatchTransaction with valid movement_id
         await BatchTransaction.create({
-          movement_id: null, // Will be set after movement creation
+          movement_id: movement.movement_id, // ✅ Use movement_id from above
           batch_id: batch.batch_id,
           quantity_consumed: consume,
           remaining_after: available - consume,
@@ -299,30 +319,13 @@ export const completeJobOrder = async (joId, userId) => {
     const stockAfter = stockBefore - quantityRequired;
     await item.update({ current_stock: stockAfter });
 
-    // Update ingredient record
+    // Update ingredient record with batch reference
     await ingredient.update({
       quantity_consumed: quantityRequired,
       stock_before: stockBefore,
-      stock_after: stockAfter
+      stock_after: stockAfter,
+      batch_id: primaryBatchId // Store which batch was primarily consumed
     });
-
-    // Create stock movement
-    const movement = await StockMovement.create({
-      item_id: item.item_id,
-      movement_type: 'production_consumption',
-      quantity: -quantityRequired,
-      reference_id: jo.jo_number,
-      reference_type: 'JO',
-      user_responsible: userId
-    });
-
-    // Update batch transactions with movement_id
-    if (item.fifo_enabled) {
-      await BatchTransaction.update(
-        { movement_id: movement.movement_id },
-        { where: { movement_id: null, batch_id: { [Op.in]: batches.map(b => b.batch_id) } } }
-      );
-    }
   }
 
   // Add finished product to stock
@@ -332,6 +335,32 @@ export const completeJobOrder = async (joId, userId) => {
     current_stock: parseFloat(product.current_stock) + quantityProduced
   });
 
+  // Create FIFO batch for finished product if FIFO enabled
+  let productBatchId = null;
+  let productExpiryDate = null;
+  if (product.fifo_enabled) {
+    const productionDate = new Date();
+
+    // Calculate expiry from product's shelf_life_days or use override
+    if (expiryDateOverride) {
+      productExpiryDate = expiryDateOverride;
+    } else if (product.shelf_life_days) {
+      const expiryDateObj = new Date(productionDate);
+      expiryDateObj.setDate(expiryDateObj.getDate() + product.shelf_life_days);
+      productExpiryDate = expiryDateObj.toISOString().split('T')[0];
+    }
+
+    const productBatch = await FIFOBatch.create({
+      item_id: product.item_id,
+      quantity: quantityProduced,
+      cost_per_unit: product.cost_per_unit,
+      received_date: productionDate,
+      expiry_date: productExpiryDate,
+      po_number: jo.jo_number // Use JO number as reference
+    });
+    productBatchId = productBatch.batch_id;
+  }
+
   // Create stock movement for finished product
   await StockMovement.create({
     item_id: product.item_id,
@@ -339,7 +368,9 @@ export const completeJobOrder = async (joId, userId) => {
     quantity: quantityProduced,
     reference_id: jo.jo_number,
     reference_type: 'JO',
-    user_responsible: userId
+    user_responsible: userId,
+    batch_id: productBatchId,
+    expiry_date: productExpiryDate
   });
 
   // Update JO status
@@ -376,7 +407,12 @@ export const completeJobOrder = async (joId, userId) => {
     quantity_required: parseFloat(ing.quantity_required),
     quantity_consumed: parseFloat(ing.quantity_consumed),
     stock_before: parseFloat(ing.stock_before),
-    stock_after: parseFloat(ing.stock_after)
+    stock_after: parseFloat(ing.stock_after),
+    batch_info: ing.batch ? {
+      batch_id: ing.batch.batch_id,
+      expiry_date: ing.batch.expiry_date,
+      po_number: ing.batch.po_number
+    } : null
   }));
 
   // Return enriched data

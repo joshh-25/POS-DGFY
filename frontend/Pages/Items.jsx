@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
@@ -21,6 +22,8 @@ import { getCurrentUser } from '../src/services/userService.js';
 import { toast } from 'sonner';
 import { cn } from "../src/lib/utils.js";
 import { formatNumber } from '../src/lib/numberUtils.js';
+import { getNextExpiryDate, getDaysUntilExpiry, formatExpiryDate } from '@/components/utils/expiryHelpers.js';
+import { format } from 'date-fns';
 
 export default function Items() {
   const { items, loading, error, refetch } = useItems();
@@ -33,6 +36,7 @@ export default function Items() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [fifoFilter, setFifoFilter] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [viewMode, setViewMode] = useState('grid');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -66,6 +70,8 @@ export default function Items() {
     const filter = params.get('filter');
     if (filter === 'low') {
       setStatusFilter('critical');
+    } else if (filter === 'expiring') {
+      setFifoFilter('expiring');
     }
   }, []);
 
@@ -97,7 +103,29 @@ export default function Items() {
         const matchesStatus = statusFilter === 'all' ||
           (statusFilter === 'critical' && (status === 'critical' || status === 'warning')) ||
           status === statusFilter;
-        return matchesSearch && matchesCategory && matchesStatus && matchesFolder && item.status !== 'draft';
+
+        // Handle FIFO filter
+        let matchesFifo = true;
+        if (fifoFilter === 'enabled') {
+          matchesFifo = item.fifo_enabled === true;
+        } else if (fifoFilter === 'disabled') {
+          matchesFifo = item.fifo_enabled === false;
+        } else if (fifoFilter === 'expiring') {
+          // Show items with FIFO enabled and batches expiring within 30 days
+          if (item.fifo_enabled && item.fifo_batches && item.fifo_batches.length > 0) {
+            const nextExpiry = getNextExpiryDate(item);
+            if (nextExpiry) {
+              const daysUntilExpiry = getDaysUntilExpiry(nextExpiry);
+              matchesFifo = daysUntilExpiry !== null && daysUntilExpiry <= 30;
+            } else {
+              matchesFifo = false;
+            }
+          } else {
+            matchesFifo = false;
+          }
+        }
+
+        return matchesSearch && matchesCategory && matchesStatus && matchesFolder && matchesFifo && item.status !== 'draft';
       })
       .sort((a, b) => {
         switch (sortBy) {
@@ -113,22 +141,18 @@ export default function Items() {
             return 0;
         }
       });
-  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter]);
 
   const handleView = async (item) => {
-    if (item.category === 'product') {
-      try {
-        // Fetch complete item data with all associations for products
-        const { getItemById } = await import('../src/services/itemService.js');
-        const fullItemData = await getItemById(item.item_id);
-        setSelectedItem(fullItemData);
-      } catch (error) {
-        console.error('Failed to load product data:', error);
-        toast.error('Failed to load complete product data');
-        setSelectedItem(item); // Fallback to basic data
-      }
-    } else {
-      setSelectedItem(item);
+    try {
+      // Fetch complete item data with all associations for ALL item categories
+      const { getItemById } = await import('../src/services/itemService.js');
+      const fullItemData = await getItemById(item.item_id);
+      setSelectedItem(fullItemData);
+    } catch (error) {
+      console.error('Failed to load item data:', error);
+      toast.error('Failed to load complete item data');
+      setSelectedItem(item); // Fallback to basic data
     }
     setShowDetailsModal(true);
   };
@@ -355,6 +379,18 @@ export default function Items() {
               </SelectContent>
             </Select>
 
+            <Select value={fifoFilter} onValueChange={setFifoFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="FIFO Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Items</SelectItem>
+                <SelectItem value="enabled">FIFO Enabled</SelectItem>
+                <SelectItem value="disabled">FIFO Disabled</SelectItem>
+                <SelectItem value="expiring">Expiring Soon</SelectItem>
+              </SelectContent>
+            </Select>
+
             {categoryFilter === 'product' && productFolders.length > 0 && (
               <Select value={folderFilter} onValueChange={setFolderFilter}>
                 <SelectTrigger className="w-40">
@@ -416,6 +452,8 @@ export default function Items() {
               <tr>
                 <th className="text-left p-4 font-medium text-slate-600">Item</th>
                 <th className="text-left p-4 font-medium text-slate-600">Category</th>
+                <th className="text-left p-4 font-medium text-slate-600">FIFO</th>
+                <th className="text-left p-4 font-medium text-slate-600">Next Expiry</th>
                 <th className="text-left p-4 font-medium text-slate-600">Stock Level</th>
                 <th className="text-left p-4 font-medium text-slate-600">Status</th>
                 <th className="text-left p-4 font-medium text-slate-600">Unit Cost</th>
@@ -431,6 +469,11 @@ export default function Items() {
                   healthy: "bg-emerald-100 text-emerald-700",
                   surplus: "bg-blue-100 text-blue-700"
                 };
+
+                // Calculate expiry information
+                const nextExpiry = getNextExpiryDate(item);
+                const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
+
                 return (
                   <tr
                     key={item.item_id || item.id}
@@ -445,6 +488,38 @@ export default function Items() {
                     </td>
                     <td className="p-4">
                       <span className="capitalize text-slate-600">{item.category}</span>
+                    </td>
+                    <td className="p-4">
+                      {item.fifo_enabled ? (
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          <Check className="w-3 h-3 mr-1" />
+                          Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
+                          <X className="w-3 h-3 mr-1" />
+                          Disabled
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {nextExpiry ? (
+                        <Badge variant="outline" className={cn(
+                          "flex items-center gap-1",
+                          daysUntilExpiry < 0
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : daysUntilExpiry <= 7
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : daysUntilExpiry <= 30
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        )}>
+                          <Clock className="w-3 h-3" />
+                          {daysUntilExpiry < 0 ? 'Expired' : `${daysUntilExpiry}d left`}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="p-4">
                       <span className="font-medium text-slate-900">

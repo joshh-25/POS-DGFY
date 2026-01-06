@@ -197,9 +197,9 @@ export default function JobOrders() {
     }
   };
 
-  const handleCompleteProduction = async (jo) => {
+  const handleCompleteProduction = async (jo, expiryOverride) => {
     try {
-      const completedJO = await completeJobOrder(jo.jo_id || jo.id);
+      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride);
       toast.success('Job order completed successfully');
 
       // Update the selected JO with enriched data including ingredients_consumed

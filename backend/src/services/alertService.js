@@ -32,7 +32,7 @@ export const generateAlerts = async () => {
     });
   });
 
-  // Expiry alerts
+  // Expiry alerts - batches expiring within 7 days
   const expiringBatches = await FIFOBatch.findAll({
     where: {
       expiry_date: {
@@ -50,13 +50,27 @@ export const generateAlerts = async () => {
   });
 
   expiringBatches.forEach(batch => {
+    const expiryDate = new Date(batch.expiry_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+    const availableQuantity = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
+
+    // Color-coded severity: red (≤3 days = critical), amber (4-7 days = warning)
+    const severity = daysUntilExpiry <= 3 ? 'critical' : 'warning';
+
     alerts.push({
       type: 'expiring_batch',
-      severity: 'medium',
-      message: `Batch for ${batch.item.name} expires on ${batch.expiry_date}`,
+      severity,
+      message: `Batch #${batch.batch_id} for ${batch.item.name} expires ${daysUntilExpiry === 0 ? 'today' : daysUntilExpiry === 1 ? 'tomorrow' : `in ${daysUntilExpiry} days`}`,
       item_id: batch.item_id,
+      item_name: batch.item.name,
+      item_sku: batch.item.sku_code,
       batch_id: batch.batch_id,
-      expiry_date: batch.expiry_date
+      expiry_date: batch.expiry_date,
+      days_until_expiry: daysUntilExpiry,
+      available_quantity: availableQuantity,
+      unit_of_measure: batch.item.unit_of_measure
     });
   });
 

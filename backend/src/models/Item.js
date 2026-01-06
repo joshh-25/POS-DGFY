@@ -59,6 +59,16 @@ const Item = sequelize.define('Item', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
+  shelf_life_days: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Shelf life in days for unopened items (required if fifo_enabled is true)'
+  },
+  opened_shelf_life_days: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Shelf life in days after opening'
+  },
   batch_size: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true

@@ -112,6 +112,7 @@ export default function PODetailsModal({ po, open, onClose }) {
                     <th className="text-left p-3 text-sm font-medium text-slate-600">Item</th>
                     <th className="text-right p-3 text-sm font-medium text-slate-600">Qty</th>
                     <th className="text-right p-3 text-sm font-medium text-slate-600">Received</th>
+                    <th className="text-right p-3 text-sm font-medium text-slate-600">Expiry</th>
                     <th className="text-right p-3 text-sm font-medium text-slate-600">Unit Price</th>
                     <th className="text-right p-3 text-sm font-medium text-slate-600">Total</th>
                   </tr>
@@ -129,6 +130,9 @@ export default function PODetailsModal({ po, open, onClose }) {
                         )}>
                           {item.quantity_received}
                         </span>
+                      </td>
+                      <td className="p-3 text-right text-slate-600 text-sm">
+                        {item.expiry_date ? item.expiry_date : '—'}
                       </td>
                       <td className="p-3 text-right text-slate-600">₱{formatNumber(item.unit_price, 2)}</td>
                       <td className="p-3 text-right font-medium text-slate-900">₱{formatNumber(item.total_price, 2)}</td>

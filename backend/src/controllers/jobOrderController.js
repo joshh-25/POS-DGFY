@@ -64,7 +64,7 @@ export const finalizeJobOrder = async (req, res, next) => {
 
 export const completeJobOrder = async (req, res, next) => {
   try {
-    const jo = await jobOrderService.completeJobOrder(req.params.jo_id, req.user.user_id);
+    const jo = await jobOrderService.completeJobOrder(req.params.jo_id, req.user.user_id, req.body.expiry_date);
     res.status(200).json({
       success: true,
       data: jo,

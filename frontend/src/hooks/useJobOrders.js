@@ -81,11 +81,11 @@ export const useCompleteJobOrder = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const completeJobOrder = useCallback(async (joId) => {
+  const completeJobOrder = useCallback(async (joId, expiryDateOverride) => {
     setLoading(true);
     setError(null);
     try {
-      const jobOrder = await jobOrderService.completeJobOrder(joId);
+      const jobOrder = await jobOrderService.completeJobOrder(joId, expiryDateOverride);
       return jobOrder;
     } catch (err) {
       setError(err.message || 'Failed to complete job order');

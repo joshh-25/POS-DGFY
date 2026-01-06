@@ -1,0 +1,145 @@
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils.js';
+import { Calendar, Clock, ArrowRight, Package } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "../../src/lib/utils.js";
+import { formatExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { format } from 'date-fns';
+
+export default function ExpiringBatchesList({ alerts }) {
+  const [activeTab, setActiveTab] = useState('critical');
+
+  // Separate alerts by severity
+  const criticalAlerts = alerts.filter(a => a.severity === 'critical');
+  const warningAlerts = alerts.filter(a => a.severity === 'warning');
+
+  const renderAlertList = (alertList, emptyMessage) => {
+    if (alertList.length === 0) {
+      return (
+        <div className="p-6 text-center">
+          <p className="text-sm text-emerald-600 font-medium">{emptyMessage}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-slate-100">
+        {alertList.slice(0, 5).map((alert, index) => {
+          const days = alert.days_until_expiry;
+          const isExpired = days < 0;
+
+          return (
+            <Link
+              key={`alert-${alert.batch_id}-${index}`}
+              to={createPageUrl("Items")}
+              className="block p-4 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-slate-400" />
+                  <span className="font-medium text-slate-900">{alert.item_name}</span>
+                  <Badge variant="outline" className={cn(
+                    "text-xs font-medium",
+                    isExpired
+                      ? "bg-red-100 text-red-700 border-red-200"
+                      : days <= 7
+                      ? "bg-red-100 text-red-700 border-red-200"
+                      : "bg-amber-100 text-amber-700 border-amber-200"
+                  )}>
+                    {isExpired ? 'Expired' : `${days}d left`}
+                  </Badge>
+                </div>
+                <span className="text-sm text-slate-600">
+                  Batch #{alert.batch_id}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-slate-500">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {isExpired
+                    ? `Expired ${Math.abs(days)} days ago`
+                    : days === 0
+                    ? 'Expires today'
+                    : days === 1
+                    ? 'Expires tomorrow'
+                    : `Expires in ${days} days`
+                  }
+                </span>
+                <span>
+                  {alert.available_quantity} {alert.unit_of_measure}
+                </span>
+                <span className="text-slate-400">SKU: {alert.item_sku}</span>
+              </div>
+              {alert.expiry_date && (
+                <div className="mt-1 text-xs text-slate-400">
+                  Expiry: {format(new Date(alert.expiry_date), 'MMM d, yyyy')}
+                </div>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    );
+  };
+
+  if (alerts.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+            <Calendar className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900">Expiry Alerts</h3>
+            <p className="text-sm text-slate-500">No batches expiring soon</p>
+          </div>
+        </div>
+        <p className="text-sm text-emerald-600 font-medium">All batches are within shelf life!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="p-6 border-b border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-900">Expiry Alerts</h3>
+              <p className="text-sm text-slate-500">{alerts.length} batch{alerts.length !== 1 ? 'es' : ''} need attention</p>
+            </div>
+          </div>
+          <Link to={createPageUrl("Items") + "?filter=expiring"}>
+            <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700">
+              View All <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </Link>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="critical" className="text-sm">
+              Critical ({criticalAlerts.length})
+            </TabsTrigger>
+            <TabsTrigger value="warning" className="text-sm">
+              Warning ({warningAlerts.length})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {activeTab === 'critical' && renderAlertList(criticalAlerts, "No critical expiries!")}
+      {activeTab === 'warning' && renderAlertList(warningAlerts, "No batches expiring within 30 days!")}
+    </div>
+  );
+}

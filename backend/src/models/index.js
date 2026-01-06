@@ -71,10 +71,12 @@ JobOrder.hasMany(JOIngredient, { foreignKey: 'jo_id', as: 'ingredients' });
 // JOIngredient associations
 JOIngredient.belongsTo(JobOrder, { foreignKey: 'jo_id', as: 'jobOrder' });
 JOIngredient.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+JOIngredient.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
 
 // StockMovement associations
 StockMovement.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StockMovement.belongsTo(User, { foreignKey: 'user_responsible', as: 'userResponsible' });
+StockMovement.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
 StockMovement.hasMany(BatchTransaction, { foreignKey: 'movement_id', as: 'batchTransactions' });
 
 // FIFOBatch associations

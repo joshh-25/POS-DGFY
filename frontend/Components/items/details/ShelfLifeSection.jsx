@@ -5,28 +5,32 @@ import { formatNumber } from '../../../src/lib/numberUtils';
 export default function ShelfLifeSection({ item }) {
   const shelfLife = item.shelf_life || {};
 
+  // Support both new top-level fields and legacy nested object
+  const durationDays = item.shelf_life_days || shelfLife.duration_days;
+  const openedDays = item.opened_shelf_life_days || shelfLife.opened_shelf_life_days;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {shelfLife.duration_days && (
+      {durationDays && (
         <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
           <div className="flex items-center gap-2 mb-2">
             <Calendar className="w-4 h-4 text-slate-500" />
             <label className="text-sm font-medium text-slate-600">Shelf Life (Unopened)</label>
           </div>
           <p className="text-2xl font-bold text-slate-900">
-            {formatNumber(shelfLife.duration_days, 0)} days
+            {formatNumber(durationDays, 0)} days
           </p>
         </div>
       )}
 
-      {shelfLife.opened_shelf_life_days && (
+      {openedDays && (
         <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-4 h-4 text-slate-500" />
             <label className="text-sm font-medium text-slate-600">Shelf Life (Opened)</label>
           </div>
           <p className="text-2xl font-bold text-slate-900">
-            {formatNumber(shelfLife.opened_shelf_life_days, 0)} days
+            {formatNumber(openedDays, 0)} days
           </p>
         </div>
       )}
