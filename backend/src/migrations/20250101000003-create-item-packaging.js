@@ -49,11 +49,24 @@ export default {
         allowNull: false,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
       }
+    }).catch(err => {
+      if (!err.original || err.original.code !== 'ER_TABLE_EXISTS_ERROR') {
+        if (err.name === 'SequelizeDatabaseError' && err.message.includes('already exists')) return;
+        throw err;
+      }
     });
 
-    await queryInterface.addIndex('item_packaging', ['item_id'], {
-      name: 'idx_item_packaging_item_id'
-    });
+    try {
+      await queryInterface.addIndex('item_packaging', ['item_id'], {
+        name: 'idx_item_packaging_item_id'
+      });
+    } catch (err) {
+      if (err.original && err.original.code === 'ER_DUP_KEYNAME') {
+        console.log('Index idx_item_packaging_item_id already exists, skipping.');
+      } else {
+        console.log('Error adding index (likely exists):', err.message);
+      }
+    }
   },
 
   async down(queryInterface, Sequelize) {
