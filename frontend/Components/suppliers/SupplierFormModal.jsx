@@ -21,6 +21,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 import { useItems } from '@/hooks/useItems.js';
+import { canBeSupplierItem, isManufactured } from '@/components/utils/categoryHelpers';
 
 export default function SupplierFormModal({ supplier, open, onClose, onSave, onSaveDraft }) {
   const [formData, setFormData] = useState({
@@ -36,7 +37,8 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
   });
 
   const { items: allItems, loading: loadingItems } = useItems({ status: 'active' });
-  const availableItems = (allItems || []).filter(i => i.category !== 'product');
+  // Only show purchasable items (raw materials, packaging, supplies) - exclude manufactured products
+  const availableItems = (allItems || []).filter(i => canBeSupplierItem(i));
 
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);

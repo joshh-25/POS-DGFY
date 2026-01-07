@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
@@ -6,6 +5,7 @@ import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "../../src/lib/utils.js";
+import { isManufactured, isPurchasable } from '@/components/utils/categoryHelpers';
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Tabs,
+  TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
@@ -34,8 +35,9 @@ export default function LowStockList({ items }) {
     .filter(item => item.current_stock < item.min_threshold)
     .sort((a, b) => (a.current_stock / a.min_threshold) - (b.current_stock / b.min_threshold));
 
-  const lowStockProducts = allLowStockItems.filter(item => item.category === 'product');
-  const lowStockMaterials = allLowStockItems.filter(item => item.category !== 'product');
+  // Split into Manufactured (Finished Goods + WIP) vs Purchased (Raw Material, Packaging, Supplies)
+  const lowStockProducts = allLowStockItems.filter(item => isManufactured(item));
+  const lowStockMaterials = allLowStockItems.filter(item => isPurchasable(item));
 
   const handleItemClick = (item) => {
     setSelectedItem(item);
@@ -48,10 +50,10 @@ export default function LowStockList({ items }) {
     // Determine action based on category
     // Job Order for products
     if (selectedItem.category === 'product') {
-      navigate(`/job-orders?action=create&productId=${selectedItem.id || selectedItem.item_id}`);
+      navigate(`/ job - orders ? action = create & productId=${selectedItem.id || selectedItem.item_id} `);
     } else {
       // Purchase Order for ingredients, packaging, etc.
-      navigate(`/purchase-orders?action=create&itemId=${selectedItem.id || selectedItem.item_id}`);
+      navigate(`/ purchase - orders ? action = create & itemId=${selectedItem.id || selectedItem.item_id} `);
     }
     setDialogOpen(false);
   };
@@ -73,7 +75,7 @@ export default function LowStockList({ items }) {
 
           return (
             <div
-              key={item.id || `low-stock-${index}`}
+              key={item.id || `low - stock - ${index} `}
               className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
               onClick={() => handleItemClick(item)}
             >

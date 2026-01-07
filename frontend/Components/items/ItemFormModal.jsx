@@ -124,7 +124,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
       const initialData = {
         sku_code: '',
         name: '',
-        category: 'ingredient',
+        category: 'raw_material',
+        product_type: null,
         description: '',
         unit_of_measure: 'kg',
         cost_per_unit: 0,
@@ -163,10 +164,18 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
   const handleChange = (field, value) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
+
+      // Auto-calculate thresholds when max_capacity changes
       if (field === 'max_capacity') {
         updated.min_threshold = Math.round(value * 0.4);
         updated.purchase_allowance = Math.round(value * 0.2);
       }
+
+      // Ensure product_type is null for non-product categories
+      if (field === 'category' && value !== 'product') {
+        updated.product_type = null;
+      }
+
       return updated;
     });
   };
@@ -263,7 +272,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
     const validFields = {
       sku_code: cleanedData.sku_code || '',
       name: cleanedData.name || '',
-      category: cleanedData.category || 'ingredient',
+      category: cleanedData.category || 'raw_material',
+      product_type: cleanedData.category === 'product' ? (cleanedData.product_type || null) : null,
       description: cleanedData.description || '',
       unit_of_measure: cleanedData.unit_of_measure || 'kg',
       cost_per_unit: toNumberOrNull(cleanedData.cost_per_unit),
@@ -362,14 +372,14 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={formData.category || 'ingredient'} onValueChange={(v) => handleChange('category', v)}>
+                <Select value={formData.category || 'raw_material'} onValueChange={(v) => handleChange('category', v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ingredient">Ingredient</SelectItem>
-                    <SelectItem value="product">Product</SelectItem>
+                    <SelectItem value="raw_material">Raw Material</SelectItem>
                     <SelectItem value="packaging">Packaging</SelectItem>
+                    <SelectItem value="supplies">Supplies</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -444,8 +454,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               </div>
             </div>
 
-            {/* FIFO Tracking Option - Now available for all physically trackable items */}
-            {(formData.category === 'ingredient' || formData.category === 'product' || formData.category === 'packaging') && (
+            {/* FIFO Tracking Option - Available for all physically trackable items */}
+            {(formData.category === 'raw_material' || formData.category === 'product' || formData.category === 'packaging' || formData.category === 'supplies') && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1">

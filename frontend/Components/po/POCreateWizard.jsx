@@ -29,6 +29,7 @@ import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { isPurchasable } from '@/components/utils/categoryHelpers';
 
 /**
  * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
@@ -61,11 +62,14 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
     }
   }, [open, initialItemId]);
 
-  // Get items that need restocking
+  // Filter items for restocking - only purchasable items (raw materials, packaging, supplies)
   const restockItems = useMemo(() => {
     return items.filter(item => {
       const status = getStockStatus(item);
-      return status === 'critical' || status === 'warning' || item.category !== 'product';
+      if (isPurchasable(item)) {
+        return status === 'critical' || status === 'warning' || true;
+      }
+      return false; // Only include purchasable items
     });
   }, [items]);
 

@@ -11,9 +11,20 @@ export const createItemSchema = Joi.object({
     'string.max': 'Name must not exceed 255 characters',
     'any.required': 'Name is required'
   }),
-  category: Joi.string().valid('ingredient', 'product', 'packaging').required().messages({
-    'any.only': 'Category must be one of: ingredient, product, packaging',
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').required().messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies',
     'any.required': 'Category is required'
+  }),
+  product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
+    is: 'product',
+    then: Joi.required().messages({
+      'any.required': 'product_type is required when category is "product"'
+    }),
+    otherwise: Joi.valid(null, '').messages({
+      'any.only': 'product_type must be null for non-product categories'
+    })
+  }).messages({
+    'any.only': 'product_type must be one of: work_in_progress, finished_goods'
   }),
   product_folder: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'Product folder must not exceed 100 characters'
@@ -137,8 +148,13 @@ export const createItemDraftSchema = Joi.object({
     'string.min': 'SKU code must be at least 1 character',
     'string.max': 'SKU code must not exceed 50 characters'
   }),
-  category: Joi.string().valid('ingredient', 'product', 'packaging').allow(null, '').messages({
-    'any.only': 'Category must be one of: ingredient, product, packaging'
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').allow(null, '').messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies'
+  }),
+  product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
+    is: 'product',
+    then: Joi.string().valid('work_in_progress', 'finished_goods'),
+    otherwise: Joi.valid(null, '')
   }),
   product_folder: Joi.string().max(100).allow(null, ''),
   description: Joi.string().allow(null, ''),
@@ -237,8 +253,13 @@ export const updateItemSchema = Joi.object({
     'string.min': 'Name must be at least 1 character',
     'string.max': 'Name must not exceed 255 characters'
   }),
-  category: Joi.string().valid('ingredient', 'product', 'packaging').messages({
-    'any.only': 'Category must be one of: ingredient, product, packaging'
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies'
+  }),
+  product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
+    is: 'product',
+    then: Joi.string().valid('work_in_progress', 'finished_goods'),
+    otherwise: Joi.valid(null, '')
   }),
   product_folder: Joi.string().max(100).allow(null, ''),
   description: Joi.string().allow(null, ''),

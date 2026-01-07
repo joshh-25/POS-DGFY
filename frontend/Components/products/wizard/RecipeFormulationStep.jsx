@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Trash2, AlertTriangle, CheckCircle, Beaker, Package, Info, Search } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Beaker, Package, Info, Search, Calculator } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
 import { formatNumber } from '../../../src/lib/numberUtils.js';
+import { canBeProductIngredient } from '@/components/utils/categoryHelpers';
 
 export default function RecipeFormulationStep({ data, updateData, items }) {
   const ingredients = data.ingredients || [];
@@ -15,9 +16,9 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
   const [rawIngredientSearch, setRawIngredientSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
 
-  // Separate raw ingredients from product components
-  const rawIngredientItems = useMemo(() => {
-    return items?.filter(item => item.category === 'ingredient') || [];
+  // Filter items - ingredients can include raw materials, and other products (WIP/Finished Goods)
+  const availableIngredients = useMemo(() => {
+    return (items || []).filter(item => canBeProductIngredient(item));
   }, [items]);
 
   const productComponentItems = useMemo(() => {
@@ -26,13 +27,13 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
 
   // Filtered lists based on search
   const filteredRawIngredients = useMemo(() => {
-    if (!rawIngredientSearch) return rawIngredientItems;
+    if (!rawIngredientSearch) return availableIngredients;
     const search = rawIngredientSearch.toLowerCase();
-    return rawIngredientItems.filter(item =>
+    return availableIngredients.filter(item =>
       item.name?.toLowerCase().includes(search) ||
       item.sku_code?.toLowerCase().includes(search)
     );
-  }, [rawIngredientItems, rawIngredientSearch]);
+  }, [availableIngredients, rawIngredientSearch]);
 
   const filteredProductComponents = useMemo(() => {
     if (!productSearch) return productComponentItems;
@@ -45,8 +46,8 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
 
   // Combined list for Select dropdowns
   const allIngredientItems = useMemo(() => {
-    return [...rawIngredientItems, ...productComponentItems];
-  }, [rawIngredientItems, productComponentItems]);
+    return [...availableIngredients, ...productComponentItems];
+  }, [availableIngredients, productComponentItems]);
 
   // Auto-fix ingredients that have item_id but missing item_name (data corruption fix)
   React.useEffect(() => {
@@ -248,7 +249,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="raw-ingredients" className="flex items-center gap-2">
               <Beaker className="w-4 h-4" />
-              Raw Ingredients ({rawIngredientItems.length})
+              Raw Ingredients ({availableIngredients.length})
             </TabsTrigger>
             <TabsTrigger value="product-components" className="flex items-center gap-2">
               <Package className="w-4 h-4" />

@@ -161,4 +161,31 @@ const db = {
 };
 
 export default db;
+export {
+  sequelize,
+  User,
+  Item,
+  Supplier,
+  PurchaseOrder,
+  JobOrder,
+  StockMovement,
+  FIFOBatch,
+  POLineItem,
+  ItemNutrition,
+  ItemAllergen,
+  ProductComposition,
+  SupplierItem,
+  BulkDiscount,
+  ItemPhysicalProperties,
+  ItemShelfLife,
+  ItemPackaging,
+  ItemQualityControl,
+  ItemRegulatoryCompliance,
+  ItemCostBreakdown,
+  JOIngredient,
+  BatchTransaction,
+  AuditLog,
+  SystemSetting,
+  BatchLineage
+};
 

@@ -307,10 +307,11 @@ CREATE TABLE fifo_batches (
     received_date DATE NOT NULL,
     expiry_date DATE,
     po_number VARCHAR(50),
+    notes TEXT,                                    -- Added in Phase 23: Notes from PO receipt or JO completion
     quantity_consumed DECIMAL(12, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE,
     INDEX idx_item_id (item_id),
     INDEX idx_expiry_date (expiry_date),

@@ -1,34 +1,19 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
-import { Package, Box, Archive, Folder } from 'lucide-react';
+import { Folder } from 'lucide-react';
 import { formatNumber } from '../../../src/lib/numberUtils';
-
-const getCategoryIcon = (category) => {
-  switch (category) {
-    case 'product': return <Package className="w-4 h-4" />;
-    case 'ingredient': return <Box className="w-4 h-4" />;
-    case 'packaging': return <Archive className="w-4 h-4" />;
-    default: return <Package className="w-4 h-4" />;
-  }
-};
-
-const getCategoryColor = (category) => {
-  switch (category) {
-    case 'product': return 'bg-teal-100 text-teal-800 border-teal-300';
-    case 'ingredient': return 'bg-blue-100 text-blue-800 border-blue-300';
-    case 'packaging': return 'bg-purple-100 text-purple-800 border-purple-300';
-    default: return 'bg-slate-100 text-slate-800 border-slate-300';
-  }
-};
+import { getCategoryIcon, getCategoryColor, getCategoryLabel } from '@/components/utils/categoryHelpers';
 
 export default function BasicInfoSection({ item }) {
+  const CategoryIcon = getCategoryIcon(item);
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium text-slate-600">Product Name</label>
           <div className="flex items-center gap-2 mt-1">
-            {getCategoryIcon(item.category)}
+            <CategoryIcon className="w-4 h-4" />
             <span className="text-lg font-semibold text-slate-900">{item.name}</span>
           </div>
         </div>
@@ -41,8 +26,8 @@ export default function BasicInfoSection({ item }) {
         <div>
           <label className="text-sm font-medium text-slate-600">Category</label>
           <div className="mt-1">
-            <Badge variant="outline" className={getCategoryColor(item.category)}>
-              {item.category}
+            <Badge variant="outline" className={getCategoryColor(item)}>
+              {getCategoryLabel(item)}
             </Badge>
           </div>
         </div>
@@ -70,8 +55,8 @@ export default function BasicInfoSection({ item }) {
                 variant="outline"
                 className={
                   item.status === 'active' ? 'bg-green-100 text-green-800 border-green-300' :
-                  item.status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                  'bg-slate-100 text-slate-800 border-slate-300'
+                    item.status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                      'bg-slate-100 text-slate-800 border-slate-300'
                 }
               >
                 {item.status}

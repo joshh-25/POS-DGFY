@@ -24,6 +24,7 @@ import { cn } from "../src/lib/utils.js";
 import { formatNumber } from '../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry, formatExpiryDate } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
+import { isManufactured, getEffectiveCategory } from '@/components/utils/categoryHelpers';
 
 export default function Items() {
   const { items, loading, error, refetch } = useItems();
@@ -78,7 +79,7 @@ export default function Items() {
   const productFolders = useMemo(() => {
     const folders = new Set();
     items.forEach(item => {
-      if (item.category === 'product' && item.product_folder) {
+      if (isManufactured(item) && item.product_folder) {
         folders.add(item.product_folder);
       }
     });
@@ -90,9 +91,15 @@ export default function Items() {
       .filter(item => {
         const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (item.sku_code || '').toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+
+        // Category filter matches effective category
+        const effectiveCategory = getEffectiveCategory(item);
+        const matchesCategory = categoryFilter === 'all' ||
+          effectiveCategory === categoryFilter ||
+          item.category === categoryFilter;
+
         const matchesFolder = folderFilter === 'all' ||
-          (item.category === 'product' && item.product_folder === folderFilter);
+          (isManufactured(item) && item.product_folder === folderFilter);
 
         // Handle draft status filter
         if (statusFilter === 'draft') {
@@ -158,7 +165,7 @@ export default function Items() {
   };
 
   const handleEdit = async (item) => {
-    if (item.category === 'product') {
+    if (isManufactured(item)) {
       try {
         // Fetch complete item data with all associations
         const { getItemById } = await import('../src/services/itemService.js');
@@ -327,13 +334,17 @@ export default function Items() {
           <p className="text-slate-500 mt-1">{filteredItems.length} items found</p>
         </div>
         <div className="flex gap-2">
-          {categoryFilter === 'product' && (
+          {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && (
             <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
               <Package className="w-4 h-4 mr-2" />
               Create Product
             </Button>
           )}
-          <Button onClick={handleCreate} variant={categoryFilter === 'product' ? 'outline' : 'default'} className={categoryFilter !== 'product' ? "bg-teal-600 hover:bg-teal-700" : ""}>
+          <Button
+            onClick={handleCreate}
+            variant={(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') ? 'outline' : 'default'}
+            className={(categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add New Item
           </Button>
@@ -360,9 +371,11 @@ export default function Items() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="ingredient">Ingredients</SelectItem>
-                <SelectItem value="product">Products</SelectItem>
+                <SelectItem value="raw_material">Raw Material</SelectItem>
                 <SelectItem value="packaging">Packaging</SelectItem>
+                <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+                <SelectItem value="finished_goods">Finished Goods</SelectItem>
+                <SelectItem value="supplies">Supplies</SelectItem>
               </SelectContent>
             </Select>
 
@@ -509,10 +522,10 @@ export default function Items() {
                           daysUntilExpiry < 0
                             ? "bg-red-50 text-red-700 border-red-200"
                             : daysUntilExpiry <= 7
-                            ? "bg-red-50 text-red-700 border-red-200"
-                            : daysUntilExpiry <= 30
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              ? "bg-red-50 text-red-700 border-red-200"
+                              : daysUntilExpiry <= 30
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200"
                         )}>
                           <Clock className="w-3 h-3" />
                           {daysUntilExpiry < 0 ? 'Expired' : `${daysUntilExpiry}d left`}

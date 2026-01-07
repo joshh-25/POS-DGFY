@@ -140,22 +140,29 @@ backend/
 └── package.json
 ```
 
-## 🎯 Key Features
+### Key Features
 
-- **Dashboard**: Real-time stats, alerts, and recent movements
-- **SKU Management**: Comprehensive item tracking with FIFO batches
-- **Purchase Orders**: Full PO workflow with receipt tracking
-- **Job Orders**: Production job management
-- **Stock Movements**: Detailed movement logging
-- **Supplier Management**: Supplier profiles with quality ratings
-- **User Authentication**: JWT-based auth with role-based access
-- **Product Creation**: 12-step wizard for detailed product setup
+*   **Inventory Management**: Track stock levels, costs, and specifications.
+*   **FIFO Batch Tracking**: Manage inventory using exact-cost First-In-First-Out logic.
+*   **Smart Restock**: Auto-calculate min thresholds (40%) and purchase allowances (20%).
+*   **Nested Products**: Create multi-level recipes (Product A can be an ingredient for Product B).
+*   **Job Orders**: Production workflow with ingredient reservation and finished goods tracking.
+*   **Job Order Notes**: Add detailed notes and attachments to job orders.
+*   **Purchase Orders**: Complete procurement cycle from drafted POs to received stock.
+*   **Stock Movements**: Detailed audit trail of every inventory change.
+*   **Supplier Management**: Track supplier performance and lead times.
+*   **User Management**: Role-based access control (Admin, Manager, Staff).
+
+### Project Structure
+
+The project is organized as a monorepo:
+
+*   **`frontend/`**: React application (Vite + TailwindCSS + Shadcn UI).
+*   **`backend/`**: Node.js Express API (Sequelize + MySQL).
+*   **`docs/`**: Detailed documentation and quick references.
 
 ## 📚 Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** - Claude Code specification and project overview
-- **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference guide
-- **[QUICK_START.md](QUICK_START.md)** - Detailed quick start guide
 - **[ADMIN_SETUP.md](ADMIN_SETUP.md)** - Admin user setup
 - **[REDIS_SETUP.md](REDIS_SETUP.md)** - Redis installation and configuration
 - **[SETUP.md](SETUP.md)** - Complete setup instructions

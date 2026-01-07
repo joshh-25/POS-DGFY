@@ -17,8 +17,24 @@ const Item = sequelize.define('Item', {
     allowNull: false
   },
   category: {
-    type: DataTypes.ENUM('ingredient', 'product', 'packaging'),
-    allowNull: false  // Match database schema requirement
+    type: DataTypes.ENUM('raw_material', 'packaging', 'product', 'supplies'),
+    allowNull: false
+  },
+  product_type: {
+    type: DataTypes.ENUM('work_in_progress', 'finished_goods'),
+    allowNull: true,
+    validate: {
+      isValidProductType(value) {
+        // product_type is required when category is 'product'
+        if (this.category === 'product' && !value) {
+          throw new Error('product_type is required when category is "product"');
+        }
+        // product_type must be null/undefined for non-product categories
+        if (this.category !== 'product' && value !== null && value !== undefined) {
+          throw new Error('product_type must be null for non-product categories');
+        }
+      }
+    }
   },
   product_folder: {
     type: DataTypes.STRING(100),

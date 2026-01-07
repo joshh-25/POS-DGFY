@@ -105,21 +105,44 @@ lsof -ti:5000 | xargs kill -9  # Backend
 
 ## Data Entity Quick Reference
 
-**Item**: sku_code, name, category, current_stock, max_capacity, fifo_enabled
-  - min_threshold *(auto: max_capacity × 40%)*
-  - purchase_allowance *(auto: max_capacity × 20%)*
+### Item
+- **Fields**: `sku_code`, `category`, `current_stock`, `min_threshold` (auto), `purchase_allowance` (auto), `deleted_at`, `deleted_by`, `nesting_level`
+- **Critical**: `category` determines logic. `min_threshold` is 40% of `max_capacity`.
 
-**User**: username, email, password_hash, full_name, role, is_active
+### FIFO Batch
+- **Fields**: `batch_id`, `item_id`, `expiry_date`, `cost_per_unit`, `notes`
+- **Critical**: `expiry_date` is mandatory if `fifo_enabled` is true. `notes` can store batch-specific details.
 
-**FIFOBatch**: batch_id, item_id, quantity, received_date, expiry_date, quantity_consumed
+### Purchase Order (PO)
+- **Fields**: `po_number`, `supplier_id`, `status` [pending, received, stock_updated], `archived_at`
+- **Critical**: Cannot be edited after 'received'.
 
-**PurchaseOrder**: po_number, supplier_id, status, total_amount, expected_delivery_date
+### Job Order (JO)
+- **Fields**: `jo_number`, `product_id`, `status` [draft, in_progress, completed], `archived_at`, `notes`
+- **Critical**: Consumes ingredients upon 'completion'. Notes propagate to finished goods batch.
 
-**JobOrder**: jo_number, product_id, quantity_to_produce, status, responsible_user
+### Stock Movement
+- **Fields**: `movement_type`, `quantity`, `reference_id` (PO-xxx, JO-xxx), `user_responsible`
+- **Critical**: IMMUTABLE audit log. Never delete rows.
 
-**StockMovement**: item_id, movement_type, quantity, from_location, to_location
+---
 
-**Supplier**: name, contact_person, quality_rating, avg_delivery_days
+## ⚠️ Common Issues & Fixes
+
+### 1. "Product type is required"
+**Cause**: Creating a 'product' category Item without specifying `product_type` (Work in Progress / Finished Goods).
+**Fix**: Ensure `product_type` is selected in the wizard.
+
+### 2. "Circular dependency detected"
+**Cause**: Trying to nest Product A inside Product B, when Product B is already inside Product A.
+**Fix**: Check your recipe hierarchy. The system prevents infinite loops (Level 1 → Level 2 → Level 3).
+
+### 3. Port 5000/5173 Already in Use
+**Fix**:
+```bash
+npx kill-port 5000
+npx kill-port 5173
+```
 
 ## Shadcn UI Components Available (Frontend)
 

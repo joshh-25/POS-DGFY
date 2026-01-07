@@ -31,6 +31,10 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
     type: DataTypes.STRING(50),
     allowNull: true
   },
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
   quantity_consumed: {
     type: DataTypes.DECIMAL(12, 2),
     defaultValue: 0

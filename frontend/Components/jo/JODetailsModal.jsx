@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Clock,
   Play,
@@ -39,6 +40,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   // Always call hooks at top level
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [expiryOverride, setExpiryOverride] = useState('');
+  const [completionNotes, setCompletionNotes] = useState('');
 
   // Use hook unconditionally, handle null joId internally or let hook handle it
   const { jobOrder: detailedJO, loading } = useJobOrderById(open ? jo?.jo_id : null);
@@ -63,10 +65,11 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   const handleCompleteClick = () => {
     setCompleteDialogOpen(true);
     setExpiryOverride('');
+    setCompletionNotes('');
   };
 
   const handleConfirmComplete = () => {
-    onComplete(displayJO, expiryOverride || null);
+    onComplete(displayJO, expiryOverride || null, completionNotes || null);
     setCompleteDialogOpen(false);
   };
 
@@ -258,6 +261,14 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                 <span>Responsible: {displayJO.responsibleUser?.username || displayJO.responsible_user}</span>
               </div>
             )}
+
+            {/* Notes - Display for completed JOs */}
+            {displayJO.status === 'completed' && displayJO.notes && (
+              <div className="bg-slate-50 rounded-xl p-4">
+                <p className="text-sm text-slate-500 mb-1">Notes</p>
+                <p className="text-slate-700">{displayJO.notes}</p>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="pt-8">
@@ -318,6 +329,17 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="completionNotes">Production Notes (Optional)</Label>
+              <Textarea
+                id="completionNotes"
+                value={completionNotes}
+                onChange={(e) => setCompletionNotes(e.target.value)}
+                placeholder="Add any notes about this production run..."
+                rows={3}
+              />
             </div>
           </div>
 

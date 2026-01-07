@@ -82,6 +82,25 @@ export default function BasicInfoStep({ data, updateData, folders }) {
         </div>
 
         <div className="space-y-2">
+          <Label>Product Type *</Label>
+          <Select
+            value={data.product_type || 'finished_goods'}
+            onValueChange={(val) => updateData({ product_type: val, category: 'product' })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="finished_goods">Finished Goods</SelectItem>
+              <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-slate-500">
+            Finished Goods are final products ready for sale. Work In Progress can be used as ingredients in other products.
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label>Unit of Measure *</Label>
           <Select value={data.unit_of_measure} onValueChange={(val) => updateData({ unit_of_measure: val })}>
             <SelectTrigger>

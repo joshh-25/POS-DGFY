@@ -90,6 +90,11 @@ export default function FIFOBatchViewer({ item }) {
                   <p className="text-xs text-slate-500 mt-1">
                     PO: {batch.po_number || 'N/A'}
                   </p>
+                  {batch.notes && (
+                    <p className="text-xs text-slate-600 mt-1 italic">
+                      📝 {batch.notes}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-slate-900">{formatNumber(remaining, 2)}</p>

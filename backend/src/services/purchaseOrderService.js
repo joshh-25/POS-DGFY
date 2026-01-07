@@ -285,7 +285,8 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
         cost_per_unit: lineItem.unit_price,
         received_date: receivedDate,
         expiry_date: expiryDate,
-        po_number: po.po_number
+        po_number: po.po_number,
+        notes: receiptData.notes || po.notes || null
       });
 
       // Save expiry_date to line item for reference
@@ -324,7 +325,9 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
 
   await po.update({
     status: allReceived ? 'received' : 'partial',
-    received_date: new Date()
+    received_date: new Date(),
+    notes: receiptData.notes || po.notes,
+    delivery_rating: receiptData.delivery_rating || po.delivery_rating
   });
 
   return po;

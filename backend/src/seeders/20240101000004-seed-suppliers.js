@@ -11,7 +11,7 @@ export default {
         address: '123 Industrial Blvd, Suite 100, Metro City, MC 12345',
         quality_rating: 4.8,
         avg_delivery_days: 3,
-        is_active: true,
+        status: 'active',
         last_delivery_date: '2025-01-18',
         created_at: now,
         updated_at: now
@@ -24,7 +24,7 @@ export default {
         address: '456 Spice Lane, Flavor Town, FT 67890',
         quality_rating: 4.2,
         avg_delivery_days: 5,
-        is_active: true,
+        status: 'active',
         last_delivery_date: '2025-01-15',
         created_at: now,
         updated_at: now
@@ -37,7 +37,7 @@ export default {
         address: '789 Packaging Way, Box City, BC 11223',
         quality_rating: 4.5,
         avg_delivery_days: 7,
-        is_active: true,
+        status: 'active',
         last_delivery_date: '2025-01-14',
         created_at: now,
         updated_at: now

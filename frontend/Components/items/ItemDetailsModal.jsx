@@ -11,9 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Package,
-  Beaker,
-  Box,
   History,
   Plus,
   Ruler,
@@ -33,6 +30,7 @@ import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
 import FIFOBatchViewer from './FIFOBatchViewer';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
 
 // Import accordion components
 import {
@@ -69,12 +67,6 @@ import {
   hasRecipeData,
 } from './details/helpers';
 
-const categoryConfig = {
-  ingredient: { icon: Beaker, color: "bg-purple-100 text-purple-700", label: "Ingredient" },
-  product: { icon: Package, color: "bg-blue-100 text-blue-700", label: "Product" },
-  packaging: { icon: Box, color: "bg-amber-100 text-amber-700", label: "Packaging" }
-};
-
 const statusConfig = {
   critical: { label: "Critical", color: "bg-red-100 text-red-700" },
   warning: { label: "Low Stock", color: "bg-amber-100 text-amber-700" },
@@ -87,7 +79,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
 
   if (!item) return null;
 
-  const isProduct = item.category === 'product';
+  const isProduct = isManufactured(item);
 
   // Parse packaging_specs if it's a string
   let packagingSpecs = item.packaging_specs;
@@ -100,7 +92,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
     }
   }
 
-  const category = categoryConfig[item.category] || categoryConfig.ingredient;
+  const category = getCategoryConfig(item);
   const status = getStockStatus(item);
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
@@ -131,7 +123,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
                 {statusStyle.label}
               </Badge>
               <Badge variant="outline" className={category.color}>
-                {category.label}
+                {getCategoryLabel(item)}
               </Badge>
             </div>
 

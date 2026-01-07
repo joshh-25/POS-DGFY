@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { formatNumber } from '../src/lib/numberUtils.js';
 import { format } from 'date-fns';
+import { canBeJobOrderOutput } from '@/components/utils/categoryHelpers';
 import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,8 +87,9 @@ export default function JobOrders() {
     }).sort((a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at));
   }, [jobOrders, searchQuery, statusFilter]);
 
+  // Get all items and filter for products (manufactured items that can be produced)
   const products = useMemo(() => {
-    const prods = (items || []).filter(item => item.category === 'product');
+    const prods = (items || []).filter(item => canBeJobOrderOutput(item));
 
     // DEBUG: Log products received from backend
     console.log('=== PRODUCTS IN FRONTEND (JobOrders.jsx) ===');
@@ -197,9 +200,9 @@ export default function JobOrders() {
     }
   };
 
-  const handleCompleteProduction = async (jo, expiryOverride) => {
+  const handleCompleteProduction = async (jo, expiryOverride, notes = null) => {
     try {
-      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride);
+      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride, notes);
       toast.success('Job order completed successfully');
 
       // Update the selected JO with enriched data including ingredients_consumed

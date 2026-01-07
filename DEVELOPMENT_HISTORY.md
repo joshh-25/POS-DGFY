@@ -1318,7 +1318,7 @@ expiringBatches.forEach(batch => {
 
 ---
 
-## Phase 20: Smart Restock Quantity Suggestions
+## Phase 21: Smart Restock Quantity Suggestions
 **Status**: ✅ COMPLETE  
 **Date**: 2026-01-07
 
@@ -1387,7 +1387,182 @@ Implemented intelligent order quantity suggestions for Purchase Orders and Job O
 
 ---
 
+## Phase 22: Dashboard Data Fix
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-07
+
+### Issue
+Dashboard displayed zeros for most metrics including Total Items, Low Stock, Healthy Stock, and Inventory Value.
+
+### Root Cause
+Field name mismatch between backend (snake_case) and frontend (camelCase):
+- Backend returned: `total_items`, `low_stock_items`, `total_inventory_value`
+- Frontend expected: `totalItems`, `lowStockCount`, `totalValue`
+
+Additionally, backend was missing calculations for:
+- `healthyCount` (items with stock between min threshold and max capacity)
+- `overStockCount` (items exceeding max capacity)
+
+### Fix Applied
+
+#### File: `backend/src/services/dashboardService.js`
+
+1. Added healthy stock calculation:
+```javascript
+const healthyStockItems = await Item.count({
+  where: {
+    status: 'active',
+    [Op.and]: [
+      sequelize.where(sequelize.col('current_stock'), Op.gt, sequelize.col('min_threshold')),
+      sequelize.where(sequelize.col('current_stock'), Op.lte, sequelize.col('max_capacity'))
+    ]
+  }
+});
+```
+
+2. Added overstock calculation:
+```javascript
+const overStockItems = await Item.count({
+  where: {
+    status: 'active',
+    [Op.and]: [
+      sequelize.where(sequelize.col('current_stock'), Op.gt, sequelize.col('max_capacity'))
+    ]
+  }
+});
+```
+
+3. Changed return object to use camelCase field names matching frontend expectations
+
+### Impact
+- Dashboard now correctly displays all metrics
+- Stock health distribution accurately shown
+
+---
+
+## Phase 23: JO Notes & Batch Notes Feature
+**Status**: ✅ COMPLETE & VERIFIED
+**Date**: 2026-01-07
+**Verification Date**: 2026-01-07
+
+### Overview
+Added notes functionality to Job Orders (similar to Purchase Orders) and batch-level notes that persist on FIFO batches for traceability.
+
+### Database Changes
+
+#### New Migration: Add notes to fifo_batches
+```sql
+ALTER TABLE fifo_batches ADD COLUMN notes TEXT NULL;
+```
+
+### Backend Changes
+
+#### `backend/src/models/FIFOBatch.js`
+- Added `notes` field to model definition
+
+#### `backend/src/services/jobOrderService.js`
+- Updated `completeJobOrder()` to accept and save notes parameter
+- Notes saved to both JO record and finished product batch
+
+#### `backend/src/services/purchaseOrderService.js`
+- Updated batch creation to save PO notes to each FIFO batch
+
+### Frontend Changes
+
+#### `frontend/Components/jo/JODetailsModal.jsx`
+- Added notes state to completion dialog
+- Added Textarea for entering notes during completion
+- Display notes section for completed JOs (similar to PO)
+
+#### `frontend/Components/items/FIFOBatchViewer.jsx`
+- Display batch notes below PO/JO reference
+
+#### `frontend/src/services/jobOrderService.js`
+- Updated `completeJobOrder()` to include notes in request
+
+### Data Flow
+1. **PO Receipt**: Notes entered → saved to PO → copied to each FIFO batch
+2. **JO Completion**: Notes entered → saved to JO → copied to finished product batch
+3. **View Products**: Batch notes displayed in FIFOBatchViewer
+
+### Verification & Testing
+
+#### Verification Script
+**File**: `backend/tests/manual_fifo_verification.js`
+
+Automated test script that verifies:
+- PO notes are saved to purchase_orders table
+- PO notes are copied to fifo_batches table
+- FIFO batch creation works correctly
+- Notes display in frontend UI
+
+**Usage**:
+```bash
+cd backend
+node tests/manual_fifo_verification.js
+```
+
+**Expected Output**:
+```
+--- Starting FIFO Verification ---
+Creating Test Item...
+Creating PO...
+Receiving PO with Notes...
+--- Verification Results ---
+PO Notes: "Test Receipt Note"
+PASS: PO Notes saved
+Batches Found: 1
+Batch Notes: "Test Receipt Note"
+PASS: Batch Notes saved
+```
+
+#### Bug Fixes Applied During Verification
+
+**Issue 1**: Missing named exports in models/index.js
+- **Fix**: Added named exports for all models including FIFOBatch
+- **File**: `backend/src/models/index.js` (lines 164-190)
+- **Impact**: Allows direct import of models in test scripts
+
+**Issue 2**: Product type validation too strict
+- **Fix**: Updated validator to handle undefined values
+- **File**: `backend/src/models/Item.js` (line 33)
+- **Change**: `value !== null && value !== undefined` instead of `value !== null`
+- **Impact**: Prevents validation errors when creating non-product items
+
+**Issue 3**: Verification script parameter mismatches
+- **Fix**: Corrected parameter names to match service expectations
+- **File**: `backend/tests/manual_fifo_verification.js`
+- **Changes**:
+  - Use `line_items` instead of `items`
+  - Use `quantity_ordered` instead of `quantity`
+  - Removed outer transaction to avoid conflicts
+
+#### Verification Completion
+- **Date**: 2026-01-07
+- **Test Status**: ✅ PASSED
+- **Backend**: ✅ Verified working
+- **Frontend**: ✅ Confirmed implemented
+- **Database**: ✅ Schema validated
+
+---
+
+## Phase 24: Category Validation & JO Refinements
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-07
+
+### Category Validation Fix
+**Issue**: Creating items in non-product categories (e.g., Ingredients) failed with validation errors if `product_type` was not explicitly handling.
+**Fix**: Updated `ItemFormModal.jsx` to ensure `product_type` is sent as `null` for non-product categories, satisfying backend validation strictness.
+
+### Job Order FIFO Logic Verification
+**Implementation**: Verified and refined the FIFO batch consumption logic for Job Orders.
+- Validated `JODetailsModal.jsx` displays consumed batches correctly.
+- Confirmed `jobOrderService.js` correctly decrements stock from specific FIFO batches based on First-In-First-Out principles.
+- Added ability to set expiry dates for finished products upon JO completion.
+
+---
+
 **Last Updated**: 2026-01-07  
-**Version**: 1.3.0  
+**Version**: 1.4.1  
 **Project Status**: Production Ready
 

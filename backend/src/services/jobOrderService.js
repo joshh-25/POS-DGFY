@@ -248,7 +248,7 @@ export const finalizeJobOrder = async (joId, userId) => {
   return jo;
 };
 
-export const completeJobOrder = async (joId, userId, expiryDateOverride = null) => {
+export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null) => {
   const jo = await JobOrder.findByPk(joId, {
     include: [
       { model: Item, as: 'product' },
@@ -380,7 +380,8 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null) 
       cost_per_unit: product.cost_per_unit,
       received_date: productionDate,
       expiry_date: productExpiryDate,
-      po_number: jo.jo_number // Use JO number as reference
+      po_number: jo.jo_number, // Use JO number as reference
+      notes: notes || null
     });
     productBatchId = productBatch.batch_id;
   }
@@ -397,10 +398,11 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null) 
     expiry_date: productExpiryDate
   });
 
-  // Update JO status
+  // Update JO status and save notes
   await jo.update({
     status: 'completed',
-    completion_date: new Date()
+    completion_date: new Date(),
+    notes: notes || jo.notes || null
   });
 
   // Reload JO with all associations including item details

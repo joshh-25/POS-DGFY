@@ -6,9 +6,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, CheckCircle, XCircle, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Plus, Trash2, AlertTriangle, Search } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
 import { formatNumber } from '../../../src/lib/numberUtils.js';
+import { canBeProductPackaging } from '@/components/utils/categoryHelpers';
 
 export default function PackagingLabelingStep({ data, updateData, items }) {
   // Ensure packaging_info is an object, even if it comes in as something else (like an ID from bad state)
@@ -18,7 +19,7 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
 
   // Filter items with category 'packaging'
   const availablePackagingItems = useMemo(() => {
-    return items?.filter(item => item.category === 'packaging') || [];
+    return items?.filter(item => canBeProductPackaging(item)) || [];
   }, [items]);
 
   // Auto-fix packaging items that have item_id but missing item_name (data corruption fix)

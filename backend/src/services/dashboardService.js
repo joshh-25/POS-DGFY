@@ -8,6 +8,7 @@ import User from '../models/User.js';
 
 export const getDashboardStats = async () => {
   const totalItems = await Item.count({ where: { status: 'active' } });
+
   const lowStockItems = await Item.count({
     where: {
       status: 'active',
@@ -20,10 +21,43 @@ export const getDashboardStats = async () => {
       ]
     }
   });
+
+  // Calculate healthy stock (items with stock between min threshold and max capacity)
+  const healthyStockItems = await Item.count({
+    where: {
+      status: 'active',
+      [Op.and]: [
+        sequelize.where(
+          sequelize.col('current_stock'),
+          Op.gt,
+          sequelize.col('min_threshold')
+        ),
+        sequelize.where(
+          sequelize.col('current_stock'),
+          Op.lte,
+          sequelize.col('max_capacity')
+        )
+      ]
+    }
+  });
+
+  // Calculate overstock (items exceeding max capacity)
+  const overStockItems = await Item.count({
+    where: {
+      status: 'active',
+      [Op.and]: [
+        sequelize.where(
+          sequelize.col('current_stock'),
+          Op.gt,
+          sequelize.col('max_capacity')
+        )
+      ]
+    }
+  });
+
   const pendingPOs = await PurchaseOrder.count({ where: { status: 'pending' } });
   const activeJOs = await JobOrder.count({ where: { status: 'in_progress' } });
 
-  // Calculate total inventory value
   // Calculate total inventory value
   // Optimized to use Database Aggregation to avoid fetching all items
   const inventoryValueResult = await Item.findAll({
@@ -36,12 +70,16 @@ export const getDashboardStats = async () => {
 
   const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
 
+  // Return camelCase field names to match frontend expectations
   return {
-    total_items: totalItems,
-    low_stock_items: lowStockItems,
+    totalItems,
+    lowStockCount: lowStockItems,
+    healthyCount: healthyStockItems,
+    overStockCount: overStockItems,
+    totalValue,
+    // Keep these for backward compatibility
     pending_purchase_orders: pendingPOs,
-    active_job_orders: activeJOs,
-    total_inventory_value: totalValue
+    active_job_orders: activeJOs
   };
 };
 

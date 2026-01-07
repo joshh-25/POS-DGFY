@@ -57,7 +57,19 @@
       "Bash(node test-draft-creation.js:*)",
       "Bash(/c/xampp/mysql/bin/mysql.exe:*)",
       "Bash(npx shadcn@latest add:*)",
-      "Bash(timeout /t 3)"
+      "Bash(timeout /t 3)",
+      "Bash(redis-cli ping:*)",
+      "Bash(C:xamppmysqlbinmysql.exe -u root -e \"SELECT VERSION\\(\\);\")",
+      "Bash(C:xamppmysqlbinmysql.exe -u root -e \"SHOW DATABASES LIKE ''sku_inventory_manager'';\")",
+      "Bash(npm run install:all:*)",
+      "Bash(npm run seed:*)",
+      "Bash(npm run seed:undo:*)",
+      "Bash(node verify-seed.js:*)",
+      "Bash(npx sequelize-cli db:migrate:status)",
+      "Bash(node --version:*)",
+      "Bash(npm --version)",
+      "Bash(node:*)",
+      "Bash(grep:*)"
     ]
   }
 }

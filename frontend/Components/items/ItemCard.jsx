@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { Package, Beaker, Box, MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check } from 'lucide-react';
+import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,12 +16,7 @@ import { getStockStatus } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
-
-const categoryConfig = {
-  ingredient: { icon: Beaker, color: "bg-purple-100 text-purple-700" },
-  product: { icon: Package, color: "bg-blue-100 text-blue-700" },
-  packaging: { icon: Box, color: "bg-amber-100 text-amber-700" }
-};
+import { getCategoryConfig, getCategoryLabel } from '@/components/utils/categoryHelpers';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -32,7 +27,7 @@ const statusConfig = {
 };
 
 export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRole }) {
-  const category = categoryConfig[item.category] || categoryConfig.ingredient;
+  const category = getCategoryConfig(item);
   const isDraft = item.status === 'draft';
   const status = isDraft ? 'draft' : getStockStatus(item);
   const statusStyle = statusConfig[status];
@@ -92,7 +87,7 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
             {statusStyle.label}
           </Badge>
           <Badge variant="outline" className={category.color}>
-            {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+            {getCategoryLabel(item)}
           </Badge>
           {item.fifo_enabled && (
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -106,10 +101,10 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
               daysUntilExpiry < 0
                 ? "bg-red-100 text-red-700 border-red-200"
                 : daysUntilExpiry <= 7
-                ? "bg-red-100 text-red-700 border-red-200"
-                : daysUntilExpiry <= 30
-                ? "bg-amber-100 text-amber-700 border-amber-200"
-                : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                  ? "bg-red-100 text-red-700 border-red-200"
+                  : daysUntilExpiry <= 30
+                    ? "bg-amber-100 text-amber-700 border-amber-200"
+                    : "bg-emerald-100 text-emerald-700 border-emerald-200"
             )}>
               <Clock className="w-3 h-3" />
               {daysUntilExpiry < 0 ? 'Expired' : `${daysUntilExpiry}d left`}
@@ -124,8 +119,8 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
               {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
             </span>
           </div>
-          <Progress 
-            value={percentage} 
+          <Progress
+            value={percentage}
             className="h-2"
           />
           <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
@@ -147,10 +142,10 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
                 daysUntilExpiry < 0
                   ? "text-red-700"
                   : daysUntilExpiry <= 7
-                  ? "text-red-700"
-                  : daysUntilExpiry <= 30
-                  ? "text-amber-700"
-                  : "text-emerald-700"
+                    ? "text-red-700"
+                    : daysUntilExpiry <= 30
+                      ? "text-amber-700"
+                      : "text-emerald-700"
               )}>
                 {format(new Date(nextExpiry), 'MMM d, yyyy')}
               </span>

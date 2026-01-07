@@ -25,8 +25,11 @@ export const finalizeJobOrder = async (joId) => {
   return response.data.data;
 };
 
-export const completeJobOrder = async (joId, expiryDateOverride) => {
-  const response = await api.post(`/job-orders/${joId}/complete`, { expiry_date: expiryDateOverride });
+export const completeJobOrder = async (joId, expiryDateOverride, notes = null) => {
+  const response = await api.post(`/job-orders/${joId}/complete`, {
+    expiry_date: expiryDateOverride,
+    notes: notes
+  });
   return response.data.data;
 };
 

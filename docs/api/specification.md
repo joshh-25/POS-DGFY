@@ -334,9 +334,93 @@ Delete item (soft delete)
   "message": "Item deleted successfully"
 }
 ```
+**Notes:**
+- Sets `status` to 'inactive'
+- Sets `deleted_at` timestamp and `deleted_by` user ID
 
 ### GET /items/:item_id/stock-history
 Get stock movement history for an item
+...
+
+---
+
+## Purchase Orders Endpoints
+
+...
+
+### POST /purchase-orders/:po_id/archive
+Archive a Purchase Order (hide from default lists)
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Purchase order archived"
+}
+```
+
+### POST /purchase-orders/:po_id/restore
+Restore an archived Purchase Order
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Purchase order restored"
+}
+```
+
+---
+
+## Job Orders Endpoints
+
+...
+
+### POST /job-orders/:jo_id/complete
+Complete production and update inventory
+
+**Request**
+```json
+{
+  "actual_quantity_produced": 50,
+  "notes": "Production went smoothly",
+  "expiry_date_override": "2026-06-01" 
+}
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "jo_id": 1,
+    "status": "completed",
+    "notes": "Production went smoothly"
+  }
+}
+```
+
+### POST /job-orders/:jo_id/archive
+Archive a Job Order
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Job order archived"
+}
+```
+
+### POST /job-orders/:jo_id/restore
+Restore an archived Job Order
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Job order restored"
+}
+```
 
 **Query Parameters**
 ```
