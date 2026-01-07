@@ -264,6 +264,8 @@ CREATE TABLE users (
 
 ### 2. Items (SKU Master) Table
 
+> **Note**: `min_threshold` and `purchase_allowance` are auto-calculated from `max_capacity` based on system settings (default: 40% and 20% respectively). These values are enforced by the backend and cannot be manually overridden via the API.
+
 ```sql
 CREATE TABLE items (
     item_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -274,8 +276,8 @@ CREATE TABLE items (
     description TEXT,
     current_stock DECIMAL(12, 2) DEFAULT 0,
     max_capacity DECIMAL(12, 2) NOT NULL,
-    min_threshold DECIMAL(12, 2),
-    purchase_allowance DECIMAL(12, 2),
+    min_threshold DECIMAL(12, 2),              -- Auto: max_capacity × 40%
+    purchase_allowance DECIMAL(12, 2),         -- Auto: max_capacity × 20%
     unit_of_measure VARCHAR(50) NOT NULL,
     cost_per_unit DECIMAL(10, 4),
     fifo_enabled BOOLEAN DEFAULT FALSE,

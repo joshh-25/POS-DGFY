@@ -3,7 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Thermometer } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
+import { Calendar, Thermometer, Package } from 'lucide-react';
 
 export default function ShelfLifeStep({ data, updateData }) {
   const shelfLife = data.shelf_life || {};
@@ -23,6 +24,33 @@ export default function ShelfLifeStep({ data, updateData }) {
         <h3 className="font-semibold text-teal-900 mb-1">Shelf Life & Storage Conditions</h3>
         <p className="text-sm text-teal-700">Critical for food safety, quality maintenance, and regulatory compliance.</p>
       </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3 flex-1">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <Package className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="fifo-toggle" className="font-semibold text-slate-900 cursor-pointer">
+                  Enable FIFO Batch Tracking
+                </Label>
+              </div>
+              <p className="text-sm text-slate-600">
+                Track inventory in batches with automatic First-In-First-Out consumption.
+                Ideal for items with expiry dates or varying costs per purchase.
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="fifo-toggle"
+            checked={data.fifo_enabled || false}
+            onCheckedChange={(checked) => updateData({ fifo_enabled: checked })}
+          />
+        </div>
+      </div>
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -57,8 +85,8 @@ export default function ShelfLifeStep({ data, updateData }) {
             <Thermometer className="w-4 h-4" />
             Storage Temperature
           </Label>
-          <Select 
-            value={shelfLife.storage_temperature} 
+          <Select
+            value={shelfLife.storage_temperature}
             onValueChange={(val) => updateShelfLife('storage_temperature', val)}
           >
             <SelectTrigger>

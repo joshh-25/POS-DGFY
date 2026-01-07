@@ -11,11 +11,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertTriangle, CheckCircle, Package, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Plus, Search } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { toast } from 'sonner';
+
+/**
+ * Calculate suggested production quantity to bring stock to healthy level
+ * Target: min_threshold + purchase_allowance (comfortable stock level)
+ */
+const calculateSuggestedProductionQty = (product) => {
+  const currentStock = parseFloat(product?.current_stock) || 0;
+  const minThreshold = parseFloat(product?.min_threshold) || 0;
+  const purchaseAllowance = parseFloat(product?.purchase_allowance) || 0;
+
+  // Target: bring stock to threshold + allowance buffer
+  const targetStock = minThreshold + purchaseAllowance;
+  const deficit = Math.max(0, targetStock - currentStock);
+
+  // At minimum, produce the purchase_allowance amount or 1
+  return Math.max(Math.ceil(deficit), Math.ceil(purchaseAllowance), 1);
+};
 
 export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, products, items, jobOrder, initialProductId }) {
   // If editing an existing JO, we operate in single-mode
@@ -32,6 +49,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
 
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Initialize state when opening
   useEffect(() => {
@@ -50,6 +68,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
         }
       }
       setIsDirty(false);
+      setSearchQuery('');
     }
   }, [open, jobOrder, isEditing, initialProductId]);
 
@@ -63,6 +82,16 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
     });
   }, [products]);
 
+  // Filter products by search query
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const query = searchQuery.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(query) ||
+      product.sku_code?.toLowerCase().includes(query)
+    );
+  }, [products, searchQuery]);
+
   // Handle "Select Low Stock"
   const handleSelectLowStock = () => {
     const lowStockIds = lowStockProducts.map(p => p.id || p.item_id);
@@ -71,16 +100,19 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       return Array.from(combined);
     });
 
-    // Default quantity to 1 for newly selected items if not set
+    // Auto-fill with suggested production quantities
     setQuantities(prev => {
       const next = { ...prev };
       lowStockIds.forEach(id => {
-        if (!next[id]) next[id] = 1;
+        if (!next[id]) {
+          const product = products.find(p => (p.id || p.item_id) === id);
+          next[id] = calculateSuggestedProductionQty(product);
+        }
       });
       return next;
     });
 
-    toast.success(`Selected ${lowStockIds.length} low stock products`);
+    toast.success(`Selected ${lowStockIds.length} low stock products with suggested quantities`);
   };
 
   const toggleProduct = (productId) => {
@@ -95,8 +127,19 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
         setQuantities(nextQuantities);
         return next;
       } else {
-        // Select
-        setQuantities(prevQtys => ({ ...prevQtys, [productId]: 1 }));
+        // Select - auto-fill with suggested production quantity
+        const product = products.find(p => (p.id || p.item_id) === productId);
+        const suggestedQty = calculateSuggestedProductionQty(product);
+        setQuantities(prevQtys => ({ ...prevQtys, [productId]: suggestedQty }));
+
+        // Show toast if auto-filled with calculated value
+        if (suggestedQty > 1) {
+          toast.info('Quantity Suggested', {
+            description: `Set to ${suggestedQty} to reach healthy stock level`,
+            duration: 2000,
+          });
+        }
+
         return [...prev, productId];
       }
     });
@@ -279,10 +322,23 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
             </div>
           )}
 
+          {/* Search Input */}
+          {!isEditing && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="Search products by name or SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          )}
+
           {/* Product List / Selection */}
           {!isEditing ? (
             <div className="grid gap-3 max-h-[400px] overflow-y-auto">
-              {products.map(p => {
+              {filteredProducts.map(p => {
                 const isSelected = selectedProductIds.includes(p.id || p.item_id);
                 // Handle different ID keys if necessary. Usually p.id from products list.
                 const pid = p.id || p.item_id;
@@ -316,6 +372,10 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                         </span>
                         <span className="text-slate-400">|</span>
                         <span>Min: {formatNumber(minThreshold)}</span>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-teal-600 font-medium">
+                          Suggested: {calculateSuggestedProductionQty(p)}
+                        </span>
                       </div>
                     </div>
 

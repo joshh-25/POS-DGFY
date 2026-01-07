@@ -66,7 +66,8 @@ const defaultProductData = {
   purchase_allowance: 0,
   quality_control: {},
   regulatory_compliance: {},
-  production_notes: ''
+  production_notes: '',
+  fifo_enabled: false
 };
 
 export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDraft, items, folders, product }) {

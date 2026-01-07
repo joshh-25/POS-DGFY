@@ -368,6 +368,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ingredient">Ingredient</SelectItem>
+                    <SelectItem value="product">Product</SelectItem>
                     <SelectItem value="packaging">Packaging</SelectItem>
                   </SelectContent>
                 </Select>
@@ -443,8 +444,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               </div>
             </div>
 
-            {/* FIFO Tracking Option */}
-            {(formData.category === 'ingredient' || formData.category === 'packaging') && (
+            {/* FIFO Tracking Option - Now available for all physically trackable items */}
+            {(formData.category === 'ingredient' || formData.category === 'product' || formData.category === 'packaging') && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1">

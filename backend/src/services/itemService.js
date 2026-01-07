@@ -21,6 +21,22 @@ import JobOrder from '../models/JobOrder.js';
 import JOIngredient from '../models/JOIngredient.js';
 import { validateComposition, invalidateDependencyGraphCache } from './compositionValidationService.js';
 
+/**
+ * Calculate min_threshold and purchase_allowance based on max_capacity
+ * These values are auto-calculated from system settings (default: 40% and 20%)
+ * @param {number} maxCapacity - The item's max capacity
+ * @returns {object} Object with min_threshold and purchase_allowance
+ */
+const calculateThresholds = (maxCapacity) => {
+  if (!maxCapacity || maxCapacity <= 0) {
+    return { min_threshold: null, purchase_allowance: null };
+  }
+  return {
+    min_threshold: Math.round(maxCapacity * 0.4),      // 40% of max capacity
+    purchase_allowance: Math.round(maxCapacity * 0.2)  // 20% of max capacity
+  };
+};
+
 export const getItems = async (queryParams) => {
   const {
     page = 1,
@@ -379,6 +395,13 @@ export const createItem = async (itemData, userId = null) => {
       };
     }
 
+    // Auto-calculate thresholds based on max_capacity (enforced server-side)
+    if (dbFields.max_capacity) {
+      const thresholds = calculateThresholds(dbFields.max_capacity);
+      dbFields.min_threshold = thresholds.min_threshold;
+      dbFields.purchase_allowance = thresholds.purchase_allowance;
+    }
+
     // Create the item
     const dataToCreate = { ...dbFields };
 
@@ -485,6 +508,13 @@ export const updateItem = async (itemId, itemData, userId = null) => {
         quality_control,
         regulatory_compliance
       };
+    }
+
+    // Auto-calculate thresholds if max_capacity is being updated (enforced server-side)
+    if (dbFields.max_capacity !== undefined) {
+      const thresholds = calculateThresholds(dbFields.max_capacity);
+      dbFields.min_threshold = thresholds.min_threshold;
+      dbFields.purchase_allowance = thresholds.purchase_allowance;
     }
 
     // Update item basic fields

@@ -96,9 +96,43 @@ export default function PurchaseOrders() {
     }).sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
   }, [purchaseOrders, searchQuery, statusFilter]);
 
-  const handleView = (po) => {
-    setSelectedPO(po);
-    setShowDetailsModal(true);
+  const handleView = async (po) => {
+    try {
+      // Fetch full PO details with line items
+      const fullPO = await purchaseOrderService.getPurchaseOrderById(po.po_id || po.id);
+
+      // Transform lineItems to items format expected by modal
+      const lineItems = fullPO.lineItems || fullPO.LineItems || [];
+      const items = lineItems.map(lineItem => {
+        const lineItemData = lineItem.toJSON ? lineItem.toJSON() : lineItem;
+        const itemData = lineItemData.item || lineItemData.Item || {};
+        const itemName = itemData.name || itemData.item_name || lineItemData.item_name;
+
+        return {
+          line_item_id: lineItemData.line_item_id,
+          item_id: lineItemData.item_id,
+          item_name: itemName,
+          quantity: lineItemData.quantity_ordered,
+          quantity_received: lineItemData.quantity_received || 0,
+          unit_price: lineItemData.unit_price,
+          total_price: lineItemData.total_price,
+          expiry_date: lineItemData.expiry_date
+        };
+      });
+
+      const poData = fullPO.toJSON ? fullPO.toJSON() : fullPO;
+      const supplierData = poData.supplier || poData.Supplier || {};
+
+      setSelectedPO({
+        ...poData,
+        items: items,
+        supplier_name: supplierData.name || po.supplier_name,
+        po_number: poData.po_number || po.po_number
+      });
+      setShowDetailsModal(true);
+    } catch (error) {
+      toast.error('Failed to load purchase order details');
+    }
   };
 
   const handleReceive = async (po) => {
@@ -324,7 +358,7 @@ export default function PurchaseOrders() {
                       <span className="font-semibold text-slate-900">{po.po_number}</span>
                     </td>
                     <td className="p-4 text-slate-600">{po.supplier_name || po.Supplier?.name || 'N/A'}</td>
-                    <td className="p-4 text-slate-600">{(po.items || po.line_items || []).length} items</td>
+                    <td className="p-4 text-slate-600">{po.item_count || 0} items</td>
                     <td className="p-4 font-medium text-slate-900">₱{formatNumber(po.total_amount, 2)}</td>
                     <td className="p-4 text-slate-600">{po.order_date}</td>
                     <td className="p-4 text-slate-600">{po.expected_delivery_date}</td>

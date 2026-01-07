@@ -189,23 +189,41 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                               } {uom}
                             </td>
                             <td className="p-3 text-slate-600 text-sm">
-                              {batch ? (
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="bg-slate-50 font-normal">
-                                    <Layers className="w-3 h-3 mr-1 text-slate-400" />
-                                    #{batch.batch_id}
-                                  </Badge>
-                                  {batch.expiry_date && (
-                                    <span className="text-xs text-slate-500 whitespace-nowrap">
-                                      Exp: {format(new Date(batch.expiry_date), 'MMM d, yy')}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 text-xs italic">
-                                  {displayJO.status === 'completed' ? 'Non-FIFO / Untracked' : '—'}
-                                </span>
-                              )}
+                              {(() => {
+                                const batchTransactions = ing.batchTransactions || [];
+                                const singleBatch = ing.batch || ing.batch_info;
+
+                                if (batchTransactions.length > 0) {
+                                  return (
+                                    <div className="flex flex-wrap gap-1">
+                                      {batchTransactions.map((bt, i) => (
+                                        <Badge key={i} variant="outline" className="bg-slate-50 font-normal text-xs">
+                                          <Layers className="w-3 h-3 mr-1 text-slate-400" />
+                                          #{bt.batch?.batch_id} ({formatNumber(bt.quantity_consumed, 2)})
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  );
+                                } else if (singleBatch) {
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline" className="bg-slate-50 font-normal">
+                                        <Layers className="w-3 h-3 mr-1 text-slate-400" />
+                                        #{singleBatch.batch_id}
+                                      </Badge>
+                                      {singleBatch.expiry_date && (
+                                        <span className="text-xs text-slate-500 whitespace-nowrap">
+                                          Exp: {format(new Date(singleBatch.expiry_date), 'MMM d, yy')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                } else {
+                                  return <span className="text-slate-400 text-xs italic">
+                                    {displayJO.status === 'completed' ? 'Non-FIFO / Untracked' : '—'}
+                                  </span>;
+                                }
+                              })()}
                             </td>
                             <td className={cn(
                               "p-3 text-right font-medium",

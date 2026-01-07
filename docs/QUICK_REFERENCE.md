@@ -105,7 +105,9 @@ lsof -ti:5000 | xargs kill -9  # Backend
 
 ## Data Entity Quick Reference
 
-**Item**: sku_code, name, category, current_stock, max_capacity, min_threshold, fifo_enabled
+**Item**: sku_code, name, category, current_stock, max_capacity, fifo_enabled
+  - min_threshold *(auto: max_capacity × 40%)*
+  - purchase_allowance *(auto: max_capacity × 20%)*
 
 **User**: username, email, password_hash, full_name, role, is_active
 

@@ -66,6 +66,30 @@ export const getJobOrderById = async (joId) => {
     throw error;
   }
 
+  if (jo.status === 'completed') {
+    const movements = await StockMovement.findAll({
+      where: {
+        reference_id: jo.jo_number,
+        reference_type: 'JO',
+        movement_type: 'production_consumption'
+      },
+      include: [{
+        model: BatchTransaction,
+        as: 'batchTransactions',
+        include: [{ model: FIFOBatch, as: 'batch' }]
+      }]
+    });
+
+    const movementsByItem = {};
+    movements.forEach(m => {
+      movementsByItem[m.item_id] = m.batchTransactions || [];
+    });
+
+    jo.ingredients.forEach(ing => {
+      ing.dataValues.batchTransactions = movementsByItem[ing.item_id] || [];
+    });
+  }
+
   return jo;
 };
 

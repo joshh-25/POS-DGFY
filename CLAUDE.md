@@ -224,12 +224,16 @@ SKU-Inventory-Manager/                    # Monorepo root
 ```javascript
 {
   item_id, sku_code, name, category, description,
-  current_stock, max_capacity, min_threshold, purchase_allowance,
+  current_stock, max_capacity,
+  min_threshold,        // AUTO-CALCULATED: max_capacity × 40%
+  purchase_allowance,   // AUTO-CALCULATED: max_capacity × 20%
   unit_of_measure, cost_per_unit, fifo_enabled,
   batch_size, yield_percentage, processing_loss, production_notes,
   is_active, created_at, updated_at
 }
 ```
+
+> **Note**: `min_threshold` and `purchase_allowance` are automatically calculated from `max_capacity` based on system settings. They cannot be manually edited in creation forms.
 
 ### User
 ```javascript

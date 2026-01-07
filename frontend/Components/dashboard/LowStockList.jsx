@@ -96,7 +96,10 @@ export default function LowStockList({ items }) {
                 className="h-2"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Min threshold: {item.min_threshold} {item.unit_of_measure} • Need to order: {Math.max(0, item.min_threshold - item.current_stock)} {item.unit_of_measure}
+                Min threshold: {item.min_threshold} {item.unit_of_measure} • Need to order: {Math.max(
+                  item.purchase_allowance || 0,
+                  (item.min_threshold || 0) - (item.current_stock || 0)
+                )} {item.unit_of_measure}
               </p>
             </div>
           );

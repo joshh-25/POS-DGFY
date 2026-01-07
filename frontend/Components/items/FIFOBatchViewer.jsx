@@ -7,13 +7,40 @@ import { formatNumber } from '../../src/lib/numberUtils.js';
 import { isNearExpiry, isExpired } from '@/components/utils/expiryHelpers.js';
 
 export default function FIFOBatchViewer({ item }) {
-  if (!item.fifo_enabled || !item.fifo_batches || item.fifo_batches.length === 0) {
-    return null;
+  if (!item.fifo_enabled) return null;
+
+  // Filter to batches with remaining stock
+  const activeBatches = (item.fifo_batches || []).filter(batch => {
+    const remaining = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed || 0);
+    return remaining > 0;
+  });
+
+  if (activeBatches.length === 0) {
+    return (
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+        <Package className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+        <p className="text-sm text-slate-500">No active FIFO batches</p>
+        <p className="text-xs text-slate-400 mt-1">
+          Batches are created when POs are received or JOs complete
+        </p>
+      </div>
+    );
   }
 
-  const sortedBatches = [...item.fifo_batches].sort((a, b) =>
+  const sortedBatches = [...activeBatches].sort((a, b) =>
     new Date(a.received_date) - new Date(b.received_date)
   );
+
+  const totalQuantity = sortedBatches.reduce((sum, b) =>
+    sum + (parseFloat(b.quantity) - parseFloat(b.quantity_consumed || 0)), 0
+  );
+
+  const weightedAvgCost = totalQuantity > 0
+    ? sortedBatches.reduce((sum, b) => {
+      const remaining = parseFloat(b.quantity) - parseFloat(b.quantity_consumed || 0);
+      return sum + (remaining * parseFloat(b.cost_per_unit || 0));
+    }, 0) / totalQuantity
+    : 0;
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -24,14 +51,15 @@ export default function FIFOBatchViewer({ item }) {
           {sortedBatches.length} batch{sortedBatches.length !== 1 ? 'es' : ''}
         </Badge>
       </div>
-      
+
       <div className="space-y-2">
         {sortedBatches.map((batch, idx) => {
           const nearExpiry = isNearExpiry(batch.expiry_date);
           const expired = isExpired(batch.expiry_date);
-          
+          const remaining = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed || 0);
+
           return (
-            <div 
+            <div
               key={batch.batch_id}
               className={cn(
                 "bg-white rounded-lg p-3 border-2",
@@ -64,11 +92,11 @@ export default function FIFOBatchViewer({ item }) {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-slate-900">{batch.quantity}</p>
+                  <p className="text-lg font-bold text-slate-900">{formatNumber(remaining, 2)}</p>
                   <p className="text-xs text-slate-500">{item.unit_of_measure}</p>
                 </div>
               </div>
-              
+
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3 text-slate-600">
                   <span className="flex items-center gap-1">
@@ -93,22 +121,18 @@ export default function FIFOBatchViewer({ item }) {
           );
         })}
       </div>
-      
+
       <div className="mt-3 pt-3 border-t border-blue-200">
         <div className="flex justify-between text-sm">
           <span className="text-blue-700">Total Quantity:</span>
           <span className="font-semibold text-blue-900">
-            {sortedBatches.reduce((sum, b) => sum + b.quantity, 0)} {item.unit_of_measure}
+            {formatNumber(totalQuantity, 2)} {item.unit_of_measure}
           </span>
         </div>
         <div className="flex justify-between text-sm mt-1">
           <span className="text-blue-700">Weighted Avg Cost:</span>
           <span className="font-semibold text-blue-900">
-            ₱{formatNumber(
-              sortedBatches.reduce((sum, b) => sum + (b.quantity * parseFloat(b.cost_per_unit || 0)), 0) / 
-              sortedBatches.reduce((sum, b) => sum + b.quantity, 0),
-              2
-            )}/unit
+            ₱{formatNumber(weightedAvgCost, 2)}/unit
           </span>
         </div>
       </div>

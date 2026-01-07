@@ -21,13 +21,23 @@ import {
   DollarSign,
   AlertTriangle,
   Package,
-  Plus
+  Plus,
+  Search
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+
+/**
+ * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
+ * Must satisfy BOTH constraints - takes the higher value
+ */
+const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
+  const purchaseAllowance = parseFloat(item?.purchase_allowance) || 0;
+  return Math.max(Math.ceil(purchaseAllowance), Math.ceil(supplierMOQ), 1);
+};
 
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
   const [step, setStep] = useState(1);
@@ -39,6 +49,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
   const [storageWarnings, setStorageWarnings] = useState([]);
   const [showStorageWarning, setShowStorageWarning] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Initialize with passed item
   useEffect(() => {
@@ -57,6 +68,16 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       return status === 'critical' || status === 'warning' || item.category !== 'product';
     });
   }, [items]);
+
+  // Filter restock items by search query
+  const filteredRestockItems = useMemo(() => {
+    if (!searchQuery.trim()) return restockItems;
+    const query = searchQuery.toLowerCase();
+    return restockItems.filter(item =>
+      item.name.toLowerCase().includes(query) ||
+      item.sku_code?.toLowerCase().includes(query)
+    );
+  }, [restockItems, searchQuery]);
 
   // Calculate supplier recommendations
   const supplierRecommendations = useMemo(() => {
@@ -119,11 +140,27 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
   };
 
   const toggleItem = (itemId) => {
-    setSelectedItems(prev =>
-      prev.includes(itemId)
-        ? prev.filter(id => id !== itemId)
-        : [...prev, itemId]
-    );
+    setSelectedItems(prev => {
+      if (prev.includes(itemId)) {
+        // Deselect - remove from list
+        return prev.filter(id => id !== itemId);
+      } else {
+        // Select - auto-fill with suggested quantity based on purchase_allowance
+        const item = items.find(i => i.id === itemId);
+        const suggestedQty = calculateSuggestedQuantity(item);
+        setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: suggestedQty }));
+
+        // Show inline toast if auto-filled
+        if (item?.purchase_allowance > 0) {
+          toast.info('Quantity Auto-filled', {
+            description: `Set to ${suggestedQty} based on purchase allowance`,
+            duration: 2000,
+          });
+        }
+
+        return [...prev, itemId];
+      }
+    });
   };
 
   const handleQuantityChange = (itemId, qty) => {
@@ -145,26 +182,34 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         newMapping[supplier.supplier_id || supplier.id] = supplier.canSupplyItems;
         setSupplierItemMapping(newMapping);
 
-        // Check MOQ requirements and auto-adjust
+        // Check MOQ and purchase_allowance requirements and auto-adjust
         const adjustments = [];
         supplier.canSupplyItems.forEach(itemId => {
           const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
-          const currentQty = orderQuantities[itemId];
-          const moq = supplierItem?.moq;
+          const item = items.find(i => i.id === itemId);
+          const currentQty = orderQuantities[itemId] || 0;
+          const moq = supplierItem?.moq || 0;
+          const purchaseAllowance = parseFloat(item?.purchase_allowance) || 0;
 
-          if (moq && (!currentQty || currentQty < moq)) {
-            const item = items.find(i => i.id === itemId);
-            setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: moq }));
-            adjustments.push({ itemName: item?.name || 'Item', moq });
+          // Must meet BOTH MOQ and purchase_allowance (take the higher)
+          const minRequired = Math.max(moq, purchaseAllowance);
+
+          if (currentQty < minRequired) {
+            setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: minRequired }));
+            adjustments.push({
+              itemName: item?.name || 'Item',
+              minRequired,
+              reason: moq > purchaseAllowance ? 'Supplier MOQ' : 'Purchase Allowance'
+            });
           }
         });
 
-        // Show toast notification for MOQ adjustments
+        // Show toast notification for adjustments
         if (adjustments.length > 0) {
           const message = adjustments.length === 1
-            ? `Quantity for ${adjustments[0].itemName} adjusted to meet minimum order of ${adjustments[0].moq} units`
-            : `${adjustments.length} items adjusted to meet minimum order requirements`;
-          toast.info('MOQ Adjustment', {
+            ? `${adjustments[0].itemName} adjusted to ${adjustments[0].minRequired} (${adjustments[0].reason})`
+            : `${adjustments.length} items adjusted to meet requirements`;
+          toast.info('Quantity Adjusted', {
             description: message,
             duration: 4000,
           });
@@ -405,22 +450,35 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
           {/* Step 1: Select Items */}
           {step === 1 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <h3 className="font-medium text-slate-900">Select Items to Order</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSelectAllLowStock}
-                    className="h-7 text-xs border-dashed text-slate-500 hover:text-teal-600 hover:border-teal-200"
-                  >
-                    Select Low Stock
-                  </Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-medium text-slate-900">Select Items to Order</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllLowStock}
+                      className="h-7 text-xs border-dashed text-slate-500 hover:text-teal-600 hover:border-teal-200"
+                    >
+                      Select Low Stock
+                    </Button>
+                  </div>
+                  <Badge variant="outline">{selectedItems.length} selected</Badge>
                 </div>
-                <Badge variant="outline">{selectedItems.length} selected</Badge>
+
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    placeholder="Search items by name or SKU..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
               <div className="grid gap-3 max-h-96 overflow-y-auto">
-                {restockItems.map(item => {
+                {filteredRestockItems.map(item => {
                   const status = getStockStatus(item);
                   const isSelected = selectedItems.includes(item.id);
                   const needsRestock = status === 'critical' || status === 'warning';
@@ -452,15 +510,33 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                         </p>
                       </div>
                       {isSelected && (
-                        <div className="flex items-center gap-2">
-                          <Label className="text-xs">Qty:</Label>
-                          <Input
-                            type="number"
-                            className="w-20"
-                            value={orderQuantities[item.id] || ''}
-                            onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                        <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Qty:</Label>
+                            <Input
+                              type="number"
+                              className={cn(
+                                "w-20",
+                                (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
+                              )}
+                              value={orderQuantities[item.id] || ''}
+                              onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleQuantityChange(item.id, calculateSuggestedQuantity(item))}
+                              title={`Suggested: ${item.purchase_allowance || 1}`}
+                            >
+                              <span className="text-amber-500 text-lg">💡</span>
+                            </Button>
+                          </div>
+                          {(orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && (
+                            <p className="text-xs text-amber-600">
+                              ⚠️ Below recommended ({item.purchase_allowance})
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -581,9 +657,13 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           addRecommendedItem(supplier.id, item.id);
-                                          if (supplierItem) {
-                                            handleQuantityChange(item.id, supplierItem.moq || 1);
-                                          }
+                                          // Use smart quantity: max(purchase_allowance, MOQ)
+                                          const suggestedQty = calculateSuggestedQuantity(item, supplierItem?.moq || 0);
+                                          handleQuantityChange(item.id, suggestedQty);
+                                          toast.info('Quantity Auto-filled', {
+                                            description: `Set to ${suggestedQty} based on recommended restock amount`,
+                                            duration: 2000,
+                                          });
                                         }}
                                         className="text-teal-600 border-teal-200 hover:bg-teal-50"
                                       >

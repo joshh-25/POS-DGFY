@@ -44,7 +44,8 @@ export const getPurchaseOrders = async (queryParams) => {
     where,
     include: [
       { model: Supplier, as: 'supplier', attributes: ['name'] },
-      { model: User, as: 'creator', attributes: ['username'] }
+      { model: User, as: 'creator', attributes: ['username'] },
+      { model: POLineItem, as: 'lineItems', attributes: ['line_item_id'] }
     ],
     limit: parseInt(limit),
     offset: parseInt(offset),
@@ -65,7 +66,8 @@ export const getPurchaseOrders = async (queryParams) => {
       total_amount: p.total_amount,
       created_by: p.creator?.username,
       archived_at: p.archived_at,
-      archived_by: p.archived_by
+      archived_by: p.archived_by,
+      item_count: p.lineItems?.length || 0
     };
   });
 

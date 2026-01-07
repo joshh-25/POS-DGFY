@@ -1214,7 +1214,180 @@ The backend validator (`itemValidator.js`) already accepts any string for `unit_
 
 ---
 
-**Last Updated**: 2026-01-06  
-**Version**: 1.1.3  
+## Phase 20: Production Bug Fixes & UX Enhancements
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-07
+
+### Issue 1: 401 & 500 Errors on Production
+**Symptoms**: Multiple API endpoints returning errors on production:
+- `/api/v1/purchase-orders` - 401
+- `/api/v1/suppliers` - 401
+- `/api/v1/items` - 401
+- `/api/v1/users/me` - 401
+- `/api/v1/alerts` - 500
+
+**Root Causes**:
+1. **401 Errors**: Token expiration or invalid session state - resolved by re-login
+2. **500 Error on /alerts**: Orphaned batches referencing deleted items caused crash
+
+**Fix Applied**:
+- Updated `backend/src/services/alertService.js`:
+  - Added null check for `batch.item` before accessing properties
+  - Prevents TypeError when batch references non-existent item
+  - Logs warning for orphaned batches
+
+```javascript
+expiringBatches.forEach(batch => {
+  if (!batch.item) {
+    console.warn(`Warning: Batch #${batch.batch_id} refers to non-existent item ID ${batch.item_id}`);
+    return;
+  }
+  // ... rest of logic
+});
+```
+
+---
+
+### Issue 2: Purchase Orders Showing "0 Items"
+**Symptom**: Purchase Orders list displayed "0 items" for all POs despite having totals.
+
+**Root Cause**: 
+- Backend `getPurchaseOrders()` didn't include line items in list response
+- Frontend tried to access `po.items` or `po.line_items` which didn't exist
+
+**Fix Applied**:
+1. **Backend** (`purchaseOrderService.js`):
+   - Added `POLineItem` include to the query
+   - Added `item_count` field to response
+
+2. **Frontend** (`PurchaseOrders.jsx`):
+   - Updated display to use `po.item_count` instead of array length
+
+---
+
+### Issue 3: PO Details Modal Not Showing Order Items
+**Symptom**: Clicking "View" on a Purchase Order showed empty Order Items table.
+
+**Root Cause**: 
+- `handleView()` passed the list PO object directly (without line items)
+- Modal expected `po.items` array which wasn't in list response
+
+**Fix Applied**:
+- Updated `handleView()` in `PurchaseOrders.jsx`:
+  - Now fetches full PO details with line items before displaying modal
+  - Transforms `lineItems` to `items` format expected by modal
+
+---
+
+### Feature: Search Bars for Creation Wizards
+**Request**: Add search functionality to PO and JO creation wizards for easier item selection.
+
+**Implementation**:
+
+#### POCreateWizard.jsx
+- Added `searchQuery` state
+- Added `filteredRestockItems` memo for filtering by name/SKU
+- Added search input with Search icon
+- Items now filtered in real-time as user types
+
+#### JOCreateModal.jsx
+- Added `searchQuery` state
+- Added `filteredProducts` memo for filtering by name/SKU
+- Added search input with Search icon
+- Products now filtered in real-time as user types
+- Search resets on modal close/open
+
+**Features**:
+- Search by item/product name
+- Search by SKU code
+- Real-time filtering
+- Selected items persist when search changes
+- Visual search icon in input field
+
+---
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/alertService.js` | Added orphaned batch safety check |
+| `backend/src/services/purchaseOrderService.js` | Added `item_count` to list response |
+| `frontend/Pages/PurchaseOrders.jsx` | Fixed item count display, fixed handleView |
+| `frontend/Components/po/POCreateWizard.jsx` | Added search functionality |
+| `frontend/Components/jo/JOCreateModal.jsx` | Added search functionality |
+
+---
+
+## Phase 20: Smart Restock Quantity Suggestions
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-07
+
+### Overview
+Implemented intelligent order quantity suggestions for Purchase Orders and Job Orders, with strict system-settings-based threshold calculation.
+
+### Threshold Auto-Calculation
+
+#### Backend (`itemService.js`)
+- [x] Added `calculateThresholds()` helper function
+- [x] Auto-calculates `min_threshold` (40% of max_capacity) and `purchase_allowance` (20% of max_capacity)
+- [x] Enforces calculation in `createItem()` before database save
+- [x] Enforces calculation in `updateItem()` when max_capacity changes
+- [x] Removes ability for frontend to override calculated values
+
+#### Frontend (`BasicInfoStep.jsx`)
+- [x] Removed editable input fields for `min_threshold` and `purchase_allowance`
+- [x] Added read-only display showing auto-calculated values
+- [x] Shows "Auto-calculated from System Settings" indicator
+
+### Smart PO Quantity Suggestions (`POCreateWizard.jsx`)
+
+- [x] Added `calculateSuggestedQuantity()` helper function
+- [x] Auto-fills quantity with `purchase_allowance` when item is selected
+- [x] Shows toast notification when quantity is auto-filled
+- [x] Auto-adjusts quantity upward when supplier MOQ exceeds current value
+- [x] Takes maximum of MOQ and purchase_allowance (must satisfy BOTH constraints)
+- [x] Shows toast notification explaining adjustment reason (MOQ vs Purchase Allowance)
+- [x] Added inline warning when quantity is below recommended (amber border + text)
+- [x] Added suggestion button (💡) to reset to suggested quantity
+
+### Smart JO Quantity Suggestions (`JOCreateModal.jsx`)
+
+- [x] Added `calculateSuggestedProductionQty()` helper function
+- [x] Target: bring stock to `min_threshold + purchase_allowance` (healthy level)
+- [x] Minimum production: `purchase_allowance` or 1
+- [x] Auto-fills quantity when product is selected
+- [x] Shows toast notification when quantity is set to calculated value
+- [x] Added "Suggested: X" display in product selection list
+- [x] Updated "Select Low Stock" to use smart quantities instead of 1
+
+### Dashboard (`LowStockList.jsx`)
+
+- [x] Updated "Need to order" calculation
+- [x] Now takes maximum of:
+  - `purchase_allowance` (minimum restock amount)
+  - `min_threshold - current_stock` (deficit to reach threshold)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/itemService.js` | Added threshold calculation and enforcement |
+| `frontend/Components/products/wizard/BasicInfoStep.jsx` | Replaced editable inputs with read-only display |
+| `frontend/Components/po/POCreateWizard.jsx` | Added smart quantity suggestions with warnings |
+| `frontend/Components/jo/JOCreateModal.jsx` | Added smart production suggestions |
+| `frontend/Components/dashboard/LowStockList.jsx` | Updated need-to-order calculation |
+
+### User Experience Improvements
+
+1. **No Manual Entry**: Threshold values cannot be manually set - ensures consistency
+2. **Auto-fill on Select**: Quantities are pre-filled with optimal values
+3. **Auto-adjust for MOQ**: When supplier is selected, quantities adjust upward if needed
+4. **Visual Feedback**: Toast notifications explain adjustments, inline warnings show issues
+5. **Suggestion Hints**: Users can reset to suggested value with one click
+
+---
+
+**Last Updated**: 2026-01-07  
+**Version**: 1.3.0  
 **Project Status**: Production Ready
 

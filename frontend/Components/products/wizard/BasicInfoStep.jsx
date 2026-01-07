@@ -124,27 +124,30 @@ export default function BasicInfoStep({ data, updateData, folders }) {
             <p className="text-xs text-slate-500">Maximum stock capacity</p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Min Threshold</Label>
-            <Input
-              type="number"
-              placeholder="0"
-              value={data.min_threshold || ''}
-              onChange={(e) => updateData({ min_threshold: parseFloat(e.target.value) || null })}
-            />
-            <p className="text-xs text-slate-500">Low stock alert threshold</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Purchase Allowance</Label>
-            <Input
-              type="number"
-              placeholder="0"
-              value={data.purchase_allowance || ''}
-              onChange={(e) => updateData({ purchase_allowance: parseFloat(e.target.value) || null })}
-            />
-            <p className="text-xs text-slate-500">Additional purchase buffer</p>
-          </div>
+          {/* Auto-calculated threshold display */}
+          {data.max_capacity > 0 && (
+            <div className="col-span-2 bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-medium text-slate-700">
+                  ⚙️ Auto-calculated from System Settings
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">Min Threshold (40%)</p>
+                  <p className="font-semibold text-slate-900">
+                    {Math.round(data.max_capacity * 0.4)} {data.unit_of_measure || 'units'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Purchase Allowance (20%)</p>
+                  <p className="font-semibold text-slate-900">
+                    {Math.round(data.max_capacity * 0.2)} {data.unit_of_measure || 'units'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
