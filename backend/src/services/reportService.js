@@ -20,10 +20,10 @@ export const getStockAgingReport = async () => {
 
   const agingData = items.map(item => {
     const batches = item.fifoBatches || [];
-    const oldestBatch = batches.length > 0 
-      ? batches.reduce((oldest, batch) => 
-          new Date(batch.received_date) < new Date(oldest.received_date) ? batch : oldest
-        )
+    const oldestBatch = batches.length > 0
+      ? batches.reduce((oldest, batch) =>
+        new Date(batch.received_date) < new Date(oldest.received_date) ? batch : oldest
+      )
       : null;
 
     const daysInStock = oldestBatch
@@ -52,7 +52,7 @@ export const getSurplusShortageReport = async () => {
     const currentStock = parseFloat(item.current_stock) || 0;
     const maxCapacity = parseFloat(item.max_capacity) || 0;
     const minThreshold = parseFloat(item.min_threshold) || 0;
-    
+
     const stockPercentage = maxCapacity > 0 ? (currentStock / maxCapacity) * 100 : 0;
     const isLowStock = currentStock <= minThreshold;
     const isSurplus = stockPercentage > 80;
@@ -85,7 +85,7 @@ export const getFinancialSummary = async () => {
   }, 0);
 
   const totalItems = items.length;
-  const itemsWithValue = items.filter(item => 
+  const itemsWithValue = items.filter(item =>
     parseFloat(item.cost_per_unit) > 0 && parseFloat(item.current_stock) > 0
   ).length;
 

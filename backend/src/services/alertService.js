@@ -50,6 +50,11 @@ export const generateAlerts = async () => {
   });
 
   expiringBatches.forEach(batch => {
+    if (!batch.item) {
+      console.warn(`Warning: Batch #${batch.batch_id} refers to non-existent item ID ${batch.item_id}`);
+      return;
+    }
+
     const expiryDate = new Date(batch.expiry_date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);

@@ -30,7 +30,7 @@ export const forecastStockLevels = async (daysAhead = 30) => {
 
     const currentStock = parseFloat(item.current_stock) || 0;
     const forecastedStock = currentStock - (avgDailyConsumption * daysAhead);
-    const daysUntilDepletion = avgDailyConsumption > 0 
+    const daysUntilDepletion = avgDailyConsumption > 0
       ? Math.floor(currentStock / avgDailyConsumption)
       : Infinity;
 
