@@ -16,20 +16,20 @@ export default {
             type: Sequelize.INTEGER,
             allowNull: true,
             comment: 'Shelf life in days for unopened items (required if fifo_enabled)'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         await queryInterface.addColumn('items', 'opened_shelf_life_days', {
             type: Sequelize.INTEGER,
             allowNull: true,
             comment: 'Shelf life in days after opening'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         // 2. Add expiry_date to po_line_items for receipt override
         await queryInterface.addColumn('po_line_items', 'expiry_date', {
             type: Sequelize.DATEONLY,
             allowNull: true,
             comment: 'Optional expiry date override when receiving'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         // 3. Add batch_id to jo_ingredients to track which batch was consumed
         await queryInterface.addColumn('jo_ingredients', 'batch_id', {
@@ -40,7 +40,7 @@ export default {
                 key: 'batch_id'
             },
             comment: 'Reference to the FIFO batch that was consumed'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         // 4. Add batch_id and expiry_date to stock_movements
         await queryInterface.addColumn('stock_movements', 'batch_id', {
@@ -51,23 +51,27 @@ export default {
                 key: 'batch_id'
             },
             comment: 'Reference to the FIFO batch affected by this movement'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         await queryInterface.addColumn('stock_movements', 'expiry_date', {
             type: Sequelize.DATEONLY,
             allowNull: true,
             comment: 'Expiry date for manual stock additions'
-        });
+        }).catch(err => { if (err.original && err.original.code === 'ER_DUP_FIELDNAME') return; throw err; });
 
         // Add index on stock_movements.batch_id for faster lookups
-        await queryInterface.addIndex('stock_movements', ['batch_id'], {
-            name: 'idx_stock_movements_batch_id'
-        });
+        try {
+            await queryInterface.addIndex('stock_movements', ['batch_id'], {
+                name: 'idx_stock_movements_batch_id'
+            });
+        } catch (e) { }
 
         // Add index on fifo_batches.expiry_date for expiry alerts
-        await queryInterface.addIndex('fifo_batches', ['expiry_date'], {
-            name: 'idx_fifo_batches_expiry_date'
-        });
+        try {
+            await queryInterface.addIndex('fifo_batches', ['expiry_date'], {
+                name: 'idx_fifo_batches_expiry_date'
+            });
+        } catch (e) { }
     },
 
     async down(queryInterface, Sequelize) {
