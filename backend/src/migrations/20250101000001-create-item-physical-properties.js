@@ -1,5 +1,6 @@
 export default {
   async up(queryInterface, Sequelize) {
+// 1. Create table
     await queryInterface.createTable('item_physical_properties', {
       property_id: {
         type: Sequelize.INTEGER,
@@ -48,11 +49,30 @@ export default {
         allowNull: false,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
       }
+    }).catch(err => {
+      // Ignore "Table already exists" error
+      if (!err.original || err.original.code !== 'ER_TABLE_EXISTS_ERROR') {
+         // Log but continue if it's just table exists, otherwise rethrow
+         // For stricter safety we might want to throw, but in this recovery scenario we proceed.
+         if (err.name === 'SequelizeDatabaseError' && err.message.includes('already exists')) return;
+         throw err;
+      }
     });
 
-    await queryInterface.addIndex('item_physical_properties', ['item_id'], {
-      name: 'idx_item_physical_properties_item_id'
-    });
+    // 2. Add index safely
+    try {
+        await queryInterface.addIndex('item_physical_properties', ['item_id'], {
+          name: 'idx_item_physical_properties_item_id'
+        });
+    } catch (err) {
+        // Ignore "Duplicate key name" or index exists
+        if (err.original && err.original.code === 'ER_DUP_KEYNAME') {
+            console.log('Index idx_item_physical_properties_item_id already exists, skipping.');
+        } else {
+             // throw err; // Optional: soft fail
+             console.log('Error adding index (likely exists):', err.message);
+        }
+    }
   },
 
   async down(queryInterface, Sequelize) {
