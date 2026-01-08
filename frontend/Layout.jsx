@@ -14,7 +14,6 @@ import {
   Settings,
   Menu,
   X,
-  Warehouse,
   LogOut
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
@@ -56,9 +55,7 @@ export default function Layout({ children, currentPageName }) {
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
         <div className="flex items-center gap-3 ml-4">
-          <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-700 rounded-lg flex items-center justify-center">
-            <Warehouse className="w-5 h-5 text-white" />
-          </div>
+          <img src="/logo-icon.png" alt="SKUpervisor" className="h-8 w-8" />
           <span className="font-semibold text-slate-900">SKUpervisor</span>
         </div>
       </div>
@@ -77,14 +74,9 @@ export default function Layout({ children, currentPageName }) {
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/20">
-              <Warehouse className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-slate-900 text-lg">SKUpervisor</h1>
-              <p className="text-xs text-slate-500">Management System</p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <img src="/logo.png" alt="SKUpervisor" className="h-10" />
+            <p className="text-xs text-slate-500 ml-1">Management System</p>
           </div>
         </div>
 

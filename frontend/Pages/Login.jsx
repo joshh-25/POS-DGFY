@@ -4,7 +4,6 @@ import { login } from '../src/services/authService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -45,11 +44,8 @@ export default function Login() {
           {/* Logo and Title */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Package className="w-10 h-10 text-white" />
-              </div>
+              <img src="/logo.png" alt="SKUpervisor" className="h-16" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">SKUpervisor</h1>
             <p className="text-slate-600 mt-2">Sign in to your account</p>
           </div>
 

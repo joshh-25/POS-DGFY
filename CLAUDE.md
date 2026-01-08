@@ -5,7 +5,7 @@
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
 > **Last Updated:** Jan 2026
-> **Version:** 1.4.1
+> **Version:** 1.7.1
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements. It features FIFO batch tracking, nested product recipes, and smart restock logic.

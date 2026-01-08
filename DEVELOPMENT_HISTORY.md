@@ -1692,6 +1692,149 @@ Implemented comprehensive CSV bulk import functionality for items (raw materials
 
 ---
 
+## Phase 26: Deployment Workflow & Documentation
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-08
+
+### Deployment Session Summary
+Successfully deployed latest changes to production server (`skupervisor.surebizcorp.com`) with the following steps:
+
+### Issues Encountered & Resolved
+
+#### 1. Git Merge Conflict on Build Artifacts
+**Issue**: `git pull origin master` failed with error: "Your local changes to frontend/dist/index.html would be overwritten"
+
+**Resolution**: Used `git checkout -- frontend/dist/index.html` to discard local build artifacts before pulling. Build artifacts are regenerated during deployment.
+
+#### 2. Backend 502 Bad Gateway After Pull
+**Issue**: After pulling new code, website showed 502 errors on all API endpoints.
+
+**Root Cause**: The new CSV bulk import feature added `csv-parse` dependency which wasn't installed on the server.
+
+**Error Message**:
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'csv-parse' imported from /var/www/skupervisor/backend/src/services/csvImportService.js
+```
+
+**Resolution**:
+```bash
+cd /var/www/skupervisor/backend
+npm install
+pm2 restart sku-backend
+```
+
+### Documentation Created
+
+#### Deployment Workflow
+Created `.agent/workflows/deploy.md` with:
+- Complete step-by-step deployment procedure
+- Troubleshooting guide for common issues
+- Quick reference copy-paste commands
+- Prerequisites and verification steps
+
+### Key Learnings
+
+1. **Always run `npm install`** after pulling code that may have new dependencies
+2. **Build artifacts** (`frontend/dist/`) should be regenerated on the server, not pulled from git
+3. **Check PM2 logs** immediately after deployment to catch errors early
+4. **Test API endpoints** with curl before trusting browser results
+
+### Deployment Checklist (for future reference)
+
+```bash
+# Standard deployment sequence
+cd /var/www/skupervisor
+git checkout -- frontend/dist/index.html
+git pull origin master
+cd backend && npm install && cd ..
+cd frontend && npm install && npm run build && cd ..
+pm2 restart all
+pm2 logs sku-backend --lines 20
+```
+
+---
+
+## Phase 27: Official Branding Implementation
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-08
+
+### Overview
+Replaced placeholder Lucide React icons with official SKUpervisor logo assets for consistent branding across all UI locations.
+
+### Assets Created
+Created `frontend/public/` directory with official branding assets:
+- **`logo.png`** (509KB) - Full logotype with "SKUpervisor" text (teal "SKU" + dark "pervisor")
+- **`logo-icon.png`** (314KB) - Shield icon only for mobile/favicon use
+
+### Frontend Changes
+
+#### Layout.jsx
+**Desktop Sidebar** (Lines 76-84):
+- Removed teal gradient wrapper and `Warehouse` icon
+- Replaced with `<img src="/logo.png" className="h-10" />`
+- Removed redundant "SKUpervisor" heading (logo includes text)
+- Kept "Management System" subtitle below logo
+- Changed layout from horizontal to vertical stacking
+
+**Mobile Header** (Lines 58-61):
+- Removed teal gradient wrapper and `Warehouse` icon
+- Replaced with `<img src="/logo-icon.png" className="h-8 w-8" />`
+- Kept "SKUpervisor" text for mobile readability
+
+**Import Cleanup**:
+- Removed `Warehouse` from Lucide React imports
+
+#### Login.jsx
+**Logo Section** (Lines 45-50):
+- Removed blue background wrapper and `Package` icon
+- Replaced with `<img src="/logo.png" className="h-16" />`
+- Removed redundant "SKUpervisor" heading (logo includes text)
+- Kept "Sign in to your account" subtitle
+
+**Import Cleanup**:
+- Removed `Package` from Lucide React imports
+
+#### index.html
+**Favicon** (Line 5):
+- Changed from `<link rel="icon" type="image/svg+xml" href="/vite.svg" />`
+- To `<link rel="icon" type="image/png" href="/logo-icon.png" />`
+
+### Branding Consistency Fixes
+Fixed existing inconsistencies:
+- **Layout**: Previously used `Warehouse` icon with teal gradient
+- **Login**: Previously used `Package` icon with solid blue background
+- **Favicon**: Previously referenced non-existent `/vite.svg`
+- **Now**: Unified branding with official SKUpervisor logo across all touchpoints
+
+### Design System
+**Logo Usage Guidelines**:
+- **Full Logotype** (`/logo.png`): Desktop sidebar (40px), Login page (64px)
+- **Icon Only** (`/logo-icon.png`): Mobile header (32px), Browser favicon
+
+**Color Palette** (maintained):
+- Primary Teal: `#0d9488` to `#0f766e`
+- Slate Gray: `#334155`
+- Background: `#f8fafc`
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `frontend/Layout.jsx` | Updated sidebar and mobile header branding, removed `Warehouse` import |
+| `frontend/Pages/Login.jsx` | Updated logo section, removed `Package` import |
+| `frontend/index.html` | Updated favicon reference |
+| `frontend/public/` | Created directory with `logo.png` and `logo-icon.png` |
+
+### Verification
+✅ Sidebar logo displays correctly on desktop
+✅ Mobile header logo displays correctly
+✅ Login page logo matches sidebar branding
+✅ Browser tab shows correct favicon
+✅ All logos scale properly at different viewport sizes
+✅ No console errors for missing assets
+✅ Lucide React icon imports cleaned up
+
+---
+
 **Last Updated**: 2026-01-08
-**Version**: 1.6.0
+**Version**: 1.7.1
 **Project Status**: Production Ready

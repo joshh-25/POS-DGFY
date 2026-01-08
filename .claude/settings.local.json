@@ -72,7 +72,8 @@
       "Bash(grep:*)",
       "Bash(npm start)",
       "Bash(timeout /t 5 /nobreak)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(dir \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\frontend\" /B)"
     ]
   }
 }
