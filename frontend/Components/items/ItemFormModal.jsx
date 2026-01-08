@@ -165,11 +165,8 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
 
-      // Auto-calculate thresholds when max_capacity changes
-      if (field === 'max_capacity') {
-        updated.min_threshold = Math.round(value * 0.4);
-        updated.purchase_allowance = Math.round(value * 0.2);
-      }
+      // Note: min_threshold and purchase_allowance are now calculated by the backend
+      // based on system settings (enable_auto_reorder, min_stock_threshold_percent, purchase_allowance_percent)
 
       // Ensure product_type is null for non-product categories
       if (field === 'category' && value !== 'product') {
@@ -442,15 +439,15 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               </div>
             </div>
 
-            {/* Auto-calculated fields */}
+            {/* Auto-calculated fields - values set by backend based on system settings */}
             <div className="grid grid-cols-2 gap-4 bg-slate-50 rounded-lg p-4">
               <div>
-                <p className="text-sm text-slate-500">Min Threshold (40% of capacity)</p>
-                <p className="font-semibold text-slate-900">{formData.min_threshold || Math.round(formData.max_capacity * 0.4)} {formData.unit_of_measure}</p>
+                <p className="text-sm text-slate-500">Min Threshold (auto-calculated)</p>
+                <p className="font-semibold text-slate-900">{formData.min_threshold ?? 'Auto'} {formData.unit_of_measure}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Purchase Allowance (20% of capacity)</p>
-                <p className="font-semibold text-slate-900">{formData.purchase_allowance || Math.round(formData.max_capacity * 0.2)} {formData.unit_of_measure}</p>
+                <p className="text-sm text-slate-500">Purchase Allowance (auto-calculated)</p>
+                <p className="font-semibold text-slate-900">{formData.purchase_allowance ?? 'Auto'} {formData.unit_of_measure}</p>
               </div>
             </div>
 

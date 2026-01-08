@@ -20,20 +20,39 @@ import POLineItem from '../models/POLineItem.js';
 import JobOrder from '../models/JobOrder.js';
 import JOIngredient from '../models/JOIngredient.js';
 import { validateComposition, invalidateDependencyGraphCache } from './compositionValidationService.js';
+import { getAllSettings } from './settingsService.js';
 
 /**
  * Calculate min_threshold and purchase_allowance based on max_capacity
- * These values are auto-calculated from system settings (default: 40% and 20%)
+ * Reads settings from system settings table:
+ * - enable_auto_reorder: If false, returns null thresholds
+ * - min_stock_threshold_percent: Percentage for min_threshold (default 40%)
+ * - purchase_allowance_percent: Percentage for purchase_allowance (default 20%)
  * @param {number} maxCapacity - The item's max capacity
- * @returns {object} Object with min_threshold and purchase_allowance
+ * @returns {Promise<object>} Object with min_threshold and purchase_allowance
  */
-const calculateThresholds = (maxCapacity) => {
+const calculateThresholds = async (maxCapacity) => {
+  // Fetch settings from database
+  const settings = await getAllSettings();
+  const autoCalc = settings.enable_auto_reorder?.value ?? true; // Default ON for backward compatibility
+
+  // If auto-calculate is OFF, return null thresholds
+  if (!autoCalc) {
+    return { min_threshold: null, purchase_allowance: null };
+  }
+
+  // If no max capacity, return null thresholds
   if (!maxCapacity || maxCapacity <= 0) {
     return { min_threshold: null, purchase_allowance: null };
   }
+
+  // Read percentage values from settings (defaults: 40% and 20%)
+  const minPercent = (settings.min_stock_threshold_percent?.value || 40) / 100;
+  const allowancePercent = (settings.purchase_allowance_percent?.value || 20) / 100;
+
   return {
-    min_threshold: Math.round(maxCapacity * 0.4),      // 40% of max capacity
-    purchase_allowance: Math.round(maxCapacity * 0.2)  // 20% of max capacity
+    min_threshold: Math.round(maxCapacity * minPercent),
+    purchase_allowance: Math.round(maxCapacity * allowancePercent)
   };
 };
 
@@ -397,7 +416,7 @@ export const createItem = async (itemData, userId = null) => {
 
     // Auto-calculate thresholds based on max_capacity (enforced server-side)
     if (dbFields.max_capacity) {
-      const thresholds = calculateThresholds(dbFields.max_capacity);
+      const thresholds = await calculateThresholds(dbFields.max_capacity);
       dbFields.min_threshold = thresholds.min_threshold;
       dbFields.purchase_allowance = thresholds.purchase_allowance;
     }
@@ -512,7 +531,7 @@ export const updateItem = async (itemId, itemData, userId = null) => {
 
     // Auto-calculate thresholds if max_capacity is being updated (enforced server-side)
     if (dbFields.max_capacity !== undefined) {
-      const thresholds = calculateThresholds(dbFields.max_capacity);
+      const thresholds = await calculateThresholds(dbFields.max_capacity);
       dbFields.min_threshold = thresholds.min_threshold;
       dbFields.purchase_allowance = thresholds.purchase_allowance;
     }

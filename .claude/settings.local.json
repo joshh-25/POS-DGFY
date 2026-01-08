@@ -69,7 +69,10 @@
       "Bash(node --version:*)",
       "Bash(npm --version)",
       "Bash(node:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm start)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(npm run build:*)"
     ]
   }
 }

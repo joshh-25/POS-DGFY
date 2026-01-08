@@ -1,4 +1,7 @@
 import SystemSetting from '../models/SystemSetting.js';
+import Item from '../models/Item.js';
+import { Op } from 'sequelize';
+import sequelize from '../config/database.js';
 
 /**
  * Get all system settings
@@ -75,11 +78,55 @@ export const getSettingByKey = async (key) => {
 };
 
 /**
+ * Apply threshold settings to ALL items in the database
+ * Called when auto-calculate toggle or percentage values change
+ */
+export const applyThresholdSettings = async () => {
+  const settings = await getAllSettings();
+  const autoCalc = settings.enable_auto_reorder?.value ?? true; // Default ON for backward compatibility
+  const minPercent = (settings.min_stock_threshold_percent?.value || 40) / 100;
+  const allowancePercent = (settings.purchase_allowance_percent?.value || 20) / 100;
+
+  console.log(`[Settings] Applying threshold settings: autoCalc=${autoCalc}, minPercent=${minPercent * 100}%, allowancePercent=${allowancePercent * 100}%`);
+
+  if (autoCalc) {
+    // Calculate thresholds for all active items based on their max_capacity
+    const [affectedRows] = await Item.update(
+      {
+        min_threshold: sequelize.literal(`ROUND(max_capacity * ${minPercent})`),
+        purchase_allowance: sequelize.literal(`ROUND(max_capacity * ${allowancePercent})`)
+      },
+      {
+        where: {
+          status: 'active',
+          max_capacity: { [Op.gt]: 0 }
+        }
+      }
+    );
+    console.log(`[Settings] Updated thresholds for ${affectedRows} items`);
+    return { updated: affectedRows, autoCalc: true };
+  } else {
+    // Clear all thresholds when auto-calculate is OFF
+    const [affectedRows] = await Item.update(
+      { min_threshold: null, purchase_allowance: null },
+      { where: { status: 'active' } }
+    );
+    console.log(`[Settings] Cleared thresholds for ${affectedRows} items`);
+    return { updated: affectedRows, autoCalc: false };
+  }
+};
+
+/**
  * Update multiple settings at once
  */
 export const updateSettings = async (settingsData) => {
+  console.log('[Settings] updateSettings called with:', settingsData);
   const updatePromises = [];
   const errors = [];
+
+  // Track if threshold-related settings are being changed
+  const thresholdKeys = ['enable_auto_reorder', 'min_stock_threshold_percent', 'purchase_allowance_percent'];
+  const thresholdSettingsChanged = Object.keys(settingsData).some(key => thresholdKeys.includes(key));
 
   for (const [key, value] of Object.entries(settingsData)) {
     try {
@@ -118,7 +165,17 @@ export const updateSettings = async (settingsData) => {
     throw new Error(`Some settings failed to update: ${errors.join(', ')}`);
   }
 
-  return { message: 'Settings updated successfully', updated: Object.keys(settingsData).length };
+  // Apply threshold settings to all items if threshold-related settings changed
+  let thresholdResult = null;
+  if (thresholdSettingsChanged) {
+    thresholdResult = await applyThresholdSettings();
+  }
+
+  return {
+    message: 'Settings updated successfully',
+    updated: Object.keys(settingsData).length,
+    thresholdResult
+  };
 };
 
 /**

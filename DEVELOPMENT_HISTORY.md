@@ -1562,7 +1562,136 @@ PASS: Batch Notes saved
 
 ---
 
-**Last Updated**: 2026-01-07  
-**Version**: 1.4.1  
-**Project Status**: Production Ready
+## Phase 18: Production Deployment Fixes (Part 2)
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-07
 
+### Issue: Git Merge Conflicts & Untracked Files
+**Problem**: Deployment failed because server had untracked files that conflicted with the incoming merge from GitHub.
+- `backend/src/migrations/20260107...`
+- `implementation_plan.md`
+- `categoryHelpers.js`
+
+**Resolution**:
+1. **Clean Untracked Files**: Used `git clean -fd` to remove strict local files blocking the merge.
+2. **Hard Reset**: Used `git reset --hard origin/master` to force server to match repository exactly.
+3. **Dependency Update**: Re-ran `npm install` and `npm run build` to ensure fresh state.
+
+### Issue: Database Migration History Mismatch
+**Problem**: Server had tables (`users`, `items`) but Sequelize migration history table (`SequelizeMeta`) was missing entries for older migrations (2024/2025). This caused `db:migrate` to try re-creating existing tables, failing with "Table already exists" or "Duplicate key" errors.
+
+**Diagnosis**: Migration filenames in repo were renamed/reorganized, causing Sequelize to think they were "new" migrations that needed to be run.
+
+**Resolution**:
+1. **Created Repair Script**: Wrote a custom script (`repair_migrations.cjs`) to sync the history.
+   - Logic: Identify migrations older than '20260107' that are NOT in `SequelizeMeta`.
+   - Action: Manually insert records into `SequelizeMeta` for these files to mark them as "done".
+2. **ES Module Compatibility**: Modified script to use `.cjs` extension and dynamic `import()` for config to handle server's `type: module` environment.
+3. **Applied New Migrations**: Successfully ran `npx sequelize-cli db:migrate` which applied *only* the new 2026 migrations (Product Types, FIFO notes).
+
+### Verification
+- **Application**: Confirmed Product Type selector works in valid screenshot.
+- **Database**: Confirmed valid schema state.
+- **Server**: PM2 processes running stable.
+
+---
+
+## Phase 25: Stock Thresholds Settings Implementation
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-08
+
+### Feature Overview
+Implemented functional stock threshold settings in the Settings page. The "Auto-calculate Thresholds" toggle and percentage sliders now control how item `min_threshold` and `purchase_allowance` values are calculated system-wide.
+
+### Behavior
+- **Toggle ON**: Sliders enabled, all items' thresholds calculated from percentages × max_capacity
+- **Toggle OFF**: Sliders disabled/grayed, all items' thresholds set to `null`
+- **Save**: Triggers bulk update of ALL active items in database
+
+### Backend Changes (6 files)
+| File | Changes |
+|------|---------|
+| `settingsService.js` | Added `applyThresholdSettings()` for bulk item updates on settings change |
+| `itemService.js` | Made `calculateThresholds()` async, reads from system settings |
+| `dashboardService.js` | Added null-safe checks to low stock/healthy stock queries |
+| `alertService.js` | Added null-safe check to low stock alerts query |
+| `forecastService.js` | Updated shortage status logic for null thresholds |
+| `settingsValidator.js` | Added `min_stock_threshold_percent` and `purchase_allowance_percent` to schema |
+
+### Frontend Changes (5 files)
+| File | Changes |
+|------|---------|
+| `Settings.jsx` | Fixed setting key mapping, slider disable logic, save functionality |
+| `dummyData.js` | Updated `getStockStatus()` and `getItemsStats()` for null handling |
+| `JOCreateModal.jsx` | Low stock filter excludes items with null threshold |
+| `LowStockList.jsx` | Filter excludes items with null threshold |
+| `ItemFormModal.jsx` | Removed redundant frontend calculation, updated display |
+
+### Database Changes
+- Added `enable_auto_reorder` setting to `system_settings` table
+- Updated seeder to include this setting for future deployments
+
+### Bug Fixes
+- **Settings not persisting**: `settingsValidator.js` had `stripUnknown: true` which stripped threshold keys. Fixed by adding keys to schema.
+
+---
+
+## CSV Bulk Upload Feature
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-08
+
+### Feature Overview
+Implemented comprehensive CSV bulk import functionality for items (raw materials, packaging, products, supplies). Provides a 3-step wizard (Upload → Preview → Confirm) with smart upsert logic that automatically detects existing SKUs and provides detailed validation feedback.
+
+### Key Features
+- **Smart Upsert**: Automatically detects if SKU exists (update) or is new (create)
+- **Comprehensive Validation**: Validates categories, product types, allergens, and all required fields
+- **3-Step Wizard**: Upload CSV → Preview with validation → Confirm import
+- **Template Download**: Users can download a pre-formatted CSV template with valid values
+- **Error Handling**: Detailed error messages with row numbers for easy correction
+- **Transaction Safety**: All-or-nothing import with automatic rollback on errors
+
+### Backend Changes (3 files)
+| File | Changes |
+|------|---------|
+| `csvImportService.js` | NEW - 300+ lines of CSV parsing, validation, and upsert logic with FIFO batch tracking |
+| `csvImportController.js` | NEW - 3 endpoints: preview, confirm, and template download |
+| `routes/items.js` | Added 3 import routes (correctly ordered before :item_id routes) |
+
+### Frontend Changes (3 files)
+| File | Changes |
+|------|---------|
+| `CSVImportModal.jsx` | NEW - 400+ line 3-step wizard with drag-and-drop file upload |
+| `useCSVImport.js` | NEW - Custom hook for API integration |
+| `Items.jsx` | Added "Import CSV" button and modal integration with automatic refetch |
+
+### Documentation
+| File | Purpose |
+|------|---------|
+| `CSV_IMPORT_GUIDE.md` | Complete user guide with column descriptions, examples, and troubleshooting |
+| `CSV_IMPORT_TEMPLATE.csv` | Sample CSV with 3 example rows (raw material, packaging, product) |
+
+### Dependencies Added
+- `csv-parse@6.1.0` - CSV parsing library with RFC 4180 compliance
+
+### API Endpoints
+- `GET /api/v1/items/import/template` - Download CSV template
+- `POST /api/v1/items/import/preview` - Upload CSV and get validation preview
+- `POST /api/v1/items/import/confirm` - Confirm and execute the import
+
+### Validation Rules
+- Category must be: `raw_material`, `packaging`, `product`, `supplies`
+- Product type required when category is `product`
+- Allergens validated against allowed list
+- Numeric fields validated for proper format
+- Boolean fields accept: true/false, 1/0, yes/no
+
+### Bug Fixes During Implementation
+- **Sequelize WHERE clause**: Fixed incorrect array syntax to use `Op.in` operator for status filtering
+- **Route ordering**: Ensured import routes placed before parameterized routes to prevent path conflicts
+
+---
+
+**Last Updated**: 2026-01-08
+**Version**: 1.6.0
+**Project Status**: Production Ready

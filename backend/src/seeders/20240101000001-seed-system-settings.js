@@ -53,6 +53,13 @@ export default {
         data_type: 'string',
         description: 'System timezone',
         updated_at: new Date()
+      },
+      {
+        setting_key: 'enable_auto_reorder',
+        setting_value: 'true',
+        data_type: 'boolean',
+        description: 'Enable automatic threshold calculation based on max capacity',
+        updated_at: new Date()
       }
     ];
 

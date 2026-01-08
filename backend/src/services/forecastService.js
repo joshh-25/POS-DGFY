@@ -42,7 +42,7 @@ export const forecastStockLevels = async (daysAhead = 30) => {
       avg_daily_consumption: avgDailyConsumption,
       forecasted_stock: forecastedStock,
       days_until_depletion: daysUntilDepletion,
-      status: forecastedStock < (item.min_threshold || 0) ? 'shortage' : 'normal'
+      status: (item.min_threshold !== null && forecastedStock < item.min_threshold) ? 'shortage' : 'normal'
     });
   }
 

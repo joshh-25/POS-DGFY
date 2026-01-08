@@ -77,13 +77,13 @@ export default function Settings() {
 
         // Map backend settings to frontend state
         setSettings({
-          defaultMinThreshold: systemSettings.low_stock_threshold?.value || 40,
-          defaultPurchaseAllowance: systemSettings.critical_stock_threshold?.value || 20,
-          lowStockAlertEnabled: systemSettings.enable_low_stock_alerts?.value || true,
-          surplusAlertEnabled: systemSettings.enable_expiry_alerts?.value || true,
+          defaultMinThreshold: systemSettings.min_stock_threshold_percent?.value || 40,
+          defaultPurchaseAllowance: systemSettings.purchase_allowance_percent?.value || 20,
+          lowStockAlertEnabled: systemSettings.enable_low_stock_alerts?.value ?? true,
+          surplusAlertEnabled: systemSettings.enable_expiry_alerts?.value ?? true,
           procurementReminderDay: systemSettings.alert_frequency_hours?.value || 24,
           qualityThreshold: systemSettings.supplier_rating_threshold?.value || 3.5,
-          autoCalculateThresholds: systemSettings.enable_auto_reorder?.value || false
+          autoCalculateThresholds: systemSettings.enable_auto_reorder?.value ?? true
         });
       } catch (error) {
         toast.error('Failed to load settings');
@@ -124,7 +124,7 @@ export default function Settings() {
 
       // Update profile (username/email) if changed
       if (profileSettings.username !== currentUser?.username ||
-          profileSettings.email !== currentUser?.email) {
+        profileSettings.email !== currentUser?.email) {
         await userService.updateProfile({
           username: profileSettings.username,
           email: profileSettings.email
@@ -150,6 +150,13 @@ export default function Settings() {
           confirmPassword: ''
         }));
       }
+
+      // Save threshold settings to backend
+      await settingsService.updateSettings({
+        enable_auto_reorder: settings.autoCalculateThresholds,
+        min_stock_threshold_percent: settings.defaultMinThreshold,
+        purchase_allowance_percent: settings.defaultPurchaseAllowance
+      });
 
       toast.success("Settings saved successfully!");
     } catch (error) {
@@ -284,7 +291,7 @@ export default function Settings() {
                   <button
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                    onClick={() => setShowPasswords({...showPasswords, current: !showPasswords.current})}
+                    onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
                   >
                     {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -308,7 +315,7 @@ export default function Settings() {
                   <button
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                    onClick={() => setShowPasswords({...showPasswords, new: !showPasswords.new})}
+                    onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
                   >
                     {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -335,7 +342,7 @@ export default function Settings() {
                   <button
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                    onClick={() => setShowPasswords({...showPasswords, confirm: !showPasswords.confirm})}
+                    onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
                   >
                     {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -416,15 +423,16 @@ export default function Settings() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Default Minimum Threshold</Label>
-                  <span className="text-sm font-medium text-slate-900">{settings.defaultMinThreshold}% of capacity</span>
+                  <Label className={!settings.autoCalculateThresholds ? 'text-slate-400' : ''}>Default Minimum Threshold</Label>
+                  <span className={`text-sm font-medium ${!settings.autoCalculateThresholds ? 'text-slate-400' : 'text-slate-900'}`}>{settings.defaultMinThreshold}% of capacity</span>
                 </div>
                 <Slider
                   value={[settings.defaultMinThreshold]}
                   onValueChange={([v]) => handleChange('defaultMinThreshold', v)}
                   max={100}
                   step={5}
-                  className="w-full"
+                  disabled={!settings.autoCalculateThresholds}
+                  className={`w-full ${!settings.autoCalculateThresholds ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
                 <p className="text-xs text-slate-500">
                   Items below this percentage will trigger low stock alerts
@@ -433,15 +441,16 @@ export default function Settings() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Default Purchase Allowance</Label>
-                  <span className="text-sm font-medium text-slate-900">{settings.defaultPurchaseAllowance}% of capacity</span>
+                  <Label className={!settings.autoCalculateThresholds ? 'text-slate-400' : ''}>Default Purchase Allowance</Label>
+                  <span className={`text-sm font-medium ${!settings.autoCalculateThresholds ? 'text-slate-400' : 'text-slate-900'}`}>{settings.defaultPurchaseAllowance}% of capacity</span>
                 </div>
                 <Slider
                   value={[settings.defaultPurchaseAllowance]}
                   onValueChange={([v]) => handleChange('defaultPurchaseAllowance', v)}
                   max={50}
                   step={5}
-                  className="w-full"
+                  disabled={!settings.autoCalculateThresholds}
+                  className={`w-full ${!settings.autoCalculateThresholds ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
                 <p className="text-xs text-slate-500">
                   Recommended order quantity for restocking

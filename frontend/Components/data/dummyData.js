@@ -496,11 +496,20 @@ export const dummyStockMovements = [
 
 export const getItemsStats = (items) => {
   const totalItems = items.length;
-  const lowStockItems = items.filter(item => item.current_stock < item.min_threshold);
+  // Only count as low stock if min_threshold is set (not null)
+  const lowStockItems = items.filter(item =>
+    item.min_threshold !== null && item.min_threshold !== undefined &&
+    item.current_stock < item.min_threshold
+  );
   const overStockItems = items.filter(item => item.current_stock > item.max_capacity);
-  const healthyItems = items.filter(item => item.current_stock >= item.min_threshold && item.current_stock <= item.max_capacity);
+  // Only count as healthy if min_threshold is set
+  const healthyItems = items.filter(item =>
+    (item.min_threshold === null || item.min_threshold === undefined)
+      ? item.current_stock <= item.max_capacity
+      : item.current_stock >= item.min_threshold && item.current_stock <= item.max_capacity
+  );
   const totalValue = items.reduce((sum, item) => sum + (item.current_stock * item.cost_per_unit), 0);
-  
+
   return {
     totalItems,
     lowStockCount: lowStockItems.length,
@@ -513,6 +522,11 @@ export const getItemsStats = (items) => {
 };
 
 export const getStockStatus = (item) => {
+  // If no threshold set (null or undefined), item is always "healthy" unless over capacity
+  if (item.min_threshold === null || item.min_threshold === undefined) {
+    if (item.current_stock > item.max_capacity) return 'surplus';
+    return 'healthy';
+  }
   if (item.current_stock < item.min_threshold) return 'critical';
   if (item.current_stock < item.min_threshold * 1.25) return 'warning';
   if (item.current_stock > item.max_capacity) return 'surplus';

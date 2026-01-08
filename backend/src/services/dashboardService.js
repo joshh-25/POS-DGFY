@@ -12,6 +12,7 @@ export const getDashboardStats = async () => {
   const lowStockItems = await Item.count({
     where: {
       status: 'active',
+      min_threshold: { [Op.ne]: null }, // Only count items with thresholds set
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),
@@ -26,6 +27,7 @@ export const getDashboardStats = async () => {
   const healthyStockItems = await Item.count({
     where: {
       status: 'active',
+      min_threshold: { [Op.ne]: null }, // Only count items with thresholds set
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),
@@ -87,6 +89,7 @@ export const getLowStockItems = async () => {
   const items = await Item.findAll({
     where: {
       status: 'active',
+      min_threshold: { [Op.ne]: null }, // Only include items with thresholds set
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),

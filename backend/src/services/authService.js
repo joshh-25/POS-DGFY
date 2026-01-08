@@ -255,4 +255,3 @@ export const isTokenBlacklisted = async (token) => {
     return false;
   }
 };
-

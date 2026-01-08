@@ -1,5 +1,6 @@
 import express from 'express';
 import * as itemController from '../controllers/itemController.js';
+import * as csvImportController from '../controllers/csvImportController.js';
 import { validateCreateItem, validateUpdateItem, validateCreateItemDraft } from '../validators/itemValidator.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
@@ -7,6 +8,11 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// CSV Import routes - must be before :item_id routes to avoid conflicts
+router.get('/import/template', authorize('admin', 'manager'), csvImportController.getTemplate);
+router.post('/import/preview', authorize('admin', 'manager'), csvImportController.previewImport);
+router.post('/import/confirm', authorize('admin', 'manager'), csvImportController.confirmImport);
 
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);

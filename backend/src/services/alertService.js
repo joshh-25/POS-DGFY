@@ -11,6 +11,7 @@ export const generateAlerts = async () => {
   const lowStockItems = await Item.findAll({
     where: {
       is_active: true,
+      min_threshold: { [Op.ne]: null }, // Only alert for items with thresholds set
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),

@@ -72,13 +72,14 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
     }
   }, [open, jobOrder, isEditing, initialProductId]);
 
-  // Identify low stock products
+  // Identify low stock products (only if threshold is set)
   const lowStockProducts = useMemo(() => {
     return products.filter(p => {
-      // Logic for low stock: current_stock <= min_threshold
-      // Ensure we treat null/undefined thresholds safely
-      const minThreshold = p.min_threshold || 0;
-      return (p.current_stock || 0) <= minThreshold;
+      // Only consider as low stock if min_threshold is set (not null)
+      if (p.min_threshold === null || p.min_threshold === undefined) {
+        return false;
+      }
+      return (p.current_stock || 0) <= p.min_threshold;
     });
   }, [products]);
 

@@ -11,7 +11,10 @@ export const updateSettingsSchema = Joi.object({
   quality_check_frequency_days: Joi.number().min(1).max(365).optional(),
   supplier_rating_threshold: Joi.number().min(0).max(5).optional(),
   enable_auto_reorder: Joi.boolean().optional(),
-  reorder_safety_margin: Joi.number().min(1).max(3).optional()
+  reorder_safety_margin: Joi.number().min(1).max(3).optional(),
+  // Stock threshold percentage settings
+  min_stock_threshold_percent: Joi.number().min(0).max(100).optional(),
+  purchase_allowance_percent: Joi.number().min(0).max(100).optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });

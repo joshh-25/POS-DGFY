@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,7 @@ import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
 import ProductCreateWizard from '@/components/products/ProductCreateWizard';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
+import CSVImportModal from '@/components/items/CSVImportModal';
 import { getStockStatus } from '@/components/data/dummyData';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/userService.js';
@@ -51,6 +52,7 @@ export default function Items() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Fetch current user
   useEffect(() => {
@@ -334,6 +336,10 @@ export default function Items() {
           <p className="text-slate-500 mt-1">{filteredItems.length} items found</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportModal(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import CSV
+          </Button>
           {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && (
             <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
               <Package className="w-4 h-4 mr-2" />
@@ -353,82 +359,100 @@ export default function Items() {
 
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4">
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="Search by name or SKU..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+        <div className="flex flex-col lg:flex-row gap-4 items-end">
+          <div className="relative flex-1 w-full">
+            <span className="text-xs font-medium text-slate-500 mb-1 block">Search</span>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="Search by name or SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-40">
-                <Filter className="w-4 h-4 mr-2 text-slate-400" />
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="raw_material">Raw Material</SelectItem>
-                <SelectItem value="packaging">Packaging</SelectItem>
-                <SelectItem value="work_in_progress">Work In Progress</SelectItem>
-                <SelectItem value="finished_goods">Finished Goods</SelectItem>
-                <SelectItem value="supplies">Supplies</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Drafts</SelectItem>
-                <SelectItem value="critical">Low Stock</SelectItem>
-                <SelectItem value="healthy">Healthy</SelectItem>
-                <SelectItem value="surplus">Surplus</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={fifoFilter} onValueChange={setFifoFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="FIFO Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Items</SelectItem>
-                <SelectItem value="enabled">FIFO Enabled</SelectItem>
-                <SelectItem value="disabled">FIFO Disabled</SelectItem>
-                <SelectItem value="expiring">Expiring Soon</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {categoryFilter === 'product' && productFolders.length > 0 && (
-              <Select value={folderFilter} onValueChange={setFolderFilter}>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-500">Category</span>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Folder" />
+                  <Filter className="w-4 h-4 mr-2 text-slate-400" />
+                  <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Folders</SelectItem>
-                  {productFolders.map(folder => (
-                    <SelectItem key={folder} value={folder}>{folder}</SelectItem>
-                  ))}
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="raw_material">Raw Material</SelectItem>
+                  <SelectItem value="packaging">Packaging</SelectItem>
+                  <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+                  <SelectItem value="finished_goods">Finished Goods</SelectItem>
+                  <SelectItem value="supplies">Supplies</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-500">Status</span>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="draft">Drafts</SelectItem>
+                  <SelectItem value="critical">Low Stock</SelectItem>
+                  <SelectItem value="healthy">Healthy</SelectItem>
+                  <SelectItem value="surplus">Surplus</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-500">FIFO</span>
+              <Select value={fifoFilter} onValueChange={setFifoFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="FIFO Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Items</SelectItem>
+                  <SelectItem value="enabled">FIFO Enabled</SelectItem>
+                  <SelectItem value="disabled">FIFO Disabled</SelectItem>
+                  <SelectItem value="expiring">Expiring Soon</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {categoryFilter === 'product' && productFolders.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Folder</span>
+                <Select value={folderFilter} onValueChange={setFolderFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Folder" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Folders</SelectItem>
+                    {productFolders.map(folder => (
+                      <SelectItem key={folder} value={folder}>{folder}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name A-Z</SelectItem>
-                <SelectItem value="stock">Stock (Low to High)</SelectItem>
-                <SelectItem value="stock_desc">Stock (High to Low)</SelectItem>
-                <SelectItem value="updated">Last Updated</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-500">Sort By</span>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name A-Z</SelectItem>
+                  <SelectItem value="stock">Stock (Low to High)</SelectItem>
+                  <SelectItem value="stock_desc">Stock (High to Low)</SelectItem>
+                  <SelectItem value="updated">Last Updated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <Tabs value={viewMode} onValueChange={setViewMode} className="hidden sm:block">
               <TabsList>
@@ -596,6 +620,11 @@ export default function Items() {
         variant="destructive"
         loading={deleting}
         errors={deleteErrors}
+      />
+      <CSVImportModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={refetch}
       />
     </div>
   );

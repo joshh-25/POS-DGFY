@@ -30,9 +30,9 @@ export default function LowStockList({ items }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('materials');
 
-  // Split items into products and materials
+  // Split items into products and materials - only include items with thresholds set
   const allLowStockItems = items
-    .filter(item => item.current_stock < item.min_threshold)
+    .filter(item => item.min_threshold !== null && item.min_threshold !== undefined && item.current_stock < item.min_threshold)
     .sort((a, b) => (a.current_stock / a.min_threshold) - (b.current_stock / b.min_threshold));
 
   // Split into Manufactured (Finished Goods + WIP) vs Purchased (Raw Material, Packaging, Supplies)
