@@ -1,16 +1,28 @@
-# CSV Import Guide for Inventory Items
+# CSV Import/Export Guide for Inventory Items
 
 ## Overview
 
-This guide explains how to bulk import items (raw materials, packaging, products, supplies) using a CSV file.
+This guide explains how to bulk import items (raw materials, packaging, products, supplies) using a CSV file, and how to export existing items to CSV.
 
-## Quick Start
+## Quick Start - Import
 
 1. Go to **Items** page
-2. Click **Import CSV** button
-3. Download the template or upload your CSV
-4. Review the preview and fix any errors
-5. Click **Confirm Import**
+2. Click **Import / Export** button
+3. Select **Import**
+4. Download the template or upload your CSV
+5. Review the preview and fix any errors
+6. Click **Confirm Import**
+
+## Quick Start - Export
+
+1. Go to **Items** page
+2. Click **Import / Export** button
+3. Select **Export**
+4. Choose export mode:
+   - **All Items** - Export every item in the system
+   - **Filtered Items** - Export only items matching current page filters
+   - **Select Items** - Manually pick specific items with checkboxes
+5. Click **Export CSV**
 
 ## CSV Template Structure
 

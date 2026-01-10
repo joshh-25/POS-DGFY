@@ -41,6 +41,15 @@ const JobOrder = sequelize.define('JobOrder', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  completed_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    },
+    comment: 'User who completed the job order'
+  },
   archived_by: {
     type: DataTypes.INTEGER,
     allowNull: true,

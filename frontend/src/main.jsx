@@ -12,6 +12,7 @@ import Reports from '../Pages/Reports.jsx'
 import Settings from '../Pages/Settings.jsx'
 import Login from '../Pages/Login.jsx'
 import Register from '../Pages/Register.jsx'
+import MobileReceive from '../Pages/MobileReceive.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import './index.css'
@@ -91,6 +92,13 @@ function App() {
           <Layout currentPageName={currentPageName}>
             <Settings />
           </Layout>
+        </ProtectedRoute>
+      } />
+
+      {/* Mobile receive page - no sidebar layout for phone-first UX */}
+      <Route path="/receive/:token" element={
+        <ProtectedRoute>
+          <MobileReceive />
         </ProtectedRoute>
       } />
     </Routes>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle, Archive, ArchiveRestore } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle, Archive, ArchiveRestore, QrCode } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { formatNumber } from '../src/lib/numberUtils.js';
 import { getCurrentUser } from '../src/services/authService.js';
+import QRCodeModal from '@/components/common/QRCodeModal';
+import { generateReceiveToken } from '../src/services/receiveTokenService.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -57,6 +59,8 @@ export default function PurchaseOrders() {
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [poToArchive, setPoToArchive] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrPO, setQrPO] = useState(null);
 
   // Fetch current user for role-based access
   useEffect(() => {
@@ -251,6 +255,15 @@ export default function PurchaseOrders() {
 
   const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
+  const handleGenerateQR = (po) => {
+    setQrPO(po);
+    setShowQRModal(true);
+  };
+
+  const handleQRTokenGenerate = async (orderType, orderId) => {
+    return await generateReceiveToken(orderType, orderId);
+  };
+
   if (loading || suppliersLoading || itemsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -383,6 +396,17 @@ export default function PurchaseOrders() {
                             Receive
                           </Button>
                         )}
+                        {!showArchivedTab && (po.status === 'pending' || po.status === 'partial') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleGenerateQR(po)}
+                            className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                            title="Generate QR Code for mobile receiving"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </Button>
+                        )}
                         {!showArchivedTab && canArchive && (
                           <Button
                             variant="outline"
@@ -442,6 +466,21 @@ export default function PurchaseOrders() {
           open={showReceiptModal}
           onClose={() => setShowReceiptModal(false)}
           onConfirm={handleReceiptConfirm}
+        />
+      )}
+
+      {/* QR Code Modal */}
+      {showQRModal && qrPO && (
+        <QRCodeModal
+          open={showQRModal}
+          onClose={() => {
+            setShowQRModal(false);
+            setQrPO(null);
+          }}
+          orderType="PO"
+          orderId={qrPO.po_id || qrPO.id}
+          orderNumber={qrPO.po_number}
+          onGenerateToken={handleQRTokenGenerate}
         />
       )}
 

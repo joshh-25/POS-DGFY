@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, Upload } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,6 +17,8 @@ import ItemFormModal from '@/components/items/ItemFormModal';
 import ProductCreateWizard from '@/components/products/ProductCreateWizard';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import CSVImportModal from '@/components/items/CSVImportModal';
+import ImportExportModal from '@/components/items/ImportExportModal';
+import CSVExportModal from '@/components/items/CSVExportModal';
 import { getStockStatus } from '@/components/data/dummyData';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/userService.js';
@@ -52,7 +54,9 @@ export default function Items() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showImportExportModal, setShowImportExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Fetch current user
   useEffect(() => {
@@ -336,9 +340,9 @@ export default function Items() {
           <p className="text-slate-500 mt-1">{filteredItems.length} items found</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowImportModal(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Import CSV
+          <Button variant="outline" onClick={() => setShowImportExportModal(true)}>
+            <ArrowUpDown className="w-4 h-4 mr-2" />
+            Import / Export
           </Button>
           {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && (
             <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
@@ -625,6 +629,24 @@ export default function Items() {
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
         onSuccess={refetch}
+      />
+      <ImportExportModal
+        open={showImportExportModal}
+        onClose={() => setShowImportExportModal(false)}
+        onImport={() => setShowImportModal(true)}
+        onExport={() => setShowExportModal(true)}
+      />
+      <CSVExportModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        items={items}
+        filters={{
+          category: categoryFilter,
+          search: searchQuery,
+          fifo: fifoFilter,
+          folder: folderFilter
+        }}
+        filteredCount={filteredItems.length}
       />
     </div>
   );

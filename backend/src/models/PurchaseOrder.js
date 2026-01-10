@@ -60,6 +60,15 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  received_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    },
+    comment: 'User who completed the PO receiving'
+  },
   archived_by: {
     type: DataTypes.INTEGER,
     allowNull: true,

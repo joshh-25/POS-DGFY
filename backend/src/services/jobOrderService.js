@@ -402,6 +402,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
   await jo.update({
     status: 'completed',
     completion_date: new Date(),
+    completed_by: userId,
     notes: notes || jo.notes || null
   });
 

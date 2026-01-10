@@ -326,6 +326,7 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
   await po.update({
     status: allReceived ? 'received' : 'partial',
     received_date: new Date(),
+    received_by: userId,
     notes: receiptData.notes || po.notes,
     delivery_rating: receiptData.delivery_rating || po.delivery_rating
   });

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { formatNumber } from '../src/lib/numberUtils.js';
 import { format } from 'date-fns';
 import { canBeJobOrderOutput } from '@/components/utils/categoryHelpers';
-import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle, Archive, ArchiveRestore } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Factory, Clock, Play, CheckCircle, AlertTriangle, Loader2, XCircle, Archive, ArchiveRestore, QrCode } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,8 @@ import JODetailsModal from '@/components/jo/JODetailsModal';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { getCurrentUser } from '../src/services/authService.js';
+import QRCodeModal from '@/components/common/QRCodeModal';
+import { generateReceiveToken } from '../src/services/receiveTokenService.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Clock },
@@ -48,6 +50,8 @@ export default function JobOrders() {
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [joToArchive, setJoToArchive] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrJO, setQrJO] = useState(null);
 
   // Fetch current user for role-based access
   useEffect(() => {
@@ -250,6 +254,15 @@ export default function JobOrders() {
 
   const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
+  const handleGenerateQR = (jo) => {
+    setQrJO(jo);
+    setShowQRModal(true);
+  };
+
+  const handleQRTokenGenerate = async (orderType, orderId) => {
+    return await generateReceiveToken(orderType, orderId);
+  };
+
   if (loading || itemsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -413,6 +426,17 @@ export default function JobOrders() {
                             Complete
                           </Button>
                         )}
+                        {!showArchivedTab && jo.status === 'in_progress' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleGenerateQR(jo)}
+                            className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                            title="Generate QR Code for mobile completion"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </Button>
+                        )}
                         {!showArchivedTab && canArchive && (
                           <Button
                             variant="outline"
@@ -467,6 +491,21 @@ export default function JobOrders() {
         onClose={() => setShowDetailsModal(false)}
         onComplete={handleCompleteProduction}
       />
+
+      {/* QR Code Modal */}
+      {showQRModal && qrJO && (
+        <QRCodeModal
+          open={showQRModal}
+          onClose={() => {
+            setShowQRModal(false);
+            setQrJO(null);
+          }}
+          orderType="JO"
+          orderId={qrJO.jo_id || qrJO.id}
+          orderNumber={qrJO.jo_number || `Draft #${qrJO.jo_id}`}
+          onGenerateToken={handleQRTokenGenerate}
+        />
+      )}
 
       {/* Archive Confirmation Dialog */}
       <DeleteConfirmDialog

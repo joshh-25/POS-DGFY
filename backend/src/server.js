@@ -149,6 +149,7 @@ import reportRoutes from './routes/reports.js';
 import forecastRoutes from './routes/forecast.js';
 import alertRoutes from './routes/alerts.js';
 import settingsRoutes from './routes/settings.js';
+import receiveTokenRoutes from './routes/receiveTokens.js';
 
 // Apply stricter rate limiter to auth routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
@@ -163,6 +164,7 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/forecast', forecastRoutes);
 app.use('/api/v1/alerts', alertRoutes);
+app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

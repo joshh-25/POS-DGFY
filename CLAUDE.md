@@ -181,7 +181,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 │
 ├── docs/                                 # Documentation
 │   └── QUICK_REFERENCE.md
-├── spec-kit/                             # Full specifications
+
 ├── .claude/                              # Claude Code config
 │   └── hooks/
 │       └── session-start.sh
@@ -268,7 +268,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 }
 ```
 
-*See CLAUDE.md v1 or spec-kit for other entities (PO, JO, StockMovement, Supplier, etc.)*
+*See docs/database/schema.md for other entities (PO, JO, StockMovement, Supplier, etc.)*
 
 ---
 
@@ -302,11 +302,11 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `QUICK_START.md` - Quick start guide
 - `SETUP.md` - Complete setup instructions
 
-**Spec Kit (Detailed Specifications):**
-- `spec-kit/02_DATABASE_SCHEMA.md` - Complete table definitions
-- `spec-kit/03_API_SPECIFICATION.md` - All endpoint details
-- `spec-kit/06_INTEGRATION_GUIDE.md` - Frontend-backend integration
-- `spec-kit/System Architecture Diagrams & Technical Documentation.md`
+**Detailed Specifications (in /docs):**
+- `docs/database/schema.md` - Complete table definitions
+- `docs/api/specification.md` - All endpoint details
+- `docs/api/integration-guide.md` - Frontend-backend integration
+- `docs/architecture/system-architecture.md` - System architecture diagrams
 
 ---
 
@@ -328,7 +328,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 → Check `frontend/src/services/` for API service layer
 
 **Need Full Specs?**
-→ See `spec-kit/` directory
+→ See `docs/` directory
 
 ---
 

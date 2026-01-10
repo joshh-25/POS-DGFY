@@ -23,6 +23,7 @@ import BatchTransaction from './BatchTransaction.js';
 import AuditLog from './AuditLog.js';
 import SystemSetting from './SystemSetting.js';
 import BatchLineage from './BatchLineage.js';
+import ReceiveToken from './ReceiveToken.js';
 
 // Define associations
 // User associations
@@ -57,6 +58,7 @@ Supplier.hasMany(PurchaseOrder, { foreignKey: 'supplier_id', as: 'purchaseOrders
 // PurchaseOrder associations
 PurchaseOrder.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
 PurchaseOrder.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+PurchaseOrder.belongsTo(User, { foreignKey: 'received_by', as: 'receiver' });
 PurchaseOrder.hasMany(POLineItem, { foreignKey: 'po_id', as: 'lineItems' });
 
 // POLineItem associations
@@ -66,6 +68,7 @@ POLineItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 // JobOrder associations
 JobOrder.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
 JobOrder.belongsTo(User, { foreignKey: 'responsible_user', as: 'responsibleUser' });
+JobOrder.belongsTo(User, { foreignKey: 'completed_by', as: 'completedByUser' });
 JobOrder.hasMany(JOIngredient, { foreignKey: 'jo_id', as: 'ingredients' });
 
 // JOIngredient associations
@@ -131,6 +134,11 @@ ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredien
 // AuditLog associations
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// ReceiveToken associations
+ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+ReceiveToken.belongsTo(User, { foreignKey: 'used_by', as: 'usedByUser' });
+User.hasMany(ReceiveToken, { foreignKey: 'created_by', as: 'createdTokens' });
+
 const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
@@ -157,7 +165,8 @@ const db = {
   BatchTransaction,
   AuditLog,
   SystemSetting,
-  BatchLineage
+  BatchLineage,
+  ReceiveToken
 };
 
 export default db;
@@ -186,6 +195,7 @@ export {
   BatchTransaction,
   AuditLog,
   SystemSetting,
-  BatchLineage
+  BatchLineage,
+  ReceiveToken
 };
 

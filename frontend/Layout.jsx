@@ -76,7 +76,7 @@ export default function Layout({ children, currentPageName }) {
         <div className="p-6">
           <div className="flex flex-col gap-1">
             <img src="/logo.png" alt="SKUpervisor" className="h-10" />
-            <p className="text-xs text-slate-500 ml-1">Management System</p>
+            <p className="text-xs text-slate-500 ml-1">Inventory Management System</p>
           </div>
         </div>
 

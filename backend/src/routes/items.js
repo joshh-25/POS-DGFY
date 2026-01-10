@@ -1,6 +1,7 @@
 import express from 'express';
 import * as itemController from '../controllers/itemController.js';
 import * as csvImportController from '../controllers/csvImportController.js';
+import * as csvExportController from '../controllers/csvExportController.js';
 import { validateCreateItem, validateUpdateItem, validateCreateItemDraft } from '../validators/itemValidator.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
@@ -13,6 +14,11 @@ router.use(authenticate);
 router.get('/import/template', authorize('admin', 'manager'), csvImportController.getTemplate);
 router.post('/import/preview', authorize('admin', 'manager'), csvImportController.previewImport);
 router.post('/import/confirm', authorize('admin', 'manager'), csvImportController.confirmImport);
+
+// CSV Export routes
+router.get('/export', authorize('admin', 'manager'), csvExportController.exportItems);
+router.post('/export', authorize('admin', 'manager'), csvExportController.exportItems);
+router.get('/export/preview', authorize('admin', 'manager'), csvExportController.previewExport);
 
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);

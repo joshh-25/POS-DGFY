@@ -1835,6 +1835,93 @@ Fixed existing inconsistencies:
 
 ---
 
-**Last Updated**: 2026-01-08
-**Version**: 1.7.1
+## Phase 12: QR Receipt System
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-09
+
+### Overview
+Implemented a QR code-based mobile receiving system for Purchase Orders and Job Orders. Staff can generate QR codes that link to a mobile-optimized receive page, enabling quick warehouse receiving via phone/tablet.
+
+### Database Changes
+| Migration | Description |
+|-----------|-------------|
+| `20260108000001-create-receive-tokens.js` | Creates `receive_tokens` table with token hash, type, expiry, usage tracking |
+| `20260108000002-add-received-by-to-purchase-orders.js` | Adds `received_by` column for audit trail |
+| `20260108000003-add-completed-by-to-job-orders.js` | Adds `completed_by` column for audit trail |
+
+### Backend Implementation
+- [x] Create `ReceiveToken.js` model
+- [x] Update `PurchaseOrder.js` model (received_by field)
+- [x] Update `JobOrder.js` model (completed_by field)
+- [x] Update `models/index.js` with ReceiveToken associations
+- [x] Create `receiveTokenService.js` (generate, validate, markUsed)
+- [x] Create `receiveTokenController.js`
+- [x] Create `receiveTokens.js` routes
+- [x] Register routes in `server.js`
+- [x] Update `purchaseOrderService.js` to record received_by
+- [x] Update `jobOrderService.js` to record completed_by
+
+### Frontend Implementation
+- [x] Install `qrcode` npm package
+- [x] Create `QRCodeModal.jsx` component
+- [x] Create `receiveTokenService.js` (API client)
+- [x] Add QR button to `PurchaseOrders.jsx`
+- [x] Add QR button to `JobOrders.jsx`
+- [x] Create `MobileReceive.jsx` page with:
+  - Per-item quantity input fields
+  - +/- increment buttons and MAX fill
+  - Notes field
+  - Auto-redirect after 5 seconds on success
+- [x] Add `/receive/:token` protected route in `main.jsx`
+
+### API Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/receive-tokens` | Generate QR token for PO/JO |
+| GET | `/api/v1/receive-tokens/:token` | Validate token and get order details |
+| POST | `/api/v1/receive-tokens/:tokenId/use` | Mark token as used |
+
+### User Flow
+1. User clicks purple QR icon on pending/partial PO (or in_progress JO)
+2. Modal displays QR code with expiry date and copy/download options
+3. Staff scans QR with mobile device → redirected to `/receive/:token`
+4. Mobile page shows items with editable quantity inputs
+5. Staff enters actual counted quantities and taps "Receive X Items"
+6. Stock updated, audit trail recorded, auto-redirect to dashboard
+
+### Security Features
+- Tokens are SHA-256 hashed before storage (raw token never stored)
+- 7-day default expiry
+- Single-use tokens (marked used after receive)
+- Protected routes require authentication
+- Order validation (must be pending/partial for PO, in_progress for JO)
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `backend/src/models/ReceiveToken.js` | Model definition |
+| `backend/src/services/receiveTokenService.js` | Business logic |
+| `backend/src/controllers/receiveTokenController.js` | API handlers |
+| `backend/src/routes/receiveTokens.js` | Route definitions |
+| `frontend/Components/common/QRCodeModal.jsx` | QR display modal |
+| `frontend/src/services/receiveTokenService.js` | API client |
+| `frontend/Pages/MobileReceive.jsx` | Mobile receive page |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `backend/src/models/PurchaseOrder.js` | Added `received_by` field |
+| `backend/src/models/JobOrder.js` | Added `completed_by` field |
+| `backend/src/models/index.js` | ReceiveToken import + associations |
+| `backend/src/server.js` | Register receive-tokens route |
+| `backend/src/services/purchaseOrderService.js` | Record received_by |
+| `backend/src/services/jobOrderService.js` | Record completed_by |
+| `frontend/Pages/PurchaseOrders.jsx` | QR button + modal |
+| `frontend/Pages/JobOrders.jsx` | QR button + modal |
+| `frontend/src/main.jsx` | /receive/:token route |
+
+---
+
+**Last Updated**: 2026-01-09
+**Version**: 1.8.0
 **Project Status**: Production Ready
