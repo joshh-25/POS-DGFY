@@ -2044,3 +2044,51 @@ Updated troubleshooting documentation with new sections:
 **Last Updated**: 2026-01-10
 **Version**: 1.8.1
 **Project Status**: Production Ready
+
+---
+
+## Phase 29: Recipe Costing & Wizard Refinements
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-10
+
+### Overview
+Addressed critical issues with product cost calculation where products displayed ₱0.00 inventory value. Implemented comprehensive recipe-based cost calculation that dynamically sums ingredient costs. Also fixed Product Wizard bugs including zero-cost for nested products and duplicate ingredient selection.
+
+### Recipe-Based Cost Calculation (Option B)
+**Problem**: Products showed ₱0.00 inventory value because `cost_per_unit` was often null, and the system didn't automatically calculate cost from ingredients.
+**Solution**:
+- **Backend**: Added `calculateRecipeCost` helper in `itemService.js` to sum ingredient costs (quantity * cost_per_unit).
+- **API**: Exposed `recipe_cost` field in item endpoints (`getItemById`, `getItems`).
+- **Frontend**: Updated `calculateTotalProductCost` helper to include `recipe_cost`.
+- **UI**: Updated `Items.jsx` table, `StockInventorySection.jsx`, and `Reports.jsx` to use the calculated total cost.
+
+### Product Wizard Fixes
+**Issue 1: ₱0.00 Cost for Nested Products**
+- **Cause**: Cost calculation strictly filtered for `raw_material`, ignoring ingredients that are themselves products (nested recipes).
+- **Fix**: Updated `CostFinancialStep.jsx` to use `canBeProductIngredient` helper, ensuring all valid ingredients contribute to the "Raw Materials" cost.
+
+**Issue 2: Duplicate Ingredients**
+- **Cause**: Users could select the same ingredient multiple times in the recipe step.
+- **Fix**: Added validation in `RecipeFormulationStep.jsx` to prevent selecting an ingredient that is already present in the recipe list.
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `backend/src/services/itemService.js` | Added recipe cost calculation logic |
+| `frontend/Components/items/details/helpers.js` | Updated cost helper to include recipe_cost |
+| `frontend/Components/items/details/StockInventorySection.jsx` | Used calculated cost for inventory value |
+| `frontend/Components/products/wizard/CostFinancialStep.jsx` | Fixed nested product cost calculation |
+| `frontend/Components/products/wizard/RecipeFormulationStep.jsx` | Added duplicate ingredient validation |
+| `frontend/Pages/Items.jsx` | Updated table to show calculated unit cost |
+| `frontend/Pages/Reports.jsx` | Updated valuation report to use calculated cost |
+
+### Verification
+- **Inventory Value**: Confirmed products with recipes now show correct non-zero inventory value.
+- **Wizard Costing**: Confirmed nested products (e.g., Ginger Paste) correctly add to "Raw Materials" cost.
+- **Data Integrity**: Duplicate ingredients are blocked in the wizard.
+
+---
+
+**Last Updated**: 2026-01-10
+**Version**: 1.9.0
+**Project Status**: Production Ready

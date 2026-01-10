@@ -117,8 +117,9 @@ export const calculateTotalProductCost = (item) => {
   const laborCost = parseFloat(item.labor_cost) || 0;
   const overheadCost = parseFloat(item.overhead_cost) || 0;
   const packagingCost = parseFloat(item.additional_packaging_cost) || 0;
+  const recipeCost = parseFloat(item.recipe_cost) || 0;
 
-  return costPerUnit + laborCost + overheadCost + packagingCost;
+  return costPerUnit + laborCost + overheadCost + packagingCost + recipeCost;
 };
 
 /**

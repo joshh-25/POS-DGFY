@@ -56,6 +56,23 @@ const calculateThresholds = async (maxCapacity) => {
   };
 };
 
+/**
+ * Calculate product cost from recipe ingredients and packaging
+ * @param {Array} productCompositions - Array of composition items with ingredient data
+ * @returns {number} Total cost from all recipe components
+ */
+const calculateRecipeCost = (productCompositions) => {
+  if (!productCompositions || productCompositions.length === 0) {
+    return 0;
+  }
+
+  return productCompositions.reduce((total, comp) => {
+    const ingredientCost = parseFloat(comp.ingredient?.cost_per_unit || 0);
+    const quantity = parseFloat(comp.quantity_required || 0);
+    return total + (ingredientCost * quantity);
+  }, 0);
+};
+
 export const getItems = async (queryParams) => {
   const {
     page = 1,
@@ -105,7 +122,7 @@ export const getItems = async (queryParams) => {
         include: [{
           model: Item,
           as: 'ingredient',
-          attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock']
+          attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock', 'cost_per_unit']
         }]
       }
     ],
@@ -152,6 +169,11 @@ export const getItems = async (queryParams) => {
       delete transformed.productCompositions;
     } else {
       delete transformed.productCompositions;
+    }
+
+    // Calculate recipe cost for products
+    if (itemData.category === 'product') {
+      transformed.recipe_cost = calculateRecipeCost(itemData.productCompositions);
     }
 
     return transformed;
@@ -345,6 +367,9 @@ export const getItemById = async (itemId) => {
       }));
 
     delete formattedItem.productCompositions;
+
+    // Calculate recipe cost from all compositions (ingredients + packaging)
+    formattedItem.recipe_cost = calculateRecipeCost(item.productCompositions);
   }
 
   // Format FIFO batches to match frontend expectation (snake_case)

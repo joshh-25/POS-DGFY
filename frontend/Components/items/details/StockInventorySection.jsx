@@ -3,6 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { Package, TrendingDown, ShoppingCart, DollarSign } from 'lucide-react';
 import { formatNumber } from '../../../src/lib/numberUtils';
 import { getStockStatus } from '../../data/dummyData';
+import { calculateTotalProductCost } from './helpers';
 
 export default function StockInventorySection({ item }) {
   const stockPercentage = item.max_capacity > 0
@@ -10,7 +11,8 @@ export default function StockInventorySection({ item }) {
     : 0;
 
   const status = getStockStatus(item);
-  const inventoryValue = (item.current_stock || 0) * (item.cost_per_unit || 0);
+  const unitCost = calculateTotalProductCost(item);
+  const inventoryValue = (item.current_stock || 0) * unitCost;
 
   const getStatusColor = () => {
     switch (status) {
@@ -38,12 +40,11 @@ export default function StockInventorySection({ item }) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-sm font-medium text-slate-600">Stock Level</label>
-          <span className={`text-sm font-medium ${
-            status === 'critical' ? 'text-red-600' :
-            status === 'warning' ? 'text-yellow-600' :
-            status === 'healthy' ? 'text-green-600' :
-            'text-blue-600'
-          }`}>
+          <span className={`text-sm font-medium ${status === 'critical' ? 'text-red-600' :
+              status === 'warning' ? 'text-yellow-600' :
+                status === 'healthy' ? 'text-green-600' :
+                  'text-blue-600'
+            }`}>
             {getStatusText()}
           </span>
         </div>
@@ -104,7 +105,7 @@ export default function StockInventorySection({ item }) {
             ₱{formatNumber(inventoryValue, 2)}
           </p>
           <p className="text-xs text-teal-600 mt-1">
-            @ ₱{formatNumber(item.cost_per_unit || 0, 2)}/{item.unit_of_measure}
+            @ ₱{formatNumber(unitCost, 2)}/{item.unit_of_measure}
           </p>
         </div>
       </div>

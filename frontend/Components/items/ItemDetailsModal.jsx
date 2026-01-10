@@ -31,6 +31,7 @@ import { getStockStatus } from '@/components/data/dummyData';
 import FIFOBatchViewer from './FIFOBatchViewer';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
+import { calculateTotalProductCost } from './details/helpers';
 
 // Import accordion components
 import {
@@ -97,7 +98,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
   const percentage = Math.round((item.current_stock / item.max_capacity) * 100);
-  const totalValue = item.current_stock * item.cost_per_unit;
+  const totalValue = item.current_stock * calculateTotalProductCost(item);
 
   // Render simple view for ingredients and packaging
   if (!isProduct) {

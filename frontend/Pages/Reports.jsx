@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  FileText, 
-  Clock, 
-  AlertTriangle, 
-  TrendingUp, 
+import {
+  FileText,
+  Clock,
+  AlertTriangle,
+  TrendingUp,
   DollarSign,
   Download,
   BarChart3,
@@ -17,6 +17,7 @@ import { useItems } from '@/hooks/useItems.js';
 import { useStockMovements } from '@/hooks/useStockMovements.js';
 import { getStockStatus } from '@/components/data/dummyData';
 import { formatNumber } from '../src/lib/numberUtils.js';
+import { calculateTotalProductCost } from '@/components/items/details/helpers';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('aging');
@@ -31,11 +32,11 @@ export default function Reports() {
       const lastMovement = stockMovements
         .filter(m => (m.item_id || m.Item?.item_id) == itemId)
         .sort((a, b) => new Date(b.timestamp || b.created_date || b.created_at) - new Date(a.timestamp || a.created_date || a.created_at))[0];
-      
-      const daysInStorage = lastMovement 
+
+      const daysInStorage = lastMovement
         ? Math.floor((new Date() - new Date(lastMovement.timestamp || lastMovement.created_date || lastMovement.created_at)) / (1000 * 60 * 60 * 24))
         : 30;
-      
+
       let agingStatus = 'fresh';
       if (daysInStorage > 14) agingStatus = 'aging';
       if (daysInStorage > 30) agingStatus = 'critical';
@@ -126,11 +127,11 @@ export default function Reports() {
 
     items.forEach(item => {
       const currentStock = parseFloat(item.current_stock || 0);
-      const costPerUnit = parseFloat(item.cost_per_unit || 0);
+      const costPerUnit = calculateTotalProductCost(item);
       const totalValue = currentStock * costPerUnit;
       if (byCategory[item.category]) {
-      byCategory[item.category].items.push({ ...item, totalValue });
-      byCategory[item.category].total += totalValue;
+        byCategory[item.category].items.push({ ...item, totalValue, calculatedCost: costPerUnit });
+        byCategory[item.category].total += totalValue;
       }
     });
 
@@ -386,7 +387,7 @@ export default function Reports() {
                         <tr key={item.item_id || item.id} className="hover:bg-slate-50">
                           <td className="p-4 font-medium text-slate-900">{item.name}</td>
                           <td className="p-4 text-right text-slate-600">{parseFloat(item.current_stock || 0)} {item.unit_of_measure}</td>
-                          <td className="p-4 text-right text-slate-600">₱{formatNumber(item.cost_per_unit, 2)}</td>
+                          <td className="p-4 text-right text-slate-600">₱{formatNumber(item.calculatedCost || 0, 2)}</td>
                           <td className="p-4 text-right font-medium text-slate-900">₱{formatNumber(item.totalValue, 2)}</td>
                         </tr>
                       ))}

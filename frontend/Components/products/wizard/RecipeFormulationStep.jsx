@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Input } from "@/components/ui/input";
+import { toast } from 'sonner';
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,13 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
     const updated = [...ingredients];
     if (field === 'item_id') {
       const itemId = parseInt(value);
+
+      // Check if already exists in another row
+      if (ingredients.some((ing, i) => i !== index && ing.item_id === itemId)) {
+        toast.error("This ingredient is already in the recipe");
+        return;
+      }
+
       const selectedItem = allIngredientItems.find(item => item.item_id === itemId);
       updated[index] = {
         ...updated[index],

@@ -28,6 +28,7 @@ import { formatNumber } from '../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry, formatExpiryDate } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
 import { isManufactured, getEffectiveCategory } from '@/components/utils/categoryHelpers';
+import { calculateTotalProductCost } from '@/components/items/details/helpers';
 
 export default function Items() {
   const { items, loading, error, refetch } = useItems();
@@ -572,7 +573,7 @@ export default function Items() {
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                       </span>
                     </td>
-                    <td className="p-4 font-medium text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</td>
+                    <td className="p-4 font-medium text-slate-900">₱{formatNumber(calculateTotalProductCost(item), 2)}</td>
                     <td className="p-4 text-slate-600">{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : (item.last_updated || 'N/A')}</td>
                   </tr>
                 );

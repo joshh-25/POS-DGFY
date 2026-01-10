@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DollarSign, TrendingUp, Package, Beaker } from 'lucide-react';
 import { formatNumber } from '../../../src/lib/numberUtils.js';
+import { canBeProductIngredient } from '@/components/utils/categoryHelpers';
 
 export default function CostFinancialStep({ data, updateData, items }) {
   // Load from wizard_metadata if editing a draft, otherwise use top-level data
@@ -13,7 +14,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
   const [additionalPackagingCost, setAdditionalPackagingCost] = React.useState(data.additional_packaging_cost || wizardData.additional_packaging_cost || 0);
   const [desiredMargin, setDesiredMargin] = React.useState(30);
 
-  const ingredientItems = items?.filter(item => item.category === 'ingredient') || [];
+  const ingredientItems = items?.filter(item => canBeProductIngredient(item)) || [];
   const packagingItemsList = items?.filter(item => item.category === 'packaging') || [];
   const batchSize = Number(data.batch_size) || 1;
 
