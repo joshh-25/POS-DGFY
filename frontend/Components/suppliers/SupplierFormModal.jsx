@@ -36,7 +36,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
     avg_delivery_days: 5
   });
 
-  const { items: allItems, loading: loadingItems } = useItems({ status: 'active' });
+  const { items: allItems, loading: loadingItems } = useItems({ status: 'active', limit: 1000 });
   // Only show purchasable items (raw materials, packaging, supplies) - exclude manufactured products
   const availableItems = (allItems || []).filter(i => canBeSupplierItem(i));
 

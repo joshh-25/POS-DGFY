@@ -21,7 +21,7 @@ import { calculateTotalProductCost } from '@/components/items/details/helpers';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('aging');
-  const { items, loading: itemsLoading, error: itemsError } = useItems();
+  const { items, loading: itemsLoading, error: itemsError } = useItems({ limit: 1000 });
   const { stockMovements, loading: movementsLoading, error: movementsError } = useStockMovements();
 
   // Stock Aging Report Data

@@ -60,3 +60,4 @@ htdocs/.htaccess
 # Build outputs
 .vite/
 
+nul

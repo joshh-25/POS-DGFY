@@ -2092,3 +2092,31 @@ Addressed critical issues with product cost calculation where products displayed
 **Last Updated**: 2026-01-10
 **Version**: 1.9.0
 **Project Status**: Production Ready
+
+---
+
+## Phase 30: Data Consistency & Pagination Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-10
+
+### Issue: Missing Items in Selection Lists
+Users reported that newly imported items (specifically row 21+) were missing from the Inventory list and dropdown menus throughout the application, including Purchase Order and Job Order creation wizards.
+
+### Root Cause Analysis
+- **Backend Limit**: The `itemService.js` `getItems()` function defaults to a limit of **20 items** if no limit is specified.
+- **Frontend Assumption**: The React frontend utilizes client-side filtering and sorting, assuming `useItems()` returns the full dataset. The implicit default limit caused silent data truncation.
+
+### Solution
+Implemented a system-wide update to the `useItems` hook calls to explicitly request a larger batch size (`limit: 1000`) ensuring complete data availability for client-side operations.
+
+#### Affected Modules Fixed
+1. **Core Inventory (`Items.jsx`)**: Ensures all imported items are visible in the main list.
+2. **Purchase Orders (`PurchaseOrders.jsx`)**: Enables selection of new items in `POCreateWizard`.
+3. **Job Orders (`JobOrders.jsx`)**: Enables selection of all manufactured products in `JOCreateModal`.
+4. **Reports (`Reports.jsx`)**: Ensures "Stock Aging", "Surplus/Shortage", and "Valuation" reports calculate totals based on the entire inventory.
+5. **Stock Movements (`StockMovements.jsx`)**: Allows manual recording of movements for any item.
+6. **Supplier Management (`SupplierFormModal.jsx`)**: Ensures all raw materials can be mapped to suppliers.
+
+### Verification
+- **Database**: Confirmed all items exist with `active` status.
+- **Code Audit**: Systematically grep-searched `frontend/src` for all `useItems` usages to ensure no hidden truncation points remained.

@@ -63,7 +63,7 @@ const movementConfig = {
 
 export default function StockMovements() {
   const { stockMovements, loading, error, refetch } = useStockMovements();
-  const { items, loading: itemsLoading } = useItems();
+  const { items, loading: itemsLoading } = useItems({ limit: 1000 });
   const { createStockMovement, loading: creating } = useCreateStockMovement();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');

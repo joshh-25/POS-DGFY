@@ -34,7 +34,7 @@ const statusConfig = {
 export default function JobOrders() {
   const [showArchivedTab, setShowArchivedTab] = useState(false);
   const { jobOrders, loading, error, refetch } = useJobOrders({ archived: showArchivedTab ? 'true' : 'false' });
-  const { items, loading: itemsLoading } = useItems();
+  const { items, loading: itemsLoading } = useItems({ limit: 1000 });
   const { createJobOrder, loading: creating } = useCreateJobOrder();
   const { completeJobOrder, loading: completing } = useCompleteJobOrder();
   const { createJobOrderDraft } = useCreateJobOrderDraft();

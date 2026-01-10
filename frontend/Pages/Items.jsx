@@ -31,7 +31,7 @@ import { isManufactured, getEffectiveCategory } from '@/components/utils/categor
 import { calculateTotalProductCost } from '@/components/items/details/helpers';
 
 export default function Items() {
-  const { items, loading, error, refetch } = useItems();
+  const { items, loading, error, refetch } = useItems({ limit: 1000 });
   const { createItem, loading: creating } = useCreateItem();
   const { updateItem, loading: updating } = useUpdateItem();
   const { deleteItem, loading: deleting } = useDeleteItem();

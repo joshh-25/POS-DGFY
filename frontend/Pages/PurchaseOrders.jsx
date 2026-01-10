@@ -44,7 +44,7 @@ export default function PurchaseOrders() {
   const [showArchivedTab, setShowArchivedTab] = useState(false);
   const { purchaseOrders, loading, error, refetch } = usePurchaseOrders({ archived: showArchivedTab ? 'true' : 'false' });
   const { suppliers, loading: suppliersLoading } = useSuppliers();
-  const { items, loading: itemsLoading } = useItems();
+  const { items, loading: itemsLoading } = useItems({ limit: 1000 });
   const { createPurchaseOrder, loading: creating } = useCreatePurchaseOrder();
   const { receivePurchaseOrder, loading: receiving } = useReceivePurchaseOrder();
   const { archivePurchaseOrder, loading: archiving } = useArchivePurchaseOrder();
