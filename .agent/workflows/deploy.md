@@ -53,7 +53,12 @@ cd ..
 
 ### 6. Restart PM2 Services
 ```bash
+# If services are already running
 pm2 restart all
+
+# If this is first deployment, start with ecosystem config
+pm2 start ecosystem.config.cjs --env production
+pm2 save
 ```
 
 ### 7. Verify Deployment

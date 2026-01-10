@@ -309,7 +309,8 @@ SKU-Inventory-Manager/
 
 ## Need Help?
 
+- Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common errors
+- See [PREREQUISITES.md](PREREQUISITES.md) for local vs hosting setup
 - Check the documentation in `/docs`
-- Review the API specification
+- Review the API specification at `docs/api/specification.md`
 - Check the database schema at `docs/database/schema.md`
-

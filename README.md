@@ -49,12 +49,8 @@ SKU-Inventory-Manager/
 
 4. **Setup Database**
    ```bash
-   # Create the database
-   mysql -u root -p < backend/database-setup.sql
-
-   # Run migrations and seeders
    cd backend
-   npm run db:setup
+   npm run setup:db -- --seed
    ```
 
 ### Development
@@ -163,9 +159,11 @@ The project is organized as a monorepo:
 
 ## 📚 Documentation
 
+- **[PREREQUISITES.md](PREREQUISITES.md)** - Prerequisites for local & hosting server environments
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common errors and solutions guide
+- **[SETUP.md](SETUP.md)** - Complete local setup instructions
 - **[ADMIN_SETUP.md](ADMIN_SETUP.md)** - Admin user setup
 - **[REDIS_SETUP.md](REDIS_SETUP.md)** - Redis installation and configuration
-- **[SETUP.md](SETUP.md)** - Complete setup instructions
 - **[spec-kit/](spec-kit/)** - Full technical specifications
 
 ## 🛠️ Available Scripts

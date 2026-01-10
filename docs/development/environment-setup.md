@@ -55,29 +55,23 @@ npm run dev
 ```
 NODE_ENV=development
 PORT=5000
-DATABASE_URL=mysql://user:password@localhost:3306/sku_inventory_manager
-JWT_SECRET=your-secret-key-here
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=sku_inventory_manager
+DB_USER=root
+DB_PASSWORD=
+JWT_SECRET=your-secret-key-here-min-32-chars
 JWT_EXPIRY=24h
-REFRESH_TOKEN_SECRET=your-refresh-secret
+REFRESH_TOKEN_SECRET=your-refresh-secret-min-32-chars
 REFRESH_TOKEN_EXPIRY=7d
+CORS_ORIGIN=http://localhost:5173
 REDIS_URL=redis://localhost:6379
-AWS_REGION=ap-southeast-1
-AWS_ACCESS_KEY_ID=your-key
-AWS_SECRET_ACCESS_KEY=your-secret
-S3_BUCKET=sku-inventory-uploads
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
 ```
 
 ### Frontend (.env)
 
 ```
-REACT_APP_API_URL=http://localhost:5000/api/v1
-REACT_APP_SOCKET_URL=http://localhost:5000
-REACT_APP_ENV=development
-REACT_APP_LOG_LEVEL=debug
+VITE_API_URL=http://localhost:5000/api/v1
 ```
 
 ---
@@ -92,24 +86,23 @@ Refer to [Database Schema](../database/schema.md) for complete schema details.
 
 ```bash
 # Run all pending migrations
-npm run migrate:up
+npm run migrate
 
 # Rollback last migration
-npm run migrate:down
+npm run migrate:undo
 
-# Reset all migrations (development only)
-npm run migrate:reset
+# Create a new migration
+npm run migrate:create -- --name your-migration-name
 ```
 
 ### Seeding Data
 
 ```bash
-# Seed initial data
+# Run all seeders
 npm run seed
 
-# Seed specific data
-npm run seed:users
-npm run seed:items
+# Undo all seeders
+npm run seed:undo
 ```
 
 ---
@@ -131,8 +124,10 @@ sudo systemctl start redis
 ```
 
 **Windows:**
-- Download from https://redis.io/download
-- Or use Docker: `docker run -d -p 6379:6379 redis`
+- See [REDIS_SETUP.md](../../REDIS_SETUP.md) for detailed Windows options:
+  - Memurai (native Windows)
+  - Docker: `docker run -d -p 6379:6379 redis`
+  - WSL (Windows Subsystem for Linux)
 
 ### Verify Redis Connection
 
@@ -256,4 +251,6 @@ After setting up the environment:
 2. Read [Development Guidelines](./guidelines.md) for coding standards
 3. Check [API Specification](../api/specification.md) for API details
 4. Review [Database Schema](../database/schema.md) for data structure
+5. See [PREREQUISITES.md](../../PREREQUISITES.md) for local vs hosting setup
+6. See [TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) for common errors
 
