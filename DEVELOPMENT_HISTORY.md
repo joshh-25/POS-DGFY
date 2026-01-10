@@ -1922,6 +1922,125 @@ Implemented a QR code-based mobile receiving system for Purchase Orders and Job 
 
 ---
 
-**Last Updated**: 2026-01-09
-**Version**: 1.8.0
+## Phase 28: Production Deployment & Migration Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-10
+
+### Issue Summary
+After pulling code changes to production server, multiple API endpoints returned 500 errors:
+- `/api/v1/purchase-orders?archived=false`
+- `/api/v1/job-orders?archived=false`
+- `/api/v1/alerts`
+
+### Root Causes Identified
+
+#### 1. Missing Database Columns
+**Error**: `Unknown column 'JobOrder.completed_by' in 'field list'`
+
+**Cause**: New migrations hadn't been run on production:
+- `20260108000001-create-receive-tokens.js`
+- `20260108000002-add-received-by-to-purchase-orders.js`
+- `20260108000003-add-completed-by-to-job-orders.js`
+
+#### 2. ES Module Incompatibility
+**Error**: `module is not defined in ES module scope`
+
+**Cause**: Migration files in `backend/migrations/` used CommonJS syntax (`module.exports = {}`), but project has `"type": "module"` in `package.json`.
+
+**Affected Files**:
+- `20250103000000-add-audit-fields-to-items.js`
+- `20250103000001-add-archive-fields-to-purchase-orders.js`
+- `20250103000002-add-archive-fields-to-job-orders.js`
+
+#### 3. Migrations in Wrong Folder
+**Issue**: The `.sequelizerc` file configures migrations path as `src/migrations/`, but 3 migrations were placed in `migrations/` at the backend root.
+
+**Diagnosis**:
+```bash
+# .sequelizerc specifies:
+'migrations-path': path.resolve('src', 'migrations')
+
+# But files were in:
+backend/migrations/   # ← NOT detected by sequelize-cli
+```
+
+#### 4. Missing npm Dependencies
+**Error**: `Cannot find package 'csv-parse'`
+
+**Cause**: `npm install` wasn't run after pulling code that added new dependencies.
+
+### Fixes Applied
+
+#### Migration File Rename
+Renamed CommonJS migration files to `.cjs` extension:
+```bash
+mv migrations/20250103000000-add-audit-fields-to-items.js migrations/20250103000000-add-audit-fields-to-items.cjs
+mv migrations/20250103000001-add-archive-fields-to-purchase-orders.js migrations/20250103000001-add-archive-fields-to-purchase-orders.cjs
+mv migrations/20250103000002-add-archive-fields-to-job-orders.js migrations/20250103000002-add-archive-fields-to-job-orders.cjs
+```
+
+#### Server Commands Run
+```bash
+cd /var/www/skupervisor/backend
+npm install                                              # Install missing packages
+npx sequelize-cli db:migrate                             # Run src/migrations
+npx sequelize-cli db:migrate --migrations-path migrations # Run migrations/ folder
+pm2 restart sku-backend
+```
+
+#### Frontend Rebuild
+Frontend changes weren't appearing because build wasn't regenerated:
+```bash
+cd /var/www/skupervisor/frontend
+npm install
+npm run build
+```
+
+### Documentation Updates
+Updated troubleshooting documentation with new sections:
+
+| File | Changes |
+|------|---------|
+| `TROUBLESHOOTING.md` | Added "Migration Errors" section with 5 common issues |
+| `TROUBLESHOOTING.md` | Added "Complete Deployment Checklist" in Deployment Errors |
+| `TROUBLESHOOTING.md` | Updated Table of Contents |
+
+### Key Learnings
+
+1. **Always check BOTH migration folders** when deploying:
+   - `backend/src/migrations/` (primary, configured in `.sequelizerc`)
+   - `backend/migrations/` (secondary, needs `--migrations-path` flag)
+
+2. **New migrations must use ES module syntax** or `.cjs` extension:
+   ```javascript
+   // Use this (ES Module)
+   export default {
+     async up(queryInterface, Sequelize) { ... }
+   };
+   
+   // NOT this (CommonJS) - unless file is .cjs
+   module.exports = { ... };
+   ```
+
+3. **Frontend requires rebuild** after code pull:
+   ```bash
+   cd frontend && npm run build
+   ```
+   The production server serves static files from `frontend/dist/`, NOT the dev server.
+
+4. **Run npm install** after pulling code that may have new dependencies.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/migrations/20250103000000-add-audit-fields-to-items.cjs` | Renamed from `.js` |
+| `backend/migrations/20250103000001-add-archive-fields-to-purchase-orders.cjs` | Renamed from `.js` |
+| `backend/migrations/20250103000002-add-archive-fields-to-job-orders.cjs` | Renamed from `.js` |
+| `TROUBLESHOOTING.md` | Added Migration Errors section, Deployment Checklist |
+
+---
+
+**Last Updated**: 2026-01-10
+**Version**: 1.8.1
 **Project Status**: Production Ready

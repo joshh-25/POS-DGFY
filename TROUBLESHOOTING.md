@@ -10,6 +10,7 @@ This document covers common errors, their causes, and solutions for both **Local
 - [Frontend Errors](#frontend-errors)
 - [Backend Errors](#backend-errors)
 - [Database Errors](#database-errors)
+- [Migration Errors](#migration-errors)
 - [Authentication Errors](#authentication-errors)
 - [Deployment Errors](#deployment-errors)
 - [Performance Issues](#performance-issues)
@@ -352,6 +353,136 @@ npm run seed
 
 ---
 
+## Migration Errors
+
+### 1. "module is not defined in ES module scope" Error
+
+**Symptoms:** Migration fails with error about `module.exports` not being defined.
+
+**Root Cause:** Project has `"type": "module"` in `package.json`, but migration file uses CommonJS syntax (`module.exports = {}`).
+
+**Solution:** Rename migration file from `.js` to `.cjs`:
+```bash
+mv migrations/migration-name.js migrations/migration-name.cjs
+```
+
+Or convert to ES module syntax:
+```javascript
+// Before (CommonJS)
+module.exports = {
+  async up(queryInterface, Sequelize) { ... }
+};
+
+// After (ES Module)
+export default {
+  async up(queryInterface, Sequelize) { ... }
+};
+```
+
+---
+
+### 2. Migrations in Wrong Folder
+
+**Symptoms:** Migrations exist but `db:migrate` doesn't run them.
+
+**Root Cause:** Sequelize CLI looks in the folder specified by `.sequelizerc`. If migrations are placed elsewhere, they won't be detected.
+
+**Diagnosis:**
+```bash
+# Check configured path
+cat backend/.sequelizerc
+
+# Our project uses: backend/src/migrations/
+# But some migrations may be in: backend/migrations/
+```
+
+**Solution Options:**
+
+1. **Run from specific folder:**
+   ```bash
+   cd backend
+   npx sequelize-cli db:migrate --migrations-path migrations
+   ```
+
+2. **Move migrations to correct folder:**
+   ```bash
+   mv backend/migrations/*.cjs backend/src/migrations/
+   ```
+
+---
+
+### 3. "Unknown column" After Deployment (500 Errors)
+
+**Symptoms:** API returns 500 errors, logs show `Unknown column 'X' in 'field list'`.
+
+**Root Cause:** Code references database columns that migrations haven't created yet.
+
+**Solution:**
+```bash
+cd /var/www/skupervisor/backend
+
+# Run standard migrations
+npx sequelize-cli db:migrate
+
+# If migrations exist in alternate folder
+npx sequelize-cli db:migrate --migrations-path migrations
+
+pm2 restart sku-backend
+```
+
+**Common Missing Columns:**
+| Column | Table | Migration |
+|--------|-------|----------|
+| `archived_at`, `archived_by` | purchase_orders | `add-archive-fields-to-purchase-orders.cjs` |
+| `archived_at`, `archived_by` | job_orders | `add-archive-fields-to-job-orders.cjs` |
+| `received_by` | purchase_orders | `add-received-by-to-purchase-orders.js` |
+| `completed_by` | job_orders | `add-completed-by-to-job-orders.js` |
+
+---
+
+### 4. "Unable to resolve sequelize package" Error
+
+**Symptoms:** `npx sequelize-cli db:migrate` fails with package resolution error.
+
+**Root Cause:** Running Sequelize CLI from wrong directory.
+
+**Solution:** Always run from the `backend` directory:
+```bash
+cd /var/www/skupervisor/backend
+npx sequelize-cli db:migrate
+```
+
+Not from:
+```bash
+# WRONG - missing sequelize dependency
+cd /var/www/skupervisor
+npx sequelize-cli db:migrate
+```
+
+---
+
+### 5. "Duplicate column" During Migration (Safe to Ignore)
+
+**Symptoms:** Migration reports `ERROR: Duplicate column name 'X'`
+
+**Cause:** Column already exists in database (possibly added manually or by previous run).
+
+**Action:** This error can be safely ignored if the column already exists. The database is already in the correct state.
+
+**Prevention:** Make migrations idempotent by checking if column exists:
+```javascript
+async up(queryInterface, Sequelize) {
+  const tableInfo = await queryInterface.describeTable('tablename');
+  if (!tableInfo.column_name) {
+    await queryInterface.addColumn('tablename', 'column_name', {
+      type: Sequelize.STRING
+    });
+  }
+}
+```
+
+---
+
 ## Authentication Errors
 
 ### 1. "401 Unauthorized" / "Invalid Token"
@@ -450,7 +581,48 @@ pm2 restart all
 
 ---
 
-### 3. "Permission Denied" Errors on Server
+### 3. Complete Deployment Checklist
+
+**Use this checklist EVERY time you deploy:**
+
+```bash
+# 1. SSH and navigate
+ssh root@hermes-cloud
+cd /var/www/skupervisor
+
+# 2. Handle build artifacts (prevents merge conflicts)
+git checkout -- frontend/dist/index.html
+
+# 3. Pull latest code
+git pull origin master
+
+# 4. Install backend dependencies (REQUIRED if new packages added)
+cd backend && npm install && cd ..
+
+# 5. Run database migrations (REQUIRED if schema changed)
+cd backend && npx sequelize-cli db:migrate && cd ..
+
+# 6. Check for additional migrations folder
+cd backend && npx sequelize-cli db:migrate --migrations-path migrations && cd ..
+
+# 7. Rebuild frontend (REQUIRED for UI changes to appear)
+cd frontend && npm install && npm run build && cd ..
+
+# 8. Restart services
+pm2 restart all
+
+# 9. Verify deployment
+pm2 logs sku-backend --lines 20
+
+# 10. Test in browser with hard refresh (Ctrl + Shift + R)
+```
+
+> [!IMPORTANT]
+> **Frontend changes won't appear** until you run `npm run build` in the frontend folder. The production server serves pre-built static files from `frontend/dist/`, not the development server.
+
+---
+
+### 4. "Permission Denied" Errors on Server
 
 **Symptoms:** Cannot read/write files, operations fail.
 

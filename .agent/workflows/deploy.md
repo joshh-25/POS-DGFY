@@ -47,7 +47,11 @@ cd ..
 ### 5. Run Database Migrations (if any)
 ```bash
 cd backend
+# Primary migrations folder (src/migrations/)
 npx sequelize-cli db:migrate
+
+# Secondary migrations folder (migrations/) - if it exists
+npx sequelize-cli db:migrate --migrations-path migrations
 cd ..
 ```
 
@@ -110,7 +114,7 @@ curl http://localhost:5001/api/v1/items
 cd /var/www/skupervisor
 git checkout -- frontend/dist/index.html
 git pull origin master
-cd backend && npm install && cd ..
+cd backend && npm install && npx sequelize-cli db:migrate && npx sequelize-cli db:migrate --migrations-path migrations && cd ..
 cd frontend && npm install && npm run build && cd ..
 pm2 restart all
 pm2 logs sku-backend --lines 20
