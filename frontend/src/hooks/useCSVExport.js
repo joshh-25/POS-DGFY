@@ -158,8 +158,39 @@ export const useCSVExport = () => {
     const getFilename = (response) => {
         const contentDisposition = response.headers['content-disposition'];
         if (contentDisposition) {
-            const match = contentDisposition.match(/filename="?([^"]+)"?/);
-            if (match) return match[1].replace(/"/g, '');
+            // Try multiple regex patterns for different Content-Disposition formats
+            // Pattern 1: filename="quoted_value"
+            // Pattern 2: filename=unquoted_value
+            // Pattern 3: filename*=UTF-8''encoded_value
+            let filename = null;
+
+            // Try quoted filename first
+            const quotedMatch = contentDisposition.match(/filename="([^"]+)"/);
+            if (quotedMatch) {
+                filename = quotedMatch[1];
+            } else {
+                // Try unquoted filename
+                const unquotedMatch = contentDisposition.match(/filename=([^;\s]+)/);
+                if (unquotedMatch) {
+                    filename = unquotedMatch[1];
+                }
+            }
+
+            if (filename) {
+                // Trim whitespace and remove any trailing non-extension characters
+                filename = filename.trim();
+                // Ensure filename ends with proper extension (remove trailing garbage)
+                if (filename.match(/\.(zip|csv)$/i)) {
+                    return filename;
+                }
+                // If extension looks corrupted, fix it based on content-type
+                if (filename.match(/\.(zip|csv)/i)) {
+                    const extMatch = filename.match(/\.(zip|csv)/i);
+                    const extension = extMatch[1].toLowerCase();
+                    const baseName = filename.substring(0, extMatch.index);
+                    return `${baseName}.${extension}`;
+                }
+            }
         }
 
         // Determine extension from content type
