@@ -52,7 +52,8 @@ const corsOptions = {
     }
   },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  exposedHeaders: ['Content-Disposition', 'Content-Length']
 };
 app.use(cors(corsOptions));
 
