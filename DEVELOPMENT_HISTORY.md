@@ -2297,3 +2297,112 @@ Separated CSV import/export functionality into two distinct template types:
 ### Bug Fixes
 - [x] **Migration Compatibility**: Fixed an issue where the migration file was treated as an ES Module (.js) in a "module" type package, preventing it from running. Renamed to `.cjs` to ensure compatibility with Sequelize CLI.
 
+---
+
+## Phase 20: Production Deployment Hotfixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-15
+
+### Overview
+Resolved multiple production issues after deploying Job Order partial completion and CSV export split template features.
+
+### Issue 1: Job Orders 500 Error - Missing `quantity_produced` Column
+
+**Symptom**: 
+```
+GET /api/v1/job-orders?archived=false 500 (Internal Server Error)
+Unknown column 'JobOrder.quantity_produced' in 'field list'
+```
+
+**Root Cause**: 
+The migration file `20260114000003-add-partial-job-order-support.cjs` contained a comment claiming the `quantity_produced` column was added in `20260114000001`, but that migration only added system settings for expiry thresholds. The column was never actually created.
+
+**Fix**: 
+Created new migration `20260115000001-fix-missing-quantity-produced.cjs` to add the missing column:
+```javascript
+await queryInterface.addColumn('job_orders', 'quantity_produced', {
+  type: Sequelize.DECIMAL(10, 2),
+  defaultValue: 0,
+  allowNull: false
+});
+```
+
+**Files Created**:
+- `backend/src/migrations/20260115000001-fix-missing-quantity-produced.cjs`
+
+---
+
+### Issue 2: CSV/ZIP Export Files Have Wrong Extensions
+
+**Symptom**: 
+Exported files downloaded with corrupted extensions like `.zip_` and `.csv_` instead of `.zip` and `.csv`. Files had valid content but couldn't be opened due to wrong extension.
+
+**Root Causes**: 
+1. **Backend CORS**: The `Content-Disposition` header was not exposed in CORS configuration, preventing the frontend from reading the filename.
+2. **Frontend Regex**: The filename extraction regex was fragile and didn't handle edge cases properly.
+
+**Fixes Applied**:
+
+#### Fix 2a: CORS Header Exposure
+Added `exposedHeaders` to the CORS configuration in `backend/src/server.js`:
+```javascript
+const corsOptions = {
+  origin: ...,
+  credentials: true,
+  optionsSuccessStatus: 200,
+  exposedHeaders: ['Content-Disposition', 'Content-Length']  // ← Added
+};
+```
+
+#### Fix 2b: Robust Filename Extraction
+Updated `frontend/src/hooks/useCSVExport.js` with improved `getFilename()` function:
+- Multiple regex patterns for different Content-Disposition formats
+- Explicit handling for quoted and unquoted filenames
+- Sanitization to ensure proper file extensions
+
+**Files Modified**:
+| File | Changes |
+|------|---------|
+| `backend/src/server.js` | Added `exposedHeaders` to CORS config |
+| `frontend/src/hooks/useCSVExport.js` | Improved filename extraction logic |
+
+---
+
+### Deployment Commands Used
+
+```bash
+# On production server
+cd /var/www/skupervisor
+git pull origin master
+cd backend && npm install && npx sequelize-cli db:migrate && cd ..
+cd frontend && npm install && npm run build && cd ..
+pm2 restart all
+```
+
+### Key Learnings
+
+1. **Always verify migrations actually add what comments claim** - Comments can be outdated or wrong.
+2. **CORS `exposedHeaders` is required for custom response headers** - Without it, browsers block JavaScript from reading headers like `Content-Disposition`.
+3. **Frontend rebuild is mandatory after JS changes** - The production server serves static files from `frontend/dist/`, not the dev server.
+4. **Test file downloads end-to-end** - Extension issues may appear valid in network inspector but fail on disk.
+
+### Verification Commands
+
+```bash
+# Verify quantity_produced column exists
+mysql -u root -p -e "DESCRIBE sku_inventory_manager.job_orders;" | grep quantity_produced
+
+# Verify CORS fix deployed
+grep -n "exposedHeaders" /var/www/skupervisor/backend/src/server.js
+
+# Test export headers
+curl -I https://skupervisor.surebizcorp.com/api/v1/items/export
+# Should show: content-disposition: attachment; filename="..."
+```
+
+---
+
+**Last Updated**: 2026-01-15
+**Version**: 1.9.1
+**Project Status**: Production Ready
+

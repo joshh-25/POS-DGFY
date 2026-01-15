@@ -636,6 +636,73 @@ sudo chown -R root:root /var/www/skupervisor
 
 ---
 
+## CSV/ZIP Export Issues
+
+### 1. Exported Files Have Wrong Extension (`.zip_` or `.csv_`)
+
+**Symptoms:** Downloaded files have extensions like `.zip_` or `.csv_` instead of `.zip` or `.csv`. Files contain valid data but won't open properly.
+
+**Root Causes:**
+1. CORS not exposing `Content-Disposition` header
+2. Frontend regex failing to parse filename
+
+**Multi-Part Fix:**
+
+**Step 1: Backend CORS (server.js)**
+Ensure `exposedHeaders` includes `Content-Disposition`:
+```javascript
+const corsOptions = {
+  origin: ...,
+  credentials: true,
+  optionsSuccessStatus: 200,
+  exposedHeaders: ['Content-Disposition', 'Content-Length']
+};
+```
+
+**Step 2: Rebuild Frontend**
+```bash
+cd /var/www/skupervisor/frontend
+npm run build
+pm2 restart all
+```
+
+**Step 3: Hard Refresh Browser**
+Press `Ctrl + Shift + R` to clear cached JavaScript.
+
+**Diagnosis:**
+```bash
+# Check if CORS fix is deployed
+grep -n "exposedHeaders" /var/www/skupervisor/backend/src/server.js
+
+# Check response headers directly
+curl -I https://your-domain.com/api/v1/items/export
+# Should show: content-disposition: attachment; filename="..."
+```
+
+---
+
+### 2. ZIP File Won't Extract / CSV Won't Open
+
+**Symptoms:** File downloads with correct extension but content is corrupted.
+
+| Cause | Solution |
+|-------|----------|
+| Response not received as blob | Check `responseType: 'blob'` in axios call |
+| Network timeout | Try smaller exports (filtered, not "Export All") |
+| Server memory issue | Check PM2 logs for memory errors |
+
+**Verify File Content:**
+```bash
+# Check first bytes of downloaded file
+head -c 50 downloaded_file.zip
+# ZIP files should start with "PK"
+
+head -c 100 downloaded_file.csv
+# CSV files should show column headers
+```
+
+---
+
 ## Performance Issues
 
 ### 1. Slow API Responses
