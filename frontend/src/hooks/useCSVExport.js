@@ -6,10 +6,28 @@ export const useCSVExport = () => {
     const [error, setError] = useState(null);
 
     /**
-     * Export all items
+     * Export all items (will return ZIP if both items and products exist)
      */
     const exportAll = async () => {
-        return exportFiltered({});
+        setLoading(true);
+        setError(null);
+
+        try {
+            const response = await api.get('/items/export/all', {
+                responseType: 'blob'
+            });
+
+            // Trigger download
+            downloadBlob(response.data, getFilename(response));
+
+            return { success: true };
+        } catch (err) {
+            const errorMessage = err.response?.data?.message || err.message || 'Failed to export items';
+            setError(errorMessage);
+            return { success: false, error: errorMessage };
+        } finally {
+            setLoading(false);
+        }
     };
 
     /**
@@ -107,7 +125,13 @@ export const useCSVExport = () => {
             const url = `/items/export/preview${queryString ? `?${queryString}` : ''}`;
 
             const response = await api.get(url);
-            return { success: true, count: response.data.data.count };
+            return {
+                success: true,
+                count: response.data.data.count,
+                isZip: response.data.data.isZip || false,
+                itemsCount: response.data.data.itemsCount,
+                productsCount: response.data.data.productsCount
+            };
         } catch (err) {
             return { success: false, error: err.message };
         }
@@ -129,14 +153,23 @@ export const useCSVExport = () => {
 
     /**
      * Helper: Extract filename from response headers or generate default
+     * Handles both CSV and ZIP file types
      */
     const getFilename = (response) => {
         const contentDisposition = response.headers['content-disposition'];
         if (contentDisposition) {
-            const match = contentDisposition.match(/filename="?(.+)"?/);
-            if (match) return match[1];
+            const match = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (match) return match[1].replace(/"/g, '');
         }
+
+        // Determine extension from content type
+        const contentType = response.headers['content-type'];
         const timestamp = new Date().toISOString().split('T')[0];
+
+        if (contentType && contentType.includes('application/zip')) {
+            return `inventory_export_${timestamp}.zip`;
+        }
+
         return `items_export_${timestamp}.csv`;
     };
 

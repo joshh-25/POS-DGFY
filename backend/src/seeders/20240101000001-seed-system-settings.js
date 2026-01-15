@@ -60,6 +60,20 @@ export default {
         data_type: 'boolean',
         description: 'Enable automatic threshold calculation based on max capacity',
         updated_at: new Date()
+      },
+      {
+        setting_key: 'expiry_critical_days',
+        setting_value: '7',
+        data_type: 'number',
+        description: 'Days before expiry to trigger critical alerts (red)',
+        updated_at: new Date()
+      },
+      {
+        setting_key: 'expiry_warning_days',
+        setting_value: '30',
+        data_type: 'number',
+        description: 'Days before expiry to trigger warning alerts (amber)',
+        updated_at: new Date()
       }
     ];
 

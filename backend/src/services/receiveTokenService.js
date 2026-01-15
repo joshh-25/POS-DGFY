@@ -65,8 +65,8 @@ export const generateToken = async (orderType, orderId, userId, expiryDays = DEF
             error.statusCode = 404;
             throw error;
         }
-        if (jo.status !== 'in_progress') {
-            const error = new Error(`Cannot generate token for JO with status "${jo.status}". Must be in_progress.`);
+        if (!['in_progress', 'partial'].includes(jo.status)) {
+            const error = new Error(`Cannot generate token for JO with status "${jo.status}". Must be in_progress or partial.`);
             error.statusCode = 400;
             throw error;
         }
@@ -277,7 +277,7 @@ const getJobOrderDetails = async (joId) => {
     }
 
     // Check if JO is completable
-    if (jo.status !== 'in_progress') {
+    if (!['in_progress', 'partial'].includes(jo.status)) {
         const error = new Error(`This JO is ${jo.status} and cannot be completed`);
         error.statusCode = 400;
         throw error;

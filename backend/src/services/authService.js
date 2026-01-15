@@ -237,9 +237,7 @@ export const blacklistToken = async (token) => {
     console.warn('Failed to blacklist token (Redis unavailable):', error.message);
     return false;
   }
-};
-
-/**
+};/**
  * Check if a token is blacklisted
  * @param {string} token - JWT token to check
  * @returns {Promise<boolean>} - True if blacklisted

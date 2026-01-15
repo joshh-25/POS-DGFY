@@ -143,6 +143,17 @@ export default function BasicInfoStep({ data, updateData, folders }) {
             <p className="text-xs text-slate-500">Maximum stock capacity</p>
           </div>
 
+          <div className="space-y-2">
+            <Label>Current Stock</Label>
+            <Input
+              type="number"
+              placeholder="0"
+              value={data.current_stock ?? ''}
+              onChange={(e) => updateData({ current_stock: parseFloat(e.target.value) || 0 })}
+            />
+            <p className="text-xs text-slate-500">Initial stock on hand</p>
+          </div>
+
           {/* Auto-calculated threshold display */}
           {data.max_capacity > 0 && (
             <div className="col-span-2 bg-slate-50 rounded-lg p-4 border border-slate-200">

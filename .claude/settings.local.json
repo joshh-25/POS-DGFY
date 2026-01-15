@@ -73,7 +73,8 @@
       "Bash(npm start)",
       "Bash(timeout /t 5 /nobreak)",
       "Bash(npm run build:*)",
-      "Bash(dir \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\frontend\" /B)"
+      "Bash(dir \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\frontend\" /B)",
+      "Bash(ls -la \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\backend\\\\src\\\\migrations\"\" | grep \"20260114000001 \")"
     ]
   }
 }

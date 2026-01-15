@@ -9,9 +9,12 @@ This guide explains how to bulk import items (raw materials, packaging, products
 1. Go to **Items** page
 2. Click **Import / Export** button
 3. Select **Import**
-4. Download the template or upload your CSV
-5. Review the preview and fix any errors
-6. Click **Confirm Import**
+4. Download the appropriate template:
+   - **Items Template** - For Raw Materials, Packaging, Supplies
+   - **Products Template** - For WIP, Finished Goods
+5. Upload your CSV
+6. Review the preview and fix any errors
+7. Click **Confirm Import**
 
 ## Quick Start - Export
 
@@ -19,55 +22,74 @@ This guide explains how to bulk import items (raw materials, packaging, products
 2. Click **Import / Export** button
 3. Select **Export**
 4. Choose export mode:
-   - **All Items** - Export every item in the system
+   - **All Items** - Export every item (ZIP file if mixed types)
    - **Filtered Items** - Export only items matching current page filters
    - **Select Items** - Manually pick specific items with checkboxes
 5. Click **Export CSV**
 
-## CSV Template Structure
+---
 
-### Required Columns
-| Column | Description | Valid Values |
-|--------|-------------|--------------|
-| `sku_code` | Unique item code (max 50 chars) | Text |
-| `name` | Item name (max 255 chars) | Text |
-| `category` | Item category | `raw_material`, `packaging`, `product`, `supplies` |
-| `product_type` | **Required if category = product** | `work_in_progress`, `finished_goods` |
-| `max_capacity` | Maximum stock capacity | Number > 0 |
-| `unit_of_measure` | Unit of measure | `kg`, `g`, `pcs`, `ml`, `units`, etc. |
+## CSV Template Types
 
-### Optional Columns
-| Column | Description |
-|--------|-------------|
-| `description` | Item description |
-| `product_folder` | Folder for organizing products |
-| `min_threshold` | Low stock warning threshold |
-| `purchase_allowance` | Extra stock buffer |
-| `cost_per_unit` | Unit cost in ₱ |
-| `fifo_enabled` | Enable FIFO tracking (`TRUE`/`FALSE`) |
-| `shelf_life_days` | Shelf life in days |
-| `opened_shelf_life_days` | Shelf life after opening |
-| `batch_size` | Production batch size |
-| `yield_percentage` | Production yield (0-100) |
-| `processing_loss` | Production loss (0-100) |
-| `production_notes` | Production notes |
+### Items Template (Raw Materials, Packaging, Supplies)
+| Column | Description | Required |
+|--------|-------------|----------|
+| `sku_code` | Unique item code | ✅ |
+| `name` | Item name | ✅ |
+| `category` | `raw_material`, `packaging`, or `supplies` | ✅ |
+| `description` | Item description | |
+| `current_stock` | Initial stock quantity | |
+| `max_capacity` | Maximum stock capacity | ✅ |
+| `min_threshold` | Low stock warning threshold | |
+| `purchase_allowance` | Extra stock buffer | |
+| `unit_of_measure` | Unit of measure | ✅ |
+| `cost_per_unit` | Unit cost in ₱ | |
+| `fifo_enabled` | Enable FIFO tracking (`TRUE`/`FALSE`) | |
+| `shelf_life_days` | Shelf life in days | |
+| `opened_shelf_life_days` | Shelf life after opening | |
+| `allergens` | Comma-separated values | |
+| `packaging_height` | Height | |
+| `packaging_width` | Width | |
+| `packaging_thickness` | Thickness | |
+| `packaging_material` | Material type | |
+| `packaging_design` | Design info | |
+| `packaging_contents` | Contents description | |
 
-### Packaging Specification Columns
-| Column | Description |
-|--------|-------------|
-| `packaging_height` | Height |
-| `packaging_width` | Width |
-| `packaging_thickness` | Thickness |
-| `packaging_material` | Material type |
-| `packaging_design` | Design info |
-| `packaging_contents` | Contents description |
+### Products Template (WIP, Finished Goods)
+| Column | Description | Required |
+|--------|-------------|----------|
+| `sku_code` | Unique item code | ✅ |
+| `name` | Product name | ✅ |
+| `category` | Must be `product` | ✅ |
+| `product_type` | `work_in_progress` or `finished_goods` | ✅ |
+| `description` | Product description | |
+| `product_folder` | Folder for organizing products | |
+| `current_stock` | Initial stock quantity | |
+| `max_capacity` | Maximum stock capacity | ✅ |
+| `min_threshold` | Low stock warning threshold | |
+| `unit_of_measure` | Unit of measure | ✅ |
+| `cost_per_unit` | Unit cost in ₱ | |
+| `fifo_enabled` | Enable FIFO tracking (`TRUE`/`FALSE`) | |
+| `shelf_life_days` | Shelf life in days | |
+| `opened_shelf_life_days` | Shelf life after opening | |
+| `batch_size` | Production batch size | |
+| `yield_percentage` | Production yield (0-100) | |
+| `processing_loss` | Production loss (0-100) | |
+| `production_notes` | Production notes | |
 
-### Allergens Column
-Use comma-separated values: `milk,eggs,wheat`
-
-Valid allergens: `milk`, `eggs`, `fish`, `shellfish`, `tree_nuts`, `peanuts`, `wheat`, `soybeans`, `sesame`
+---
 
 ## Import Behavior
+
+### Template Auto-Detection
+The system automatically detects which template you're using based on the CSV headers:
+- Headers with `allergens` or `packaging_height` → **Items Template**
+- Headers with `product_type` or `batch_size` → **Products Template**
+
+### Strict Validation
+- **Items Template**: Only accepts `raw_material`, `packaging`, `supplies` categories
+- **Products Template**: Only accepts `product` category
+- Mismatched rows are **rejected** with clear error messages
 
 ### Upsert Mode
 - **New SKU codes** → Creates new item
@@ -81,6 +103,28 @@ When importing products with recipes:
 2. Then import **products**
 3. Add product recipes (ingredients/packaging) manually via the UI
 
+---
+
+## Export Behavior
+
+### Export All
+- Returns a **ZIP file** (`inventory_export_YYYY-MM-DD.zip`) containing:
+  - `items.csv` - All raw materials, packaging, supplies
+  - `products.csv` - All WIP and finished goods
+
+### Export Filtered/Selected
+- Returns **ZIP** if export contains mixed types (items + products)
+- Returns **single CSV** if export contains only one type
+
+---
+
+## Allergens Column
+Use comma-separated values: `milk,eggs,wheat`
+
+Valid allergens: `milk`, `eggs`, `fish`, `shellfish`, `tree_nuts`, `peanuts`, `wheat`, `soybeans`, `sesame`
+
+---
+
 ## Common Errors
 
 | Error | Solution |
@@ -88,10 +132,15 @@ When importing products with recipes:
 | `Name is required` | Add a value in the `name` column |
 | `Category must be one of...` | Use exact values: `raw_material`, `packaging`, `product`, `supplies` |
 | `product_type is required when category is "product"` | Add `work_in_progress` or `finished_goods` in `product_type` column |
+| `Category 'product' is not valid for Items template` | Use the Products Template for products |
+| `Category 'raw_material' is not valid for Products template` | Use the Items Template for raw materials |
 | `Invalid allergens` | Use valid allergen names separated by commas |
+
+---
 
 ## Tips
 
-1. **Use the template**: Download the template for correct column headers
+1. **Use the correct template**: Download Items Template for ingredients, Products Template for products
 2. **Check the preview**: Always review errors before confirming
 3. **Start small**: Test with a few rows first before bulk importing
+4. **Import order matters**: Import ingredients before products

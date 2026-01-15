@@ -3,6 +3,29 @@ import sequelize from '../config/database.js';
 import Item from '../models/Item.js';
 import FIFOBatch from '../models/FIFOBatch.js';
 import Supplier from '../models/Supplier.js';
+import SystemSetting from '../models/SystemSetting.js';
+
+/**
+ * Helper to get a setting value with a default fallback
+ */
+const getSettingValue = async (key, defaultValue) => {
+  try {
+    const setting = await SystemSetting.findOne({
+      where: { setting_key: key }
+    });
+    if (!setting) return defaultValue;
+
+    if (setting.data_type === 'number') {
+      return parseFloat(setting.setting_value) || defaultValue;
+    } else if (setting.data_type === 'boolean') {
+      return setting.setting_value === 'true' || setting.setting_value === '1';
+    }
+    return setting.setting_value;
+  } catch (err) {
+    console.warn(`Failed to get setting ${key}, using default: ${defaultValue}`);
+    return defaultValue;
+  }
+};
 
 export const generateAlerts = async () => {
   const alerts = [];
@@ -10,7 +33,7 @@ export const generateAlerts = async () => {
   // Low stock alerts
   const lowStockItems = await Item.findAll({
     where: {
-      is_active: true,
+      status: 'active',
       min_threshold: { [Op.ne]: null }, // Only alert for items with thresholds set
       [Op.and]: [
         sequelize.where(
@@ -33,11 +56,22 @@ export const generateAlerts = async () => {
     });
   });
 
-  // Expiry alerts - batches expiring within 7 days
+  // Fetch configurable expiry thresholds from settings
+  const criticalDays = await getSettingValue('expiry_critical_days', 7);
+  const warningDays = await getSettingValue('expiry_warning_days', 30);
+
+  // Calculate expiry window
+  const warningHorizon = new Date();
+  warningHorizon.setDate(warningHorizon.getDate() + warningDays);
+
+  console.log(`[AlertService] Checking for batches expiring on or before ${warningHorizon.toISOString().split('T')[0]}`);
+
+  // Fetch batches expiring within the warning window (OR already expired)
+  // We want anything where expiry_date <= warningHorizon AND quantity > consumed
   const expiringBatches = await FIFOBatch.findAll({
     where: {
       expiry_date: {
-        [Op.between]: [new Date(), new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)] // Next 7 days
+        [Op.lte]: warningHorizon
       },
       [Op.and]: [
         sequelize.where(
@@ -47,8 +81,19 @@ export const generateAlerts = async () => {
         )
       ]
     },
-    include: [{ model: Item, as: 'item' }]
+    include: [{
+      model: Item,
+      as: 'item',
+      where: { status: 'active' }, // Only active items
+      attributes: [
+        'item_id', 'name', 'sku_code', 'unit_of_measure',
+        'fifo_enabled', 'shelf_life_days'
+      ]
+    }],
+    order: [['expiry_date', 'ASC']] // Sort by earliest expiry first
   });
+
+  console.log(`[AlertService] Found ${expiringBatches.length} expiring/expired batches`);
 
   expiringBatches.forEach(batch => {
     if (!batch.item) {
@@ -62,8 +107,9 @@ export const generateAlerts = async () => {
     const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
     const availableQuantity = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
 
-    // Color-coded severity: red (≤3 days = critical), amber (4-7 days = warning)
-    const severity = daysUntilExpiry <= 3 ? 'critical' : 'warning';
+    // Three-tier severity based on configurable thresholds
+    // critical: <= criticalDays (default 7), warning: criticalDays+1 to warningDays
+    const severity = daysUntilExpiry <= criticalDays ? 'critical' : 'warning';
 
     alerts.push({
       type: 'expiring_batch',
@@ -76,14 +122,62 @@ export const generateAlerts = async () => {
       expiry_date: batch.expiry_date,
       days_until_expiry: daysUntilExpiry,
       available_quantity: availableQuantity,
-      unit_of_measure: batch.item.unit_of_measure
+      unit_of_measure: batch.item.unit_of_measure,
+      // Additional shelf life context
+      fifo_enabled: batch.item.fifo_enabled,
+      shelf_life_days: batch.item.shelf_life_days,
+      received_date: batch.received_date,
+      po_number: batch.po_number
+    });
+  });
+
+  // Alert for FIFO batches missing expiry_date (data quality issue)
+  const batchesMissingExpiry = await FIFOBatch.findAll({
+    where: {
+      expiry_date: null,
+      [Op.and]: [
+        sequelize.where(
+          sequelize.col('quantity'),
+          Op.gt,
+          sequelize.col('quantity_consumed')
+        )
+      ]
+    },
+    include: [{
+      model: Item,
+      as: 'item',
+      where: { fifo_enabled: true }
+    }]
+  });
+
+  batchesMissingExpiry.forEach(batch => {
+    if (!batch.item) return;
+
+    const availableQuantity = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
+
+    alerts.push({
+      type: 'missing_expiry_date',
+      severity: 'warning',
+      message: `Batch #${batch.batch_id} for ${batch.item.name} is missing expiry date`,
+      item_id: batch.item_id,
+      item_name: batch.item.name,
+      item_sku: batch.item.sku_code,
+      batch_id: batch.batch_id,
+      available_quantity: availableQuantity,
+      unit_of_measure: batch.item.unit_of_measure,
+      received_date: batch.received_date,
+      po_number: batch.po_number,
+      shelf_life_days: batch.item.shelf_life_days,
+      suggestion: batch.item.shelf_life_days
+        ? 'Run the backfill migration or manually set expiry date'
+        : 'Set shelf_life_days on this item first'
     });
   });
 
   // Supplier performance alerts
   const lowRatedSuppliers = await Supplier.findAll({
     where: {
-      is_active: true,
+      status: 'active',
       quality_rating: {
         [Op.lt]: 3.0
       }

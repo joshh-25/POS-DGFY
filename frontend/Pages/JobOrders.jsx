@@ -27,6 +27,7 @@ import { generateReceiveToken } from '../src/services/receiveTokenService.js';
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Clock },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700 border-blue-200", icon: Play },
+  partial: { label: "Partial", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Loader2 },
   completed: { label: "Completed", color: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: CheckCircle },
   cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle }
 };
@@ -204,9 +205,9 @@ export default function JobOrders() {
     }
   };
 
-  const handleCompleteProduction = async (jo, expiryOverride, notes = null) => {
+  const handleCompleteProduction = async (jo, expiryOverride, notes = null, quantityProduced = null) => {
     try {
-      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride, notes);
+      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride, notes, quantityProduced);
       toast.success('Job order completed successfully');
 
       // Update the selected JO with enriched data including ingredients_consumed
@@ -336,6 +337,7 @@ export default function JobOrders() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="partial">Partial</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
@@ -377,7 +379,12 @@ export default function JobOrders() {
                         <span className="text-slate-700">{jo.product_name || jo.product?.name || 'N/A'}</span>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-900">{jo.quantity_to_produce} units</td>
+                    <td className="p-4 font-medium text-slate-900">
+                      {jo.status === 'partial' || jo.status === 'completed'
+                        ? `${formatNumber(jo.quantity_produced || 0)} / ${formatNumber(jo.quantity_to_produce)} units`
+                        : `${formatNumber(jo.quantity_to_produce)} units`
+                      }
+                    </td>
                     <td className="p-4 text-slate-600">{jo.created_date || (jo.created_at ? new Date(jo.created_at).toLocaleDateString() : 'N/A')}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -412,7 +419,7 @@ export default function JobOrders() {
                             Start
                           </Button>
                         )}
-                        {!showArchivedTab && jo.status === 'in_progress' && (
+                        {!showArchivedTab && (jo.status === 'in_progress' || jo.status === 'partial') && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -426,7 +433,7 @@ export default function JobOrders() {
                             Complete
                           </Button>
                         )}
-                        {!showArchivedTab && jo.status === 'in_progress' && (
+                        {!showArchivedTab && (jo.status === 'in_progress' || jo.status === 'partial') && (
                           <Button
                             variant="outline"
                             size="sm"

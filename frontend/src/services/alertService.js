@@ -6,14 +6,20 @@ import api from './api.js';
  */
 export const getAlerts = async () => {
   const response = await api.get('/alerts');
-  return response.data.data;
+  // Handle nested structure from controller: { data: { alerts: [...] } }
+  if (response.data?.data?.alerts) {
+    return response.data.data.alerts;
+  }
+  return response.data.data || [];
 };
 
 /**
- * Fetch only expiry-related alerts
+ * Fetch only expiry-related alerts (including missing expiry date warnings)
  * @returns {Promise<Array>} Array of expiring batch alert objects
  */
 export const getExpiryAlerts = async () => {
   const alerts = await getAlerts();
-  return alerts.filter(alert => alert.type === 'expiring_batch');
+  return alerts.filter(alert =>
+    alert.type === 'expiring_batch' || alert.type === 'missing_expiry_date'
+  );
 };

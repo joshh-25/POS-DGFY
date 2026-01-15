@@ -37,6 +37,8 @@ export default function MobileReceive() {
 
     // State for editable quantities (keyed by line_item_id)
     const [receivedQuantities, setReceivedQuantities] = useState({});
+    // State for JO production quantity
+    const [productionQuantity, setProductionQuantity] = useState(0);
 
     useEffect(() => {
         validateToken();
@@ -62,13 +64,20 @@ export default function MobileReceive() {
 
     // Initialize quantities when order data loads
     useEffect(() => {
-        if (orderData?.items) {
-            const initialQuantities = {};
-            orderData.items.forEach(item => {
-                // Default to remaining quantity
-                initialQuantities[item.line_item_id] = item.quantity_remaining;
-            });
-            setReceivedQuantities(initialQuantities);
+        if (orderData) {
+            if (orderData.items) {
+                // PO Logic
+                const initialQuantities = {};
+                orderData.items.forEach(item => {
+                    initialQuantities[item.line_item_id] = item.quantity_remaining;
+                });
+                setReceivedQuantities(initialQuantities);
+            } else if (orderData.quantity_to_produce) {
+                // JO Logic
+                const currentProduced = parseFloat(orderData.quantity_produced || 0);
+                const total = parseFloat(orderData.quantity_to_produce);
+                setProductionQuantity(total - currentProduced);
+            }
         }
     }, [orderData]);
 
@@ -88,11 +97,8 @@ export default function MobileReceive() {
 
     const handleQuantityChange = (lineItemId, value) => {
         const numValue = parseFloat(value) || 0;
-        // Find the item to get max allowed
         const item = orderData?.items?.find(i => i.line_item_id === lineItemId);
         const maxAllowed = item?.quantity_remaining || 0;
-
-        // Clamp between 0 and remaining
         const clampedValue = Math.max(0, Math.min(numValue, maxAllowed));
 
         setReceivedQuantities(prev => ({
@@ -116,20 +122,36 @@ export default function MobileReceive() {
         }
     };
 
+    const handleProductionQuantityChange = (value) => {
+        const numValue = parseFloat(value) || 0;
+        const maxAllowed = (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0));
+        const clampedValue = Math.max(0, Math.min(numValue, maxAllowed));
+        setProductionQuantity(clampedValue);
+    };
+
+    const adjustProductionQuantity = (delta) => {
+        handleProductionQuantityChange(productionQuantity + delta);
+    };
+
+    const setProductionToMax = () => {
+        const maxAllowed = (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0));
+        setProductionQuantity(maxAllowed);
+    };
+
     const handleReceive = async () => {
         if (!orderData || !tokenData) return;
-
-        // Validate at least one item has quantity
-        const totalReceiving = Object.values(receivedQuantities).reduce((sum, qty) => sum + qty, 0);
-        if (totalReceiving === 0) {
-            toast.error('Please enter at least one quantity to receive');
-            return;
-        }
 
         setSubmitting(true);
         try {
             if (orderData.order_type === 'PO') {
-                // Prepare receipt data with user-entered quantities
+                // Validate at least one item has quantity
+                const totalReceiving = Object.values(receivedQuantities).reduce((sum, qty) => sum + qty, 0);
+                if (totalReceiving === 0) {
+                    toast.error('Please enter at least one quantity to receive');
+                    setSubmitting(false);
+                    return;
+                }
+
                 const line_items = orderData.items
                     .filter(item => receivedQuantities[item.line_item_id] > 0)
                     .map(item => ({
@@ -144,8 +166,14 @@ export default function MobileReceive() {
                     delivery_rating: 5
                 });
             } else {
-                // JO completion (no partial - all or nothing)
-                await completeJobOrder(orderData.order_id, null, notes);
+                // JO Logic
+                if (productionQuantity <= 0) {
+                    toast.error('Please enter a quantity greater than 0');
+                    setSubmitting(false);
+                    return;
+                }
+
+                await completeJobOrder(orderData.order_id, null, notes, productionQuantity);
             }
 
             // Mark token as used
@@ -154,7 +182,7 @@ export default function MobileReceive() {
             setSuccess(true);
             toast.success(orderData.order_type === 'PO'
                 ? 'Purchase Order received successfully!'
-                : 'Job Order completed successfully!');
+                : 'Job Order updated successfully!');
         } catch (err) {
             toast.error(err.response?.data?.message || err.message || 'Failed to complete operation');
         } finally {
@@ -163,7 +191,9 @@ export default function MobileReceive() {
     };
 
     // Calculate total being received
-    const totalReceiving = Object.values(receivedQuantities).reduce((sum, qty) => sum + (qty || 0), 0);
+    const totalReceiving = orderData?.order_type === 'PO'
+        ? Object.values(receivedQuantities).reduce((sum, qty) => sum + (qty || 0), 0)
+        : productionQuantity;
 
     if (loading) {
         return (
@@ -199,7 +229,7 @@ export default function MobileReceive() {
                         <CheckCircle className="w-12 h-12 text-emerald-600" />
                     </div>
                     <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                        {orderData?.order_type === 'PO' ? 'Received!' : 'Completed!'}
+                        {orderData?.order_type === 'PO' ? 'Received!' : 'Updated!'}
                     </h2>
                     <p className="text-slate-600 mb-2">{orderData?.order_number}</p>
                     <p className="text-sm text-slate-500 mb-6">
@@ -217,6 +247,7 @@ export default function MobileReceive() {
     }
 
     const isPO = orderData?.order_type === 'PO';
+    const remainingToProduce = !isPO ? (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0)) : 0;
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -232,7 +263,7 @@ export default function MobileReceive() {
                         <Factory className="w-6 h-6" />
                     )}
                     <Badge variant="secondary" className="bg-white/20 text-white border-0">
-                        {isPO ? 'PO Receive' : 'JO Complete'}
+                        {isPO ? 'PO Receive' : 'JO Production'}
                     </Badge>
                 </div>
                 <h1 className="text-2xl font-bold">{orderData?.order_number}</h1>
@@ -250,13 +281,11 @@ export default function MobileReceive() {
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                         <h2 className="font-semibold text-slate-900">
-                            {isPO ? 'Items to Receive' : 'Ingredients Required'}
+                            {isPO ? 'Items to Receive' : 'Production Output'}
                         </h2>
-                        {isPO && (
-                            <span className="text-sm text-slate-500">
-                                Enter quantities
-                            </span>
-                        )}
+                        <span className="text-sm text-slate-500">
+                            Enter quantity
+                        </span>
                     </div>
                     <div className="divide-y divide-slate-100">
                         {isPO ? (
@@ -323,26 +352,79 @@ export default function MobileReceive() {
                                 </div>
                             ))
                         ) : (
-                            orderData?.ingredients?.map((ing, idx) => (
-                                <div key={idx} className="px-4 py-3">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1">
-                                            <p className="font-medium text-slate-900">{ing.item_name}</p>
-                                            <p className="text-sm text-slate-500">
-                                                Stock: {ing.current_stock} {ing.unit_of_measure}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <Badge variant={ing.sufficient ? "default" : "destructive"} className="mb-1">
-                                                {ing.sufficient ? '✓ OK' : '✗ Low'}
-                                            </Badge>
-                                            <p className="text-sm text-slate-600">
-                                                Need: {ing.quantity_required}
-                                            </p>
-                                        </div>
+                            // JO Production Input
+                            <div className="px-4 py-4">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex-1">
+                                        <p className="font-medium text-slate-900">Quantity Produced</p>
+                                        <p className="text-sm text-slate-500">
+                                            Remaining: {remainingToProduce}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm text-slate-500">
+                                            Total: <span className="font-medium text-slate-700">{orderData?.quantity_to_produce}</span>
+                                        </p>
                                     </div>
                                 </div>
-                            ))
+
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-12 w-12 flex-shrink-0"
+                                        onClick={() => adjustProductionQuantity(-1)}
+                                        disabled={productionQuantity <= 0}
+                                    >
+                                        <Minus className="w-5 h-5" />
+                                    </Button>
+
+                                    <div className="flex-1 relative">
+                                        <Input
+                                            type="number"
+                                            inputMode="decimal"
+                                            value={productionQuantity}
+                                            onChange={(e) => handleProductionQuantityChange(e.target.value)}
+                                            className="h-12 text-center text-xl font-bold pr-16"
+                                            min={0}
+                                            max={remainingToProduce}
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-teal-600 hover:text-teal-700"
+                                            onClick={setProductionToMax}
+                                        >
+                                            MAX
+                                        </Button>
+                                    </div>
+
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-12 w-12 flex-shrink-0"
+                                        onClick={() => adjustProductionQuantity(1)}
+                                        disabled={productionQuantity >= remainingToProduce}
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                    </Button>
+                                </div>
+
+                                {/* Ingredients Summary */}
+                                <div className="mt-6 pt-4 border-t border-slate-100">
+                                    <p className="text-sm font-medium text-slate-700 mb-3">Ingredients Consumption (Est.)</p>
+                                    <div className="space-y-2">
+                                        {orderData?.ingredients?.map((ing, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-600">{ing.item_name}</span>
+                                                <span className="text-slate-900 font-mono">
+                                                    {(parseFloat(ing.quantity_required) * (productionQuantity / parseFloat(orderData.quantity_to_produce || 1))).toFixed(2)} {ing.unit_of_measure}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -351,13 +433,13 @@ export default function MobileReceive() {
                 <div className="bg-white rounded-xl shadow-sm p-4">
                     <div className="flex justify-between items-center">
                         <span className="text-slate-600">
-                            {isPO ? 'Total Items' : 'Quantity to Produce'}
+                            {isPO ? 'Total Items' : 'Total Output'}
                         </span>
                         <span className="text-xl font-bold text-slate-900">
                             {isPO ? orderData?.total_items : orderData?.quantity_to_produce}
                         </span>
                     </div>
-                    {isPO && (
+                    {isPO ? (
                         <>
                             <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
                                 <span className="text-slate-600">Total Expected</span>
@@ -369,6 +451,21 @@ export default function MobileReceive() {
                                 <span className="text-slate-600 font-medium">Receiving Now</span>
                                 <span className="text-xl font-bold text-teal-600">
                                     {totalReceiving}
+                                </span>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                                <span className="text-slate-600">Already Produced</span>
+                                <span className="font-medium text-slate-700">
+                                    {orderData?.quantity_produced || 0}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                                <span className="text-slate-600 font-medium">Producing Now</span>
+                                <span className="text-xl font-bold text-teal-600">
+                                    {productionQuantity}
                                 </span>
                             </div>
                         </>
@@ -407,7 +504,7 @@ export default function MobileReceive() {
             <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg">
                 <Button
                     onClick={handleReceive}
-                    disabled={submitting || (isPO && totalReceiving === 0) || (!isPO && !orderData?.all_ingredients_sufficient)}
+                    disabled={submitting || (totalReceiving === 0) || (!isPO && !orderData?.all_ingredients_sufficient && false)}
                     className={cn(
                         "w-full h-14 text-lg font-semibold",
                         isPO ? "bg-teal-600 hover:bg-teal-700" : "bg-blue-600 hover:bg-blue-700"
@@ -421,7 +518,7 @@ export default function MobileReceive() {
                     ) : (
                         <>
                             <CheckCircle className="w-5 h-5 mr-2" />
-                            {isPO ? `Receive ${totalReceiving} Items` : 'Complete Production'}
+                            {isPO ? `Receive ${totalReceiving} Items` : `Complete ${totalReceiving} Units`}
                         </>
                     )}
                 </Button>

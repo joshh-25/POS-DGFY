@@ -248,7 +248,7 @@ export const finalizeJobOrder = async (joId, userId) => {
   return jo;
 };
 
-export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null) => {
+export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null, quantityProduced = null) => {
   const jo = await JobOrder.findByPk(joId, {
     include: [
       { model: Item, as: 'product' },
@@ -272,14 +272,55 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
     throw error;
   }
 
+  // Determine quantity to process in this transaction
+  const currentQuantityProduced = parseFloat(jo.quantity_produced || 0);
+  const totalQuantityToProduce = parseFloat(jo.quantity_to_produce);
+  const remainingQuantity = totalQuantityToProduce - currentQuantityProduced;
+
+  // If quantityProduced is not provided, assume full remaining quantity (legacy behavior)
+  const qtyToProcess = quantityProduced ? parseFloat(quantityProduced) : remainingQuantity;
+
+  // Validation
+  if (qtyToProcess <= 0) {
+    const error = new Error('Quantity to produce must be greater than 0');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (qtyToProcess > remainingQuantity) {
+    const error = new Error(`Cannot produce ${qtyToProcess}. Only ${remainingQuantity} remaining.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if this is the final completion (allow for tiny float differences)
+  const isFinalCompletion = Math.abs(qtyToProcess - remainingQuantity) < 0.001;
+
+  // Calculate ratio for ingredient consumption
+  // Avoid division by zero if totalQuantityToProduce is somehow 0 (should correspond to validation in create)
+  const consumptionRatio = totalQuantityToProduce > 0 ? (qtyToProcess / totalQuantityToProduce) : 1;
+
   // Process ingredients (FIFO consumption)
   for (const ingredient of jo.ingredients) {
     const item = ingredient.item;
-    const quantityRequired = parseFloat(ingredient.quantity_required);
+    const totalRequired = parseFloat(ingredient.quantity_required);
+
+    // Calculate quantity to consume for this chunk
+    let quantityToConsume;
+    if (isFinalCompletion) {
+      // For final completion, consume exactly what is left of the requirement to avoid rounding errors
+      quantityToConsume = totalRequired - parseFloat(ingredient.quantity_consumed || 0);
+    } else {
+      quantityToConsume = totalRequired * consumptionRatio;
+    }
+
+    // Ensure we don't consume negative amounts (safety check)
+    quantityToConsume = Math.max(0, quantityToConsume);
+
     const stockBefore = parseFloat(item.current_stock);
 
-    if (stockBefore < quantityRequired) {
-      const error = new Error(`Insufficient stock for ${item.name}. Required: ${quantityRequired} ${item.unit_of_measure}, Available: ${stockBefore} ${item.unit_of_measure}`);
+    if (stockBefore < quantityToConsume) {
+      const error = new Error(`Insufficient stock for ${item.name}. Required: ${quantityToConsume.toFixed(2)} ${item.unit_of_measure}, Available: ${stockBefore.toFixed(2)} ${item.unit_of_measure}`);
       error.statusCode = 400;
       throw error;
     }
@@ -288,16 +329,17 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
     const movement = await StockMovement.create({
       item_id: item.item_id,
       movement_type: 'production_consumption',
-      quantity: -quantityRequired,
+      quantity: -quantityToConsume,
       reference_id: jo.jo_number,
       reference_type: 'JO',
-      user_responsible: userId
+      user_responsible: userId,
+      notes: `Partial production: ${qtyToProcess} units`
     });
 
     // FIFO consumption
     let primaryBatchId = null; // Track the first batch consumed for this ingredient
     if (item.fifo_enabled) {
-      let remaining = quantityRequired;
+      let remaining = quantityToConsume;
       const batches = await FIFOBatch.findAll({
         where: {
           item_id: item.item_id,
@@ -328,7 +370,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
         // Create BatchTransaction with valid movement_id
         await BatchTransaction.create({
-          movement_id: movement.movement_id, // ✅ Use movement_id from above
+          movement_id: movement.movement_id,
           batch_id: batch.batch_id,
           quantity_consumed: consume,
           remaining_after: available - consume,
@@ -340,23 +382,28 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
     }
 
     // Update stock
-    const stockAfter = stockBefore - quantityRequired;
+    const stockAfter = stockBefore - quantityToConsume;
     await item.update({ current_stock: stockAfter });
 
-    // Update ingredient record with batch reference
+    // Update ingredient record with batch reference and INCREMENT consumption
     await ingredient.update({
-      quantity_consumed: quantityRequired,
-      stock_before: stockBefore,
+      quantity_consumed: parseFloat(ingredient.quantity_consumed || 0) + quantityToConsume,
+      stock_before: ingredient.stock_before === null ? stockBefore : ingredient.stock_before, // Keep original stock before if already set? Or track latest? Better to keep initial or maybe just log? 
+      // Decision: Let's keep 'stock_before' as the stock at the START of the very first consumption for traceability, or update it?
+      // Actually, standard practice for `stock_before` in transaction logs is per transaction. But here it's on the JO Ingredient relation.
+      // Let's assume stock_before/after on JOIngredient tracks the status of the *last* update or the *cumulative*.
+      // We'll update stock_after to current. stock_before is less critical for partials on this specific table, 
+      // but StockMovement table has the precise history.
       stock_after: stockAfter,
-      batch_id: primaryBatchId // Store which batch was primarily consumed
+      batch_id: primaryBatchId || ingredient.batch_id // Update to latest or keep first? Keep first if set, or update? Let's use latest primary.
     });
   }
 
   // Add finished product to stock
   const product = jo.product;
-  const quantityProduced = parseFloat(jo.quantity_to_produce);
+  // Use qtyToProcess for this specific transaction
   await product.update({
-    current_stock: parseFloat(product.current_stock) + quantityProduced
+    current_stock: parseFloat(product.current_stock) + qtyToProcess
   });
 
   // Create FIFO batch for finished product if FIFO enabled
@@ -376,7 +423,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
     const productBatch = await FIFOBatch.create({
       item_id: product.item_id,
-      quantity: quantityProduced,
+      quantity: qtyToProcess,
       cost_per_unit: product.cost_per_unit,
       received_date: productionDate,
       expiry_date: productExpiryDate,
@@ -389,8 +436,8 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
   // Create stock movement for finished product
   await StockMovement.create({
     item_id: product.item_id,
-    movement_type: 'purchase_receipt',
-    quantity: quantityProduced,
+    movement_type: 'production_consumption', // Ideally 'production_output', but preserving existing enum type if limited
+    quantity: qtyToProcess,
     reference_id: jo.jo_number,
     reference_type: 'JO',
     user_responsible: userId,
@@ -398,12 +445,16 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
     expiry_date: productExpiryDate
   });
 
-  // Update JO status and save notes
+  // Update JO status, quantity_produced, and save notes
+  const newQuantityProduced = currentQuantityProduced + qtyToProcess;
+  const newStatus = isFinalCompletion ? 'completed' : 'partial';
+
   await jo.update({
-    status: 'completed',
-    completion_date: new Date(),
-    completed_by: userId,
-    notes: notes || jo.notes || null
+    status: newStatus,
+    quantity_produced: newQuantityProduced,
+    completion_date: isFinalCompletion ? new Date() : null, // Only set completion date when fully finished? Or update last activity? Usually completion_date implies "Finished".
+    completed_by: isFinalCompletion ? userId : null,
+    notes: notes ? (jo.notes ? `${jo.notes}\n${notes}` : notes) : jo.notes // Append notes
   });
 
   // Reload JO with all associations including item details

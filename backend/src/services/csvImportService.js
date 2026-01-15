@@ -47,6 +47,10 @@ const transformRow = (row) => {
 
     // Numeric fields
     if (row.max_capacity) item.max_capacity = parseFloat(row.max_capacity) || null;
+    if (row.current_stock !== undefined && row.current_stock !== '') {
+        const stock = parseFloat(row.current_stock);
+        item.current_stock = isNaN(stock) ? 0 : stock;
+    }
     if (row.min_threshold) item.min_threshold = parseFloat(row.min_threshold) || null;
     if (row.purchase_allowance) item.purchase_allowance = parseFloat(row.purchase_allowance) || null;
     if (row.cost_per_unit) item.cost_per_unit = parseFloat(row.cost_per_unit) || null;
@@ -112,6 +116,13 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
         errors.push(...error.details.map(d => d.message));
     }
 
+    // Validate current_stock if present
+    if (itemData.current_stock !== undefined && itemData.current_stock !== null) {
+        if (itemData.current_stock < 0) {
+            errors.push('Current stock cannot be negative');
+        }
+    }
+
     // Additional validation: product_type required for product category
     if (itemData.category === 'product' && !itemData.product_type) {
         errors.push('product_type is required when category is "product"');
@@ -160,6 +171,10 @@ export const previewImport = async (csvContent) => {
         return { success: false, error: 'CSV file is empty or has no data rows' };
     }
 
+    // Detect template type from headers
+    const headers = Object.keys(records[0]);
+    const templateType = detectTemplateType(headers);
+
     // Get all existing SKUs for upsert detection
     const existingItems = await Item.findAll({
         attributes: ['item_id', 'sku_code'],
@@ -177,6 +192,15 @@ export const previewImport = async (csvContent) => {
         const row = records[i];
         const itemData = transformRow(row);
         const validation = await validateItem(itemData, i + 1, existingSkus);
+
+        // Additional validation: check category matches template type
+        if (validation.valid && templateType !== TEMPLATE_TYPES.MASTER) {
+            const categoryValidation = validateCategoryForTemplate(itemData.category, templateType);
+            if (!categoryValidation.valid) {
+                validation.valid = false;
+                validation.errors.push(categoryValidation.error);
+            }
+        }
 
         previewRows.push({
             rowNumber: i + 1,
@@ -199,6 +223,7 @@ export const previewImport = async (csvContent) => {
 
     return {
         success: true,
+        templateType,
         totalRows: records.length,
         validRows: validCount,
         invalidRows: records.length - validCount,
@@ -285,35 +310,173 @@ export const confirmImport = async (rows, userId) => {
     }
 };
 
+// Template type constants
+export const TEMPLATE_TYPES = {
+    ITEMS: 'items',
+    PRODUCTS: 'products',
+    MASTER: 'master' // Legacy support - all columns
+};
+
+// Items template headers (Raw Materials, Packaging, Supplies)
+export const ITEMS_HEADERS = [
+    'sku_code',
+    'name',
+    'category',
+    'description',
+    'current_stock',
+    'max_capacity',
+    'min_threshold',
+    'purchase_allowance',
+    'unit_of_measure',
+    'cost_per_unit',
+    'fifo_enabled',
+    'shelf_life_days',
+    'opened_shelf_life_days',
+    'allergens',
+    'packaging_height',
+    'packaging_width',
+    'packaging_thickness',
+    'packaging_material',
+    'packaging_design',
+    'packaging_contents'
+];
+
+// Products template headers (WIP, Finished Goods)
+export const PRODUCTS_HEADERS = [
+    'sku_code',
+    'name',
+    'category',
+    'product_type',
+    'description',
+    'product_folder',
+    'current_stock',
+    'max_capacity',
+    'min_threshold',
+    'unit_of_measure',
+    'cost_per_unit',
+    'fifo_enabled',
+    'shelf_life_days',
+    'opened_shelf_life_days',
+    'batch_size',
+    'yield_percentage',
+    'processing_loss',
+    'production_notes'
+];
+
+// Valid categories for each template type
+export const ITEMS_CATEGORIES = ['raw_material', 'packaging', 'supplies'];
+export const PRODUCTS_CATEGORIES = ['product'];
+
+/**
+ * Detect template type from CSV headers
+ * @param {Array<string>} headers - Array of header names from CSV
+ * @returns {string} - 'items', 'products', or 'master'
+ */
+export const detectTemplateType = (headers) => {
+    if (!headers || !Array.isArray(headers) || headers.length === 0) {
+        return TEMPLATE_TYPES.MASTER;
+    }
+
+    const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
+
+    // Check for products-specific columns
+    const hasProductType = headerSet.has('product_type');
+    const hasProductFolder = headerSet.has('product_folder');
+    const hasBatchSize = headerSet.has('batch_size');
+    const hasYieldPercentage = headerSet.has('yield_percentage');
+
+    // Check for items-specific columns
+    const hasAllergens = headerSet.has('allergens');
+    const hasPackagingHeight = headerSet.has('packaging_height');
+
+    // If has product-specific columns and no items-specific columns -> products template
+    if ((hasProductType || hasProductFolder || hasBatchSize || hasYieldPercentage) &&
+        !hasAllergens && !hasPackagingHeight) {
+        return TEMPLATE_TYPES.PRODUCTS;
+    }
+
+    // If has items-specific columns and no product-specific columns -> items template
+    if ((hasAllergens || hasPackagingHeight) &&
+        !hasProductType && !hasProductFolder && !hasBatchSize) {
+        return TEMPLATE_TYPES.ITEMS;
+    }
+
+    // Has both or neither -> master template (legacy)
+    return TEMPLATE_TYPES.MASTER;
+};
+
+/**
+ * Validate that category matches template type
+ * @param {string} category - Item category
+ * @param {string} templateType - Template type
+ * @returns {object} - { valid: boolean, error?: string }
+ */
+export const validateCategoryForTemplate = (category, templateType) => {
+    if (templateType === TEMPLATE_TYPES.MASTER) {
+        return { valid: true };
+    }
+
+    if (templateType === TEMPLATE_TYPES.ITEMS) {
+        if (!ITEMS_CATEGORIES.includes(category)) {
+            return {
+                valid: false,
+                error: `Category '${category}' is not valid for Items template. Use: ${ITEMS_CATEGORIES.join(', ')}`
+            };
+        }
+    }
+
+    if (templateType === TEMPLATE_TYPES.PRODUCTS) {
+        if (!PRODUCTS_CATEGORIES.includes(category)) {
+            return {
+                valid: false,
+                error: `Category '${category}' is not valid for Products template. Only 'product' category is allowed.`
+            };
+        }
+    }
+
+    return { valid: true };
+};
+
 /**
  * Generate CSV template headers
+ * @param {string} type - 'items', 'products', or 'master' (default)
  */
-export const getTemplateHeaders = () => {
-    return [
-        'sku_code',
-        'name',
-        'category',
-        'product_type',
-        'description',
-        'product_folder',
-        'max_capacity',
-        'min_threshold',
-        'purchase_allowance',
-        'unit_of_measure',
-        'cost_per_unit',
-        'fifo_enabled',
-        'shelf_life_days',
-        'opened_shelf_life_days',
-        'batch_size',
-        'yield_percentage',
-        'processing_loss',
-        'production_notes',
-        'packaging_height',
-        'packaging_width',
-        'packaging_thickness',
-        'packaging_material',
-        'packaging_design',
-        'packaging_contents',
-        'allergens'
-    ];
+export const getTemplateHeaders = (type = TEMPLATE_TYPES.MASTER) => {
+    switch (type) {
+        case TEMPLATE_TYPES.ITEMS:
+            return [...ITEMS_HEADERS];
+        case TEMPLATE_TYPES.PRODUCTS:
+            return [...PRODUCTS_HEADERS];
+        case TEMPLATE_TYPES.MASTER:
+        default:
+            // Return all columns for backwards compatibility
+            return [
+                'sku_code',
+                'name',
+                'category',
+                'product_type',
+                'description',
+                'product_folder',
+                'max_capacity',
+                'current_stock',
+                'min_threshold',
+                'purchase_allowance',
+                'unit_of_measure',
+                'cost_per_unit',
+                'fifo_enabled',
+                'shelf_life_days',
+                'opened_shelf_life_days',
+                'batch_size',
+                'yield_percentage',
+                'processing_loss',
+                'production_notes',
+                'packaging_height',
+                'packaging_width',
+                'packaging_thickness',
+                'packaging_material',
+                'packaging_design',
+                'packaging_contents',
+                'allergens'
+            ];
+    }
 };

@@ -47,26 +47,41 @@ export const useCSVImport = () => {
     };
 
     /**
-     * Get template download URL
+     * Get template download URL for specific type
+     * @param {string} type - 'items', 'products', or 'master'
      */
-    const getTemplateUrl = () => {
-        return `${api.defaults.baseURL}/items/import/template`;
+    const getTemplateUrl = (type = 'master') => {
+        return `${api.defaults.baseURL}/items/import/template?type=${type}`;
     };
 
     /**
      * Download template directly
+     * @param {string} type - 'items', 'products', or 'master'
      */
-    const downloadTemplate = async () => {
+    const downloadTemplate = async (type = 'master') => {
         try {
-            const response = await api.get('/items/import/template', {
+            const response = await api.get(`/items/import/template?type=${type}`, {
                 responseType: 'blob'
             });
+
+            // Determine filename based on type
+            let filename;
+            switch (type) {
+                case 'items':
+                    filename = 'items_import_template.csv';
+                    break;
+                case 'products':
+                    filename = 'products_import_template.csv';
+                    break;
+                default:
+                    filename = 'item_import_template.csv';
+            }
 
             // Create download link
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', 'item_import_template.csv');
+            link.setAttribute('download', filename);
             document.body.appendChild(link);
             link.click();
             link.remove();

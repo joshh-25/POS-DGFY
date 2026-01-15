@@ -2120,3 +2120,180 @@ Implemented a system-wide update to the `useItems` hook calls to explicitly requ
 ### Verification
 - **Database**: Confirmed all items exist with `active` status.
 - **Code Audit**: Systematically grep-searched `frontend/src` for all `useItems` usages to ensure no hidden truncation points remained.
+
+## Phase 18: CSV Import/Export Enhancements & Stock Management
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-14
+
+### CSV Functionality Updates
+- [x] **Backend**: Added `current_stock` column to CSV Export (reflects current inventory levels).
+- [x] **Backend**: Added `current_stock` column to CSV Import template and processing logic.
+- [x] **Backend**: Implemented validation for imported stock values (must be non-negative number).
+- [x] **Logic**: ensured `shelf_life_days` and `opened_shelf_life_days` are correctly handled in CSV operations.
+
+### Frontend Enhancements
+- [x] **Product Wizard**: Added "Current Stock" input field to Step 1 (Basic Info).
+  - Allows users to set initial stock level directly during product creation.
+  - Eliminates need for separate "Receive Tokens" or "Job Order" step for initial inventory loading.
+- [x] **UI**: Verified accessibility of Import/Export modals and confirmed template download includes new columns.
+
+### Documentation
+- [x] Updated `CSV_IMPORT_GUIDE.md` to include `current_stock` column description.
+
+---
+
+## Phase 19: Split CSV Templates (Items vs Products)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-14
+
+### Overview
+Separated CSV import/export functionality into two distinct template types:
+- **Items Template**: For Raw Materials, Packaging, and Supplies
+- **Products Template**: For Work in Progress (WIP) and Finished Goods
+
+### Backend Changes
+
+#### csvImportService.js
+- [x] Added `ITEMS_HEADERS` constant (20 columns)
+- [x] Added `PRODUCTS_HEADERS` constant (18 columns)
+- [x] Added `TEMPLATE_TYPES` constants (items/products/master)
+- [x] Created `detectTemplateType(headers)` function for auto-detection
+- [x] Created `validateCategoryForTemplate()` for strict import validation
+- [x] Updated `getTemplateHeaders(type)` to accept type parameter
+- [x] Updated `previewImport()` to validate category/template match
+
+#### csvExportService.js
+- [x] Added `archiver` dependency for ZIP generation
+- [x] Created `transformItemToItemsRow()` for Items template
+- [x] Created `transformItemToProductsRow()` for Products template
+- [x] Created `generateZipBuffer()` for multi-CSV exports
+- [x] Updated `exportAll()` to generate ZIP if both types exist
+- [x] Updated `exportFiltered()` and `exportByIds()` to handle mixed exports
+
+#### csvImportController.js
+- [x] Updated `getTemplate` to accept `?type=items|products|master` query param
+- [x] Added type-specific sample rows for each template
+
+#### csvExportController.js
+- [x] Added `exportAllItems` endpoint
+- [x] Updated response handling for ZIP content-type
+- [x] Dynamic filename based on export type
+
+#### Routes (items.js)
+- [x] Added `GET /export/all` route for ZIP export
+
+### Frontend Changes
+
+#### useCSVImport.js
+- [x] Updated `downloadTemplate(type)` to accept 'items' or 'products'
+- [x] Updated `getTemplateUrl(type)` to include type parameter
+
+#### useCSVExport.js
+- [x] Updated `exportAll` to use `/export/all` endpoint
+- [x] Added ZIP content-type detection in `getFilename()`
+
+#### CSVImportModal.jsx
+- [x] Replaced single template button with two buttons:
+  - "Items Template" (teal color)
+  - "Products Template" (purple color)
+- [x] Added helper text explaining template categories
+
+### Template Column Structure
+
+#### Items Template (20 columns)
+`sku_code`, `name`, `category`, `description`, `current_stock`, `max_capacity`, `min_threshold`, `purchase_allowance`, `unit_of_measure`, `cost_per_unit`, `fifo_enabled`, `shelf_life_days`, `opened_shelf_life_days`, `allergens`, `packaging_height`, `packaging_width`, `packaging_thickness`, `packaging_material`, `packaging_design`, `packaging_contents`
+
+#### Products Template (18 columns)
+`sku_code`, `name`, `category`, `product_type`, `description`, `product_folder`, `current_stock`, `max_capacity`, `min_threshold`, `unit_of_measure`, `cost_per_unit`, `fifo_enabled`, `shelf_life_days`, `opened_shelf_life_days`, `batch_size`, `yield_percentage`, `processing_loss`, `production_notes`
+
+### Import Validation Rules
+- **Items Template**: Only accepts `raw_material`, `packaging`, `supplies` categories
+- **Products Template**: Only accepts `product` category
+- Mismatched rows are rejected with clear error messages
+
+### Export Behavior
+- **Export All**: Returns ZIP file (`inventory_export_YYYY-MM-DD.zip`) containing `items.csv` and `products.csv` if both types exist
+- **Export Filtered/Selected**: Returns ZIP if mixed types, single CSV otherwise
+
+### Files Modified
+| File | Type |
+|------|------|
+| `backend/src/services/csvImportService.js` | Major rewrite |
+| `backend/src/services/csvExportService.js` | Complete rewrite |
+| `backend/src/controllers/csvImportController.js` | Updated |
+| `backend/src/controllers/csvExportController.js` | Rewritten |
+| `backend/src/routes/items.js` | Added route |
+| `frontend/src/hooks/useCSVImport.js` | Updated |
+| `frontend/src/hooks/useCSVExport.js` | Updated |
+| `frontend/Components/items/CSVImportModal.jsx` | Updated |
+
+
+---
+
+## Phase 18: Expiry Alerts & Data Integrity Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-14
+
+### Issue 1: Expiry Alerts Not Showing (VONVV Item)
+**User Report**: Item "VONVV" with 1-day shelf life was not appearing in expiry alerts.
+**Root Causes**:
+1.  **Missing Data**: FIFO Batch for VONVV had `expiry_date: NULL` because it was created before `shelf_life_days` was set on the item.
+2.  **Logic Flaw**: Alert query used `Op.between: [new Date(), ...]` which excluded items expiring today or in the past (already expired).
+3.  **Frontend Data Structure**: `alertService.js` (frontend) failed to unpack nested API response `{ data: { alerts: [...] } }`, resulting in an empty list.
+
+**Fixes**:
+- [x] **Data Backfill**: Created migration `20260114000002-backfill-batch-expiry-dates.js` to calculate missing expiry dates.
+- [x] **New Alert Type**: Added `missing_expiry_date` alert for items with `fifo_enabled` but no `shelf_life_days`.
+- [x] **Query Logic**: Updated backend `alertService.js` to use `Op.lte` (Less Than or Equal) to catch ALL items expiring on or before the warning horizon, including past expired items.
+- [x] **Frontend Handling**: Updated `frontend/src/services/alertService.js` to properly unpack nested JSON data.
+
+### Issue 2: Frontend Crash (Invalid Time Value)
+**Issue**: Dashboard crashed with `RangeError: Invalid time value` after fixing alerts.
+**Root Cause**: Legacy data (e.g., "Chocolate Cake" Batch #32) contained `0000-00-00` as expiry date. `date-fns` library crashed when formatting this.
+**Fix**:
+- [x] **Safety Check**: Added validation in `ExpiringBatchesList.jsx` to ignore invalid dates before formatting.
+  ```javascript
+  !isNaN(new Date(alert.expiry_date).getTime())
+  ```
+
+### Enhancements
+- [x] **Configurable Thresholds**: Added `expiry_critical_days` (7) and `expiry_warning_days` (30) to System Settings.
+- [x] **Dashboard UI**: Added "Missing" tab to Expiry Alerts widget for batches needing attention.
+- [x] **Alert Details**: Added PO Number and specific shelf life data to alert cards.
+
+### Files Modified
+- `backend/src/services/alertService.js`
+- `frontend/src/services/alertService.js`
+- `frontend/Components/dashboard/ExpiringBatchesList.jsx`
+- `backend/src/migrations/20260114000001-add-expiry-threshold-settings.js`
+- `backend/src/migrations/20260114000002-backfill-batch-expiry-dates.js`
+- `backend/src/seeders/20240101000001-seed-system-settings.js`
+
+---
+
+## Phase 18: Job Order Enhancements
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-14
+
+### Feature: Partial Job Order Completion
+**Goal**: Allow Job Orders (JO) to be partially received/completed, enabling incremental production tracking similar to Purchase Orders.
+
+### Backend Updates
+- [x] **Database Migration**: Added `quantity_produced` column to `job_orders` table and updated `status` enum to include 'partial'.
+- [x] **Service Logic**: Updated `jobOrderService.completeJobOrder` to:
+    - Accept `quantityProduced` parameter.
+    - Calculate ingredient consumption proportionally based on produced quantity.
+    - Handle stock movements incrementally.
+    - Update JO status to 'partial' or 'completed' based on remaining quantity.
+    - Implemented precise rounding logic for final completion to ensure cleaner stock reconciliation.
+
+### Frontend Updates
+- [x] **Mobile Receive**: Updated `MobileReceive.jsx` to support quantity input for Job Orders (previously only "Receive All").
+- [x] **Job Orders List**: Updated `JobOrders.jsx` to:
+    - Display "Produced / Total" quantities (e.g., "50 / 100") for partial orders.
+    - Show 'Partial' status badge.
+    - Allow QR code generation for partial orders to enable continuous scanning/receiving.
+
+### Bug Fixes
+- [x] **Migration Compatibility**: Fixed an issue where the migration file was treated as an ES Module (.js) in a "module" type package, preventing it from running. Renamed to `.cjs` to ensure compatibility with Sequelize CLI.
+

@@ -23,7 +23,7 @@ export const createJobOrderSchema = Joi.object({
       unit: Joi.string()
     })
   ).allow(null),
-  status: Joi.string().valid('draft', 'in_progress', 'completed', 'cancelled').default('draft')
+  status: Joi.string().valid('draft', 'in_progress', 'partial', 'completed', 'cancelled').default('draft')
 });
 
 // Draft schema - minimal requirements
@@ -56,7 +56,7 @@ export const updateJobOrderSchema = Joi.object({
   quantity_to_produce: Joi.number().positive(),
   responsible_user: Joi.number().integer().positive().allow(null),
   notes: Joi.string().allow(null, ''),
-  status: Joi.string().valid('draft', 'in_progress', 'completed', 'cancelled')
+  status: Joi.string().valid('draft', 'in_progress', 'partial', 'completed', 'cancelled')
 });
 
 export const validateCreateJobOrder = (req, res, next) => {

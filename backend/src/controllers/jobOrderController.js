@@ -68,7 +68,8 @@ export const completeJobOrder = async (req, res, next) => {
       req.params.jo_id,
       req.user.user_id,
       req.body.expiry_date,
-      req.body.notes
+      req.body.notes,
+      req.body.quantity_produced
     );
     res.status(200).json({
       success: true,

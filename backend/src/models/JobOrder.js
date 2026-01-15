@@ -20,8 +20,13 @@ const JobOrder = sequelize.define('JobOrder', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false
   },
+  quantity_produced: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+    defaultValue: 0
+  },
   status: {
-    type: DataTypes.ENUM('draft', 'in_progress', 'completed', 'cancelled'),
+    type: DataTypes.ENUM('draft', 'in_progress', 'partial', 'completed', 'cancelled'),
     defaultValue: 'draft'
   },
   created_date: {

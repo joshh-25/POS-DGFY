@@ -50,10 +50,10 @@ export default function LowStockList({ items }) {
     // Determine action based on category
     // Job Order for products
     if (selectedItem.category === 'product') {
-      navigate(`/ job - orders ? action = create & productId=${selectedItem.id || selectedItem.item_id} `);
+      navigate(`/job-orders?action=create&productId=${selectedItem.id || selectedItem.item_id}`);
     } else {
       // Purchase Order for ingredients, packaging, etc.
-      navigate(`/ purchase - orders ? action = create & itemId=${selectedItem.id || selectedItem.item_id} `);
+      navigate(`/purchase-orders?action=create&itemId=${selectedItem.id || selectedItem.item_id}`);
     }
     setDialogOpen(false);
   };

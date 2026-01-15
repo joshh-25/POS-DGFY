@@ -41,6 +41,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [expiryOverride, setExpiryOverride] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
+  const [quantityProduced, setQuantityProduced] = useState('');
 
   // Use hook unconditionally, handle null joId internally or let hook handle it
   const { jobOrder: detailedJO, loading } = useJobOrderById(open ? jo?.jo_id : null);
@@ -66,10 +67,11 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     setCompleteDialogOpen(true);
     setExpiryOverride('');
     setCompletionNotes('');
+    setQuantityProduced(displayJO.quantity_to_produce); // Default to target quantity
   };
 
   const handleConfirmComplete = () => {
-    onComplete(displayJO, expiryOverride || null, completionNotes || null);
+    onComplete(displayJO, expiryOverride || null, completionNotes || null, quantityProduced);
     setCompleteDialogOpen(false);
   };
 
@@ -273,7 +275,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
 
           <DialogFooter className="pt-8">
             <Button variant="outline" onClick={onClose}>Close</Button>
-            {displayJO.status === 'in_progress' && (
+            {(displayJO.status === 'in_progress' || displayJO.status === 'partial') && (
               <Button
                 onClick={handleCompleteClick}
                 className="bg-emerald-600 hover:bg-emerald-700"
@@ -300,9 +302,13 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
           <div className="py-4 space-y-4">
             <div className="space-y-2">
               <Label>Quantity Produced</Label>
-              <div className="p-2 bg-slate-100 rounded-md font-medium">
-                {displayJO.quantity_to_produce} units
-              </div>
+              <Input
+                type="number"
+                step="0.01"
+                value={quantityProduced}
+                onChange={(e) => setQuantityProduced(e.target.value)}
+                placeholder="Enter quantity produced"
+              />
             </div>
 
             <div className="space-y-2">

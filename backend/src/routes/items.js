@@ -19,6 +19,7 @@ router.post('/import/confirm', authorize('admin', 'manager'), csvImportControlle
 router.get('/export', authorize('admin', 'manager'), csvExportController.exportItems);
 router.post('/export', authorize('admin', 'manager'), csvExportController.exportItems);
 router.get('/export/preview', authorize('admin', 'manager'), csvExportController.previewExport);
+router.get('/export/all', authorize('admin', 'manager'), csvExportController.exportAllItems);
 
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);

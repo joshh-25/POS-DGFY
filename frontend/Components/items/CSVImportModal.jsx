@@ -183,13 +183,34 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                 )}
             </div>
 
-            <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
-                <AlertCircle className="w-4 h-4" />
-                <span>Need a template?</span>
-                <Button variant="link" size="sm" onClick={handleDownloadTemplate} className="px-1 text-teal-600">
-                    <Download className="w-3 h-3 mr-1" />
-                    Download CSV Template
-                </Button>
+            <div className="flex flex-col items-center gap-3 text-sm text-slate-500">
+                <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Download a template to get started:</span>
+                </div>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadTemplate('items')}
+                        className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                    >
+                        <Download className="w-3 h-3 mr-1" />
+                        Items Template
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadTemplate('products')}
+                        className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                    >
+                        <Download className="w-3 h-3 mr-1" />
+                        Products Template
+                    </Button>
+                </div>
+                <p className="text-xs text-slate-400">
+                    Items = Raw Materials, Packaging, Supplies | Products = WIP, Finished Goods
+                </p>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
