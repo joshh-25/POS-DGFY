@@ -2,6 +2,14 @@ import { Op } from 'sequelize';
 import archiver from 'archiver';
 import { PassThrough } from 'stream';
 import Item from '../models/Item.js';
+import ItemNutrition from '../models/ItemNutrition.js';
+import ItemAllergen from '../models/ItemAllergen.js';
+import ItemPhysicalProperties from '../models/ItemPhysicalProperties.js';
+import ItemShelfLife from '../models/ItemShelfLife.js';
+import ItemPackaging from '../models/ItemPackaging.js';
+import ItemQualityControl from '../models/ItemQualityControl.js';
+import ItemRegulatoryCompliance from '../models/ItemRegulatoryCompliance.js';
+import ItemCostBreakdown from '../models/ItemCostBreakdown.js';
 import {
     getTemplateHeaders,
     ITEMS_HEADERS,
@@ -10,6 +18,21 @@ import {
     PRODUCTS_CATEGORIES,
     TEMPLATE_TYPES
 } from './csvImportService.js';
+
+/**
+ * Get Sequelize include options for fetching related product data
+ * Used to ensure exports include all wizard fields from related tables
+ */
+const getProductExportIncludes = () => [
+    { model: ItemNutrition, as: 'nutrition', required: false },
+    { model: ItemAllergen, as: 'allergens', required: false },
+    { model: ItemPhysicalProperties, as: 'physicalProperties', required: false },
+    { model: ItemShelfLife, as: 'shelfLife', required: false },
+    { model: ItemPackaging, as: 'packaging', required: false },
+    { model: ItemQualityControl, as: 'qualityControl', required: false },
+    { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
+    { model: ItemCostBreakdown, as: 'costBreakdown', required: false }
+];
 
 /**
  * Transform an Item to a CSV row for Items template
@@ -46,9 +69,29 @@ const transformItemToItemsRow = (item) => {
 
 /**
  * Transform an Item to a CSV row for Products template
+ * Includes all related table data (nutrition, allergens, physical properties, etc.)
  */
 const transformItemToProductsRow = (item) => {
+    // Extract related data with defaults
+    const nutrition = item.nutrition || {};
+    const physical = item.physicalProperties || {};
+    const shelfLife = item.shelfLife || {};
+    const packaging = item.packaging || {};
+    const qc = item.qualityControl || {};
+    const compliance = item.regulatoryCompliance || {};
+    const costBreakdown = item.costBreakdown || {};
+
+    // Format allergens as comma-separated strings
+    const allergensArr = item.allergens || [];
+    const directAllergens = Array.isArray(allergensArr)
+        ? allergensArr.filter(a => !a.is_cross_contamination).map(a => a.allergen_name).join(',')
+        : '';
+    const mayContainAllergens = Array.isArray(allergensArr)
+        ? allergensArr.filter(a => a.is_cross_contamination).map(a => a.allergen_name).join(',')
+        : '';
+
     return [
+        // Core fields (from items table)
         item.sku_code || '',
         item.name || '',
         item.category || '',
@@ -66,7 +109,60 @@ const transformItemToProductsRow = (item) => {
         item.batch_size != null ? String(item.batch_size) : '',
         item.yield_percentage != null ? String(item.yield_percentage) : '',
         item.processing_loss != null ? String(item.processing_loss) : '',
-        item.production_notes || ''
+        item.production_notes || '',
+
+        // Nutritional Info
+        nutrition.serving_size || '',
+        nutrition.calories != null ? String(nutrition.calories) : '',
+        nutrition.total_fat != null ? String(nutrition.total_fat) : '',
+        nutrition.saturated_fat != null ? String(nutrition.saturated_fat) : '',
+        nutrition.cholesterol != null ? String(nutrition.cholesterol) : '',
+        nutrition.sodium != null ? String(nutrition.sodium) : '',
+        nutrition.total_carbohydrates != null ? String(nutrition.total_carbohydrates) : '',
+        nutrition.dietary_fiber != null ? String(nutrition.dietary_fiber) : '',
+        nutrition.sugars != null ? String(nutrition.sugars) : '',
+        nutrition.protein != null ? String(nutrition.protein) : '',
+
+        // Allergens
+        directAllergens,
+        mayContainAllergens,
+
+        // Physical Properties
+        physical.texture || '',
+        physical.color || '',
+        physical.viscosity || '',
+        physical.ph_level != null ? String(physical.ph_level) : '',
+        physical.water_activity != null ? String(physical.water_activity) : '',
+
+        // Extended Shelf Life
+        shelfLife.storage_temperature || '',
+        shelfLife.storage_conditions || '',
+
+        // Packaging Info
+        packaging.primary_packaging || '',
+        packaging.secondary_packaging || '',
+        packaging.packaging_material || '',
+        packaging.net_weight || '',
+        packaging.label_compliance ? 'TRUE' : 'FALSE',
+
+        // Cost Breakdown
+        costBreakdown.labor_cost != null ? String(costBreakdown.labor_cost) : '',
+        costBreakdown.overhead_cost != null ? String(costBreakdown.overhead_cost) : '',
+        costBreakdown.additional_packaging_cost != null ? String(costBreakdown.additional_packaging_cost) : '',
+
+        // Quality Control
+        qc.test_frequency || '',
+        qc.sampling_plan || '',
+        qc.acceptance_criteria || '',
+        qc.corrective_actions || '',
+
+        // Regulatory Compliance
+        compliance.fda_approved ? 'TRUE' : 'FALSE',
+        compliance.gmp_compliant ? 'TRUE' : 'FALSE',
+        compliance.haccp_plan ? 'TRUE' : 'FALSE',
+        compliance.organic_certified ? 'TRUE' : 'FALSE',
+        compliance.kosher_certified ? 'TRUE' : 'FALSE',
+        compliance.halal_certified ? 'TRUE' : 'FALSE'
     ];
 };
 
@@ -250,7 +346,12 @@ const buildFilterConditions = (filters) => {
 export const exportFiltered = async (filters = {}) => {
     try {
         const where = buildFilterConditions(filters);
-        const items = await Item.findAll({ where, order: [['name', 'ASC']] });
+        // Include related tables for complete product data export
+        const items = await Item.findAll({
+            where,
+            order: [['name', 'ASC']],
+            include: getProductExportIncludes()
+        });
 
         if (items.length === 0) {
             return { success: true, csvContent: '', count: 0, isZip: false };
@@ -297,12 +398,14 @@ export const exportByIds = async (itemIds) => {
             return { success: false, error: 'No item IDs provided' };
         }
 
+        // Include related tables for complete product data export
         const items = await Item.findAll({
             where: {
                 item_id: { [Op.in]: itemIds },
                 status: { [Op.in]: ['active', 'draft'] }
             },
-            order: [['name', 'ASC']]
+            order: [['name', 'ASC']],
+            include: getProductExportIncludes()
         });
 
         if (items.length === 0) {
@@ -346,9 +449,11 @@ export const exportByIds = async (itemIds) => {
  */
 export const exportAll = async () => {
     try {
+        // Include related tables for complete product data export
         const items = await Item.findAll({
             where: { status: { [Op.in]: ['active', 'draft'] } },
-            order: [['name', 'ASC']]
+            order: [['name', 'ASC']],
+            include: getProductExportIncludes()
         });
 
         if (items.length === 0) {

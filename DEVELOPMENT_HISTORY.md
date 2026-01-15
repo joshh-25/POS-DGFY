@@ -852,6 +852,81 @@ Comprehensive audit of all delete and archive functionality across the system to
 
 ---
 
+## Phase 18: Complete Product CSV Export Enhancement
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-15
+
+### Problem Statement
+
+The 12-step Product Create Wizard captures comprehensive product data across multiple related tables, but CSV export only included 18 columns from the main `items` table. Data from related tables (nutrition, physical properties, quality control, regulatory compliance, shelf life, packaging, cost breakdown) was **correctly saved** to the database but **not included in CSV exports**.
+
+### Investigation Findings
+
+The architecture was correct - data WAS being saved properly:
+- ✅ Related tables exist: `item_nutrition`, `item_allergens`, `item_physical_properties`, `item_shelf_life`, `item_packaging`, `item_quality_control`, `item_regulatory_compliance`, `item_cost_breakdown`
+- ✅ `saveRelatedWizardData()` in `itemService.js` correctly saves all wizard data
+- ✅ `getItemById()` correctly fetches all related data with associations
+- ❌ Issue: CSV export queries only the `items` table, missing all related data
+
+### Backend Changes
+
+#### 1. csvImportService.js
+- **Expanded PRODUCTS_HEADERS**: 18 → 55 columns with comprehensive field coverage
+- **Enhanced transformRow()**: Added parsing for all new column prefixes:
+  - `nutrition_*` → `nutritional_info` object
+  - `physical_*` → `physical_properties` object  
+  - `shelf_*` → `shelf_life` object
+  - `packaging_*` → `packaging_info` object
+  - `cost_*` → cost breakdown fields
+  - `qc_*` → `quality_control` object
+  - `compliance_*` → `regulatory_compliance` object
+- **Updated confirmImport()**: Routes product imports through `createItem`/`updateItem` from `itemService.js` to trigger `saveRelatedWizardData()` for proper related table persistence
+
+#### 2. csvExportService.js
+- **Added model imports**: 8 related table models (ItemNutrition, ItemAllergen, ItemPhysicalProperties, etc.)
+- **Created getProductExportIncludes()**: Helper function returning Sequelize include options for all related tables
+- **Expanded transformItemToProductsRow()**: 18 → 55 columns with flattening of related data
+- **Updated export functions**: `exportFiltered()`, `exportByIds()`, `exportAll()` now include related table associations in queries
+
+### New CSV Columns Added (37 new columns)
+
+**Nutritional Info (10 columns):**
+- `nutrition_serving_size`, `nutrition_calories`, `nutrition_total_fat`, `nutrition_saturated_fat`, `nutrition_cholesterol`, `nutrition_sodium`, `nutrition_total_carbohydrates`, `nutrition_dietary_fiber`, `nutrition_sugars`, `nutrition_protein`
+
+**Allergens (2 columns):**
+- `allergens`, `may_contain_allergens` (comma-separated lists)
+
+**Physical Properties (5 columns):**
+- `physical_texture`, `physical_color`, `physical_viscosity`, `physical_ph_level`, `physical_water_activity`
+
+**Extended Shelf Life (2 columns):**
+- `shelf_storage_temperature`, `shelf_storage_conditions`
+
+**Packaging Info (5 columns):**
+- `packaging_primary`, `packaging_secondary`, `packaging_material`, `packaging_net_weight`, `packaging_label_compliance`
+
+**Cost Breakdown (3 columns):**
+- `cost_labor`, `cost_overhead`, `cost_additional_packaging`
+
+**Quality Control (4 columns):**
+- `qc_test_frequency`, `qc_sampling_plan`, `qc_acceptance_criteria`, `qc_corrective_actions`
+
+**Regulatory Compliance (6 columns):**
+- `compliance_fda_approved`, `compliance_gmp_compliant`, `compliance_haccp_plan`, `compliance_organic_certified`, `compliance_kosher_certified`, `compliance_halal_certified`
+
+### Files Modified
+
+- `backend/src/services/csvImportService.js` - PRODUCTS_HEADERS, transformRow(), confirmImport()
+- `backend/src/services/csvExportService.js` - Model imports, getProductExportIncludes(), transformItemToProductsRow(), export functions
+
+### Backward Compatibility
+
+- ✅ Existing CSV files with fewer columns will still import correctly (new columns are optional)
+- ✅ Old PRODUCTS_HEADERS format continues to work for imports
+- ✅ Export now includes all available data; empty fields export as blank
+
+---
+
 ## Tech Stack Summary
 
 ### Frontend

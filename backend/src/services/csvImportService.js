@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import Item from '../models/Item.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
 import sequelize from '../config/database.js';
+import { createItem, updateItem } from './itemService.js';
 
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
@@ -28,6 +29,7 @@ export const parseCSV = (csvContent) => {
 
 /**
  * Transform a CSV row to item data format
+ * Supports all Product Wizard fields including nested objects for related tables
  */
 const transformRow = (row) => {
     const item = {};
@@ -71,7 +73,7 @@ const transformRow = (row) => {
     // Text fields
     if (row.production_notes) item.production_notes = row.production_notes.trim();
 
-    // Packaging specs (flattened columns)
+    // Packaging specs (flattened columns for Items template)
     const packagingSpecs = {};
     if (row.packaging_height) packagingSpecs.height = row.packaging_height.trim();
     if (row.packaging_width) packagingSpecs.width = row.packaging_width.trim();
@@ -83,12 +85,104 @@ const transformRow = (row) => {
         item.packaging_specs = packagingSpecs;
     }
 
-    // Allergens (comma-separated)
+    // === PRODUCT WIZARD RELATED TABLE FIELDS ===
+
+    // Allergens (comma-separated) - direct allergens
     if (row.allergens) {
         const allergenList = row.allergens.split(',').map(a => a.trim().toLowerCase()).filter(a => a);
         if (allergenList.length > 0) {
             item.allergens = allergenList;
         }
+    }
+
+    // May contain allergens (comma-separated) - cross-contamination allergens
+    if (row.may_contain_allergens) {
+        const mayContainList = row.may_contain_allergens.split(',').map(a => a.trim().toLowerCase()).filter(a => a);
+        if (mayContainList.length > 0) {
+            item.may_contain_allergens = mayContainList;
+        }
+    }
+
+    // Nutritional Info (from nutrition_* columns)
+    const nutritionalInfo = {};
+    if (row.nutrition_serving_size) nutritionalInfo.serving_size = row.nutrition_serving_size.trim();
+    if (row.nutrition_calories) nutritionalInfo.calories = parseFloat(row.nutrition_calories) || null;
+    if (row.nutrition_total_fat) nutritionalInfo.total_fat = parseFloat(row.nutrition_total_fat) || null;
+    if (row.nutrition_saturated_fat) nutritionalInfo.saturated_fat = parseFloat(row.nutrition_saturated_fat) || null;
+    if (row.nutrition_cholesterol) nutritionalInfo.cholesterol = parseFloat(row.nutrition_cholesterol) || null;
+    if (row.nutrition_sodium) nutritionalInfo.sodium = parseFloat(row.nutrition_sodium) || null;
+    if (row.nutrition_total_carbohydrates) nutritionalInfo.total_carbohydrates = parseFloat(row.nutrition_total_carbohydrates) || null;
+    if (row.nutrition_dietary_fiber) nutritionalInfo.dietary_fiber = parseFloat(row.nutrition_dietary_fiber) || null;
+    if (row.nutrition_sugars) nutritionalInfo.sugars = parseFloat(row.nutrition_sugars) || null;
+    if (row.nutrition_protein) nutritionalInfo.protein = parseFloat(row.nutrition_protein) || null;
+    if (Object.keys(nutritionalInfo).length > 0) {
+        item.nutritional_info = nutritionalInfo;
+    }
+
+    // Physical Properties (from physical_* columns)
+    const physicalProperties = {};
+    if (row.physical_texture) physicalProperties.texture = row.physical_texture.trim();
+    if (row.physical_color) physicalProperties.color = row.physical_color.trim();
+    if (row.physical_viscosity) physicalProperties.viscosity = row.physical_viscosity.trim();
+    if (row.physical_ph_level) physicalProperties.ph_level = parseFloat(row.physical_ph_level) || null;
+    if (row.physical_water_activity) physicalProperties.water_activity = parseFloat(row.physical_water_activity) || null;
+    if (Object.keys(physicalProperties).length > 0) {
+        item.physical_properties = physicalProperties;
+    }
+
+    // Extended Shelf Life (from shelf_* columns)
+    const shelfLife = {};
+    if (row.shelf_storage_temperature) shelfLife.storage_temperature = row.shelf_storage_temperature.trim().toLowerCase();
+    if (row.shelf_storage_conditions) shelfLife.storage_conditions = row.shelf_storage_conditions.trim();
+    if (Object.keys(shelfLife).length > 0) {
+        item.shelf_life = shelfLife;
+    }
+
+    // Packaging Info (from packaging_* columns for Products template)
+    const packagingInfo = {};
+    if (row.packaging_primary) packagingInfo.primary_packaging = row.packaging_primary.trim();
+    if (row.packaging_secondary) packagingInfo.secondary_packaging = row.packaging_secondary.trim();
+    if (row.packaging_material) packagingInfo.packaging_material = row.packaging_material.trim();
+    if (row.packaging_net_weight) packagingInfo.net_weight = row.packaging_net_weight.trim();
+    if (row.packaging_label_compliance !== undefined && row.packaging_label_compliance !== '') {
+        packagingInfo.label_compliance = row.packaging_label_compliance.toLowerCase() === 'true' || row.packaging_label_compliance === '1';
+    }
+    if (Object.keys(packagingInfo).length > 0) {
+        item.packaging_info = packagingInfo;
+    }
+
+    // Cost Breakdown (from cost_* columns)
+    if (row.cost_labor) item.labor_cost = parseFloat(row.cost_labor) || null;
+    if (row.cost_overhead) item.overhead_cost = parseFloat(row.cost_overhead) || null;
+    if (row.cost_additional_packaging) item.additional_packaging_cost = parseFloat(row.cost_additional_packaging) || null;
+
+    // Quality Control (from qc_* columns)
+    const qualityControl = {};
+    if (row.qc_test_frequency) qualityControl.test_frequency = row.qc_test_frequency.trim().toLowerCase();
+    if (row.qc_sampling_plan) qualityControl.sampling_plan = row.qc_sampling_plan.trim();
+    if (row.qc_acceptance_criteria) qualityControl.acceptance_criteria = row.qc_acceptance_criteria.trim();
+    if (row.qc_corrective_actions) qualityControl.corrective_actions = row.qc_corrective_actions.trim();
+    if (Object.keys(qualityControl).length > 0) {
+        item.quality_control = qualityControl;
+    }
+
+    // Regulatory Compliance (from compliance_* columns)
+    const regulatoryCompliance = {};
+    const complianceBoolFields = [
+        ['compliance_fda_approved', 'fda_approved'],
+        ['compliance_gmp_compliant', 'gmp_compliant'],
+        ['compliance_haccp_plan', 'haccp_plan'],
+        ['compliance_organic_certified', 'organic_certified'],
+        ['compliance_kosher_certified', 'kosher_certified'],
+        ['compliance_halal_certified', 'halal_certified']
+    ];
+    for (const [csvField, dbField] of complianceBoolFields) {
+        if (row[csvField] !== undefined && row[csvField] !== '') {
+            regulatoryCompliance[dbField] = row[csvField].toLowerCase() === 'true' || row[csvField] === '1';
+        }
+    }
+    if (Object.keys(regulatoryCompliance).length > 0) {
+        item.regulatory_compliance = regulatoryCompliance;
     }
 
     return item;
@@ -235,33 +329,35 @@ export const previewImport = async (csvContent) => {
 
 /**
  * Confirm and execute the import
+ * For products, uses itemService to properly save related data (nutrition, compliance, etc.)
  */
 export const confirmImport = async (rows, userId) => {
-    const transaction = await sequelize.transaction();
+    const results = {
+        created: [],
+        updated: [],
+        failed: []
+    };
 
-    try {
-        const results = {
-            created: [],
-            updated: [],
-            failed: []
-        };
+    for (const row of rows) {
+        if (!row.valid) {
+            results.failed.push({
+                rowNumber: row.rowNumber,
+                sku_code: row.sku_code,
+                errors: row.errors
+            });
+            continue;
+        }
 
-        for (const row of rows) {
-            if (!row.valid) {
-                results.failed.push({
-                    rowNumber: row.rowNumber,
-                    sku_code: row.sku_code,
-                    errors: row.errors
-                });
-                continue;
-            }
+        try {
+            const isProduct = row.data.category === 'product';
 
-            try {
-                if (row.action === 'CREATE') {
-                    const newItem = await Item.create({
+            if (row.action === 'CREATE') {
+                if (isProduct) {
+                    // Use itemService for products to save related data properly
+                    const newItem = await createItem({
                         ...row.data,
                         status: 'active'
-                    }, { transaction });
+                    }, userId);
 
                     results.created.push({
                         rowNumber: row.rowNumber,
@@ -270,11 +366,31 @@ export const confirmImport = async (rows, userId) => {
                         name: newItem.name
                     });
                 } else {
-                    // UPDATE
-                    await Item.update(row.data, {
-                        where: { item_id: row.existingItemId },
-                        transaction
-                    });
+                    // Use direct Item.create for non-products (simpler, faster)
+                    const transaction = await sequelize.transaction();
+                    try {
+                        const newItem = await Item.create({
+                            ...row.data,
+                            status: 'active'
+                        }, { transaction });
+                        await transaction.commit();
+
+                        results.created.push({
+                            rowNumber: row.rowNumber,
+                            item_id: newItem.item_id,
+                            sku_code: newItem.sku_code,
+                            name: newItem.name
+                        });
+                    } catch (err) {
+                        await transaction.rollback();
+                        throw err;
+                    }
+                }
+            } else {
+                // UPDATE
+                if (isProduct) {
+                    // Use itemService for products to save related data properly
+                    await updateItem(row.existingItemId, row.data, userId);
 
                     results.updated.push({
                         rowNumber: row.rowNumber,
@@ -282,32 +398,44 @@ export const confirmImport = async (rows, userId) => {
                         sku_code: row.sku_code,
                         name: row.data.name
                     });
+                } else {
+                    // Use direct Item.update for non-products (simpler, faster)
+                    const transaction = await sequelize.transaction();
+                    try {
+                        await Item.update(row.data, {
+                            where: { item_id: row.existingItemId },
+                            transaction
+                        });
+                        await transaction.commit();
+
+                        results.updated.push({
+                            rowNumber: row.rowNumber,
+                            item_id: row.existingItemId,
+                            sku_code: row.sku_code,
+                            name: row.data.name
+                        });
+                    } catch (err) {
+                        await transaction.rollback();
+                        throw err;
+                    }
                 }
-            } catch (error) {
-                results.failed.push({
-                    rowNumber: row.rowNumber,
-                    sku_code: row.sku_code,
-                    errors: [error.message]
-                });
             }
+        } catch (error) {
+            results.failed.push({
+                rowNumber: row.rowNumber,
+                sku_code: row.sku_code,
+                errors: [error.message]
+            });
         }
-
-        await transaction.commit();
-
-        return {
-            success: true,
-            createdCount: results.created.length,
-            updatedCount: results.updated.length,
-            failedCount: results.failed.length,
-            results
-        };
-    } catch (error) {
-        await transaction.rollback();
-        return {
-            success: false,
-            error: `Import failed: ${error.message}`
-        };
     }
+
+    return {
+        success: true,
+        createdCount: results.created.length,
+        updatedCount: results.updated.length,
+        failedCount: results.failed.length,
+        results
+    };
 };
 
 // Template type constants
@@ -342,7 +470,10 @@ export const ITEMS_HEADERS = [
 ];
 
 // Products template headers (WIP, Finished Goods)
+// Includes all fields from related tables: nutrition, allergens, physical properties,
+// shelf life, packaging, quality control, regulatory compliance, cost breakdown
 export const PRODUCTS_HEADERS = [
+    // Core fields (from items table)
     'sku_code',
     'name',
     'category',
@@ -360,7 +491,60 @@ export const PRODUCTS_HEADERS = [
     'batch_size',
     'yield_percentage',
     'processing_loss',
-    'production_notes'
+    'production_notes',
+
+    // Nutritional Info (from item_nutrition table)
+    'nutrition_serving_size',
+    'nutrition_calories',
+    'nutrition_total_fat',
+    'nutrition_saturated_fat',
+    'nutrition_cholesterol',
+    'nutrition_sodium',
+    'nutrition_total_carbohydrates',
+    'nutrition_dietary_fiber',
+    'nutrition_sugars',
+    'nutrition_protein',
+
+    // Allergens (from item_allergens table - comma-separated)
+    'allergens',
+    'may_contain_allergens',
+
+    // Physical Properties (from item_physical_properties table)
+    'physical_texture',
+    'physical_color',
+    'physical_viscosity',
+    'physical_ph_level',
+    'physical_water_activity',
+
+    // Extended Shelf Life (from item_shelf_life table)
+    'shelf_storage_temperature',
+    'shelf_storage_conditions',
+
+    // Packaging Info (from item_packaging table)
+    'packaging_primary',
+    'packaging_secondary',
+    'packaging_material',
+    'packaging_net_weight',
+    'packaging_label_compliance',
+
+    // Cost Breakdown (from item_cost_breakdown table)
+    'cost_labor',
+    'cost_overhead',
+    'cost_additional_packaging',
+
+    // Quality Control (from item_quality_control table)
+    'qc_test_frequency',
+    'qc_sampling_plan',
+    'qc_acceptance_criteria',
+    'qc_corrective_actions',
+
+    // Regulatory Compliance (from item_regulatory_compliance table)
+    'compliance_fda_approved',
+    'compliance_gmp_compliant',
+    'compliance_haccp_plan',
+    'compliance_organic_certified',
+    'compliance_kosher_certified',
+    'compliance_halal_certified'
 ];
 
 // Valid categories for each template type
