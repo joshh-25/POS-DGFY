@@ -637,7 +637,8 @@ export const deleteItem = async (itemId, userId) => {
     include: [{
       model: PurchaseOrder,
       as: 'purchaseOrder',
-      attributes: ['po_number', 'status']
+      attributes: ['po_number', 'status'],
+      where: { archived_at: null } // Only check non-archived POs
     }]
   });
 
@@ -654,7 +655,8 @@ export const deleteItem = async (itemId, userId) => {
     include: [{
       model: JobOrder,
       as: 'jobOrder',
-      attributes: ['jo_number', 'status']
+      attributes: ['jo_number', 'status'],
+      where: { archived_at: null } // Only check non-archived JOs
     }]
   });
 
