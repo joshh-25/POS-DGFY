@@ -40,7 +40,8 @@ export default function ExpiringBatchesList({ alerts }) {
           const isMissingExpiry = alert.type === 'missing_expiry_date';
 
           const days = alert.days_until_expiry;
-          const isExpired = !isMissingExpiry && days < 0;
+          const isDaysInvalid = days === null || days === undefined || Number.isNaN(days);
+          const isExpired = !isMissingExpiry && !isDaysInvalid && days < 0;
 
           // Calculate shelf life progress if available
           const shelfLifeDays = alert.shelf_life_days;
@@ -67,7 +68,7 @@ export default function ExpiringBatchesList({ alerts }) {
                   )}
                   <Badge variant="outline" className={cn(
                     "text-xs font-medium",
-                    isMissingExpiry
+                    isMissingExpiry || isDaysInvalid
                       ? "bg-slate-100 text-slate-700 border-slate-200"
                       : isExpired
                         ? "bg-red-100 text-red-700 border-red-200"
@@ -77,7 +78,7 @@ export default function ExpiringBatchesList({ alerts }) {
                             ? "bg-amber-100 text-amber-700 border-amber-200"
                             : "bg-yellow-100 text-yellow-700 border-yellow-200"
                   )}>
-                    {isMissingExpiry ? 'Missing Date' : isExpired ? 'Expired' : `${days}d left`}
+                    {isMissingExpiry ? 'Missing Date' : isDaysInvalid ? 'Invalid Date' : isExpired ? 'Expired' : `${days}d left`}
                   </Badge>
                 </div>
                 <span className="text-sm text-slate-600">
@@ -90,13 +91,15 @@ export default function ExpiringBatchesList({ alerts }) {
                   <Clock className="w-3 h-3" />
                   {isMissingExpiry
                     ? 'Expiry date not set'
-                    : isExpired
-                      ? `Expired ${Math.abs(days)} days ago`
-                      : days === 0
-                        ? 'Expires today'
-                        : days === 1
-                          ? 'Expires tomorrow'
-                          : `Expires in ${days} days`
+                    : isDaysInvalid
+                      ? 'Expiry date invalid'
+                      : isExpired
+                        ? `Expired ${Math.abs(days)} days ago`
+                        : days === 0
+                          ? 'Expires today'
+                          : days === 1
+                            ? 'Expires tomorrow'
+                            : `Expires in ${days} days`
                   }
                 </span>
                 <span>

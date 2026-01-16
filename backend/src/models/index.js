@@ -24,6 +24,7 @@ import AuditLog from './AuditLog.js';
 import SystemSetting from './SystemSetting.js';
 import BatchLineage from './BatchLineage.js';
 import ReceiveToken from './ReceiveToken.js';
+import ReportSnapshot from './ReportSnapshot.js';
 
 // Define associations
 // User associations
@@ -60,6 +61,7 @@ PurchaseOrder.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' })
 PurchaseOrder.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 PurchaseOrder.belongsTo(User, { foreignKey: 'received_by', as: 'receiver' });
 PurchaseOrder.hasMany(POLineItem, { foreignKey: 'po_id', as: 'lineItems' });
+PurchaseOrder.hasMany(POLineItem, { foreignKey: 'po_id', as: 'items' }); // Alias for reports
 
 // POLineItem associations
 POLineItem.belongsTo(PurchaseOrder, { foreignKey: 'po_id', as: 'purchaseOrder' });
@@ -166,7 +168,8 @@ const db = {
   AuditLog,
   SystemSetting,
   BatchLineage,
-  ReceiveToken
+  ReceiveToken,
+  ReportSnapshot
 };
 
 export default db;
@@ -196,6 +199,7 @@ export {
   AuditLog,
   SystemSetting,
   BatchLineage,
-  ReceiveToken
+  ReceiveToken,
+  ReportSnapshot
 };
 

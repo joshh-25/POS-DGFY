@@ -2477,7 +2477,415 @@ curl -I https://skupervisor.surebizcorp.com/api/v1/items/export
 
 ---
 
-**Last Updated**: 2026-01-15
-**Version**: 1.9.1
+## Phase 24: Invalid Expiry Date Display Bug Fix
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-15
+
+### Issue Description
+Dashboard "Expiry Alerts" section displayed "nulld left" badge instead of proper days count (e.g., "5d left").
+
+**Screenshot Evidence**: Batch #32 for "Chocolate Cake 8inch" showed "nulld left" badge.
+
+### Root Cause Analysis
+
+**Database Investigation**:
+```sql
+SELECT batch_id, expiry_date, received_date FROM fifo_batches WHERE batch_id = 32;
+```
+
+**Result**:
+| batch_id | expiry_date | received_date |
+|----------|-------------|---------------|
+| 32 | 1899-11-29 ❌ | 2026-01-13 |
+
+**Root Cause**: The expiry_date `1899-11-29` is the **Excel epoch date**. This occurs when:
+1. CSV import parses an empty or invalid date cell
+2. Excel converts it to its "zero date" (December 30, 1899)
+3. The system stored this as a "valid" date
+
+When calculating `days_until_expiry`, the result became `NaN` or extremely negative, which displayed as "nulld left".
+
+### Fixes Implemented
+
+#### Fix 1: Database Record Correction
+Set Batch #32's invalid expiry_date to NULL:
+```sql
+UPDATE fifo_batches SET expiry_date = NULL WHERE batch_id = 32 AND expiry_date < '1970-01-01';
+```
+
+#### Fix 2: Model-Level Validation (Backend)
+Added `beforeSave` hook to `FIFOBatch.js` model to automatically reject dates before year 2000:
+
+```javascript
+hooks: {
+  beforeSave: (batch) => {
+    if (batch.expiry_date) {
+      const expiryDate = new Date(batch.expiry_date);
+      if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
+        console.warn(`[FIFOBatch] Invalid expiry_date detected: ${batch.expiry_date}, setting to NULL`);
+        batch.expiry_date = null;
+      }
+    }
+  }
+}
+```
+
+**File Modified**: `backend/src/models/FIFOBatch.js`
+
+#### Fix 3: Alert Service Filtering (Backend)
+Updated `alertService.js` to skip batches with invalid expiry dates when generating alerts:
+
+```javascript
+// Skip batches with invalid expiry dates (NaN or before year 2000 - Excel epoch dates)
+if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
+  console.warn(`[AlertService] Batch #${batch.batch_id} has invalid expiry_date: ${batch.expiry_date}, skipping`);
+  return;
+}
+```
+
+**File Modified**: `backend/src/services/alertService.js`
+
+#### Fix 4: Graceful UI Display (Frontend)
+Updated `ExpiringBatchesList.jsx` to handle null/NaN days gracefully:
+
+```jsx
+const isDaysInvalid = days === null || days === undefined || Number.isNaN(days);
+
+// Badge text
+{isMissingExpiry ? 'Missing Date' : isDaysInvalid ? 'Invalid Date' : isExpired ? 'Expired' : `${days}d left`}
+
+// Tooltip text
+{isDaysInvalid ? 'Expiry date invalid' : ...}
+```
+
+**File Modified**: `frontend/Components/dashboard/ExpiringBatchesList.jsx`
+
+### Protection Layers Summary
+
+| Layer | Location | Protection |
+|-------|----------|------------|
+| **1. Model** | `FIFOBatch.js` | Auto-converts dates before 2000 to NULL on save |
+| **2. Service** | `alertService.js` | Skips invalid dates when generating alerts |
+| **3. UI** | `ExpiringBatchesList.jsx` | Shows "Invalid Date" instead of "nulld left" |
+
+### Additional Findings
+Found 10+ batches with NULL expiry_date in database. These appear correctly in the "Missing" tab of Expiry Alerts.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/models/FIFOBatch.js` | Added `beforeSave` validation hook |
+| `backend/src/services/alertService.js` | Added invalid date filtering |
+| `frontend/Components/dashboard/ExpiringBatchesList.jsx` | Added graceful null/NaN handling |
+
+---
+
+## Phase 22: Comprehensive Inventory Reports Implementation
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-16
+
+### Overview
+Implemented 5 comprehensive inventory reports with date filtering, historical snapshots, and CSV export functionality to provide deep analytics and insights into inventory operations.
+
+### New Report Types Implemented
+
+#### 1. Expiry Report
+**Purpose**: Track expired and soon-to-expire batches with value-at-risk calculations.
+
+**Features**:
+- Categorizes batches into tiers: Expired, Critical (≤7 days), Warning (≤14 days), Upcoming (≤30 days)
+- Calculates value at risk for each category
+- Shows batch-level details with remaining quantities
+- Supports date range filtering for historical analysis
+
+**Files Modified**:
+- `backend/src/services/reportService.js` - Added `getExpiryReport()` function
+
+#### 2. Enhanced Stock Aging Report
+**Purpose**: Analyze inventory aging based on batch received dates with turnover metrics.
+
+**Features**:
+- Uses `FIFOBatch.received_date` for accurate aging calculations
+- Calculates turnover rate per batch (consumed/total quantity)
+- Categorizes batches: Fresh (<30 days), Aging (30-60 days), Critical (>60 days)
+- Aggregates data by item for overall aging analysis
+
+**Files Modified**:
+- `backend/src/services/reportService.js` - Added `getEnhancedStockAgingReport()` function
+
+#### 3. Production Report
+**Purpose**: Analyze job order performance, ingredient consumption, and waste.
+
+**Features**:
+- Job order completion rate analysis
+- Production efficiency metrics (produced vs. target quantities)
+- Top consumed items breakdown
+- Loss breakdown by reason (waste, spoilage, damage, theft, adjustment)
+- Waste percentage calculations
+
+**Files Modified**:
+- `backend/src/services/reportService.js` - Added `getProductionReport()` function
+
+#### 4. Purchase Order Analysis Report
+**Purpose**: Track supplier performance, delivery times, and procurement trends.
+
+**Features**:
+- Pending deliveries with expected dates
+- Supplier performance metrics (on-time rate, quality score)
+- Order fulfillment rates
+- Cost trend analysis
+
+**Files Modified**:
+- `backend/src/services/reportService.js` - Added `getPurchaseOrderAnalysis()` function
+
+#### 5. Executive Summary Report
+**Purpose**: High-level dashboard combining key metrics from all reports.
+
+**Features**:
+- Total inventory value and item counts
+- Stock health overview (low stock items)
+- Expiry risk summary
+- Aging overview
+- Production statistics (completion rate, efficiency, waste)
+- Procurement overview (orders, fulfillment rate)
+- Movement analytics (fastest/slowest moving items)
+
+**Files Modified**:
+- `backend/src/services/reportService.js` - Added `getExecutiveSummary()` function
+
+### Cross-Cutting Features
+
+#### Date Range Filtering
+All reports support optional start and end date filtering via query parameters:
+- `startDate`: Filter data from this date
+- `endDate`: Filter data until this date
+
+#### Historical Snapshots
+**Purpose**: Save and retrieve historical report data for auditing and trend analysis.
+
+**Database**:
+```sql
+CREATE TABLE report_snapshots (
+  snapshot_id INT AUTO_INCREMENT PRIMARY KEY,
+  report_type ENUM('expiry', 'stock_aging', 'production', 'po_analysis', 'executive_summary'),
+  report_name VARCHAR(100),
+  snapshot_data JSON NOT NULL,
+  summary_metrics JSON,
+  date_range_start DATE,
+  date_range_end DATE,
+  created_by INT REFERENCES users(user_id),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Migration**: `20260115000002-create-report-snapshots.cjs`
+
+**Files Created**:
+- `backend/src/models/ReportSnapshot.js` - Sequelize model
+
+**Functions Added to `reportService.js`**:
+- `saveReportSnapshot()` - Save current report data
+- `getReportSnapshots()` - Retrieve snapshot list
+- `getReportSnapshotById()` - Load specific snapshot
+
+#### CSV Export
+All reports can be exported to CSV format with proper escaping and formatting.
+
+**Endpoint**: `GET /api/v1/reports/export/csv`
+
+### Backend Implementation
+
+#### New Routes (`reports.js`)
+```javascript
+// Report endpoints
+GET  /api/v1/reports/expiry              - Expiry report
+GET  /api/v1/reports/enhanced-aging      - Stock aging report
+GET  /api/v1/reports/production          - Production report
+GET  /api/v1/reports/po-analysis         - Purchase order analysis
+GET  /api/v1/reports/executive-summary   - Executive summary
+
+// Snapshot management
+GET  /api/v1/reports/snapshots           - List snapshots by type
+GET  /api/v1/reports/snapshots/:id       - Get specific snapshot
+POST /api/v1/reports/snapshots           - Save new snapshot
+
+// Export
+GET  /api/v1/reports/export/csv          - CSV export
+```
+
+#### Controller Functions (`reportController.js`)
+- `getExpiryReport()` - Handle expiry report requests
+- `getEnhancedAgingReport()` - Handle aging report requests
+- `getProductionReport()` - Handle production report requests
+- `getPOAnalysisReport()` - Handle PO analysis requests
+- `getExecutiveSummary()` - Handle executive summary requests
+- `getSnapshots()` - List snapshots
+- `getSnapshotById()` - Get snapshot details
+- `saveSnapshot()` - Create new snapshot
+- `exportCSV()` - Generate CSV export
+
+### Frontend Implementation
+
+#### Custom Hook (`useReports.js`)
+New React hook for managing report data:
+
+```javascript
+const {
+  expiryData, agingData, productionData, poAnalysisData, executiveSummaryData,
+  loading, error,
+  dateRange, setDateRange,
+  fetchExpiryReport, fetchAgingReport, fetchProductionReport,
+  fetchPOAnalysisReport, fetchExecutiveSummary,
+  snapshots, fetchSnapshots, saveSnapshot, loadSnapshot,
+  exportCSV
+} = useReports();
+```
+
+**Location**: `frontend/src/hooks/useReports.js`
+
+#### Reports Page (`Reports.jsx`)
+Complete rewrite with 5 tabbed report views:
+
+**Tabs**:
+1. **Expiry & Expired** - Shows expiry batches by category
+2. **Stock Aging** - Displays batch aging with turnover rates
+3. **Production** - Job order and consumption analytics
+4. **Procurement** - Pending deliveries and supplier performance
+5. **Executive Summary** - High-level metrics dashboard
+
+**Features**:
+- Date range picker for filtering
+- History dropdown for snapshot management
+- Save/Load snapshot functionality
+- CSV export button
+
+**Location**: `frontend/Pages/Reports.jsx`
+
+### Bug Fixes During Implementation
+
+#### 1. Executive Summary 500 Error
+**Issue**: Executive Summary endpoint returned 500 Internal Server Error.
+
+**Root Cause**: `getFinancialSummary()` function used incorrect column name `is_active: true` but Item model uses `status: 'active'`.
+
+**Fix**:
+```diff
+// backend/src/services/reportService.js
+export const getFinancialSummary = async () => {
+  const items = await Item.findAll({
+-    where: { is_active: true },
++    where: { status: 'active' },
+    attributes: ['current_stock', 'cost_per_unit']
+  });
+```
+
+**File Modified**: `backend/src/services/reportService.js` (line 796)
+
+#### 2. POLineItem Association Error
+**Issue**: Purchase Order Analysis failed due to missing `items` alias.
+
+**Fix**: Added alias to `models/index.js`:
+```javascript
+PurchaseOrder.hasMany(POLineItem, { 
+  foreignKey: 'po_id', 
+  as: 'items'  // Added alias
+});
+```
+
+**File Modified**: `backend/src/models/index.js`
+
+#### 3. Migration Blocked
+**Issue**: Migration for `report_snapshots` table was blocked by a prior migration trying to add an already-existing column.
+
+**Fix**: Manually marked `20260115000001-fix-missing-quantity-produced.cjs` as complete in SequelizeMeta table:
+```sql
+INSERT INTO SequelizeMeta (name) VALUES ('20260115000001-fix-missing-quantity-produced.cjs');
+```
+
+Then ran remaining migrations successfully.
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `backend/src/models/ReportSnapshot.js` | Sequelize model for snapshot storage |
+| `backend/src/migrations/20260115000002-create-report-snapshots.cjs` | Database migration |
+| `frontend/src/hooks/useReports.js` | React hook for report data management |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/reportService.js` | Added 9 new report functions (600+ lines) |
+| `backend/src/controllers/reportController.js` | Added 9 controller methods |
+| `backend/src/routes/reports.js` | Added 9 new routes |
+| `backend/src/models/index.js` | Added ReportSnapshot model, added `items` alias to PO association |
+| `frontend/Pages/Reports.jsx` | Complete rewrite with 5 tabs |
+
+### Verification Results
+
+All 5 report tabs verified working in browser:
+
+| Report | Status | Metrics Shown |
+|--------|--------|---------------|
+| Expiry & Expired | ✅ Working | Expired/Critical/Warning/Upcoming batches with values |
+| Stock Aging | ✅ Working | Fresh/Aging/Critical batches with turnover rates |
+| Production | ✅ Working | Job orders, completion rate, efficiency, waste % |
+| Procurement | ✅ Working | Pending deliveries, supplier performance |
+| Executive Summary | ✅ Working | ₱10B+ inventory value, 39 items, all KPIs |
+
+**Additional Features Verified**:
+- ✅ Date range filtering
+- ✅ Save snapshot (History → Save Current as Snapshot)
+- ✅ Load snapshot (History → Previous Snapshots)
+- ✅ CSV export (Export CSV button)
+
+### API Documentation
+
+#### Example: Expiry Report
+```bash
+GET /api/v1/reports/expiry?startDate=2026-01-01&endDate=2026-01-31
+
+Response:
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total_expired_batches": 0,
+      "total_expired_value": 0,
+      "total_critical_batches": 1,
+      "total_critical_value": 10.00,
+      "total_warning_batches": 0,
+      "total_upcoming_batches": 0,
+      "total_value_at_risk": 10.00
+    },
+    "expired": [],
+    "critical": [{ "batch_id": 33, "item_name": "VONVV", ... }],
+    "warning": [],
+    "upcoming": []
+  }
+}
+```
+
+#### Example: Save Snapshot
+```bash
+POST /api/v1/reports/snapshots
+Content-Type: application/json
+
+{
+  "reportType": "expiry",
+  "reportName": "January 2026 Expiry Check",
+  "snapshotData": { ... },
+  "summaryMetrics": { "total_value_at_risk": 10.00 },
+  "dateRangeStart": "2026-01-01",
+  "dateRangeEnd": "2026-01-31"
+}
+```
+
+---
+
+**Last Updated**: 2026-01-16
+**Version**: 1.10.0
 **Project Status**: Production Ready
 

@@ -102,6 +102,13 @@ export const generateAlerts = async () => {
     }
 
     const expiryDate = new Date(batch.expiry_date);
+
+    // Skip batches with invalid expiry dates (NaN or before year 2000 - Excel epoch dates)
+    if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
+      console.warn(`[AlertService] Batch #${batch.batch_id} has invalid expiry_date: ${batch.expiry_date}, skipping`);
+      return;
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));

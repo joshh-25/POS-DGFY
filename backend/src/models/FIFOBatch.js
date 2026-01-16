@@ -43,7 +43,19 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
   tableName: 'fifo_batches',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  hooks: {
+    beforeSave: (batch) => {
+      // Validate expiry_date - reject dates before year 2000 (catches Excel epoch dates)
+      if (batch.expiry_date) {
+        const expiryDate = new Date(batch.expiry_date);
+        if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
+          console.warn(`[FIFOBatch] Invalid expiry_date detected: ${batch.expiry_date}, setting to NULL`);
+          batch.expiry_date = null;
+        }
+      }
+    }
+  }
 });
 
 export default FIFOBatch;

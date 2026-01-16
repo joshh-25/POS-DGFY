@@ -56,6 +56,10 @@ This guide explains how to bulk import items (raw materials, packaging, products
 | `packaging_contents` | Contents description | |
 
 ### Products Template (WIP, Finished Goods)
+
+The Products template includes comprehensive fields from the 12-step Product Wizard.
+
+#### Core Fields
 | Column | Description | Required |
 |--------|-------------|----------|
 | `sku_code` | Unique item code | ✅ |
@@ -76,6 +80,75 @@ This guide explains how to bulk import items (raw materials, packaging, products
 | `yield_percentage` | Production yield (0-100) | |
 | `processing_loss` | Production loss (0-100) | |
 | `production_notes` | Production notes | |
+
+#### Nutritional Info
+| Column | Description |
+|--------|-------------|
+| `nutrition_serving_size` | Serving size (e.g., "100g") |
+| `nutrition_calories` | Calories per serving |
+| `nutrition_total_fat` | Total fat (g) |
+| `nutrition_saturated_fat` | Saturated fat (g) |
+| `nutrition_cholesterol` | Cholesterol (mg) |
+| `nutrition_sodium` | Sodium (mg) |
+| `nutrition_total_carbohydrates` | Total carbs (g) |
+| `nutrition_dietary_fiber` | Dietary fiber (g) |
+| `nutrition_sugars` | Sugars (g) |
+| `nutrition_protein` | Protein (g) |
+
+#### Allergens
+| Column | Description |
+|--------|-------------|
+| `allergens` | Comma-separated: `milk,eggs,wheat` |
+| `may_contain_allergens` | Cross-contamination warning |
+
+#### Physical Properties
+| Column | Description |
+|--------|-------------|
+| `physical_texture` | Texture (e.g., "smooth", "granular") |
+| `physical_color` | Color description |
+| `physical_viscosity` | Viscosity (e.g., "thick", "runny") |
+| `physical_ph_level` | pH level (0-14) |
+| `physical_water_activity` | Water activity (0-1) |
+
+#### Extended Shelf Life
+| Column | Description |
+|--------|-------------|
+| `shelf_storage_temperature` | `frozen`, `refrigerated`, `cool`, `room`, `ambient` |
+| `shelf_storage_conditions` | Storage conditions text |
+
+#### Packaging Info
+| Column | Description |
+|--------|-------------|
+| `packaging_primary` | Primary packaging type |
+| `packaging_secondary` | Secondary packaging type |
+| `packaging_material` | Packaging material |
+| `packaging_net_weight` | Net weight |
+| `packaging_label_compliance` | Label compliant (`TRUE`/`FALSE`) |
+
+#### Cost Breakdown
+| Column | Description |
+|--------|-------------|
+| `cost_labor` | Labor cost per unit |
+| `cost_overhead` | Overhead cost per unit |
+| `cost_additional_packaging` | Additional packaging cost |
+
+#### Quality Control
+| Column | Description |
+|--------|-------------|
+| `qc_test_frequency` | `every_batch`, `daily`, `weekly`, `bi_weekly`, `monthly`, `quarterly` |
+| `qc_sampling_plan` | Sampling plan details |
+| `qc_acceptance_criteria` | Acceptance criteria |
+| `qc_corrective_actions` | Corrective actions |
+
+#### Regulatory Compliance
+| Column | Description |
+|--------|-------------|
+| `compliance_fda_approved` | FDA approved (`TRUE`/`FALSE`) |
+| `compliance_gmp_compliant` | GMP compliant (`TRUE`/`FALSE`) |
+| `compliance_haccp_plan` | HACCP plan (`TRUE`/`FALSE`) |
+| `compliance_organic_certified` | Organic certified (`TRUE`/`FALSE`) |
+| `compliance_kosher_certified` | Kosher certified (`TRUE`/`FALSE`) |
+| `compliance_halal_certified` | Halal certified (`TRUE`/`FALSE`) |
 
 ---
 
