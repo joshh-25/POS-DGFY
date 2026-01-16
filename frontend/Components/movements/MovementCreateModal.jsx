@@ -5,18 +5,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "../ui/dialog";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "../ui/select";
 import {
   Command,
   CommandInput,
@@ -24,49 +24,29 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandItem,
-} from "@/components/ui/command";
+} from "../ui/command";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-} from "@/components/ui/popover";
+} from "../ui/popover";
 import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  ArrowLeftRight,
-  RotateCcw,
-  AlertCircle,
   ChevronsUpDown,
-  Check
+  Check,
+  AlertTriangle,
+  Activity
 } from 'lucide-react';
+import { Badge } from "../ui/badge";
 import { cn } from "../../src/lib/utils.js";
+import { useLocations } from '../../src/hooks/useLocations.js';
 import * as itemService from '../../src/services/itemService.js';
 import { format } from 'date-fns';
-
-const movementTypes = [
-  { value: 'purchase_receipt', label: 'Purchase Receipt', icon: ArrowDownCircle, color: 'text-emerald-600' },
-  { value: 'production_consumption', label: 'Production Consumption', icon: ArrowUpCircle, color: 'text-red-500' },
-  { value: 'transfer', label: 'Transfer', icon: ArrowLeftRight, color: 'text-blue-500' },
-  { value: 'return', label: 'Return', icon: RotateCcw, color: 'text-blue-500' },
-  { value: 'calculated_loss', label: 'Calculated Loss', icon: AlertCircle, color: 'text-red-600' }
-];
-
-const lossReasons = [
-  { value: 'waste', label: 'Waste' },
-  { value: 'spoilage', label: 'Spoilage' },
-  { value: 'damage', label: 'Damage' },
-  { value: 'pilferage', label: 'Pilferage' }
-];
-
-const locations = [
-  'Main Warehouse',
-  'Production Floor',
-  'Shipping Area',
-  'Quality Control',
-  'Cold Storage'
-];
+import { getMovementTypes, lossReasons, isPositiveMovement } from '../utils/movementConfig.js';
+import { formatNumber } from '../../src/lib/numberUtils.js';
 
 export default function MovementCreateModal({ open, onClose, onSubmit, items, preselectedItem }) {
+  const { locations, loading: loadingLocations } = useLocations();
+
   const [formData, setFormData] = useState({
     item_id: '',
     item_name: '',
@@ -93,7 +73,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
         return;
       }
 
-      const selectedItem = items.find(i => i.id === formData.item_id);
+      const selectedItem = items.find(i => (i.item_id || i.id) === formData.item_id);
       if (selectedItem?.fifo_enabled) {
         setLoadingBatches(true);
         try {
@@ -127,7 +107,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
       if (field === 'item_id') {
-        const item = items.find(i => i.id === value);
+        const item = items.find(i => (i.item_id || i.id) === value);
         if (item) {
           updated.item_name = item.name;
         }
@@ -160,7 +140,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {movementTypes.map(type => {
+                {getMovementTypes().map(type => {
                   const Icon = type.icon;
                   return (
                     <SelectItem key={type.value} value={type.value}>
@@ -189,7 +169,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                   )}
                 >
                   {formData.item_id
-                    ? items.find((item) => item.id === formData.item_id)?.name
+                    ? items.find((item) => (item.item_id || item.id) === formData.item_id)?.name
                     : "Search items..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -208,29 +188,39 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                         .filter((item) =>
                           item.name.toLowerCase().includes(searchQuery.toLowerCase())
                         )
-                        .map((item) => (
-                          <CommandItem
-                            key={item.id}
-                            selected={formData.item_id === item.id}
-                            onSelect={() => {
-                              handleChange('item_id', item.id);
-                              setSearchQuery('');
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                formData.item_id === item.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex flex-col">
-                              <span>{item.name}</span>
-                              <span className="text-xs text-slate-500">
-                                {item.current_stock} {item.unit_of_measure} in stock
-                              </span>
-                            </div>
-                          </CommandItem>
-                        ))}
+                        .map((item) => {
+                          const itemId = item.item_id || item.id;
+                          return (
+                            <CommandItem
+                              key={itemId}
+                              selected={formData.item_id === itemId}
+                              onSelect={() => {
+                                handleChange('item_id', itemId);
+                                setSearchQuery('');
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.item_id === itemId ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <span>{item.name}</span>
+                                  {item.category && (
+                                    <Badge variant="secondary" className="text-[10px] px-1 h-5 text-slate-500 bg-slate-100 border border-slate-200">
+                                      {item.category}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-xs text-slate-500">
+                                  {formatNumber(item.current_stock, 2)} {item.unit_of_measure} in stock
+                                </span>
+                              </div>
+                            </CommandItem>
+                          );
+                        })}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -373,6 +363,52 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
               rows={3}
             />
           </div>
+
+          {/* C9. Stock Impact Preview */}
+          {formData.item_id && formData.quantity > 0 && (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm">
+              <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-slate-500" />
+                Stock Impact
+              </h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-slate-500 text-xs uppercase tracking-wide">Current</p>
+                  <p className="font-medium text-slate-900 mt-0.5">
+                    {formatNumber(items.find(i => (i.item_id || i.id) === formData.item_id)?.current_stock || 0, 2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 text-xs uppercase tracking-wide">Change</p>
+                  <p className={cn("font-medium mt-0.5",
+                    formData.movement_type === 'transfer' ? 'text-blue-600' :
+                      isPositiveMovement(formData.movement_type) ? "text-emerald-600" : "text-red-500"
+                  )}>
+                    {formData.movement_type === 'transfer' ? 'No Change' : (
+                      <>
+                        {isPositiveMovement(formData.movement_type) ? '+' : '-'}
+                        {formatNumber(formData.quantity, 2)}
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 text-xs uppercase tracking-wide">Projected</p>
+                  <p className="font-bold text-slate-900 mt-0.5">
+                    {(() => {
+                      const current = parseFloat(items.find(i => (i.item_id || i.id) === formData.item_id)?.current_stock || 0);
+                      const change = parseFloat(formData.quantity || 0);
+                      if (formData.movement_type === 'transfer') return formatNumber(current, 2);
+                      const projected = isPositiveMovement(formData.movement_type)
+                        ? current + change
+                        : current - change;
+                      return formatNumber(projected, 2);
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="pt-8">

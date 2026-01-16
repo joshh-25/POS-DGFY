@@ -10,8 +10,8 @@ const DropdownMenu = ({ children }) => {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target) && 
-          triggerRef.current && !triggerRef.current.contains(event.target)) {
+      if (menuRef.current && !menuRef.current.contains(event.target) &&
+        triggerRef.current && !triggerRef.current.contains(event.target)) {
         setOpen(false)
       }
     }
@@ -30,13 +30,13 @@ const DropdownMenu = ({ children }) => {
 
 const DropdownMenuTrigger = React.forwardRef(({ className, children, asChild, ...props }, ref) => {
   const { setOpen, triggerRef } = React.useContext(DropdownMenuContext)
-  
+
   const handleClick = () => setOpen(prev => !prev)
   const handleRef = (node) => {
     triggerRef.current = node
     if (ref) ref.current = node
   }
-  
+
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children, {
       ref: handleRef,
@@ -50,7 +50,7 @@ const DropdownMenuTrigger = React.forwardRef(({ className, children, asChild, ..
       ...props
     })
   }
-  
+
   return (
     <button
       ref={handleRef}
@@ -67,7 +67,7 @@ DropdownMenuTrigger.displayName = 'DropdownMenuTrigger'
 
 const DropdownMenuContent = React.forwardRef(({ className, align = 'end', ...props }, ref) => {
   const { open, menuRef } = React.useContext(DropdownMenuContext)
-  
+
   if (!open) return null
 
   return (
@@ -89,14 +89,14 @@ DropdownMenuContent.displayName = 'DropdownMenuContent'
 
 const DropdownMenuItem = React.forwardRef(({ className, asChild, children, ...props }, ref) => {
   const { setOpen } = React.useContext(DropdownMenuContext)
-  
+
   const handleClick = (e) => {
     setOpen(false)
     if (props.onClick) {
       props.onClick(e)
     }
   }
-  
+
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children, {
       ref,
@@ -113,7 +113,7 @@ const DropdownMenuItem = React.forwardRef(({ className, asChild, children, ...pr
       )
     })
   }
-  
+
   return (
     <div
       ref={ref}
@@ -130,5 +130,27 @@ const DropdownMenuItem = React.forwardRef(({ className, asChild, children, ...pr
 })
 DropdownMenuItem.displayName = 'DropdownMenuItem'
 
-export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem }
+const DropdownMenuLabel = React.forwardRef(({ className, inset, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "px-2 py-1.5 text-sm font-semibold text-slate-900",
+      inset && "pl-8",
+      className
+    )}
+    {...props}
+  />
+))
+DropdownMenuLabel.displayName = "DropdownMenuLabel"
+
+const DropdownMenuSeparator = React.forwardRef(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("-mx-1 my-1 h-px bg-slate-100", className)}
+    {...props}
+  />
+))
+DropdownMenuSeparator.displayName = "DropdownMenuSeparator"
+
+export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator }
 

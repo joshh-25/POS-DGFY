@@ -1,44 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowRight, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, RotateCcw, AlertCircle } from 'lucide-react';
+import { ArrowRight, ArrowLeftRight } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "../../src/lib/utils.js";
 import { createPageUrl } from '@/utils.js';
-
-const movementConfig = {
-  purchase_receipt: { 
-    icon: ArrowDownCircle, 
-    color: "text-emerald-600", 
-    bg: "bg-emerald-50 border-emerald-200", 
-    label: "Purchase Receipt" 
-  },
-  production_consumption: { 
-    icon: ArrowUpCircle, 
-    color: "text-red-500", 
-    bg: "bg-red-50 border-red-200", 
-    label: "Production Consumption" 
-  },
-  transfer: { 
-    icon: ArrowLeftRight, 
-    color: "text-blue-500", 
-    bg: "bg-blue-50 border-blue-200", 
-    label: "Transfer" 
-  },
-  return: { 
-    icon: RotateCcw, 
-    color: "text-blue-500", 
-    bg: "bg-blue-50 border-blue-200", 
-    label: "Return" 
-  },
-  calculated_loss: { 
-    icon: AlertCircle, 
-    color: "text-red-600", 
-    bg: "bg-red-50 border-red-200", 
-    label: "Calculated Loss" 
-  }
-};
+import { getMovementConfig, isPositiveMovement } from '../utils/movementConfig.js';
 
 export default function RecentMovements({ movements = [] }) {
   const recentMovements = movements
@@ -89,10 +57,10 @@ export default function RecentMovements({ movements = [] }) {
       </div>
       <div className="divide-y divide-slate-100">
         {recentMovements.map((mov) => {
-          const config = movementConfig[mov.movement_type] || movementConfig.transfer;
+          const config = getMovementConfig(mov.movement_type);
           const Icon = config.icon;
-          const isPositive = mov.movement_type === 'purchase_receipt' || mov.movement_type === 'return';
-          
+          const isPositive = isPositiveMovement(mov.movement_type);
+
           return (
             <div key={mov.id} className="p-4 hover:bg-slate-50 transition-colors">
               <div className="flex items-center justify-between mb-2">
@@ -112,7 +80,7 @@ export default function RecentMovements({ movements = [] }) {
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>
-                  {mov.created_date 
+                  {mov.created_date
                     ? format(new Date(mov.created_date), 'MMM d, yyyy h:mm a')
                     : 'N/A'}
                 </span>

@@ -2889,3 +2889,35 @@ Content-Type: application/json
 **Version**: 1.10.0
 **Project Status**: Production Ready
 
+---
+
+## Phase 23: Stock Movements Enhancements & Verification
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-16
+
+### Core Stock Movements Features
+- [x] **Void Functionality**: 
+  - Backend: Implemented `voidMovement` using `reference_type='MANUAL'` (fixed ENUM issue).
+  - Frontend: Added "Void Movement" button with reason prompt.
+  - Verification: Confirmed reverses stock quantities correctly.
+- [x] **Export to CSV**:
+  - Implemented `/api/v1/stock-movements/export` endpoint.
+  - Implemented frontend export button.
+  - **Enhancement**: Standardized CSV generation to use robust `escapeCSV` logic (RFC 4180 compliant) instead of basic JSON stringification.
+- [x] **Dynamic Locations**:
+  - Frontend: Added `useLocations` hook to fetch warehouse locations dynamically.
+  - Updated `MovementCreateModal` to use dynamic dropdowns.
+- [x] **Stock Impact Preview**:
+  - Added visual "Current -> Change -> Projected" stock level preview in Create Modal.
+
+### Verification Results
+- [x] **CSV Exports**: Verified accurate formatting for both Reports and Stock Movements.
+- [x] **Voiding**: Fixed 500 error by correcting ENUM usage.
+- [x] **UI Polish**: Added badges to item dropdowns.
+
+---
+
+**Last Updated**: 2026-01-16
+**Version**: 1.11.0
+**Project Status**: Production Ready
+

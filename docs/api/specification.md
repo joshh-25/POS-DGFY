@@ -974,6 +974,52 @@ Record manual stock movement
 }
 ```
 
+### POST /stock-movements/:id/void
+Void a specific stock movement
+
+**Request**
+```json
+{
+  "reason": "Duplicate entry error"
+}
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "movement_id": 95,
+    "item_id": 1,
+    "movement_type": "adjustment",
+    "quantity": -10,
+    "reference_type": "MANUAL",
+    "notes": "Void of movement #94: Duplicate entry error"
+  },
+  "message": "Movement voided successfully"
+}
+```
+
+### GET /stock-movements/export
+Export stock movements as CSV
+
+**Query Parameters**
+```
+?format=csv
+&startDate=2024-01-01
+&endDate=2024-01-31
+&item_id=1
+&movement_type=all
+```
+
+**Response (200)**
+Content-Type: text/csv
+Content-Disposition: attachment; filename="stock_movements_2024-01-16.csv"
+```csv
+Movement ID,Date,Item Name,SKU,Type,Quantity,Current Stock,Reference,Batch ID,User,Notes
+94,"1/16/2026, 3:43:53 PM","Calamansi Label 330ml","PKG-005","transfer","1.00",,"N/A","N/A","admin",""
+```
+
 ---
 
 ## Reports Endpoints
