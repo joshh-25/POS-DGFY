@@ -1,7 +1,9 @@
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check } from 'lucide-react';
+import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
@@ -26,7 +29,16 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700 border-blue-200" }
 };
 
-export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRole }) {
+export default function ItemCard({
+  item,
+  onView,
+  onEdit,
+  onDelete,
+  onMoveToFolder,
+  currentUserRole,
+  isSelected,
+  onSelect
+}) {
   const category = getCategoryConfig(item);
   const isDraft = item.status === 'draft';
   const status = isDraft ? 'draft' : getStockStatus(item);
@@ -34,12 +46,47 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
   const Icon = category.icon;
   const percentage = isDraft ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
 
+  // DnD Hook
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: item.item_id || item.id,
+    data: { name: item.name },
+  });
+
+  const style = transform ? {
+    transform: CSS.Translate.toString(transform),
+    zIndex: isDragging ? 50 : undefined,
+  } : undefined;
+
   // Calculate expiry information
   const nextExpiry = getNextExpiryDate(item);
   const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
 
+  const handleClick = (e) => {
+    // Prevent selection when clicking interactive elements or during drag (listeners)
+    if (e.target.closest('button') || e.target.closest('a')) {
+      return;
+    }
+
+    if (onSelect) {
+      onSelect(item.item_id || item.id, e.ctrlKey || e.metaKey, e.shiftKey);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:border-slate-300 transition-all duration-300">
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      onClick={handleClick}
+      className={cn(
+        "bg-white rounded-2xl border p-6 transition-all duration-300 relative group select-none touch-none", // touch-none for better dragging
+        isSelected
+          ? "border-teal-500 ring-1 ring-teal-500 shadow-md bg-teal-50/30"
+          : "border-slate-200 hover:shadow-lg hover:border-slate-300",
+        isDragging && "opacity-50 shadow-2xl scale-105 rotate-2 cursor-grabbing z-50 border-teal-400"
+      )}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", category.color)}>
@@ -52,7 +99,7 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100/50">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -68,13 +115,24 @@ export default function ItemCard({ item, onView, onEdit, onDelete, currentUserRo
                 <History className="w-4 h-4 mr-2" /> Movement History
               </Link>
             </DropdownMenuItem>
+            {onMoveToFolder && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onMoveToFolder(item)}>
+                  <Folder className="w-4 h-4 mr-2" /> Move to Folder...
+                </DropdownMenuItem>
+              </>
+            )}
             {currentUserRole === 'admin' && onDelete && (
-              <DropdownMenuItem
-                onClick={() => onDelete(item)}
-                className="text-red-600 focus:text-red-600 focus:bg-red-50"
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete Item
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onDelete(item)}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Item
+                </DropdownMenuItem>
+              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

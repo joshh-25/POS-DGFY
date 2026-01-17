@@ -17,13 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Package } from 'lucide-react';
+import { Plus, Trash2, Package, Folder } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 
-export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft }) {
+export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft, folders = [] }) {
   const [formData, setFormData] = useState({
     sku_code: '',
     name: '',
@@ -396,6 +396,31 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                 </Select>
               </div>
             </div>
+
+            {/* Folder Assignment */}
+            {folders.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Folder className="w-4 h-4" />
+                  Folder
+                </Label>
+                <Select
+                  value={formData.product_folder || '__none__'}
+                  onValueChange={(v) => handleChange('product_folder', v === '__none__' ? '' : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No folder (uncategorized)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No folder (uncategorized)</SelectItem>
+                    {folders.map(folder => (
+                      <SelectItem key={folder} value={folder}>{folder}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">Assign this item to a folder for organization</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>

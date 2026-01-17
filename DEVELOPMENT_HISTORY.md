@@ -2921,3 +2921,51 @@ Content-Type: application/json
 **Version**: 1.11.0
 **Project Status**: Production Ready
 
+
+---
+
+## Phase 18: Item Folder & Organizing System
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-17
+
+### Feature Summary
+Implemented a comprehensive folder organization system for the Inventory Items, allowing users to move items into folders for better categorization and management.
+
+### Backend Updates
+- Folder names are stored directly on the `items` table in the `product_folder` column.
+- No new tables were required; folders are derived dynamically from unique values in this column.
+
+### Frontend Features
+
+#### 1. Folder Structure & Navigation
+- **Architecture**: Folders are virtual, derived from item data.
+- **UI Components**:
+    - `FolderCard.jsx`: Displays folder icon, name, and item count.
+    - `CreateFolderCard.jsx`: Specialized card to creating new folders.
+- **Navigation**: Implemented deep linking and breadcrumbs (Root > FolderName).
+- **Persistence**: Added `transientFolders` state to ensure newly created empty folders persist in the UI until populated.
+
+#### 2. Item Assignment
+- **Edit Modal**: Updated `ItemFormModal` to include a dynamic "Folder" assignment dropdown.
+- **Creation**: Users can assign folders during item creation.
+
+#### 3. Selection & Bulk Operations
+- **Multi-select**: Implemented Ctrl+Click / Shift+Click selection logic in `useItemSelection` hook.
+- **Bulk Actions Bar**: Floating action bar appears when items are selected.
+- **Move Modal**: `MoveToFolderModal` allows moving single or multiple items to any existing folder or back to root.
+
+#### 4. Drag-and-Drop
+- **Library**: Integrated `@dnd-kit/core` for robust interaction.
+- **Interactions**:
+    - **Single Drag**: Move individual items by dragging them onto a folder.
+    - **Multi-Drag**: Dragging one selected item moves ALL selected items to the target folder.
+- **Visuals**:
+    - Item drag preview (semi-transparent, tilted).
+    - Folder highlight on hover (scale up, color change).
+
+### Bug Fixes & Refinements
+- **Empty Folders**: Fixed issue where empty folders would disappear by tracking them in local state.
+- **Missing Imports**: Fixed `ReferenceError` in `FolderCard` by restoring missing imports.
+- **Multi-select Move**: Debugged and verified bulk move functionality via browser simulation.
+
+---

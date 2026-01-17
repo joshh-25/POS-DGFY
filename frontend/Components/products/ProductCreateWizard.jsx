@@ -70,7 +70,7 @@ const defaultProductData = {
   fifo_enabled: false
 };
 
-export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDraft, items, folders, product }) {
+export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDraft, items, product }) {
   const [step, setStep] = useState(1);
   const [initialStep, setInitialStep] = useState(1);
   const [productData, setProductData] = useState(defaultProductData);
@@ -350,7 +350,6 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
               data={productData}
               updateData={updateProductData}
               items={items}
-              folders={folders}
             />
           </div>
 
