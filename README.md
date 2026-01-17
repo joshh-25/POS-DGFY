@@ -119,6 +119,7 @@ frontend/
 - **Cache**: Redis
 - **Auth**: JWT + Bcrypt
 - **Port**: 5000 (development)
+- **Port**: 5001 (production)
 
 ### Backend Structure
 ```
