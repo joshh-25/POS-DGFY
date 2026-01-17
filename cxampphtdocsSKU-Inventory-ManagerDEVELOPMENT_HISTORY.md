@@ -21,3 +21,15 @@
    - **Issue**: Generating a QR code for a "Partial" Job Order returned a 400 Bad Request error.
    - **Root Cause**: Backend `receiveTokenService.js` strictly required "In Progress" status validation.
    - **Fix**: Updated `receiveTokenService.js` logic in `generateToken` and `getJobOrderDetails` to accept "Partial" status.
+
+## Phase 21: UI/UX Improvements
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-17
+
+### Feature: Filter Persistence
+- [x] Implemented local storage persistence for Items page filters
+  - Users can now navigate away from the Items page and return to find their filters preserved
+  - Persisted states: Search query, Category, Status, FIFO filter, Sorting, View mode, Folder selection
+- [x] Implemented URL parameter precedence
+  - URL parameters (e.g., `?filter=low`) strictly override stored preferences
+  - Ensures deep links and dashboard shortcuts continue to function as expected

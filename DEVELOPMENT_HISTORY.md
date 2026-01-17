@@ -2969,3 +2969,15 @@ Implemented a comprehensive folder organization system for the Inventory Items, 
 - **Multi-select Move**: Debugged and verified bulk move functionality via browser simulation.
 
 ---
+
+## Phase 21: UI/UX Improvements
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-17
+
+### Feature: Filter Persistence
+- [x] Implemented local storage persistence for Items page filters
+  - Users can now navigate away from the Items page and return to find their filters preserved
+  - Persisted states: Search query, Category, Status, FIFO filter, Sorting, View mode, Folder selection
+- [x] Implemented URL parameter precedence
+  - URL parameters (e.g., `?filter=low`) strictly override stored preferences
+  - Ensures deep links and dashboard shortcuts continue to function as expected
