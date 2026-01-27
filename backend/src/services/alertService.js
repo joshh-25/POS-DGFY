@@ -153,7 +153,10 @@ export const generateAlerts = async () => {
     include: [{
       model: Item,
       as: 'item',
-      where: { fifo_enabled: true }
+      where: {
+        fifo_enabled: true,
+        status: 'active'
+      }
     }]
   });
 

@@ -285,7 +285,7 @@ CREATE TABLE items (
     yield_percentage DECIMAL(5, 2),
     processing_loss DECIMAL(5, 2),
     production_notes TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
+    status ENUM('draft', 'active', 'inactive') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     

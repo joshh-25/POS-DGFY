@@ -148,6 +148,8 @@ export default function Items() {
     return Array.from(folderSet).sort();
   }, [items, transientFolders]);
 
+  const productFolders = folders;
+
   const folderCounts = useMemo(() => {
     const counts = {};
     items.forEach(item => {

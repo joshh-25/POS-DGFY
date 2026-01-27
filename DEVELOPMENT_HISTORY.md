@@ -2981,3 +2981,26 @@ Implemented a comprehensive folder organization system for the Inventory Items, 
 - [x] Implemented URL parameter precedence
   - URL parameters (e.g., `?filter=low`) strictly override stored preferences
   - Ensures deep links and dashboard shortcuts continue to function as expected
+ 
+  
+ # #   P h a s e   1 8 :   U n i t   o f   M e a s u r e   E x p a n s i o n  
+ * * S t a t u s * * :   â S&   C O M P L E T E  
+ * * D a t e * * :   2 0 2 6 - 0 1 - 2 6  
+  
+ # # #   F e a t u r e   I m p l e m e n t a t i o n  
+ -   [ x ]   A d d   " P i e c e s "   a s   a   n e w   u n i t   o f   m e a s u r e   o p t i o n  
+ -   [ x ]   C e n t r a l i z e   u n i t   d e f i n i t i o n s   t o   e n s u r e   c o n s i s t e n c y   a c r o s s   t h e   a p p l i c a t i o n  
+     -   C r e a t e d   ` f r o n t e n d / s r c / l i b / c o n s t a n t s . j s `  
+     -   D e f i n e d   s t a n d a r d   u n i t s :   U n i t s ,   P i e c e s   ( p c s ) ,   K i l o g r a m s   ( k g ) ,   G r a m s   ( g ) ,   P o u n d s   ( l b s ) ,   O u n c e s   ( o z ) ,   L i t e r s   ( L ) ,   M i l l i l i t e r s   ( m l )  
+ -   [ x ]   U p d a t e   I t e m   F o r m   t o   u s e   c e n t r a l i z e d   u n i t s  
+     -   R e f a c t o r e d   ` I t e m F o r m M o d a l . j s x `  
+ -   [ x ]   U p d a t e   P r o d u c t   W i z a r d   t o   u s e   c e n t r a l i z e d   u n i t s  
+     -   R e f a c t o r e d   ` B a s i c I n f o S t e p . j s x `  
+  
+ # # #   B u g   F i x e s  
+ -   [ x ]   F i x e d   i n c o r r e c t   i m p o r t   p a t h   i n   ` I t e m F o r m M o d a l . j s x `   c a u s i n g   5 0 0   e r r o r  
+ 
+### 2026-01-26 - Expiry Alerts Fix
+- [x] Fixed issue where soft-deleted items appeared in 'Missing Expiry Date' alerts
+- [x] Updated alertService.js to filter out inactive items in getExpiryAlerts query
+- [x] Verified with reproduction script ensuring strictly active items are checked

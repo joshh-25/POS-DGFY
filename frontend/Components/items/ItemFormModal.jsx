@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
+import { ITEM_UNITS } from '../../src/lib/constants';
 
 export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft, folders = [] }) {
   const [formData, setFormData] = useState({
@@ -387,11 +388,11 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="kg">Kilograms (kg)</SelectItem>
-                    <SelectItem value="g">Grams (g)</SelectItem>
-                    <SelectItem value="units">Units</SelectItem>
-                    <SelectItem value="liters">Liters</SelectItem>
-                    <SelectItem value="ml">Milliliters (ml)</SelectItem>
+                    {ITEM_UNITS.map((unit) => (
+                      <SelectItem key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

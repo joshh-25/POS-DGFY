@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ITEM_UNITS } from '../../../src/lib/constants';
 
 export default function BasicInfoStep({ data, updateData }) {
   return (
@@ -57,13 +58,11 @@ export default function BasicInfoStep({ data, updateData }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="units">Units</SelectItem>
-              <SelectItem value="kg">Kilograms (kg)</SelectItem>
-              <SelectItem value="g">Grams (g)</SelectItem>
-              <SelectItem value="lbs">Pounds (lbs)</SelectItem>
-              <SelectItem value="oz">Ounces (oz)</SelectItem>
-              <SelectItem value="L">Liters (L)</SelectItem>
-              <SelectItem value="ml">Milliliters (ml)</SelectItem>
+              {ITEM_UNITS.map((unit) => (
+                <SelectItem key={unit.value} value={unit.value}>
+                  {unit.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
