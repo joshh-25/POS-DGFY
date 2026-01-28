@@ -14,7 +14,8 @@ import {
   Settings,
   Menu,
   X,
-  LogOut
+  LogOut,
+  Bot
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout } from './src/services/authService.js';
@@ -27,6 +28,7 @@ const navItems = [
   { name: 'Job Orders', icon: Factory, page: 'JobOrders' },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements' },
   { name: 'Reports', icon: FileText, page: 'Reports' },
+  { name: 'AI Chat', icon: Bot, page: 'AiChat' },
   { name: 'Settings', icon: Settings, page: 'Settings' },
 ];
 

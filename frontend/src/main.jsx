@@ -13,6 +13,7 @@ import Settings from '../Pages/Settings.jsx'
 import Login from '../Pages/Login.jsx'
 import Register from '../Pages/Register.jsx'
 import MobileReceive from '../Pages/MobileReceive.jsx'
+import AiChat from '../Pages/AiChat.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import './index.css'
@@ -84,6 +85,13 @@ function App() {
         <ProtectedRoute>
           <Layout currentPageName={currentPageName}>
             <Reports />
+          </Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/ai-chat" element={
+        <ProtectedRoute>
+          <Layout currentPageName={currentPageName}>
+            <AiChat />
           </Layout>
         </ProtectedRoute>
       } />

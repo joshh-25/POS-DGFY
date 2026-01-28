@@ -16,9 +16,10 @@ export function createPageUrl(pageName) {
     'JobOrders': '/job-orders',
     'StockMovements': '/stock-movements',
     'Reports': '/reports',
+    'AiChat': '/ai-chat',
     'Settings': '/settings',
   };
-  
+
   return pageMap[pageName] || '/';
 }
 
@@ -36,9 +37,10 @@ export function getPageNameFromPath(pathname) {
     '/job-orders': 'JobOrders',
     '/stock-movements': 'StockMovements',
     '/reports': 'Reports',
+    '/ai-chat': 'AiChat',
     '/settings': 'Settings',
   };
-  
+
   return pathMap[pathname] || 'Dashboard';
 }
 
