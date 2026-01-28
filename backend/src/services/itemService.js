@@ -1129,3 +1129,89 @@ export const getItemMovements = async (itemId) => {
   return movements;
 };
 
+/**
+ * Get item supplier coverage statistics
+ * Returns items grouped by whether they have suppliers assigned
+ * Only includes purchasable items (raw_material, packaging, supplies)
+ * @returns {Promise<object>} Object with items_with_supplier and items_without_supplier arrays
+ */
+export const getItemSupplierCoverage = async () => {
+  // Get all active purchasable items (raw_material, packaging, supplies)
+  const purchasableCategories = ['raw_material', 'packaging', 'supplies'];
+
+  const allItems = await Item.findAll({
+    where: {
+      status: 'active',
+      category: { [Op.in]: purchasableCategories }
+    },
+    attributes: ['item_id', 'name', 'sku_code', 'category', 'current_stock', 'min_threshold', 'unit_of_measure'],
+    order: [['name', 'ASC']]
+  });
+
+  // Get all supplier-item relationships
+  const supplierItems = await SupplierItem.findAll({
+    include: [{
+      model: Supplier,
+      as: 'supplier',
+      attributes: ['supplier_id', 'name', 'status'],
+      where: { status: 'active' } // Only count active suppliers
+    }],
+    attributes: ['item_id', 'supplier_id', 'moq', 'price_per_unit']
+  });
+
+  // Create a map of item_id -> supplier count
+  const itemSupplierMap = new Map();
+  supplierItems.forEach(si => {
+    const itemId = si.item_id;
+    if (!itemSupplierMap.has(itemId)) {
+      itemSupplierMap.set(itemId, []);
+    }
+    itemSupplierMap.get(itemId).push({
+      supplier_id: si.supplier_id,
+      supplier_name: si.supplier.name,
+      moq: si.moq,
+      price_per_unit: si.price_per_unit
+    });
+  });
+
+  // Separate items into two arrays
+  const itemsWithSupplier = [];
+  const itemsWithoutSupplier = [];
+
+  allItems.forEach(item => {
+    const itemData = {
+      item_id: item.item_id,
+      id: item.item_id, // Frontend compatibility
+      name: item.name,
+      sku_code: item.sku_code,
+      category: item.category,
+      current_stock: item.current_stock,
+      min_threshold: item.min_threshold,
+      unit_of_measure: item.unit_of_measure
+    };
+
+    if (itemSupplierMap.has(item.item_id)) {
+      itemData.suppliers = itemSupplierMap.get(item.item_id);
+      itemData.supplier_count = itemData.suppliers.length;
+      itemsWithSupplier.push(itemData);
+    } else {
+      itemData.suppliers = [];
+      itemData.supplier_count = 0;
+      itemsWithoutSupplier.push(itemData);
+    }
+  });
+
+  return {
+    items_with_supplier: itemsWithSupplier,
+    items_without_supplier: itemsWithoutSupplier,
+    summary: {
+      total_purchasable_items: allItems.length,
+      items_with_supplier_count: itemsWithSupplier.length,
+      items_without_supplier_count: itemsWithoutSupplier.length,
+      coverage_percent: allItems.length > 0
+        ? Math.round((itemsWithSupplier.length / allItems.length) * 100)
+        : 100
+    }
+  };
+};
+

@@ -4,8 +4,8 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Jan 2026
-> **Version:** 1.7.1
+> **Last Updated:** Jan 28, 2026
+> **Version:** 1.8.0
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements. It features FIFO batch tracking, nested product recipes, and smart restock logic.
@@ -26,18 +26,21 @@
 
 ## 🔑 Key Features
 1.  **Inventory Management**: CRUD for items, categories (Raw/Packaging/Product), and units.
-2.  **FIFO Batch Tracking**: Strict First-In-First-Out logic for expiration and cost tracking.
+2.  **FIFO Batch Tracking**: First-In-First-Out logic for cost tracking and lot traceability. Works with or without expiry dates (non-perishable items supported).
 3.  **Nested Products**: Products can be ingredients for other products (Level 1-3).
 4.  **Smart Restock Logic**: Auto-calculation of thresholds (40%) and purchase allowances (20%).
 5.  **Soft Delete & Archiving**: Items are soft-deleted; POs and JOs can be archived.
 6.  **Job Orders**: Production tracking with ingredient reservation and finished goods encoding.
 7.  **Unit of Measure**: Flexible string-based units (supports 'ml', 'kg', 'pcs', etc.).
+8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
+9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
+10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
 
 # 🏗️ Core Data Entities
 | Entity | Key Fields | Notes |
 | :--- | :--- | :--- |
 | **Item** | `sku_code`, `category`, `current_stock`, `deleted_by`, `deleted_at`, `nesting_level` | `category` determines logic. Soft deletes via `status='inactive'`. |
-| **FIFOBatch** | `batch_id`, `item_id`, `expiry_date`, `cost_per_unit`, `notes` | Tracks specific stock instances. |
+| **FIFOBatch** | `batch_id`, `item_id`, `expiry_date`, `cost_per_unit`, `notes` | Tracks specific stock instances. `expiry_date` is optional (null for non-perishables). |
 | **PurchaseOrder** | `po_number`, `supplier_id`, `status`, `archived_at` | Status: `pending` -> `received` -> `stock_updated`. |
 | **JobOrder** | `jo_number`, `product_id`, `status`, `archived_at` | Status: `draft` -> `in_progress` -> `completed`. |
 | **Supplier** | `name`, `quality_rating`, `lead_time` | Linked to items via `SupplierItems`. |
@@ -119,7 +122,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   │   ├── jo/                           # Job Orders
 │   │   ├── movements/                    # Stock movements
 │   │   ├── products/                     # Product creation wizard
-│   │   ├── suppliers/                    # Supplier management
+│   │   ├── suppliers/                    # Supplier management + Item Coverage
 │   │   ├── users/                        # User management
 │   │   ├── ui/                           # Shadcn UI components
 │   │   ├── data/                         # dummyData.js (dev only)
@@ -213,6 +216,8 @@ SKU-Inventory-Manager/                    # Monorepo root
 
 **Suppliers:**
 - SupplierCard, SupplierDetailsModal, SupplierFormModal
+- ItemCoveragePanel (tracks items with/without suppliers)
+- AddSupplierChoiceDialog, QuickAssignSupplierModal
 
 **Users:**
 - UserManagement, UserFormModal
@@ -229,8 +234,14 @@ SKU-Inventory-Manager/                    # Monorepo root
 - POST `/api/v1/items` - Create item
 - GET `/api/v1/items/:id` - Get item details
 - PUT `/api/v1/items/:id` - Update item
+- GET `/api/v1/items/supplier-coverage` - Get items grouped by supplier assignment status
 
-**Purchase Orders, Job Orders, Stock Movements, Suppliers, Users, Settings:**
+**Suppliers:**
+- GET `/api/v1/suppliers` - List suppliers
+- POST `/api/v1/suppliers` - Create supplier
+- POST `/api/v1/suppliers/:id/items` - Add item to supplier (quick assign)
+
+**Purchase Orders, Job Orders, Stock Movements, Users, Settings:**
 - Similar CRUD endpoints for each resource
 
 ---

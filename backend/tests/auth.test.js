@@ -13,14 +13,14 @@ describe('Authentication API', () => {
   afterAll(async () => {
     // Clean up and close connection
     await db.PurchaseOrder.destroy({ where: {} }); // FK dependency
-    await db.User.destroy({ where: {}, truncate: true });
+    await db.User.destroy({ where: {} });
     await sequelize.close();
   });
 
   beforeEach(async () => {
     // Clean up before each test
     await db.PurchaseOrder.destroy({ where: {} }); // FK dependency
-    await db.User.destroy({ where: {}, truncate: true });
+    await db.User.destroy({ where: {} });
   });
 
   describe('POST /api/v1/auth/register', () => {

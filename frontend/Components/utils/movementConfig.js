@@ -3,7 +3,9 @@ import {
     ArrowUpCircle,
     ArrowLeftRight,
     RotateCcw,
-    AlertCircle
+    AlertCircle,
+    Settings2,
+    Package
 } from 'lucide-react';
 
 /**
@@ -50,6 +52,22 @@ export const movementConfig = {
         label: "Calculated Loss",
         description: "Stock loss due to waste, spoilage, damage, or pilferage",
         isPositive: false
+    },
+    adjustment: {
+        icon: Settings2,
+        color: "text-purple-600",
+        bg: "bg-purple-50 border-purple-200",
+        label: "Adjustment",
+        description: "Manual stock correction (increase)",
+        isPositive: true
+    },
+    production_output: {
+        icon: Package,
+        color: "text-emerald-600",
+        bg: "bg-emerald-50 border-emerald-200",
+        label: "Production Output",
+        description: "Finished goods from production/job orders",
+        isPositive: true
     }
 };
 
@@ -64,7 +82,7 @@ export const getMovementConfig = (type) => {
  * Check if movement type adds to stock
  */
 export const isPositiveMovement = (type) => {
-    return type === 'purchase_receipt' || type === 'return';
+    return ['purchase_receipt', 'return', 'adjustment', 'production_output'].includes(type);
 };
 
 /**

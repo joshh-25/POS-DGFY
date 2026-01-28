@@ -78,7 +78,7 @@ const Item = sequelize.define('Item', {
   shelf_life_days: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'Shelf life in days for unopened items (required if fifo_enabled is true)'
+    comment: 'Shelf life in days for unopened items (optional - used for expiry tracking when fifo_enabled is true)'
   },
   opened_shelf_life_days: {
     type: DataTypes.INTEGER,

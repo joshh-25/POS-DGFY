@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,9 @@ import {
   AlertTriangle,
   Package,
   Plus,
-  Search
+  Search,
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
@@ -41,6 +44,7 @@ const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
 };
 
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [selectedItems, setSelectedItems] = useState([]);
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
@@ -51,6 +55,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
   const [showStorageWarning, setShowStorageWarning] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNoSupplierWarning, setShowNoSupplierWarning] = useState(false);
 
   // Initialize with passed item
   useEffect(() => {
@@ -82,6 +87,24 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       item.sku_code?.toLowerCase().includes(query)
     );
   }, [restockItems, searchQuery]);
+
+  // Calculate which selected items have NO supplier assigned
+  const itemsWithoutSupplier = useMemo(() => {
+    return selectedItems.filter(itemId => {
+      // Check if ANY supplier can provide this item
+      return !suppliers.some(supplier =>
+        supplier.items_supplied?.some(si => si.item_id === itemId)
+      );
+    });
+  }, [selectedItems, suppliers]);
+
+  // Get item details for items without supplier (for display in warning)
+  const itemsWithoutSupplierDetails = useMemo(() => {
+    return itemsWithoutSupplier.map(itemId => {
+      const item = items.find(i => i.id === itemId);
+      return item ? { id: itemId, name: item.name, sku_code: item.sku_code } : { id: itemId, name: 'Unknown Item' };
+    });
+  }, [itemsWithoutSupplier, items]);
 
   // Calculate supplier recommendations
   const supplierRecommendations = useMemo(() => {
@@ -268,6 +291,13 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
 
   // Handle step transition with validation
   const handleNextStep = () => {
+    if (step === 1) {
+      // Check for items without suppliers before going to supplier selection
+      if (itemsWithoutSupplier.length > 0) {
+        setShowNoSupplierWarning(true);
+        return;
+      }
+    }
     if (step === 2) {
       // Check storage limits before going to review
       const warnings = checkStorageLimits();
@@ -277,6 +307,29 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
       }
     }
     setStep(step + 1);
+  };
+
+  // Remove items without suppliers and proceed
+  const handleRemoveItemsWithoutSupplier = () => {
+    setSelectedItems(prev => prev.filter(id => !itemsWithoutSupplier.includes(id)));
+    setShowNoSupplierWarning(false);
+    // After removing, check if any items remain
+    const remainingItems = selectedItems.filter(id => !itemsWithoutSupplier.includes(id));
+    if (remainingItems.length > 0) {
+      setStep(2);
+    } else {
+      toast.warning('No items with suppliers remaining', {
+        description: 'Please select items that have suppliers assigned.'
+      });
+    }
+  };
+
+  // Navigate to Suppliers page to manage supplier assignments
+  const handleGoToSuppliers = () => {
+    setShowNoSupplierWarning(false);
+    resetWizard();
+    onClose();
+    navigate('/suppliers');
   };
 
   const proceedDespiteWarning = () => {
@@ -881,6 +934,73 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         onDiscard={handleDiscard}
         onContinueEditing={handleContinueEditing}
       />
+
+      {/* Items Without Supplier Warning Dialog */}
+      <Dialog open={showNoSupplierWarning} onOpenChange={setShowNoSupplierWarning}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="w-5 h-5" />
+              Items Without Suppliers
+            </DialogTitle>
+            <DialogDescription>
+              {itemsWithoutSupplierDetails.length} of {selectedItems.length} selected items cannot be ordered because they have no supplier assigned.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {itemsWithoutSupplierDetails.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg"
+              >
+                <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-slate-900 truncate">{item.name}</p>
+                  {item.sku_code && (
+                    <p className="text-xs text-slate-500">{item.sku_code}</p>
+                  )}
+                </div>
+                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 text-xs">
+                  No Supplier
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600">
+            <p className="font-medium text-slate-700 mb-1">What you can do:</p>
+            <ul className="list-disc list-inside space-y-1 text-xs">
+              <li>Remove these items from your selection and proceed with remaining items</li>
+              <li>Go to Suppliers page to assign suppliers to these items first</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowNoSupplierWarning(false)}
+              className="flex-1"
+            >
+              Go Back
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleRemoveItemsWithoutSupplier}
+              className="flex-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+            >
+              Remove & Continue
+            </Button>
+            <Button
+              onClick={handleGoToSuppliers}
+              className="flex-1 bg-teal-600 hover:bg-teal-700"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Manage Suppliers
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

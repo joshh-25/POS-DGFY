@@ -1,5 +1,29 @@
 # Backend Test Scripts
 
+## Automated Testing (Jest)
+
+The backend uses Jest for automated testing. Due to the project's use of native ES Modules (`type: "module"`), we use a specific configuration.
+
+**How to run tests:**
+```bash
+npm test
+```
+
+**Configuration Details:**
+- **Config File**: `jest.config.cjs`
+- **Execution Mode**: Runs with `node --experimental-vm-modules` to support ESM natively.
+- **Transform**: Babel transformation is explicitly disabled for `.js` files to allow native ESM execution.
+
+### Understanding the Jest ESM Setup
+The project uses **Native ES Modules** (defined by `"type": "module"` in package.json). Jest's default behavior is designed for CommonJS, so we use a specialized setup:
+
+1. **`NODE_OPTIONS="--experimental-vm-modules"`**: This flag is passed in the NPM script to enable Jest's experimental ESM support.
+2. **`jest.config.cjs`**: Note the `.cjs` extension. This forces the config file itself to be treated as CommonJS, which is required by Jest's runner.
+3. **No Babel**: We explicitly disable code transformation because Node.js 18+ can run the ES modules natively. This avoids "import.meta" errors and simplifies debugging.
+
+---
+
+
 ## Manual Verification Scripts
 
 ### FIFO Batch Notes Verification

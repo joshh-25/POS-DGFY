@@ -23,7 +23,16 @@ import { Badge } from "@/components/ui/badge";
 import { useItems } from '@/hooks/useItems.js';
 import { canBeSupplierItem, isManufactured } from '@/components/utils/categoryHelpers';
 
-export default function SupplierFormModal({ supplier, open, onClose, onSave, onSaveDraft }) {
+/**
+ * SupplierFormModal - Create or edit suppliers
+ * @param {object} supplier - Existing supplier data for editing (null for new)
+ * @param {boolean} open - Dialog open state
+ * @param {function} onClose - Close handler
+ * @param {function} onSave - Save handler
+ * @param {function} onSaveDraft - Save as draft handler
+ * @param {object} preAddedItem - Item to pre-add to items_supplied (for quick supplier creation)
+ */
+export default function SupplierFormModal({ supplier, open, onClose, onSave, onSaveDraft, preAddedItem }) {
   const [formData, setFormData] = useState({
     name: '',
     contact_person: '',
@@ -36,9 +45,17 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
     avg_delivery_days: 5
   });
 
+  const [itemSearch, setItemSearch] = useState('');
+  const [activeItemIndex, setActiveItemIndex] = useState(null);
+
   const { items: allItems, loading: loadingItems } = useItems({ status: 'active', limit: 1000 });
   // Only show purchasable items (raw materials, packaging, supplies) - exclude manufactured products
   const availableItems = (allItems || []).filter(i => canBeSupplierItem(i));
+
+  const filteredItems = (availableItems || []).filter(item =>
+    item.name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+    (item.sku && item.sku.toLowerCase().includes(itemSearch.toLowerCase()))
+  );
 
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -56,13 +73,21 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
       setInitialFormData(initialData);
       setIsDirty(false);
     } else if (!supplier && open) {
+      // Build pre-added items array if preAddedItem is provided
+      const preAddedItems = preAddedItem ? [{
+        item_id: preAddedItem.item_id || preAddedItem.id,
+        item_name: preAddedItem.name,
+        moq: 1,
+        price_per_unit: ''
+      }] : [];
+
       const initialData = {
         name: '',
         contact_person: '',
         email: '',
         phone: '',
         address: '',
-        items_supplied: [],
+        items_supplied: preAddedItems,
         bulk_discounts: [],
         quality_rating: 5.0,
         avg_delivery_days: 5
@@ -71,7 +96,7 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
       setInitialFormData(initialData);
       setIsDirty(false);
     }
-  }, [supplier, open]);
+  }, [supplier, open, preAddedItem]);
 
   // Track dirty state
   useEffect(() => {
@@ -300,44 +325,85 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
                 </Button>
               </div>
               {formData.items_supplied.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3 bg-slate-50 rounded-lg p-3">
-                  <Select
-                    value={item.item_id}
-                    onValueChange={(v) => updateItem(idx, 'item_id', v)}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingItems ? (
-                        <SelectItem disabled value="loading">Loading items...</SelectItem>
-                      ) : availableItems.map(it => (
-                        <SelectItem key={it.item_id || it.id} value={it.item_id || it.id}>{it.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-slate-500">MOQ:</Label>
-                    <Input
-                      type="number"
-                      className="w-20"
-                      value={item.moq}
-                      onChange={(e) => updateItem(idx, 'moq', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
-                    />
+                <div key={idx} className="flex flex-col gap-3 bg-slate-50 border border-slate-100 rounded-lg p-4 transition-all hover:border-teal-100 hover:shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs font-semibold text-slate-500 mb-1.5 block uppercase tracking-wider">Item to Supply</Label>
+                      <Select
+                        value={item.item_id}
+                        onValueChange={(v) => updateItem(idx, 'item_id', v)}
+                      >
+                        <SelectTrigger className="flex-1 bg-white border-slate-200">
+                          <SelectValue placeholder="Select an item..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64 overflow-y-auto min-w-[300px]">
+                          <div className="sticky top-0 bg-white p-2 border-b border-slate-100 mb-1">
+                            <Input
+                              placeholder="Search items by name or SKU..."
+                              value={activeItemIndex === idx ? itemSearch : ''}
+                              onChange={(e) => {
+                                setItemSearch(e.target.value);
+                                setActiveItemIndex(idx);
+                              }}
+                              className="h-8 text-xs"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                          {loadingItems ? (
+                            <SelectItem disabled value="loading">Loading items...</SelectItem>
+                          ) : filteredItems.length === 0 ? (
+                            <div className="p-4 text-center text-sm text-slate-500 italic">No matching items found</div>
+                          ) : filteredItems.map(it => (
+                            <SelectItem key={it.item_id || it.id} value={it.item_id || it.id}>
+                              <div className="flex flex-col py-0.5">
+                                <span className="font-medium">{it.name}</span>
+                                {it.sku && <span className="text-[10px] text-slate-400 font-mono">{it.sku}</span>}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="mt-6">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeItem(idx)}
+                        className="text-slate-400 hover:text-red-500 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-slate-500">Price:</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      className="w-24"
-                      value={item.price_per_unit}
-                      onChange={(e) => updateItem(idx, 'price_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    />
+
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Minimum Order Qty (MOQ)</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          className="bg-white border-slate-200 pl-3"
+                          value={item.moq}
+                          onChange={(e) => updateItem(idx, 'moq', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
+                          placeholder="1"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Price per Unit</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">₱</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          className="bg-white border-slate-200 pl-7"
+                          value={item.price_per_unit}
+                          onChange={(e) => updateItem(idx, 'price_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => removeItem(idx)}>
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
                 </div>
               ))}
             </div>

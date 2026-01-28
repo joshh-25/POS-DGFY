@@ -75,9 +75,10 @@ export const createStockMovement = async (movementData, userId) => {
   let newStock = currentStock;
   let createdBatchId = null;
   let movementExpiryDate = expiry_date || null;
+  let batchTransactionsData = [];
 
-  // Handle stock additions (purchase_receipt, return)
-  if (movement_type === 'purchase_receipt' || movement_type === 'return') {
+  // Handle stock additions (purchase_receipt, return, production_output, adjustment)
+  if (['purchase_receipt', 'return', 'production_output', 'adjustment'].includes(movement_type)) {
     newStock = currentStock + parseFloat(quantity);
 
     // Create FIFO batch for additions if item is FIFO-enabled
@@ -94,10 +95,10 @@ export const createStockMovement = async (movementData, userId) => {
       const batch = await FIFOBatch.create({
         item_id: item.item_id,
         quantity: parseFloat(quantity),
-        cost_per_unit: item.cost_per_unit,
+        cost_per_unit: movementData.cost_per_unit || item.cost_per_unit,
         received_date: receivedDate,
         expiry_date: movementExpiryDate,
-        po_number: `MANUAL-${Date.now()}` // Manual adjustment reference
+        po_number: movementData.po_number || `MANUAL-${Date.now()}` // Manual adjustment reference or PO Number
       });
       createdBatchId = batch.batch_id;
     }
@@ -136,6 +137,13 @@ export const createStockMovement = async (movementData, userId) => {
         });
         createdBatchId = batch_id;
         movementExpiryDate = targetBatch.expiry_date;
+
+        batchTransactionsData.push({
+          batch_id: batch_id,
+          quantity_consumed: remaining,
+          remaining_after: available - remaining,
+          cost_per_unit: targetBatch.cost_per_unit
+        });
       }
       // Default FIFO: consume from oldest batches first
       else {
@@ -153,6 +161,8 @@ export const createStockMovement = async (movementData, userId) => {
           order: [['received_date', 'ASC']]
         });
 
+
+
         for (const batch of batches) {
           if (remaining <= 0) break;
           const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
@@ -166,6 +176,13 @@ export const createStockMovement = async (movementData, userId) => {
 
           await batch.update({
             quantity_consumed: parseFloat(batch.quantity_consumed) + consume
+          });
+
+          batchTransactionsData.push({
+            batch_id: batch.batch_id,
+            quantity_consumed: consume,
+            remaining_after: available - consume,
+            cost_per_unit: batch.cost_per_unit
           });
 
           remaining -= consume;
@@ -187,7 +204,7 @@ export const createStockMovement = async (movementData, userId) => {
   const movement = await StockMovement.create({
     item_id: item.item_id,
     movement_type,
-    quantity: movement_type === 'production_consumption' || movement_type === 'calculated_loss'
+    quantity: ['production_consumption', 'calculated_loss'].includes(movement_type)
       ? -Math.abs(parseFloat(quantity))
       : Math.abs(parseFloat(quantity)),
     reference_id: movementData.reference_id || null,
@@ -198,6 +215,16 @@ export const createStockMovement = async (movementData, userId) => {
     batch_id: createdBatchId,
     expiry_date: movementExpiryDate
   });
+
+  // Create Batch Transactions if any
+  if (typeof batchTransactionsData !== 'undefined' && batchTransactionsData.length > 0) {
+    await Promise.all(batchTransactionsData.map(data =>
+      BatchTransaction.create({
+        movement_id: movement.movement_id,
+        ...data
+      })
+    ));
+  }
 
   return movement;
 };
@@ -353,13 +380,17 @@ export const getMovementStats = async (params = {}) => {
 /**
  * Void (Reverse) a stock movement
  * Creates a counter-movement to reverse the effect of the original movement
+ * For multi-batch consumption, restores ALL affected batches via BatchTransaction records
  */
 export const voidMovement = async (movementId, userId, reason) => {
   const transaction = await sequelize.transaction();
 
   try {
     const originalMovement = await StockMovement.findByPk(movementId, {
-      include: [{ model: Item, as: 'item' }],
+      include: [
+        { model: Item, as: 'item' },
+        { model: BatchTransaction, as: 'batchTransactions' }
+      ],
       transaction
     });
 
@@ -385,28 +416,63 @@ export const voidMovement = async (movementId, userId, reason) => {
     else if (movement_type === 'production_consumption') reverseType = 'return'; // Returning to stock
     else if (movement_type === 'calculated_loss') reverseType = 'adjustment';
     else if (movement_type === 'transfer') reverseType = 'transfer';
+    else if (movement_type === 'production_output') reverseType = 'adjustment';
 
     // Update item stock
     const item = await Item.findByPk(item_id, { transaction });
     const newStock = parseFloat(item.current_stock) + reverseQuantity;
+
+    if (newStock < 0) {
+      const error = new Error('Cannot void: would result in negative stock');
+      error.statusCode = 400;
+      throw error;
+    }
+
     await item.update({ current_stock: newStock }, { transaction });
 
-    // Handle FIFO batch reversal if applicable
-    if (batch_id && reverseQuantity > 0) { // Returning stock to batch
-      const batch = await FIFOBatch.findByPk(batch_id, { transaction });
-      if (batch) {
-        // If we represent consumption, we decrease consumed quantity (effectively adding back)
-        // Check if original was consumption
-        if (quantity < 0) {
+    // Handle FIFO batch reversal for consumption movements
+    // Check if this was a consumption (negative quantity) that needs batch restoration
+    if (quantity < 0 && reverseQuantity > 0) {
+      // Get all batch transactions for this movement (handles multi-batch consumption)
+      const batchTransactions = originalMovement.batchTransactions || [];
+
+      if (batchTransactions.length > 0) {
+        // Restore each affected batch from BatchTransaction records
+        for (const bt of batchTransactions) {
+          const batch = await FIFOBatch.findByPk(bt.batch_id, { transaction });
+          if (batch) {
+            const restoredQty = parseFloat(bt.quantity_consumed);
+            await batch.update({
+              quantity_consumed: Math.max(0, parseFloat(batch.quantity_consumed) - restoredQty)
+            }, { transaction });
+          }
+        }
+      } else if (batch_id) {
+        // Fallback: if no BatchTransaction records, use the single batch_id
+        const batch = await FIFOBatch.findByPk(batch_id, { transaction });
+        if (batch) {
           await batch.update({
-            quantity_consumed: Math.max(0, parseFloat(batch.quantity_consumed) + quantity) // quantity is negative, so this subtracts
+            quantity_consumed: Math.max(0, parseFloat(batch.quantity_consumed) + quantity)
           }, { transaction });
         }
       }
     }
 
+    // Handle FIFO batch reversal for additions (purchase_receipt, return, production_output)
+    // When voiding an addition, we need to mark the batch as consumed
+    if (quantity > 0 && reverseQuantity < 0 && batch_id) {
+      const batch = await FIFOBatch.findByPk(batch_id, { transaction });
+      if (batch) {
+        // Increase quantity_consumed to effectively remove the stock from this batch
+        const newConsumed = parseFloat(batch.quantity_consumed) + parseFloat(quantity);
+        await batch.update({
+          quantity_consumed: Math.min(newConsumed, parseFloat(batch.quantity))
+        }, { transaction });
+      }
+    }
+
     // Create the voiding movement (counter-entry)
-    const voidWithholding = await StockMovement.create({
+    const voidMovementRecord = await StockMovement.create({
       item_id,
       movement_type: reverseType,
       quantity: reverseQuantity,
@@ -414,7 +480,7 @@ export const voidMovement = async (movementId, userId, reason) => {
       reference_type: 'MANUAL',
       user_responsible: userId,
       notes: `Void of movement #${movementId}: ${reason}`,
-      batch_id: batch_id, // Link to same batch if applicable
+      batch_id: batch_id, // Link to primary batch for reference
       timestamp: new Date()
     }, { transaction });
 
@@ -424,7 +490,7 @@ export const voidMovement = async (movementId, userId, reason) => {
     }, { transaction });
 
     await transaction.commit();
-    return voidWithholding;
+    return voidMovementRecord;
 
   } catch (error) {
     await transaction.rollback();

@@ -13,6 +13,20 @@ This guide covers the deployment process for the SKU Inventory Manager (SKUpervi
 - **PM2**: Installed globally (`npm install -g pm2`)
 - **Git**: For pulling updates
 
+---
+
+## 🤖 Automated Deployment (Antigravity Only)
+
+If you are using the Antigravity AI assistant, you can automate this entire guide using a single command:
+
+```bash
+/deploy
+```
+
+This will autonomously handle SSH, git pulling, dependency installation, database migrations, frontend building, and PM2 restarts.
+
+---
+
 ## Deployment Steps
 
 ### 1. Update Codebase

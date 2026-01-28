@@ -493,7 +493,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                       </div>
                       <p className="text-sm text-slate-600">
                         Track inventory in batches with automatic First-In-First-Out consumption.
-                        Ideal for items with expiry dates or varying costs per purchase.
+                        Useful for cost tracking, lot traceability, and items with expiry dates.
                       </p>
                     </div>
                   </div>
@@ -504,38 +504,43 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                   />
                 </div>
 
-                {/* Shelf Life Fields - shown when FIFO is enabled */}
+                {/* Shelf Life Fields - shown when FIFO is enabled (optional for non-perishables) */}
                 {formData.fifo_enabled && (
-                  <div className="mt-4 pt-4 border-t border-blue-200 grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="shelf_life_days" className="text-sm font-medium text-slate-700">
-                        Shelf Life (Days) *
-                      </Label>
-                      <Input
-                        id="shelf_life_days"
-                        type="number"
-                        min="1"
-                        value={formData.shelf_life_days}
-                        onChange={(e) => handleChange('shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
-                        placeholder="e.g., 90"
-                        className="bg-white"
-                      />
-                      <p className="text-xs text-slate-500">Days until expiry (unopened)</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="opened_shelf_life_days" className="text-sm font-medium text-slate-700">
-                        Opened Shelf Life (Days)
-                      </Label>
-                      <Input
-                        id="opened_shelf_life_days"
-                        type="number"
-                        min="1"
-                        value={formData.opened_shelf_life_days}
-                        onChange={(e) => handleChange('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
-                        placeholder="e.g., 7"
-                        className="bg-white"
-                      />
-                      <p className="text-xs text-slate-500">Days after opening</p>
+                  <div className="mt-4 pt-4 border-t border-blue-200">
+                    <p className="text-xs text-slate-500 mb-3">
+                      Expiry tracking is optional. Leave blank for non-perishable items (e.g., packaging, supplies).
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="shelf_life_days" className="text-sm font-medium text-slate-700">
+                          Shelf Life (Days)
+                        </Label>
+                        <Input
+                          id="shelf_life_days"
+                          type="number"
+                          min="1"
+                          value={formData.shelf_life_days}
+                          onChange={(e) => handleChange('shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                          placeholder="Leave blank if no expiry"
+                          className="bg-white"
+                        />
+                        <p className="text-xs text-slate-500">Days until expiry (unopened)</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="opened_shelf_life_days" className="text-sm font-medium text-slate-700">
+                          Opened Shelf Life (Days)
+                        </Label>
+                        <Input
+                          id="opened_shelf_life_days"
+                          type="number"
+                          min="1"
+                          value={formData.opened_shelf_life_days}
+                          onChange={(e) => handleChange('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                          placeholder="Leave blank if no expiry"
+                          className="bg-white"
+                        />
+                        <p className="text-xs text-slate-500">Days after opening</p>
+                      </div>
                     </div>
                   </div>
                 )}

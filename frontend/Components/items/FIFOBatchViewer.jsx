@@ -108,7 +108,7 @@ export default function FIFOBatchViewer({ item }) {
                     <Calendar className="w-3 h-3" />
                     Received: {format(new Date(batch.received_date), 'MMM d, yyyy')}
                   </span>
-                  {batch.expiry_date && (
+                  {batch.expiry_date ? (
                     <span className={cn(
                       "flex items-center gap-1",
                       expired ? "text-red-600" : nearExpiry ? "text-amber-600" : ""
@@ -116,6 +116,8 @@ export default function FIFOBatchViewer({ item }) {
                       <TrendingDown className="w-3 h-3" />
                       Expires: {format(new Date(batch.expiry_date), 'MMM d, yyyy')}
                     </span>
+                  ) : (
+                    <span className="text-slate-400 italic">No expiry</span>
                   )}
                 </div>
                 <span className="font-semibold text-slate-900">

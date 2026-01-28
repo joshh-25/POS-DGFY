@@ -69,3 +69,13 @@ export const getItemStockHistory = async (itemId, params = {}) => {
   const response = await api.get(`/items/${itemId}/stock-history`, { params });
   return response.data.data.movements;
 };
+
+/**
+ * Get item supplier coverage statistics
+ * Returns items grouped by whether they have suppliers assigned
+ * @returns {Promise<object>} Object with items_with_supplier and items_without_supplier arrays
+ */
+export const getItemSupplierCoverage = async () => {
+  const response = await api.get('/items/supplier-coverage');
+  return response.data.data;
+};

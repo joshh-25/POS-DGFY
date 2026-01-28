@@ -52,7 +52,7 @@ lsof -ti:5000 | xargs kill -9  # Backend
 | Job Orders | JOCreateModal, JODetailsModal | `frontend/Components/jo/` |
 | Stock Movements | MovementCreateModal | `frontend/Components/movements/` |
 | Products | ProductCreateWizard + 11 wizard steps | `frontend/Components/products/` |
-| Suppliers | SupplierCard, SupplierDetailsModal, SupplierFormModal | `frontend/Components/suppliers/` |
+| Suppliers | SupplierCard, SupplierDetailsModal, SupplierFormModal, ItemCoveragePanel, QuickAssignSupplierModal, AddSupplierChoiceDialog | `frontend/Components/suppliers/` |
 | Users | UserManagement, UserFormModal | `frontend/Components/users/` |
 
 ## Backend API Routes
@@ -60,7 +60,7 @@ lsof -ti:5000 | xargs kill -9  # Backend
 | Resource | Route File | Endpoints |
 |----------|-----------|-----------|
 | Authentication | `backend/src/routes/auth.js` | POST /auth/register, /auth/login |
-| Items | `backend/src/routes/items.js` | GET/POST/PUT/DELETE /items |
+| Items | `backend/src/routes/items.js` | GET/POST/PUT/DELETE /items, GET /items/supplier-coverage |
 | Purchase Orders | `backend/src/routes/purchaseOrders.js` | GET/POST/PUT/DELETE /purchaseOrders |
 | Job Orders | `backend/src/routes/jobOrders.js` | GET/POST/PUT/DELETE /jobOrders |
 | Stock Movements | `backend/src/routes/stockMovements.js` | GET/POST /stockMovements |

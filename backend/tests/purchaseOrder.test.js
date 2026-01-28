@@ -89,6 +89,7 @@ describe('Purchase Order API', () => {
             name: 'Premium Widget',
             description: 'A high quality widget',
             category: 'product',
+            product_type: 'retail',
             unit_of_measure: 'units',
             cost_price: 50.00,
             selling_price: 100.00,

@@ -217,9 +217,7 @@ export const blacklistToken = async (token) => {
 
     if (!decoded || !decoded.exp) {
       return false;
-    }
-
-    // Calculate TTL: time until token expires
+    }    // Calculate TTL: time until token expires
     const currentTime = Math.floor(Date.now() / 1000);
     const ttl = decoded.exp - currentTime;
 

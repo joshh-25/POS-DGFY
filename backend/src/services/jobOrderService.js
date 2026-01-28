@@ -7,6 +7,7 @@ import User from '../models/User.js';
 import FIFOBatch from '../models/FIFOBatch.js';
 import StockMovement from '../models/StockMovement.js';
 import BatchTransaction from '../models/BatchTransaction.js';
+import { createStockMovement } from './stockMovementService.js';
 
 export const getJobOrders = async (queryParams) => {
   const { page = 1, limit = 20, status, archived = 'false' } = queryParams;
@@ -325,125 +326,46 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       throw error;
     }
 
-    // Create stock movement FIRST (before FIFO consumption)
-    const movement = await StockMovement.create({
+    // Use centralized service for consumption
+    const movement = await createStockMovement({
       item_id: item.item_id,
+      quantity: quantityToConsume,
       movement_type: 'production_consumption',
-      quantity: -quantityToConsume,
       reference_id: jo.jo_number,
       reference_type: 'JO',
-      user_responsible: userId,
-      notes: `Partial production: ${qtyToProcess} units`
-    });
+      notes: `Partial production: ${qtyToProcess} units`,
+      // batch_id could be passed if specific batch was selected, but for auto-FIFO we leave it null.
+      // Ideally JO completion could allow manual batch selection, but for now we default to FIFO.
+    }, userId);
 
-    // FIFO consumption
-    let primaryBatchId = null; // Track the first batch consumed for this ingredient
-    if (item.fifo_enabled) {
-      let remaining = quantityToConsume;
-      const batches = await FIFOBatch.findAll({
-        where: {
-          item_id: item.item_id,
-          [Op.and]: [
-            sequelize.where(
-              sequelize.col('quantity'),
-              Op.gt,
-              sequelize.col('quantity_consumed')
-            )
-          ]
-        },
-        order: [['received_date', 'ASC']]
-      });
-
-      for (const batch of batches) {
-        if (remaining <= 0) break;
-        const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
-        const consume = Math.min(remaining, available);
-
-        // Track the first batch used (for jo_ingredient.batch_id)
-        if (primaryBatchId === null) {
-          primaryBatchId = batch.batch_id;
-        }
-
-        await batch.update({
-          quantity_consumed: parseFloat(batch.quantity_consumed) + consume
-        });
-
-        // Create BatchTransaction with valid movement_id
-        await BatchTransaction.create({
-          movement_id: movement.movement_id,
-          batch_id: batch.batch_id,
-          quantity_consumed: consume,
-          remaining_after: available - consume,
-          cost_per_unit: batch.cost_per_unit
-        });
-
-        remaining -= consume;
-      }
-    }
-
-    // Update stock
+    // Update stock (re-read from item as service updated it, or calculate)
     const stockAfter = stockBefore - quantityToConsume;
-    await item.update({ current_stock: stockAfter });
 
     // Update ingredient record with batch reference and INCREMENT consumption
     await ingredient.update({
       quantity_consumed: parseFloat(ingredient.quantity_consumed || 0) + quantityToConsume,
-      stock_before: ingredient.stock_before === null ? stockBefore : ingredient.stock_before, // Keep original stock before if already set? Or track latest? Better to keep initial or maybe just log? 
-      // Decision: Let's keep 'stock_before' as the stock at the START of the very first consumption for traceability, or update it?
-      // Actually, standard practice for `stock_before` in transaction logs is per transaction. But here it's on the JO Ingredient relation.
-      // Let's assume stock_before/after on JOIngredient tracks the status of the *last* update or the *cumulative*.
-      // We'll update stock_after to current. stock_before is less critical for partials on this specific table, 
-      // but StockMovement table has the precise history.
+      stock_before: ingredient.stock_before === null ? stockBefore : ingredient.stock_before,
       stock_after: stockAfter,
-      batch_id: primaryBatchId || ingredient.batch_id // Update to latest or keep first? Keep first if set, or update? Let's use latest primary.
+      batch_id: movement.batch_id || ingredient.batch_id // Track primary batch used
     });
   }
 
-  // Add finished product to stock
+  // Add finished product to stock via Service
   const product = jo.product;
-  // Use qtyToProcess for this specific transaction
-  await product.update({
-    current_stock: parseFloat(product.current_stock) + qtyToProcess
-  });
 
-  // Create FIFO batch for finished product if FIFO enabled
-  let productBatchId = null;
-  let productExpiryDate = null;
-  if (product.fifo_enabled) {
-    const productionDate = new Date();
-
-    // Calculate expiry from product's shelf_life_days or use override
-    if (expiryDateOverride) {
-      productExpiryDate = expiryDateOverride;
-    } else if (product.shelf_life_days) {
-      const expiryDateObj = new Date(productionDate);
-      expiryDateObj.setDate(expiryDateObj.getDate() + product.shelf_life_days);
-      productExpiryDate = expiryDateObj.toISOString().split('T')[0];
-    }
-
-    const productBatch = await FIFOBatch.create({
-      item_id: product.item_id,
-      quantity: qtyToProcess,
-      cost_per_unit: product.cost_per_unit,
-      received_date: productionDate,
-      expiry_date: productExpiryDate,
-      po_number: jo.jo_number, // Use JO number as reference
-      notes: notes || null
-    });
-    productBatchId = productBatch.batch_id;
-  }
-
-  // Create stock movement for finished product
-  await StockMovement.create({
+  // Create production output movement
+  // Use createStockMovement with 'production_output' which handles positive addition
+  const productionMovement = await createStockMovement({
     item_id: product.item_id,
-    movement_type: 'production_consumption', // Ideally 'production_output', but preserving existing enum type if limited
     quantity: qtyToProcess,
+    movement_type: 'production_output',
     reference_id: jo.jo_number,
     reference_type: 'JO',
-    user_responsible: userId,
-    batch_id: productBatchId,
-    expiry_date: productExpiryDate
-  });
+    notes: notes || null,
+    expiry_date: expiryDateOverride || null, // Service handles fallback to shelf life
+    cost_per_unit: product.cost_per_unit, // Product cost (should be calculated from ingredients, but current logic uses static cost)
+    po_number: jo.jo_number // Use JO number as "PO Number" for batch
+  }, userId);
 
   // Update JO status, quantity_produced, and save notes
   const newQuantityProduced = currentQuantityProduced + qtyToProcess;

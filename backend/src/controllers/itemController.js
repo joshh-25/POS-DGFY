@@ -187,3 +187,17 @@ export const validateComposition = async (req, res, next) => {
   }
 };
 
+export const getItemSupplierCoverage = async (req, res, next) => {
+  try {
+    const result = await itemService.getItemSupplierCoverage();
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

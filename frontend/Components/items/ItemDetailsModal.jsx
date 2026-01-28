@@ -192,8 +192,8 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </div>
             )}
 
-            {/* Shelf Life Info */}
-            {item.fifo_enabled && (
+            {/* Shelf Life Info - only show if shelf_life_days is configured */}
+            {item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
               <div className="bg-purple-50 rounded-lg p-4 space-y-3">
                 <h4 className="font-medium text-purple-900 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -216,7 +216,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
               </div>
             )}
 
-            {/* FIFO Batch Viewer */}
+            {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
             {item.fifo_enabled && <FIFOBatchViewer item={item} />}
 
             {/* Cost Info */}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
 import { Plus, Search, Loader2, Filter } from 'lucide-react';
@@ -15,7 +15,11 @@ import SupplierCard from '@/components/suppliers/SupplierCard';
 import SupplierDetailsModal from '@/components/suppliers/SupplierDetailsModal';
 import SupplierFormModal from '@/components/suppliers/SupplierFormModal';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
+import ItemCoveragePanel from '@/components/suppliers/ItemCoveragePanel';
+import AddSupplierChoiceDialog from '@/components/suppliers/AddSupplierChoiceDialog';
+import QuickAssignSupplierModal from '@/components/suppliers/QuickAssignSupplierModal';
 import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDraft, useFinalizeSupplier, useDeleteSupplier } from '@/hooks/useSuppliers.js';
+import { useItemSupplierCoverage } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/authService.js';
 import { toast } from 'sonner';
 
@@ -26,6 +30,7 @@ export default function Suppliers() {
   const { createSupplierDraft } = useCreateSupplierDraft();
   const { finalizeSupplier } = useFinalizeSupplier();
   const { deleteSupplier, loading: deleting } = useDeleteSupplier();
+  const { refetch: refetchCoverage } = useItemSupplierCoverage();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -36,6 +41,12 @@ export default function Suppliers() {
   const [supplierToDelete, setSupplierToDelete] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Item coverage panel state
+  const [itemForSupplierAssignment, setItemForSupplierAssignment] = useState(null);
+  const [showChoiceDialog, setShowChoiceDialog] = useState(false);
+  const [showQuickAssignModal, setShowQuickAssignModal] = useState(false);
+  const [preAddedItemForNewSupplier, setPreAddedItemForNewSupplier] = useState(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -98,8 +109,11 @@ export default function Suppliers() {
         toast.success('Supplier created successfully');
       }
       refetch();
+      refetchCoverage(); // Refresh coverage panel after supplier save
       setShowFormModal(false);
       setEditingSupplier(null);
+      setPreAddedItemForNewSupplier(null); // Clear pre-added item
+      setItemForSupplierAssignment(null);
     } catch (error) {
       console.error('Save supplier error:', error);
       const errorMessage = error.response?.data?.errors?.map(e => e.message).join(', ') ||
@@ -127,6 +141,40 @@ export default function Suppliers() {
     setDeleteErrors(null);
     setShowDeleteDialog(true);
   };
+
+  // Item Coverage Panel handlers
+  const handleAddSupplierToItem = useCallback((item) => {
+    setItemForSupplierAssignment(item);
+    setShowChoiceDialog(true);
+  }, []);
+
+  const handleSelectExistingSupplier = useCallback(() => {
+    setShowChoiceDialog(false);
+    setShowQuickAssignModal(true);
+  }, []);
+
+  const handleCreateNewSupplier = useCallback(() => {
+    setShowChoiceDialog(false);
+    setPreAddedItemForNewSupplier(itemForSupplierAssignment);
+    setEditingSupplier(null);
+    setShowFormModal(true);
+  }, [itemForSupplierAssignment]);
+
+  const handleQuickAssignSuccess = useCallback(() => {
+    refetch();
+    refetchCoverage();
+    setItemForSupplierAssignment(null);
+  }, [refetch, refetchCoverage]);
+
+  const handleCloseChoiceDialog = useCallback(() => {
+    setShowChoiceDialog(false);
+    setItemForSupplierAssignment(null);
+  }, []);
+
+  const handleCloseQuickAssignModal = useCallback(() => {
+    setShowQuickAssignModal(false);
+    setItemForSupplierAssignment(null);
+  }, []);
 
   const handleConfirmDelete = async () => {
     if (!supplierToDelete) return;
@@ -182,6 +230,12 @@ export default function Suppliers() {
           Add Supplier
         </Button>
       </div>
+
+      {/* Item Coverage Panel */}
+      <ItemCoveragePanel
+        onAddSupplier={handleAddSupplierToItem}
+        suppliers={suppliers}
+      />
 
       {/* Search and Filters */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4">
@@ -240,9 +294,14 @@ export default function Suppliers() {
       <SupplierFormModal
         supplier={editingSupplier}
         open={showFormModal}
-        onClose={() => setShowFormModal(false)}
+        onClose={() => {
+          setShowFormModal(false);
+          setPreAddedItemForNewSupplier(null);
+          setItemForSupplierAssignment(null);
+        }}
         onSave={handleSave}
         onSaveDraft={handleSaveDraft}
+        preAddedItem={preAddedItemForNewSupplier}
       />
       <DeleteConfirmDialog
         open={showDeleteDialog}
@@ -262,6 +321,25 @@ export default function Suppliers() {
         variant="destructive"
         loading={deleting}
         errors={deleteErrors}
+      />
+
+      {/* Add Supplier Choice Dialog */}
+      <AddSupplierChoiceDialog
+        open={showChoiceDialog}
+        onClose={handleCloseChoiceDialog}
+        item={itemForSupplierAssignment}
+        onSelectExisting={handleSelectExistingSupplier}
+        onCreateNew={handleCreateNewSupplier}
+        existingSuppliersCount={suppliers?.filter(s => s.status === 'active').length || 0}
+      />
+
+      {/* Quick Assign Supplier Modal */}
+      <QuickAssignSupplierModal
+        open={showQuickAssignModal}
+        onClose={handleCloseQuickAssignModal}
+        item={itemForSupplierAssignment}
+        suppliers={suppliers}
+        onSuccess={handleQuickAssignSuccess}
       />
     </div>
   );

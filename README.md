@@ -146,8 +146,10 @@ backend/
 *   **Job Orders**: Production workflow with ingredient reservation and finished goods tracking.
 *   **Job Order Notes**: Add detailed notes and attachments to job orders.
 *   **Purchase Orders**: Complete procurement cycle from drafted POs to received stock.
+*   **PO Wizard Supplier Validation**: Blocks and warns users when selected items have no supplier assigned.
+*   **Item-Supplier Coverage Panel**: Visual dashboard on Suppliers page showing which items have/lack supplier assignments.
 *   **Stock Movements**: Detailed audit trail of every inventory change.
-*   **Supplier Management**: Track supplier performance and lead times.
+*   **Supplier Management**: Track supplier performance, lead times, and item assignments with quick-assign functionality.
 *   **User Management**: Role-based access control (Admin, Manager, Staff).
 
 ### Project Structure
@@ -178,6 +180,17 @@ npm run build            # Build both applications
 npm run install:all      # Install all dependencies
 npm run start            # Start production builds
 ```
+
+### 🤖 Agentic Workflows (Antigravity Only)
+If you are using the Antigravity AI assistant, you can use these "Turbo" workflows to automate multi-step tasks:
+
+- `/deploy` - Full production deployment (SSH, pull, build, restart)
+- `/start-dev` - Start development environment with PM2
+- `/sync` - Synchronize all dependencies (root, frontend, backend)
+- `/health` - Quick system health and status check
+- `/fix` - Automatically fix linting and formatting issues
+
+These workflows use `// turbo-all` to run autonomously without requiring step-by-step approval.
 
 ### Frontend (`cd frontend/`)
 ```bash

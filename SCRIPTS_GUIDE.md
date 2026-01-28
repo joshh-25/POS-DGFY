@@ -362,3 +362,27 @@ If you encounter issues:
 4. Check Git Bash is up to date
 
 For other issues, refer to the main [README.md](README.md) or [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md).
+
+---
+
+## 🤖 Workflow Automation (Antigravity/Turbo)
+
+The project includes specialized workflows for the AI Agent (Antigravity) to automate complex tasks.
+
+### Slash Commands
+Use these commands in your chat with the agent to trigger predefined workflows:
+
+| Command | Description | What it does |
+| :--- | :--- | :--- |
+| `/deploy` | **Deploy to Production** | Full cycle: Build frontend → Migrate DB → Restart PM2 → Verify health |
+| `/sync` | **Sync Dependencies** | Runs `npm install` in root, backend, and frontend |
+| `/health` | **System Health Check** | Checks PM2 status and scans error logs for last 100 lines |
+| `/fix` | **Auto-Fix Code** | Runs `npm audit fix` and linting/formatting scripts |
+| `/start-dev` | **Start Development** | Configures and starts the dev environment via PM2 |
+
+### Turbo Mode
+These workflows use the `// turbo-all` annotation, which empowers the agent to:
+- **Auto-execute terminal commands** without asking for permission for every step.
+- **Auto-accept** standard prompts when safe to do so.
+
+*Note: You can review these workflow definitions in `.agent/workflows/`.*

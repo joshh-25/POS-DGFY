@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'sku_inventory_manager',
+  process.env.NODE_ENV === 'test' ? 'sku_inventory_manager_test' : (process.env.DB_NAME || 'sku_inventory_manager'),
   process.env.DB_USER || 'root',
   process.env.DB_PASSWORD || '',
   {

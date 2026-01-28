@@ -2981,26 +2981,213 @@ Implemented a comprehensive folder organization system for the Inventory Items, 
 - [x] Implemented URL parameter precedence
   - URL parameters (e.g., `?filter=low`) strictly override stored preferences
   - Ensures deep links and dashboard shortcuts continue to function as expected
- 
-  
- # #   P h a s e   1 8 :   U n i t   o f   M e a s u r e   E x p a n s i o n  
- * * S t a t u s * * :   � S&   C O M P L E T E  
- * * D a t e * * :   2 0 2 6 - 0 1 - 2 6  
-  
- # # #   F e a t u r e   I m p l e m e n t a t i o n  
- -   [ x ]   A d d   " P i e c e s "   a s   a   n e w   u n i t   o f   m e a s u r e   o p t i o n  
- -   [ x ]   C e n t r a l i z e   u n i t   d e f i n i t i o n s   t o   e n s u r e   c o n s i s t e n c y   a c r o s s   t h e   a p p l i c a t i o n  
-     -   C r e a t e d   ` f r o n t e n d / s r c / l i b / c o n s t a n t s . j s `  
-     -   D e f i n e d   s t a n d a r d   u n i t s :   U n i t s ,   P i e c e s   ( p c s ) ,   K i l o g r a m s   ( k g ) ,   G r a m s   ( g ) ,   P o u n d s   ( l b s ) ,   O u n c e s   ( o z ) ,   L i t e r s   ( L ) ,   M i l l i l i t e r s   ( m l )  
- -   [ x ]   U p d a t e   I t e m   F o r m   t o   u s e   c e n t r a l i z e d   u n i t s  
-     -   R e f a c t o r e d   ` I t e m F o r m M o d a l . j s x `  
- -   [ x ]   U p d a t e   P r o d u c t   W i z a r d   t o   u s e   c e n t r a l i z e d   u n i t s  
-     -   R e f a c t o r e d   ` B a s i c I n f o S t e p . j s x `  
-  
- # # #   B u g   F i x e s  
- -   [ x ]   F i x e d   i n c o r r e c t   i m p o r t   p a t h   i n   ` I t e m F o r m M o d a l . j s x `   c a u s i n g   5 0 0   e r r o r  
+
+ 
+ 
+ 
+ # #   P h a s e   1 8 :   U n i t   o f   M e a s u r e   E x p a n s i o n 
+ 
+ * * S t a t u s * * :   � S&   C O M P L E T E 
+ 
+ * * D a t e * * :   2 0 2 6 - 0 1 - 2 6 
+ 
+ 
+ 
+ # # #   F e a t u r e   I m p l e m e n t a t i o n 
+ 
+ -   [ x ]   A d d   " P i e c e s "   a s   a   n e w   u n i t   o f   m e a s u r e   o p t i o n 
+ 
+ -   [ x ]   C e n t r a l i z e   u n i t   d e f i n i t i o n s   t o   e n s u r e   c o n s i s t e n c y   a c r o s s   t h e   a p p l i c a t i o n 
+ 
+     -   C r e a t e d   ` f r o n t e n d / s r c / l i b / c o n s t a n t s . j s ` 
+ 
+     -   D e f i n e d   s t a n d a r d   u n i t s :   U n i t s ,   P i e c e s   ( p c s ) ,   K i l o g r a m s   ( k g ) ,   G r a m s   ( g ) ,   P o u n d s   ( l b s ) ,   O u n c e s   ( o z ) ,   L i t e r s   ( L ) ,   M i l l i l i t e r s   ( m l ) 
+ 
+ -   [ x ]   U p d a t e   I t e m   F o r m   t o   u s e   c e n t r a l i z e d   u n i t s 
+ 
+     -   R e f a c t o r e d   ` I t e m F o r m M o d a l . j s x ` 
+ 
+ -   [ x ]   U p d a t e   P r o d u c t   W i z a r d   t o   u s e   c e n t r a l i z e d   u n i t s 
+ 
+     -   R e f a c t o r e d   ` B a s i c I n f o S t e p . j s x ` 
+ 
+ 
+ 
+ # # #   B u g   F i x e s 
+ 
+ -   [ x ]   F i x e d   i n c o r r e c t   i m p o r t   p a t h   i n   ` I t e m F o r m M o d a l . j s x `   c a u s i n g   5 0 0   e r r o r 
+ 
  
 ### 2026-01-26 - Expiry Alerts Fix
 - [x] Fixed issue where soft-deleted items appeared in 'Missing Expiry Date' alerts
 - [x] Updated alertService.js to filter out inactive items in getExpiryAlerts query
 - [x] Verified with reproduction script ensuring strictly active items are checked
+
+### 2026-01-27 - Items Component Referencing Fix
+- [x] Fixed 'ReferenceError: productFolders is not defined' in Items.jsx
+- [x] Aliased 'productFolders' to 'folders' state to resolve missing variable preventing 'Create Product' wizard from opening
+
+## 2026-01-28: Workflow Automation (Turbo) Implementation
+- **Objective**: Improve Antigravity autonomy by reducing manual approvals.
+- **Implemented Workflows**: Added /deploy, /sync, /health, and /fix with // turbo-all annotation.
+- **Documentation Updated**: README.md, QUICK_START.md, DEPLOYMENT_GUIDE.md, and 282025_Documentation.md.
+
+---
+
+## Phase 24: FIFO & Stock Movement System Completion
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-28
+
+### 1. Project Context
+The project successfully integrated **FIFO (First-In-First-Out) Costing** and a centralized **Stock Movement** system.
+- **Core Goal**: Track every stock change with audit trails and batch-specific costs.
+- **FIFO Logic**: Ingredients are consumed from the oldest batch to the newest.
+- **Scope**: Covers Purchase Order receipt (batch creation) and Job Order consumption (batch deduction).
+
+### 2. Implementation Details
+
+#### Centralized Service: `stockMovementService.js`
+This service acts as the **single source of truth** for all inventory changes. It handles:
+- **`createStockMovement`**: Atomically updates `current_stock`, creates/consumes FIFO batches, and logs `StockMovement`.
+- **`BatchTransaction`**: Links movements to specific batches, recording exactly how much was taken from which batch (split-batch support).
+- **Void Logic**: Robust reversal system that restores both stock levels and batch consumption history.
+
+#### Critical Database Schema Changes
+| Migration File | Purpose |
+| :--- | :--- |
+| `20250103...archive-fields` | Fixed missing `archived_by` columns. |
+| `20260128...jo-number-nullable` | Allowed Draft JOs without JO numbers. |
+| `20260128...stock-movement-enum` | Added `production_output` and `adjustment` types. |
+
+### 3. FIFO for Non-Perishable Items
+- **Problem**: FIFO was originally tied strictly to `expiry_date`.
+- **Solution**: Decoupled FIFO from shelf life. `shelf_life_days` is now optional.
+- **Result**: Packaging and supplies now track exact costs and batches without requiring fake expiry dates.
+
+### 4. Audit Certification & Test Proofs
+The system was audited across the entire refactor path (Controller -> Service -> Stock Service -> DB).
+
+**Automated Test Integrity**:
+| Test Suite | Result | Notes |
+|------------|--------|-------|
+| `verify-po-receipt-integration.js` | **PASS** | Verify batch creation on PO receive |
+| `verify-jo-consumption-integration.js` | **PASS** | Verify FIFO logic & multi-batch splits |
+| `voidMovement.test.js` | **7/7 PASS** | Verify void/reversal logic |
+| `e2e-full-cycle.test.js` | **16/16 PASS** | Full flow: PO -> JO -> Loss -> Void |
+
+**Total Verification**: 25/25 Tests PASSED.
+
+---
+
+## Phase 15: Purchase Order & Supplier Item Coverage Enhancement
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-28
+
+### Problem Statement
+When creating Purchase Orders via the wizard:
+1. Users select multiple items using "Select Low Stock"
+2. Only items with suppliers assigned appear in final POs
+3. Items without suppliers were **silently dropped** with no warning
+4. Users had no visibility into which items lack suppliers
+
+### Solution Implemented
+
+#### Part 1: PO Wizard - Block & Warn for Missing Suppliers
+- [x] Added detection logic for items without any supplier in `POCreateWizard.jsx`
+- [x] Added warning dialog that appears when user tries to proceed with unassignable items
+- [x] Three options provided: "Go Back", "Remove & Continue", "Manage Suppliers"
+- [x] "Manage Suppliers" navigates to Suppliers page for quick assignment
+
+#### Part 2: Supplier Page - Item Coverage Management
+- [x] Created new `ItemCoveragePanel` component showing items with/without suppliers
+- [x] Panel displays above supplier cards with collapsible interface
+- [x] Two tabs: "Items with Supplier" and "Items without Supplier"
+- [x] "Add Supplier" button on each item without supplier
+
+#### Part 3: Dual-Option Supplier Assignment Flow
+- [x] Created `AddSupplierChoiceDialog` - choice between existing/new supplier
+- [x] Created `QuickAssignSupplierModal` - quick assign to existing supplier (dropdown + MOQ + price)
+- [x] Modified `SupplierFormModal` to accept `preAddedItem` prop for pre-populating items
+
+#### Backend Changes
+- [x] Added `GET /api/v1/items/supplier-coverage` endpoint
+- [x] Returns `items_with_supplier` and `items_without_supplier` arrays
+- [x] Includes summary with coverage percentage
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `frontend/Components/suppliers/ItemCoveragePanel.jsx` | Coverage tabs with item lists |
+| `frontend/Components/suppliers/AddSupplierChoiceDialog.jsx` | Choice dialog (existing vs new) |
+| `frontend/Components/suppliers/QuickAssignSupplierModal.jsx` | Quick assign to existing supplier |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `backend/src/services/itemService.js` | Added `getItemSupplierCoverage()` function |
+| `backend/src/controllers/itemController.js` | Added controller handler |
+| `backend/src/routes/items.js` | Added `/supplier-coverage` route |
+| `frontend/src/services/itemService.js` | Added `getItemSupplierCoverage()` service |
+| `frontend/src/hooks/useItems.js` | Added `useItemSupplierCoverage()` hook |
+| `frontend/Components/po/POCreateWizard.jsx` | Added warning dialog for items without suppliers |
+| `frontend/Components/suppliers/SupplierFormModal.jsx` | Added `preAddedItem` prop support |
+| `frontend/Pages/Suppliers.jsx` | Integrated ItemCoveragePanel and dialogs |
+
+### User Flow
+1. **Suppliers Page**: See Item Coverage Panel at top
+2. **Items Without Supplier tab**: See list of purchasable items needing suppliers
+3. **Click "Add Supplier"**: Choice dialog appears
+4. **Option A**: Quick assign to existing supplier (3 fields: dropdown, MOQ, price)
+5. **Option B**: Create new supplier with item pre-added
+6. **PO Wizard**: Now warns when items can't be ordered due to missing suppliers
+
+---
+
+**Last Updated**: 2026-01-28
+**Version**: 1.13.0
+**Project Status**: Production Ready
+
+---
+
+## Phase 18: Supplier Wizard Experience Improvements
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-28
+
+### Problem Statement
+The Supplier Edit/Create Wizard had several usability and visual issues:
+1. **Raw ID Display**: "Items Supplied" list displayed raw IDs (e.g., "14") instead of item names when loading an existing supplier.
+2. **Hard to Find Items**: Dropdown list was unsearchable, making it difficult to find items in a large inventory.
+3. **Basic UI**: The interface lacked visual polish and clear information hierarchy.
+
+### Solutions Implemented
+
+#### 1. Fix Item Label Display
+- [x] Updated custom `Select` component (`frontend/Components/ui/select.jsx`) to support **automatic label registration**.
+- [x] On initial load, the component now looks up the label (name) corresponding to the `value` (ID) and displays it immediately.
+- [x] Resolves the issue where user saw numbers instead of names until they manually clicked the dropdown.
+
+#### 2. Searchable Item Selection
+- [x] Added **sticky search bar** inside the item selection dropdown in `SupplierFormModal.jsx`.
+- [x] Search filters items by both **Name** and **SKU Code**.
+- [x] Implemented handling for "No results found" state.
+- [x] Optimized for keyboard and mouse navigation with `stopPropagation` to prevent accidental closure.
+
+#### 3. Premium UI/UX Overhaul
+- [x] Redesigned "Items Supplied" rows to use a **card-like layout**:
+  - Distinct sections for Item Selection, MOQ, and Price.
+  - Better whitespace and visual hierarchy.
+  - Hover effects (`hover:shadow-sm`, `hover:border-teal-100`) for meaningful feedback.
+- [x] **Input Enhancements**:
+  - Added currency symbol (₱) to price inputs.
+  - Added visual grouping for labels.
+  - Improved "Delete" button styling (ghost variant with red hover state).
+- [x] **Empty States**: added clearer instruction labels ("ITEM TO SUPPLY", "MOQ", "PRICE").
+
+### Files Modified
+- `frontend/Components/ui/select.jsx` - Added label lookup logic.
+- `frontend/Components/suppliers/SupplierFormModal.jsx` - Integrated search and new UI design.
+
+### Verification
+- [x] Verified existing suppliers load with correct item names.
+- [x] Verified search functionality filters correctly by Name and SKU.
+- [x] Verified adding/removing items works smoothly with new state logic.

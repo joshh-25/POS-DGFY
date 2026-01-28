@@ -342,6 +342,53 @@ Delete item (soft delete)
 Get stock movement history for an item
 ...
 
+### GET /items/supplier-coverage
+Get item-supplier coverage statistics showing which items have/lack supplier assignments
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "items_with_supplier": [
+      {
+        "item_id": 1,
+        "name": "All-Purpose Flour",
+        "sku_code": "ING-001",
+        "category": "raw_material",
+        "current_stock": 150.50,
+        "min_threshold": 200,
+        "unit_of_measure": "kg",
+        "supplier_count": 2
+      }
+    ],
+    "items_without_supplier": [
+      {
+        "item_id": 5,
+        "name": "Black Square Bottle 350ml",
+        "sku_code": "PKG-003",
+        "category": "packaging",
+        "current_stock": 50,
+        "min_threshold": 100,
+        "unit_of_measure": "pcs"
+      }
+    ],
+    "summary": {
+      "total_purchasable_items": 64,
+      "items_with_supplier": 45,
+      "items_without_supplier": 19,
+      "coverage_percentage": 70.31
+    }
+  }
+}
+```
+
+**Notes:**
+- Only returns purchasable items (categories: raw_material, packaging, supplies)
+- Products are excluded as they are manufactured, not purchased
+- Used by the PO Wizard to validate item selection
+- Used by the Item Coverage Panel on the Suppliers page
+
 ---
 
 ## Purchase Orders Endpoints

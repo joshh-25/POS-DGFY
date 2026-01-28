@@ -8,13 +8,28 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   const [open, setOpen] = useState(false)
   const [selectedValue, setSelectedValue] = useState(value || '')
   const [selectedLabel, setSelectedLabel] = useState('')
+  const [items, setItems] = useState({})
 
   // Sync selectedValue with value prop when it changes externally
   useEffect(() => {
     if (value !== undefined && value !== selectedValue) {
       setSelectedValue(value)
+      // If we already have the label for this value, update selectedLabel
+      if (items[value]) {
+        setSelectedLabel(items[value])
+      }
     }
-  }, [value])
+  }, [value, items])
+
+  const registerItem = (val, label) => {
+    setItems(prev => {
+      if (prev[val] === label) return prev;
+      return { ...prev, [val]: label };
+    });
+    if (val === selectedValue) {
+      setSelectedLabel(label);
+    }
+  };
 
   const handleValueChange = (newValue, newLabel) => {
     setSelectedValue(newValue)
@@ -30,7 +45,15 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   })
 
   return (
-    <SelectContext.Provider value={{ open, setOpen, selectedValue, selectedLabel, handleValueChange, selectContent }}>
+    <SelectContext.Provider value={{
+      open,
+      setOpen,
+      selectedValue,
+      selectedLabel,
+      handleValueChange,
+      selectContent,
+      registerItem
+    }}>
       <div className="relative" {...props}>
         {children}
       </div>
@@ -99,7 +122,13 @@ const SelectContent = ({ children, className, ...props }) => {
 }
 
 const SelectItem = React.forwardRef(({ className, children, value, ...props }, ref) => {
-  const { handleValueChange, selectedValue } = React.useContext(SelectContext)
+  const { handleValueChange, selectedValue, registerItem } = React.useContext(SelectContext)
+
+  useEffect(() => {
+    if (value !== undefined && children) {
+      registerItem(value, children);
+    }
+  }, [value, children]);
 
   return (
     <div

@@ -21,6 +21,9 @@ router.post('/export', authorize('admin', 'manager'), csvExportController.export
 router.get('/export/preview', authorize('admin', 'manager'), csvExportController.previewExport);
 router.get('/export/all', authorize('admin', 'manager'), csvExportController.exportAllItems);
 
+// Supplier coverage - must be before :item_id to avoid route conflicts
+router.get('/supplier-coverage', itemController.getItemSupplierCoverage);
+
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);
 router.get('/:item_id', itemController.getItemById);

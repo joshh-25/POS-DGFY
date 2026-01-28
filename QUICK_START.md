@@ -110,6 +110,16 @@ npm run dev
 
 ---
 
+## 🤖 Antigravity "Turbo" Shortcuts (Recommended)
+
+If you are working with the Antigravity AI assistant, you can skip manual terminal management using these commands:
+
+1. **`/sync`**: Run this first to ensure all dependencies are installed everywhere.
+2. **`/start-dev`**: Replaces the "2 Terminals" manual setup. It starts both frontend and backend in the background using PM2 and streams the logs.
+3. **`/health`**: Run this any time to verify services are running correctly.
+
+---
+
 ## Optional: Frontend Environment Configuration
 
 The frontend will work with default settings, but you can create a `.env` file in the **project root** (not backend folder) for customization:

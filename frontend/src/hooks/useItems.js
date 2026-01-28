@@ -158,3 +158,39 @@ export const useFinalizeItem = () => {
   return { finalizeItem, loading, error };
 };
 
+/**
+ * Hook to fetch item supplier coverage data
+ * Returns items with and without supplier assignments
+ */
+export const useItemSupplierCoverage = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchCoverage = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await itemService.getItemSupplierCoverage();
+      setData(result);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch item supplier coverage');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCoverage();
+  }, [fetchCoverage]);
+
+  return {
+    itemsWithSupplier: data?.items_with_supplier || [],
+    itemsWithoutSupplier: data?.items_without_supplier || [],
+    summary: data?.summary || null,
+    loading,
+    error,
+    refetch: fetchCoverage
+  };
+};
+
