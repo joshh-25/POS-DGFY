@@ -17,54 +17,23 @@ ssh root@hermes-cloud
 cd /var/www/skupervisor
 ```
 
-### 2. Pull Latest Code
+### 2. Auto-Deployment (Recommended)
+This script handles git pull, installing dependencies, building frontend, migrating database, and restarting PM2.
+
 ```bash
-# Check for uncommitted changes first
-git status
+# First time setup: ensure script is executable (if needed)
+chmod +x deploy.sh
 
-# If there are conflicts with build artifacts, reset them:
-git checkout -- frontend/dist/index.html
-
-# Pull the latest code
-git pull origin master
+# Run deployment
+./deploy.sh
 ```
 
-### 3. Install Backend Dependencies
-```bash
-cd backend
-npm install
-cd ..
-```
-
-// turbo
-### 4. Rebuild Frontend
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-### 5. Run Database Migrations (if any)
-```bash
-cd backend
-# Primary migrations folder (src/migrations/)
-npx sequelize-cli db:migrate
-
-# Secondary migrations folder (migrations/) - if it exists
-npx sequelize-cli db:migrate --migrations-path migrations
-cd ..
-```
-
-### 6. Restart PM2 Services
-```bash
-# If services are already running
-pm2 restart all
-
-# If this is first deployment, start with ecosystem config
-pm2 start ecosystem.config.cjs --env production
-pm2 save
-```
+### 3. Manual Deployment (Fallback)
+If the script fails, follow these steps manually:
+1. `git pull origin master`
+2. `cd backend && npm install && npx sequelize-cli db:migrate && cd ..`
+3. `cd frontend && npm install && npm run build && cd ..`
+4. `pm2 restart all`
 
 ### 7. Verify Deployment
 ```bash
@@ -103,7 +72,6 @@ curl http://localhost:5001/api/v1/items
 - Check migration status: `npx sequelize-cli db:migrate:status`
 
 ### Git Merge Conflicts
-- For build artifacts: `git checkout -- frontend/dist/`
 - For other files: `git stash && git pull && git stash pop`
 
 ---
@@ -113,10 +81,8 @@ curl http://localhost:5001/api/v1/items
 ```bash
 # Full deployment sequence
 cd /var/www/skupervisor
-git checkout -- frontend/dist/index.html
 git pull origin master
-cd backend && npm install && npx sequelize-cli db:migrate && npx sequelize-cli db:migrate --migrations-path migrations && cd ..
-cd frontend && npm install && npm run build && cd ..
+bash deploy.sh
 pm2 restart all
 pm2 logs sku-backend --lines 20
 ```
