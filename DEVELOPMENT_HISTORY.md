@@ -3191,3 +3191,41 @@ The Supplier Edit/Create Wizard had several usability and visual issues:
 - [x] Verified existing suppliers load with correct item names.
 - [x] Verified search functionality filters correctly by Name and SKU.
 - [x] Verified adding/removing items works smoothly with new state logic.
+
+---
+
+## Phase 17: Production Deployment Automation & Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-28
+
+### Issue: Git Conflicts & Deployment Failures
+**Problem 1**: \`git pull\` on production server failed because \`frontend/dist\` (build artifacts) was tracked in the repository but also generated locally on the server during build, causing merge conflicts.
+**Problem 2**: Database migrations failed with "Duplicate column name" errors because previous manual interventions had added columns without updating \`SequelizeMeta\`, causing subsequent migrations to try adding them again.
+
+### Solutions Implemented
+
+#### 1. Untracked Build Artifacts
+- [x] Updated \`.gitignore\` to exclude \`frontend/dist/\`
+- [x] Used \`git rm -r --cached frontend/dist\` to remove artifacts from the repository while keeping local files
+- [x] Performed a hard reset on production to synchronize state
+
+#### 2. Automated Deployment Script
+- [x] Created \`deploy.sh\` script to standardize the deployment process:
+  - Pulls latest code
+  - Installs dependencies (root, backend, frontend)
+  - Builds frontend
+  - Runs database migrations
+  - Restarts PM2 services
+- [x] Added \`set -e\` safety switch to stop deployment immediately if any step fails
+- [x] Created \`.gitattributes\` to enforce LF line endings on shell scripts (critical for Windows-developed scripts running on Linux)
+
+#### 3. Idempotent Migrations
+- [x] Fixed migration \`20250103000000-add-audit-fields-to-items.cjs\`
+- [x] Fixed migration \`20250103000001-add-archive-fields-to-purchase-orders.cjs\`
+- [x] Fixed migration \`20250103000002-add-archive-fields-to-job-orders.cjs\`
+- **Fix**: Wrapped \`addColumn\` operations in checks to verify if the column exists using \`implements describedTable()\`. This prevents failures when migrations are re-run on a database that already has the columns.
+
+### Files Created/Modified
+- \`deploy.sh\` (New)
+- \`.gitattributes\` (New)
+- \`backend/src/migrations/*.cjs\` (Modified for idempotency)

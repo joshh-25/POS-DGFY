@@ -28,29 +28,41 @@ This will autonomously handle SSH, git pulling, dependency installation, databas
 ---
 
 ## Deployment Steps
+### 1. Auto-Deployment (Recommended)
+We have implemented an automated script `deploy.sh` that handles the entire process safely (pulling code, installing dependencies, building frontend, migrating DB, and restarting services).
 
-### 1. Update Codebase
-Navigate to your project directory and pull the latest changes.
+Run this on your server:
 
 ```bash
 cd /var/www/skupervisor
-git checkout -- frontend/dist/index.html # Reset build artifacts if conflicts exist
+
+# First time setup only:
+chmod +x deploy.sh
+
+# Deploy
+./deploy.sh
+```
+
+---
+
+### 2. Manual Deployment (Fallback)
+If the auto-deployment script fails, you can fall back to manual steps:
+
+#### Step 1: Update Code
+```bash
+cd /var/www/skupervisor
 git pull origin master
 ```
 
-### 2. Backend Setup
-Install dependencies and run migrations.
-
+#### Step 2: Backend Setup
 ```bash
 cd backend
 npm install
 npx sequelize-cli db:migrate
-# If you have a secondary migrations folder:
-# npx sequelize-cli db:migrate --migrations-path migrations
 cd ..
 ```
 
-### 3. Frontend Build (CRITICAL)
+#### Step 3: Frontend Build (CRITICAL)
 The frontend is a static site build. **You must rebuild it whenever frontend code changes.**
 
 ```bash
@@ -60,9 +72,7 @@ npm run build
 cd ..
 ```
 
-### 4. Restart Services
-Restart the application processes to apply changes.
-
+#### Step 4: Restart Services
 ```bash
 pm2 restart all
 ```

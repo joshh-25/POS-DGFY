@@ -44,7 +44,28 @@ Kills a process running on a specific port.
 
 ---
 
-### 2. `kill-dev.sh` - Kill All Development Servers
+---
+
+### 2. `deploy.sh` - Automated Production Deployment
+
+Automates the entire deployment process on the production server.
+
+**Usage:**
+```bash
+./deploy.sh
+```
+
+**What it does:**
+1. Pulls latest code from git
+2. Installs dependencies (root, backend, frontend)
+3. Builds the frontend (static assets)
+4. Runs database migrations (idempotent)
+5. Restarts all PM2 services
+6. Fails safely if any step errors out (`set -e`)
+
+---
+
+### 3. `kill-dev.sh` - Kill All Development Servers
 
 Kills all common development ports at once (5000, 5173, 5174).
 
