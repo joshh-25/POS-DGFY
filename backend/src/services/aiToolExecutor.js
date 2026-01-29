@@ -17,6 +17,7 @@ import * as stockMovementService from './stockMovementService.js';
 import * as dashboardService from './dashboardService.js';
 import * as alertService from './alertService.js';
 import * as forecastService from './forecastService.js';
+import * as documentationService from './documentationService.js';
 
 /**
  * Execute a tool by name with given arguments
@@ -513,12 +514,26 @@ async function getForecast({ item_id, days = 30 }) {
 // ============== DOCUMENTATION (RAG) ==============
 
 async function searchDocumentation({ query }) {
-  // This will be implemented in Phase 4 (RAG)
-  // For now, return a placeholder
+  const results = await documentationService.searchDocumentation(query);
+
+  if (results.length === 0) {
+    // Try contextual help as fallback
+    const help = await documentationService.getContextualHelp(query);
+    return {
+      query,
+      results: [],
+      contextual_help: help
+    };
+  }
+
   return {
-    message: 'Documentation search will be available soon.',
     query,
-    results: []
+    results: results.map(r => ({
+      title: r.title,
+      description: r.description,
+      relevance: r.score > 10 ? 'high' : r.score > 5 ? 'medium' : 'low',
+      excerpt: r.excerpt
+    }))
   };
 }
 
