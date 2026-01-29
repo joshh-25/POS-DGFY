@@ -1,10 +1,17 @@
 import express from 'express';
 import * as supplierController from '../controllers/supplierController.js';
+import * as supplierCSVController from '../controllers/supplierCSVController.js';
 import { validateCreateSupplier, validateUpdateSupplier, validateCreateSupplierDraft } from '../validators/supplierValidator.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(authenticate);
+
+// CSV Import/Export routes - must be before :supplier_id routes
+router.get('/export', authorize('admin', 'manager'), supplierCSVController.exportSuppliers);
+router.get('/import/template', authorize('admin', 'manager'), supplierCSVController.getTemplate);
+router.post('/import/preview', authorize('admin', 'manager'), supplierCSVController.previewImport);
+router.post('/import/confirm', authorize('admin', 'manager'), supplierCSVController.confirmImport);
 
 // Read operations - all authenticated users
 router.get('/', supplierController.getSuppliers);

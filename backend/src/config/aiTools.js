@@ -684,6 +684,85 @@ export const AI_TOOLS = [
     category: TOOL_CATEGORIES.ANALYSIS,
     requiresConfirmation: false
   },
+  {
+    type: "function",
+    function: {
+      name: "analyze_reorder_needs",
+      description: "Analyze stock consumption velocity (burn rate) and supplier lead times to recommend items that need reordering. Returns dynamic Reorder Points (ROP) based on actual usage rather than static thresholds.",
+      parameters: {
+        type: "object",
+        properties: {
+          category: {
+            type: "string",
+            enum: ["raw_material", "packaging", "product", "supplies"],
+            description: "Optional: Filter recommendations by category"
+          },
+          item_id: {
+            type: "integer",
+            description: "Optional: Analyze a specific item ID only"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.ANALYSIS,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "detect_anomalies",
+      description: "Analyze stock history for suspicious activities (e.g., potential theft, large losses, unusual consumption spikes, or frequent manual adjustments).",
+      parameters: {
+        type: "object",
+        properties: {
+          confidence_threshold: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+            description: "Sensitivity of detection (default: medium)"
+          },
+          category: {
+            type: "string",
+            description: "Optional: Filter by category"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.ANALYSIS,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_advanced_analytics",
+      description: "Get deep insights into Supplier Performance (on-time rate, quality) or Inventory Costs (COGS, waste value).",
+      parameters: {
+        type: "object",
+        properties: {
+          analysis_type: {
+            type: "string",
+            enum: ["supplier_performance", "cost_analysis"],
+            description: "Type of analysis to perform"
+          },
+          target_id: {
+            type: "integer",
+            description: "Supplier ID (required for supplier_performance)"
+          },
+          date_range: {
+            type: "object",
+            properties: {
+              start: { type: "string", format: "date" },
+              end: { type: "string", format: "date" }
+            }
+          }
+        },
+        required: ["analysis_type"]
+      }
+    },
+    category: TOOL_CATEGORIES.ANALYSIS,
+    requiresConfirmation: false
+  },
 
   // ============== CSV IMPORT/EXPORT ==============
   {

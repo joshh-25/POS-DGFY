@@ -51,7 +51,7 @@ import {
 } from "../Components/ui/select";
 import { cn } from "../src/lib/utils.js";
 import { useStockMovements, useCreateStockMovement, useMovementStats } from '../src/hooks/useStockMovements.js';
-import { getExportUrl, voidMovement } from '../src/services/stockMovementService.js';
+import { getExportUrl, voidMovement, exportStockMovements } from '../src/services/stockMovementService.js';
 import { useItems } from '../src/hooks/useItems.js';
 import MovementCreateModal from '../Components/movements/MovementCreateModal';
 import MovementDetailsModal from '../Components/movements/MovementDetailsModal';
@@ -273,13 +273,31 @@ export default function StockMovements() {
     setPage(1);
   };
 
-  const handleExport = () => {
-    const filters = {
-      startDate,
-      endDate,
-      ...(typeFilters.length === 1 && { movement_type: typeFilters[0] })
-    };
-    window.location.href = getExportUrl(filters);
+  const handleExport = async () => {
+    try {
+      const filters = {
+        startDate,
+        endDate,
+        ...(typeFilters.length === 1 && { movement_type: typeFilters[0] })
+      };
+
+      const blob = await exportStockMovements(filters);
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `stock_movements_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Export downloaded successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export stock movements');
+    }
   };
 
   const hasActiveFilters = typeFilters.length > 0 || searchQuery || startDate || endDate;

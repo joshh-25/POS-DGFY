@@ -448,7 +448,7 @@ export default function PurchaseOrders() {
             setInitialItemId(null);
           }}
           onSubmit={handleCreatePO}
-          suppliers={suppliers || []}
+          suppliers={suppliers?.filter(s => s.status === 'active') || []}
           items={items || []}
           initialItemId={initialItemId}
         />

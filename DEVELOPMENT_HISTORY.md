@@ -2982,42 +2982,25 @@ Implemented a comprehensive folder organization system for the Inventory Items, 
   - URL parameters (e.g., `?filter=low`) strictly override stored preferences
   - Ensures deep links and dashboard shortcuts continue to function as expected
 
- 
- 
- 
- # #   P h a s e   1 8 :   U n i t   o f   M e a s u r e   E x p a n s i o n 
- 
- * * S t a t u s * * :   � S&   C O M P L E T E 
- 
- * * D a t e * * :   2 0 2 6 - 0 1 - 2 6 
- 
- 
- 
- # # #   F e a t u r e   I m p l e m e n t a t i o n 
- 
- -   [ x ]   A d d   " P i e c e s "   a s   a   n e w   u n i t   o f   m e a s u r e   o p t i o n 
- 
- -   [ x ]   C e n t r a l i z e   u n i t   d e f i n i t i o n s   t o   e n s u r e   c o n s i s t e n c y   a c r o s s   t h e   a p p l i c a t i o n 
- 
-     -   C r e a t e d   ` f r o n t e n d / s r c / l i b / c o n s t a n t s . j s ` 
- 
-     -   D e f i n e d   s t a n d a r d   u n i t s :   U n i t s ,   P i e c e s   ( p c s ) ,   K i l o g r a m s   ( k g ) ,   G r a m s   ( g ) ,   P o u n d s   ( l b s ) ,   O u n c e s   ( o z ) ,   L i t e r s   ( L ) ,   M i l l i l i t e r s   ( m l ) 
- 
- -   [ x ]   U p d a t e   I t e m   F o r m   t o   u s e   c e n t r a l i z e d   u n i t s 
- 
-     -   R e f a c t o r e d   ` I t e m F o r m M o d a l . j s x ` 
- 
- -   [ x ]   U p d a t e   P r o d u c t   W i z a r d   t o   u s e   c e n t r a l i z e d   u n i t s 
- 
-     -   R e f a c t o r e d   ` B a s i c I n f o S t e p . j s x ` 
- 
- 
- 
- # # #   B u g   F i x e s 
- 
- -   [ x ]   F i x e d   i n c o r r e c t   i m p o r t   p a t h   i n   ` I t e m F o r m M o d a l . j s x `   c a u s i n g   5 0 0   e r r o r 
- 
- 
+
+## Phase 24b: Unit of Measure Expansion
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-26
+
+### Feature Implementation
+- [x] Add "Pieces" as a new unit of measure option
+- [x] Centralize unit definitions to ensure consistency across the application
+  - Created `frontend/src/lib/constants.js`
+  - Defined standard units: Units, Pieces (pcs), Kilograms (kg), Grams (g), Pounds (lbs), Ounces (oz), Liters (L), Milliliters (ml)
+- [x] Update Item Form to use centralized units
+  - Refactored `ItemFormModal.jsx`
+- [x] Update Product Wizard to use centralized units
+  - Refactored `BasicInfoStep.jsx`
+
+### Bug Fixes
+- [x] Fixed incorrect import path in `ItemFormModal.jsx` causing 500 error
+
+
 ### 2026-01-26 - Expiry Alerts Fix
 - [x] Fixed issue where soft-deleted items appeared in 'Missing Expiry Date' alerts
 - [x] Updated alertService.js to filter out inactive items in getExpiryAlerts query
@@ -3666,3 +3649,173 @@ Integrated OpenAI's GPT API to create an intelligent AI assistant ("SKUpervisor"
 6. **CSV Import/Export** - Parse, validate, preview, download
 
 ---
+
+## Phase 29: Dashboard & Documentation Catch-up
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-20 to 2026-01-29
+
+### Overview
+This phase captures features implemented between Jan 20-29 that were previously undocumented or partially documented, ensuring the development history is complete.
+
+### 1. Dashboard Enhancements (Jan 20-23)
+- [x] **Edit Mode**: Implemented dashboard customization
+  - Draggable widgets using `@dnd-kit/core`
+  - Resizable grid layout
+  - Add/Remove widget functionality
+- [x] **New Widgets**:
+  - `StatsCard`: Configurable key metrics (Stock Value, Low Stock, etc.)
+  - `RecentMovements`: Transaction history list
+  - `LowStockList`: Alert table for critical items
+- [x] **Implementation**:
+  - Created `DashboardGrid.jsx` and `ConnectedWidget.jsx`
+  - Integrated `useDashboardStats` hook for real-time data
+
+### 2. Infrastructure Refinements (Jan 23-28)
+- [x] **PM2 Configuration**:
+  - Updated `ecosystem.config.cjs` with `env_production` support
+  - Distinct settings for Windows (dev) vs Linux (prod)
+- [x] **Deployment Automation**:
+  - Validated `deploy.sh` script mechanism
+  - Ensure `set -e` safety checks are active
+
+---
+
+## Phase 30: Export Logic & Refinements
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Export Logic Fixes
+- [x] **Manual Selection Export**:
+  - Fixed bug where "Manual Select" export option ignored selection and exported all items.
+  - Updated `SupplierFormModal` and internal export services to respect `selectedIds`.
+- [x] **Integration**:
+  - Verified `handleExport` calls the backend with correct `ids` parameter when `manual` mode is chosen.
+
+### Supplier Deletion Refinement
+- [x] **Enhanced Delete Logic**:
+  - Clarified distinction between "Inactive" (soft delete) and "Delete" (removal).
+  - "Delete" now only permitted for suppliers with NO active purchase history.
+  - "Inactive" hides supplier from default lists but preserves data.
+
+---
+
+
+---
+
+## Phase 31: Documentation Rationalization
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Refactored the project's documentation structure to eliminate root directory clutter and establish a domain-driven hierarchy.
+
+### 1. Structure Changes
+- **Root Cleanup**: Moved 10+ operational files from root to `docs/`.
+- **New Hierarchy**:
+  - `docs/setup/`: Setup, Admin Setup, Redis, Prerequisites, Quick Start
+  - `docs/guides/`: Scripts, Delete/Archive, Contributing
+  - `docs/ops/`: Deployment, Troubleshooting
+- **Master Index**: Created `docs/INDEX.md` as the single point of entry.
+
+### 2. Standardization
+- [x] Updated `README.md` to link to new locations.
+- [x] Updated `CLAUDE.md` to use the new "Single Source of Truth" paths.
+- [x] Verified all relative links.
+
+---
+
+## Phase 5: AI - Smart Reorder Recommendations
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Implemented basic analytics for velocity-based inventory management. The system can now suggest dynamic Reorder Points (ROP) based on actual consumption ("Burn Rate") and supplier lead times, rather than relying on static min/max settings.
+
+### 1. New Service: `analyticsService.js`
+- **Burn Rate**: Calculates daily consumption based on last 30 days of `StockMovements`.
+- **ROP Calculation**: `(Burn Rate * Lead Time) + Safety Stock (50%)`.
+- **Output**: Returns status (`HEALTHY` vs `REORDER_NOW`) and suggested quantities.
+
+### 2. AI Tool Integration
+- **New Tool**: `analyze_reorder_needs` registered in `aiTools.js`.
+- **System Prompt**: Updated `aiSystemPrompt.js` to inform SKUpervisor of this capability.
+
+### 3. Verification
+- Validated via `scripts/verify-analytics.js`.
+- Confirmed Math: Burn Rate (0.5/day) * Lead Time (10 days) + Buffer = ROP (8 units).
+
+---
+
+## Phase 6: AI - Anomaly Detection Alerts
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Implemented an intelligent monitoring system to automatically detect irregularities in inventory movements, such as potential theft, process failures, or unusual consumption spikes.
+
+### 1. New Logic: `detectAnomalies` (Analytics Service)
+- **High Loss Events**: Flags singular loss events (spoilage/waste/damage) > 5% of stock or > 3x average.
+- **Consumption Spikes**: Uses statistical analysis (Z-Score > 3) to flag daily consumption that is statistically abnormal.
+- **Frequent Adjustments**: Flags items with > 3 manual adjustments in the period, indicating poor tracking discipline.
+
+### 2. AI Tool Integration
+- **New Tool**: `detect_anomalies` added to `aiTools.js`.
+- **System Prompt**: Updated `aiSystemPrompt.js` to enable "Detect Anomalies" capability.
+
+### 3. Verification
+- Validated via `scripts/verify-anomalies.js`.
+- **Tests Passed**:
+    - ✅ Detected 1000% Consumption Spike.
+    - ✅ Detected 30% Sudden Stock Loss (Simulated Theft).
+    - ✅ Detected Frequent Manual Adjustments trigger.
+
+---
+
+## Phase 7: Advanced Analytics & Reporting
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Added deep-dive analysis capabilities for supplier evaluation (Scorecards) and financial tracking (Cost/Waste Analysis).
+
+### 1. New Logic: `analyticsService.js`
+- **Supplier Scoring**: Calculates On-Time Delivery Rate (`received_date` <= `expected_date`) and Average Lead Time.
+- **Cost Analysis**: Aggregates `weighted_average_cost` from `StockMovements` to calculate accurate COGS and Waste Value.
+
+### 2. AI Tool Integration
+- **New Tool**: `get_advanced_analytics` added to `aiTools.js`.
+- **System Prompt**: Updated `aiSystemPrompt.js` to enable "Advanced Reporting".
+
+### 3. Verification
+- Validated via `scripts/verify-advanced-analytics.js`.
+- **Tests Passed**:
+    - ✅ Calculated 50% On-Time Rate for test supplier (1 late / 1 on-time).
+    - ✅ Calculated correct COGS ($50) and Waste ($10) values from movement history.
+
+---
+
+## Phase 8: User Acceptance Verification (UAT)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Final holistic verification of the "Documentation & AI Sprint" and previous "Quality of Life" fixes.
+
+### Verification Results
+Validated via `scripts/verify-uat-fixes.js`:
+
+1.  **Supplier Deletion Logic**
+    *   ✅ **Soft-Delete Hidden**: Suppliers marked with `deleted_at` do not appear in standard queries.
+    *   ✅ **Inactive Visible**: Suppliers marked as `inactive` (but not deleted) remain visible for reference, closing the loop on the user's "Delete vs Inactive" request.
+
+2.  **Export Logic**
+    *   ✅ **Manual Selection**: Querying a specific list of Mixed Object IDs (Active + Inactive) correctly returns exactly those records, confirming the "Export Manual Select" fix works.
+
+### Sprint Summary
+*   **Documentation**: Restructured into `docs/setup`, `docs/guides`, `docs/ops`.
+*   **AI Features**: Smart Reorder, Anomaly Detection, Supplier Scorecards, Cost Analysis.
+*   **Validation**: All features backed by reproduction scripts.
+*(Sprint Complete)*
+
+
+

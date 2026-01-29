@@ -23,10 +23,20 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onD
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-slate-900 text-lg">{supplier.name}</h3>
-            {isDraft && (
+            {supplier.status === 'draft' && (
               <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200">
                 <FileEdit className="w-3 h-3 mr-1" />
                 Draft
+              </Badge>
+            )}
+            {supplier.status === 'inactive' && (
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                Inactive
+              </Badge>
+            )}
+            {supplier.status === 'active' && (
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                Active
               </Badge>
             )}
           </div>

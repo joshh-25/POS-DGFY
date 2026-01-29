@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { Plus, Search, Loader2, Filter } from 'lucide-react';
+import { Plus, Search, Loader2, Filter, Upload, Download } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,6 +18,8 @@ import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import ItemCoveragePanel from '@/components/suppliers/ItemCoveragePanel';
 import AddSupplierChoiceDialog from '@/components/suppliers/AddSupplierChoiceDialog';
 import QuickAssignSupplierModal from '@/components/suppliers/QuickAssignSupplierModal';
+import SupplierExportModal from '@/components/suppliers/SupplierExportModal';
+import SupplierImportModal from '@/components/suppliers/SupplierImportModal';
 import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDraft, useFinalizeSupplier, useDeleteSupplier } from '@/hooks/useSuppliers.js';
 import { useItemSupplierCoverage } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/authService.js';
@@ -32,11 +34,13 @@ export default function Suppliers() {
   const { deleteSupplier, loading: deleting } = useDeleteSupplier();
   const { refetch: refetchCoverage } = useItemSupplierCoverage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState(null);
@@ -225,6 +229,22 @@ export default function Suppliers() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Suppliers</h1>
           <p className="text-slate-500 mt-1">{filteredSuppliers.length} suppliers</p>
         </div>
+        <Button
+          variant="outline"
+          onClick={() => setShowImportModal(true)}
+          className="mr-2"
+        >
+          <Upload className="w-4 h-4 mr-2" />
+          Import
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setShowExportModal(true)}
+          className="mr-2"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export
+        </Button>
         <Button onClick={handleCreate} className="bg-teal-600 hover:bg-teal-700">
           <Plus className="w-4 h-4 mr-2" />
           Add Supplier
@@ -303,6 +323,20 @@ export default function Suppliers() {
         onSaveDraft={handleSaveDraft}
         preAddedItem={preAddedItemForNewSupplier}
       />
+      <SupplierExportModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        filters={{ search: searchQuery, status: statusFilter }}
+        filteredCount={filteredSuppliers.length}
+        totalCount={suppliers?.length || 0}
+      />
+      <SupplierImportModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          refetch();
+        }}
+      />
       <DeleteConfirmDialog
         open={showDeleteDialog}
         onClose={() => {
@@ -338,7 +372,7 @@ export default function Suppliers() {
         open={showQuickAssignModal}
         onClose={handleCloseQuickAssignModal}
         item={itemForSupplierAssignment}
-        suppliers={suppliers}
+        suppliers={suppliers?.filter(s => s.status === 'active') || []}
         onSuccess={handleQuickAssignSuccess}
       />
     </div>

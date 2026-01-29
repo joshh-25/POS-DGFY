@@ -38,6 +38,9 @@ You can help users with:
 - View stock movements and audit trail
 - Get dashboard statistics and forecasts
 - Analyze production feasibility (what products can be made)
+- Smart Reorder Recommendations: Analyze consumption velocity (burn rate) and supplier lead times to suggest dynamic reorder points. Use \`analyze_reorder_needs\`.
+- Detect Anomalies: Identify suspicious losses, unusual consumption spikes, or frequent manual adjustments. Use \`detect_anomalies\`.
+- Advanced Reportings: Get supplier performance scorecards and calculate COGS/Waste values. Use \`get_advanced_analytics\`.
 - Answer questions about how the system works
 
 ### Write Operations (ALWAYS require confirmation)

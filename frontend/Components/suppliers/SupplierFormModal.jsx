@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { Plus, Trash2 } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
@@ -214,6 +215,10 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
         discount_percent: parseFloat(d.discount_percent) || 0
       }));
 
+    // Parse numeric fields
+    const parsedRating = parseFloat(formData.quality_rating);
+    const parsedDays = parseInt(formData.avg_delivery_days);
+
     // Strip metadata that backend doesn't want
     const {
       supplier_id,
@@ -232,6 +237,8 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
       ...coreData,
       items_supplied: cleanedItems,
       bulk_discounts: cleanedDiscounts,
+      quality_rating: isNaN(parsedRating) ? null : parsedRating,
+      avg_delivery_days: isNaN(parsedDays) ? null : parsedDays,
       status: isDraft ? 'draft' : (formData.status || 'active')
     };
 
@@ -262,25 +269,46 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
 
           <div className="space-y-6 py-4">
             {/* Basic Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Supplier Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
-                  placeholder="e.g., Premium Foods Co."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contact">Contact Person</Label>
-                <Input
-                  id="contact"
-                  value={formData.contact_person}
-                  onChange={(e) => handleChange('contact_person', e.target.value)}
-                  placeholder="e.g., John Smith"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Supplier Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                placeholder="e.g., Premium Foods Co."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status || 'active'}
+                onValueChange={(v) => handleChange('status', v)}
+                disabled={!supplier && !isEditingDraft} // Default to active for new, allow change if draft/edit
+              >
+                <SelectTrigger id="status" className={cn(
+                  "w-full",
+                  formData.status === 'inactive' ? "text-slate-500 bg-slate-50" : "text-teal-700 bg-teal-50/50"
+                )}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  {isEditingDraft && <SelectItem value="draft">Draft</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="contact">Contact Person</Label>
+              <Input
+                id="contact"
+                value={formData.contact_person}
+                onChange={(e) => handleChange('contact_person', e.target.value)}
+                placeholder="e.g., John Smith"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -312,6 +340,44 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
                 value={formData.address}
                 onChange={(e) => handleChange('address', e.target.value)}
                 placeholder="Full address..."
+                rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quality_rating">Quality Rating (0-5)</Label>
+                <Input
+                  id="quality_rating"
+                  type="number"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={formData.quality_rating}
+                  onChange={(e) => handleChange('quality_rating', e.target.value)}
+                  placeholder="5.0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="avg_delivery_days">Avg. Delivery Days</Label>
+                <Input
+                  id="avg_delivery_days"
+                  type="number"
+                  min="0"
+                  value={formData.avg_delivery_days}
+                  onChange={(e) => handleChange('avg_delivery_days', e.target.value)}
+                  placeholder="5"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes || ''}
+                onChange={(e) => handleChange('notes', e.target.value)}
+                placeholder="Internal notes about this supplier..."
                 rows={2}
               />
             </div>

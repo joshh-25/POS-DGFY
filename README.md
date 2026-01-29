@@ -162,11 +162,11 @@ The project is organized as a monorepo:
 
 ## 📚 Documentation
 
-- **[PREREQUISITES.md](PREREQUISITES.md)** - Prerequisites for local & hosting server environments
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common errors and solutions guide
-- **[SETUP.md](SETUP.md)** - Complete local setup instructions
-- **[ADMIN_SETUP.md](ADMIN_SETUP.md)** - Admin user setup
-- **[REDIS_SETUP.md](REDIS_SETUP.md)** - Redis installation and configuration
+- **[PREREQUISITES.md](docs/setup/PREREQUISITES.md)** - Prerequisites for local & hosting server environments
+- **[TROUBLESHOOTING.md](docs/ops/TROUBLESHOOTING.md)** - Common errors and solutions guide
+- **[SETUP.md](docs/setup/SETUP.md)** - Complete local setup instructions
+- **[ADMIN_SETUP.md](docs/setup/ADMIN_SETUP.md)** - Admin user setup
+- **[REDIS_SETUP.md](docs/setup/REDIS_SETUP.md)** - Redis installation and configuration
 - **[spec-kit/](spec-kit/)** - Full technical specifications
 
 ## 🛠️ Available Scripts

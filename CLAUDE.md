@@ -4,8 +4,8 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Jan 28, 2026
-> **Version:** 1.8.0
+> **Last Updated:** Jan 29, 2026
+> **Version:** 2.0.0
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements. It features FIFO batch tracking, nested product recipes, and smart restock logic.
@@ -35,6 +35,26 @@
 8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
+11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with 20 tools for querying, creating, and managing inventory data.
+
+## 🤖 AI Assistant Features
+The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
+
+**Capabilities:**
+- Query dashboard stats, items, suppliers, POs, JOs, stock movements
+- Create items, purchase orders, job orders (with confirmation workflow)
+- Analyze production feasibility for nested products
+- Search project documentation (RAG)
+- Export data to CSV (display or download)
+- Import CSV data with validation preview
+
+**Key Technical Details:**
+- Write operations require confirmation (5-minute expiry)
+- Conversations retained for 30 days
+- Role-based permissions (Staff: read-only, Manager+: write access)
+- 20 AI tools mapped to existing backend services
+
+**Files:** See `docs/AI_GUIDELINES.md` for full documentation.
 
 # 🏗️ Core Data Entities
 | Entity | Key Fields | Notes |
@@ -68,24 +88,25 @@
 /
 ├── backend/
 │   ├── src/
-│   │   ├── config/         # DB & Env config
-│   │   ├── controllers/    # Request handlers
-│   │   ├── models/         # Sequelize definitions
-│   │   ├── routes/         # Express routes (v1)
-│   │   ├── services/       # Business logic (Heavy lifting)
+│   │   ├── config/         # DB & Env config + AI tools/prompts
+│   │   ├── controllers/    # Request handlers (incl. aiController)
+│   │   ├── models/         # Sequelize definitions (incl. AI models)
+│   │   ├── routes/         # Express routes (v1) (incl. ai.js)
+│   │   ├── services/       # Business logic (incl. AI services)
 │   │   └── validators/     # Joi validation schemas
 │   └── tests/
 ├── frontend/
 │   ├── Components/
+│   │   ├── ai/             # AI chat components (NEW)
 │   │   ├── items/          # Item forms, lists
 │   │   ├── products/       # Recipe wizard, product views
 │   │   ├── ui/             # Shadcn UI (Buttons, Inputs, etc.)
 │   │   └── wizard/         # Shared wizard logic
-│   ├── Pages/              # Main route views
+│   ├── Pages/              # Main route views (incl. AiChat.jsx)
 │   └── src/
 │       ├── lib/            # Utils (formatting, classes)
-│       └── services/       # API wrappers
-├── docs/                   # Detailed documentation
+│       └── services/       # API wrappers (incl. aiService)
+├── docs/                   # Detailed documentation (incl. AI_GUIDELINES.md)
 └── CLAUDE.md               # Context file
 ```
 
@@ -98,7 +119,7 @@
 
 # 🔗 Documentation Links
 - [Detailed API Spec](docs/api/specification.md)
-- [Deployment Guide](SETUP.md)
+- [Deployment Guide](docs/ops/DEPLOYMENT_GUIDE.md)
 - [Nested Products Guide](docs/NESTED_PRODUCTS.md)
 - [Quick Reference](docs/QUICK_REFERENCE.md)
 # Build for production
@@ -308,10 +329,10 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `backend/README.md` - Backend-specific documentation
 
 **Root Documentation:**
-- `ADMIN_SETUP.md` - Admin user setup guide
-- `REDIS_SETUP.md` - Redis installation and configuration
-- `QUICK_START.md` - Quick start guide
-- `SETUP.md` - Complete setup instructions
+- `docs/setup/ADMIN_SETUP.md` - Admin user setup guide
+- `docs/setup/REDIS_SETUP.md` - Redis installation and configuration
+- `docs/setup/QUICK_START.md` - Quick start guide
+- `docs/setup/SETUP.md` - Complete setup instructions
 
 **Detailed Specifications (in /docs):**
 - `docs/database/schema.md` - Complete table definitions

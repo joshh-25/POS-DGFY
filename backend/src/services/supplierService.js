@@ -23,6 +23,9 @@ export const getSuppliers = async (queryParams) => {
     where.status = status;
   }
 
+  // Always exclude soft-deleted records unless specifically requested (though currently we don't have a view for them)
+  where.deleted_at = null;
+
   if (search) {
     where[Op.or] = [
       { name: { [Op.like]: `%${search}%` } },
@@ -291,17 +294,21 @@ export const deleteSupplier = async (supplierId, userId) => {
     throw error;
   }
 
-  // Check for ANY purchase orders (including completed/received)
-  const anyPOs = await PurchaseOrder.count({
+  // Check for ACTIVE purchase orders only (pending, partial, draft)
+  // We allow deletion (soft delete) if the supplier only has 'received' (completed) or 'cancelled' POs.
+  const activePOs = await PurchaseOrder.count({
     where: {
-      supplier_id: supplierId
+      supplier_id: supplierId,
+      status: {
+        [Op.notIn]: ['received', 'cancelled']
+      }
     }
   });
 
-  if (anyPOs > 0) {
+  if (activePOs > 0) {
     const error = new Error(`Cannot delete supplier "${supplier.name}"`);
     error.statusCode = 400;
-    error.details = [`Supplier has ${anyPOs} purchase order(s) in the system. Suppliers with purchase history cannot be deleted to maintain data integrity.`];
+    error.details = [`Supplier has ${activePOs} active purchase order(s) (draft, pending, or partial). Please complete or cancel these orders before deleting the supplier.`];
     throw error;
   }
 

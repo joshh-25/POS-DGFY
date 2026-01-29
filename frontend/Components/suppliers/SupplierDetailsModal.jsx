@@ -57,6 +57,12 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
               <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
               <span>{supplier.address}</span>
             </div>
+            {supplier.notes && (
+              <div className="flex items-start gap-3 text-slate-600 col-span-2 bg-slate-50 p-2 rounded-md">
+                <FilePlus className="w-4 h-4 text-slate-400 mt-0.5" />
+                <span className="text-sm italic">{supplier.notes}</span>
+              </div>
+            )}
           </div>
 
           {/* Performance Metrics */}

@@ -35,6 +35,14 @@ export const getExportUrl = (params = {}) => {
   return `${api.defaults.baseURL}/stock-movements/export?${query}`;
 };
 
+export const exportStockMovements = async (params = {}) => {
+  const response = await api.get('/stock-movements/export', {
+    params: { ...params, format: 'csv' },
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
 export const getLocations = async () => {
   // Mock API call - in future replace with real endpoint
   return new Promise(resolve => {

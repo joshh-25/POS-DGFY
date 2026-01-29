@@ -14,6 +14,10 @@ import * as supplierService from './supplierService.js';
 import * as purchaseOrderService from './purchaseOrderService.js';
 import * as jobOrderService from './jobOrderService.js';
 import * as stockMovementService from './stockMovementService.js';
+import * as csvImportService from './csvImportService.js';
+import * as csvExportService from './csvExportService.js';
+import * as analyticsService from './analyticsService.js';
+import db from '../models/index.js'; // For raw queries if needed for stats
 import * as dashboardService from './dashboardService.js';
 import * as alertService from './alertService.js';
 import * as forecastService from './forecastService.js';
@@ -102,10 +106,51 @@ export const execute = async (toolName, args, user) => {
         return await searchDocumentation(args);
 
       // ============== PRODUCTION FEASIBILITY ==============
+      // Production Feasibility
       case 'analyze_production_feasibility':
-        return await analyzeProductionFeasibility(args);
+        if (args.product_id) {
+          return await jobOrderService.checkProductionFeasibility(args.product_id, 1, args.show_chain !== false);
+        } else if (args.product_ids) {
+          // Check multiple products
+          const results = [];
+          for (const pid of args.product_ids) {
+            results.push(await jobOrderService.checkProductionFeasibility(pid, 1, args.show_chain !== false));
+          }
+          return results;
+        } else {
+          // If no specific product, list all products that CAN be produced right now
+          throw new Error("Please specify a product_id or list of product_ids to check feasibility for.");
+        }
 
-      // ============== CSV IMPORT/EXPORT ==============
+      // Smart Reorder Analytics (Phase 5)
+      case 'analyze_reorder_needs':
+        if (args.item_id) {
+          return await analyticsService.calculateReorderPoint(args.item_id);
+        } else {
+          return await analyticsService.getReorderRecommendations(args.category);
+        }
+
+      // Anomaly Detection (Phase 6)
+      case 'detect_anomalies':
+        return await analyticsService.detectAnomalies({
+          category: args.category,
+          days: 30 // Default lookback
+        });
+
+      // Advanced Analytics (Phase 7)
+      case 'get_advanced_analytics':
+        if (args.analysis_type === 'supplier_performance') {
+          if (!args.target_id) throw new Error("target_id (Supplier ID) is required for supplier performance analysis");
+          return await analyticsService.analyzeSupplierPerformance(args.target_id);
+        } else if (args.analysis_type === 'cost_analysis') {
+          return await analyticsService.analyzeInventoryCosts({
+            startDate: args.date_range?.start,
+            endDate: args.date_range?.end
+          });
+        }
+        break;
+
+      // CSV Import/Export
       case 'import_csv_data':
         return await importCsvData(args, user);
 
@@ -152,6 +197,7 @@ async function getLowStockItems({ limit = 20 }) {
     }))
   };
 }
+
 
 // ============== ITEMS ==============
 
@@ -541,6 +587,7 @@ async function searchDocumentation({ query }) {
 
 // ============== PRODUCTION FEASIBILITY ==============
 
+
 async function analyzeProductionFeasibility({ product_id, include_partial = true, show_chain = true }) {
   try {
     // If specific product requested, analyze its production chain
@@ -561,6 +608,8 @@ async function analyzeProductionFeasibility({ product_id, include_partial = true
           nesting_level: product.nestingLevel
         },
         can_produce: stockAvailability.allAvailable,
+        max_producible: stockAvailability.maxProducible,
+        production_chain: show_chain ? formatProductionChain(productionChain) : null,
         max_producible: stockAvailability.maxProducible,
         production_chain: show_chain ? formatProductionChain(productionChain) : null,
         raw_materials: rawMaterialRequirements.map(rm => ({
