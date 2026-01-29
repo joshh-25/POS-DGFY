@@ -25,6 +25,8 @@ import SystemSetting from './SystemSetting.js';
 import BatchLineage from './BatchLineage.js';
 import ReceiveToken from './ReceiveToken.js';
 import ReportSnapshot from './ReportSnapshot.js';
+import PendingAIAction from './PendingAIAction.js';
+import AIConversation from './AIConversation.js';
 
 // Define associations
 // User associations
@@ -141,6 +143,12 @@ ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 ReceiveToken.belongsTo(User, { foreignKey: 'used_by', as: 'usedByUser' });
 User.hasMany(ReceiveToken, { foreignKey: 'created_by', as: 'createdTokens' });
 
+// AI associations
+PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasMany(PendingAIAction, { foreignKey: 'user_id', as: 'pendingAIActions' });
+User.hasMany(AIConversation, { foreignKey: 'user_id', as: 'aiConversations' });
+
 const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
@@ -169,7 +177,9 @@ const db = {
   SystemSetting,
   BatchLineage,
   ReceiveToken,
-  ReportSnapshot
+  ReportSnapshot,
+  PendingAIAction,
+  AIConversation
 };
 
 export default db;
@@ -200,6 +210,8 @@ export {
   SystemSetting,
   BatchLineage,
   ReceiveToken,
-  ReportSnapshot
+  ReportSnapshot,
+  PendingAIAction,
+  AIConversation
 };
 

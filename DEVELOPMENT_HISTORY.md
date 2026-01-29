@@ -3229,3 +3229,210 @@ The Supplier Edit/Create Wizard had several usability and visual issues:
 - \`deploy.sh\` (New)
 - \`.gitattributes\` (New)
 - \`backend/src/migrations/*.cjs\` (Modified for idempotency)
+
+---
+
+## Phase 18: AI Chat Feature Implementation
+**Status**: ✅ COMPLETE  
+**Date**: 2026-01-28
+
+### Overview
+Implemented a dedicated "AI Chat" interface to demonstrate future AI capabilities for inventory management. This phase focused purely on the frontend UI/UX to establish the visual language and user interaction patterns.
+
+### Frontend Implementation
+- [x] Create `AiChat` page component (`frontend/Pages/AiChat.jsx`)
+  - [x] Implemented chat history sidebar with "Recent Chats" list
+  - [x] Created main chat area with "SKUpervisor Assistant" header
+  - [x] Added "Suggested Actions" cards for quick start (e.g., "Check low stock")
+  - [x] Implemented message stream with distinct User vs AI styles
+  - [x] Added typing indicator animation
+  - [x] Created auto-expanding input area with attachment buttons (UI only)
+  - [x] **Refinement**: Increased font sizes and weights for better readability
+
+- [x] Navigation & Routing
+  - [x] Added "AI Chat" item to sidebar navigation in `Layout.jsx`
+  - [x] Configured `/ai-chat` route in `main.jsx`
+  - [x] Updated `utils.js` (createPageUrl/getPageNameFromPath) to support the new route
+
+### Technical Notes
+- **Mock Integration**: The chat currently uses a mock response timer to simulate AI processing.
+- **Styling**: Utilizes existing Tailwind CSS tokens and Lucide React icons (`Bot`, `Sparkles`, `User`).
+- **Response Handling**: The UI is prepared to handle markdown or rich text responses in the future.
+
+## 2026-01-29
+
+### Fixed
+- **Export Functionality**: Resolved 401 Unauthorized error when exporting Stock Movements to CSV.
+  - Switched from direct URL navigation (`window.location.href`) to authenticated Axios blob download.
+  - Implemented `exportStockMovements` service function to handle the binary response and trigger download.
+
+### Audited
+- **Import/Export Security**: Performed a comprehensive audit of all import/export functionalities.
+  - **Findings**:
+    - Stock Movements: Fixed and Verification Failed (Env Issue) but Code Audit Passed.
+    - Items: Uses secure `useCSVExport` and `useCSVImport` hooks.
+    - Reports: Uses secure `useReports` hook.
+    - Suppliers: No export/import functionality exists (Identified for future implementation).
+  - **Outcome**: Confirmed that all active export features now use authenticated API calls.
+
+---
+
+## Phase 19: Supplier Import/Export & Status Intelligence
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Addressed two critical needs: bulk data management for Suppliers (matching Item capabilities) and smarter system behavior regarding "Inactive" suppliers.
+
+### 1. Supplier Import/Export System
+- [x] **Backend Implementation**:
+  - Created `supplierCSVService.js` for secure parsing/validation (using `csv-parse`).
+  - Added authenticated endpoints for Export (`/export`), Import Preview (`/import/preview`), and Confirmation (`/import/confirm`).
+  - Implemented secure template generation.
+- [x] **Frontend Implementation**:
+  - Created `useSupplierCSV` hook.
+  - Added "Import" and "Export" buttons to `Suppliers.jsx`.
+  - Implemented `SupplierExportModal` (supports filtering).
+  - Implemented `SupplierImportModal` (Preview -> Validate -> Upload flow).
+
+### 2. Status Intelligence (Active vs Inactive)
+- [x] **Enforced Status Logic**:
+  - **Purchase Orders**: Updated `POCreateWizard` to strictly filter out 'inactive' suppliers.
+  - **Item Assignment**: Updated `QuickAssignModal` and `ChoiceDialog` to hide 'inactive' suppliers.
+- [x] **Enhanced Visibility**:
+  - Added **Status Dropdown** (Active, Inactive, Draft) to `SupplierFormModal`.
+  - Added **Color-Coded Badges** (Green/Red/Slate) to `SupplierCard` for instant status recognition.
+
+### 3. Field Alignment & Fixes
+- [x] **Data Consistency**:
+  - Updated `SupplierFormModal` to include previously missing fields: `Quality Rating`, `Avg Delivery Days`, `Notes`.
+  - Updated `SupplierDetailsModal` to display `Notes`.
+  - Ensured these fields are correctly mapped in the CSV template.
+- [x] **Critical Bug Fix**:
+  - Resolved `500 Internal Server Error` across AI-related routes by adding missing `openai` dependency.
+
+---
+
+## Phase 20: Refined Supplier Deletion Logic
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Refined the supplier deletion process to distinguish between "Inactive" (status change) and "Deleted" (removal).
+
+### Features
+- [x] **Seamless Soft Deletion**:
+  - Suppliers with purchase history can now be deleted if all their orders are completed/cancelled.
+  - Active orders (draft, pending, partial) still block deletion to prevent data issues.
+- [x] **Strict Deletion Visibility**:
+  - "Deleted" suppliers are now filtered out from all backend queries (`deleted_at IS NULL`).
+  - "Inactive" suppliers remain visible in the "All" or "Inactive" status filters.
+- [x] **Frontend UX**:
+  - Main supplier list defaults to showing only "Active" suppliers.
+
+### Files Modified
+- `backend/src/services/supplierService.js` - Updated `getSuppliers` (filtering) and `deleteSupplier` (validation).
+- `frontend/Pages/Suppliers.jsx` - Changed default filter to `active`.
+
+---
+
+## Phase 21: OpenAI Integration - Core AI Service (Session 1)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-29
+
+### Overview
+Integrated OpenAI's GPT API to create an intelligent AI assistant ("SKUpervisor") that can execute backend operations with user confirmation, answer questions about the system, and provide inventory insights.
+
+### 1. API Key Security (Phase 1)
+- [x] Added `OPENAI_API_KEY` to `backend/.env`
+- [x] Added `OPENAI_MODEL` configuration (gpt-4o)
+- [x] Verified `.gitignore` includes `.env`
+
+### 2. Backend AI Service (Phase 2)
+- [x] Installed `openai` npm package (v6.17.0)
+- [x] Installed `uuid` npm package (v9.0.0) for action IDs
+- [x] Created core AI files:
+  - `backend/src/services/aiService.js` - Core OpenAI integration
+  - `backend/src/services/aiContextService.js` - Dynamic context builder
+  - `backend/src/services/aiToolExecutor.js` - Tool execution bridge
+  - `backend/src/controllers/aiController.js` - HTTP handlers
+  - `backend/src/routes/ai.js` - API routes
+  - `backend/src/config/aiTools.js` - 20 AI tool definitions
+  - `backend/src/config/aiSystemPrompt.js` - System prompt template
+  - `backend/src/validators/aiValidator.js` - Input validation
+- [x] Registered AI routes in `server.js`
+
+### 3. Confirmation Workflow (Phase 3)
+- [x] Created database models:
+  - `backend/src/models/PendingAIAction.js` - Pending actions (5-min expiry)
+  - `backend/src/models/AIConversation.js` - Conversation history (30-day retention)
+- [x] Created database migration `20260129000001-create-ai-tables.js`
+- [x] Added models to `backend/src/models/index.js`
+- [x] Implemented confirmation flow:
+  - Write operations require explicit user confirmation
+  - Actions expire after 5 minutes if not confirmed
+  - Full audit trail of confirmed/cancelled actions
+- [x] Implemented conversation persistence with 30-day retention
+
+### 4. Bug Fixes Applied
+- [x] Fixed missing `uuid` package in `package.json`
+- [x] Fixed `sequelize` import order in `aiContextService.js` (was at end of file)
+- [x] Fixed `stockMovementService` method names:
+  - `getMovements()` → `getStockMovements()`
+  - `createMovement()` → `createStockMovement()`
+- [x] Fixed `completeJobOrder()` parameter order mismatch
+- [x] Fixed `StockMovement` alias (`CreatedBy` → `userResponsible`)
+- [x] Fixed service parameter structures for `getItems`, `getPurchaseOrders`, `getJobOrders`
+
+### AI Tools Implemented (20 Total)
+| Category | Tools |
+|----------|-------|
+| Dashboard & Stats | `get_dashboard_stats`, `get_low_stock_items` |
+| Items | `get_items`, `get_item_details`, `create_item`, `update_item`, `delete_item` |
+| Suppliers | `get_suppliers`, `get_supplier_details` |
+| Purchase Orders | `get_purchase_orders`, `create_purchase_order`, `receive_purchase_order` |
+| Job Orders | `get_job_orders`, `create_job_order`, `complete_job_order` |
+| Stock Movements | `get_stock_movements`, `create_stock_adjustment` |
+| Alerts & Forecasting | `get_expiry_alerts`, `get_forecast` |
+| Documentation | `search_documentation` (placeholder) |
+| Production | `analyze_production_feasibility` (placeholder) |
+| CSV Operations | `import_csv_data`, `export_to_csv` (placeholders) |
+
+### API Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/ai/chat` | Send message to AI |
+| POST | `/api/v1/ai/confirm` | Confirm pending action |
+| POST | `/api/v1/ai/cancel` | Cancel pending action |
+| GET | `/api/v1/ai/conversations` | Get conversation history |
+| GET | `/api/v1/ai/conversations/:id` | Get specific conversation |
+| DELETE | `/api/v1/ai/conversations/:id` | Delete conversation |
+
+### Files Created
+- `backend/src/services/aiService.js`
+- `backend/src/services/aiContextService.js`
+- `backend/src/services/aiToolExecutor.js`
+- `backend/src/controllers/aiController.js`
+- `backend/src/routes/ai.js`
+- `backend/src/config/aiTools.js`
+- `backend/src/config/aiSystemPrompt.js`
+- `backend/src/validators/aiValidator.js`
+- `backend/src/models/PendingAIAction.js`
+- `backend/src/models/AIConversation.js`
+- `backend/src/migrations/20260129000001-create-ai-tables.js`
+- `IMPLEMENTATION_CHECKLIST.md`
+
+### Files Modified
+- `backend/package.json` - Added uuid dependency
+- `backend/src/server.js` - Registered AI routes
+- `backend/src/models/index.js` - Added AI models and associations
+
+### Remaining for Session 2-4
+- [ ] RAG Documentation Service (Phase 4)
+- [ ] Frontend Integration (Phase 5)
+- [ ] System Prompt Enhancements (Phase 6)
+- [ ] Production Feasibility Service (Phase 7)
+- [ ] AI Guidelines Documentation (Phase 8)
+- [ ] CSV Import/Export via Chat (Phase 9)
+
+---

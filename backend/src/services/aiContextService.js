@@ -1,0 +1,229 @@
+/**
+ * AI Context Service
+ *
+ * Builds dynamic context for AI conversations including
+ * user information, current inventory stats, and system state.
+ */
+
+import { Op } from 'sequelize';
+import sequelize from '../config/database.js';
+import Item from '../models/Item.js';
+import PurchaseOrder from '../models/PurchaseOrder.js';
+import JobOrder from '../models/JobOrder.js';
+import User from '../models/User.js';
+import logger from '../config/logger.js';
+
+/**
+ * Build complete context for AI conversation
+ * @param {number} userId - The user's ID
+ * @returns {Promise<Object>} Context object
+ */
+export const buildContext = async (userId) => {
+  try {
+    const [user, stats] = await Promise.all([
+      getUserContext(userId),
+      getInventoryStats()
+    ]);
+
+    return {
+      user,
+      stats,
+      lowStockCount: stats.lowStockCount || 0,
+      pendingPOCount: stats.pendingPOCount || 0,
+      activeJOCount: stats.activeJOCount || 0,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    logger.error('Failed to build AI context:', error);
+    // Return minimal context on error
+    return {
+      user: { name: 'User', role: 'staff' },
+      stats: {},
+      lowStockCount: 0,
+      pendingPOCount: 0,
+      activeJOCount: 0,
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+/**
+ * Get user context
+ * @param {number} userId - User ID
+ * @returns {Promise<Object>} User context
+ */
+export const getUserContext = async (userId) => {
+  try {
+    const user = await User.findByPk(userId, {
+      attributes: ['user_id', 'username', 'full_name', 'email', 'role']
+    });
+
+    if (!user) {
+      return { name: 'Unknown User', role: 'staff' };
+    }
+
+    return {
+      id: user.user_id,
+      name: user.full_name || user.username,
+      email: user.email,
+      role: user.role
+    };
+  } catch (error) {
+    logger.error('Failed to get user context:', error);
+    return { name: 'User', role: 'staff' };
+  }
+};
+
+/**
+ * Get current inventory statistics
+ * @returns {Promise<Object>} Inventory stats
+ */
+export const getInventoryStats = async () => {
+  try {
+    // Get item counts
+    const [totalItems, lowStockItems, healthyItems, overstockItems] = await Promise.all([
+      Item.count({
+        where: { status: 'active' }
+      }),
+      Item.count({
+        where: {
+          status: 'active',
+          current_stock: {
+            [Op.lte]: sequelize.col('min_threshold')
+          }
+        }
+      }),
+      Item.count({
+        where: {
+          status: 'active',
+          current_stock: {
+            [Op.gt]: sequelize.col('min_threshold'),
+            [Op.lte]: sequelize.col('max_capacity')
+          }
+        }
+      }),
+      Item.count({
+        where: {
+          status: 'active',
+          current_stock: {
+            [Op.gt]: sequelize.col('max_capacity')
+          }
+        }
+      })
+    ]);
+
+    // Get PO and JO counts
+    const [pendingPOCount, activeJOCount] = await Promise.all([
+      PurchaseOrder.count({
+        where: {
+          status: { [Op.in]: ['pending', 'partial'] },
+          archived_at: null
+        }
+      }),
+      JobOrder.count({
+        where: {
+          status: { [Op.in]: ['draft', 'in_progress'] },
+          archived_at: null
+        }
+      })
+    ]);
+
+    // Calculate total inventory value
+    const items = await Item.findAll({
+      where: { status: 'active' },
+      attributes: ['current_stock', 'cost_per_unit']
+    });
+
+    const totalValue = items.reduce((sum, item) => {
+      const stock = parseFloat(item.current_stock) || 0;
+      const cost = parseFloat(item.cost_per_unit) || 0;
+      return sum + (stock * cost);
+    }, 0);
+
+    return {
+      totalItems,
+      lowStockCount: lowStockItems,
+      healthyCount: healthyItems,
+      overstockCount: overstockItems,
+      pendingPOCount,
+      activeJOCount,
+      totalValue: Math.round(totalValue * 100) / 100
+    };
+  } catch (error) {
+    logger.error('Failed to get inventory stats:', error);
+    return {
+      totalItems: 0,
+      lowStockCount: 0,
+      healthyCount: 0,
+      overstockCount: 0,
+      pendingPOCount: 0,
+      activeJOCount: 0,
+      totalValue: 0
+    };
+  }
+};
+
+/**
+ * Get a quick summary for display
+ * @param {number} userId - User ID
+ * @returns {Promise<string>} Summary text
+ */
+export const getQuickSummary = async (userId) => {
+  const context = await buildContext(userId);
+  const { stats } = context;
+
+  const alerts = [];
+  if (stats.lowStockCount > 0) {
+    alerts.push(`${stats.lowStockCount} items low on stock`);
+  }
+  if (stats.pendingPOCount > 0) {
+    alerts.push(`${stats.pendingPOCount} pending purchase orders`);
+  }
+  if (stats.activeJOCount > 0) {
+    alerts.push(`${stats.activeJOCount} active job orders`);
+  }
+
+  if (alerts.length === 0) {
+    return 'All systems healthy. No alerts.';
+  }
+
+  return `Attention needed: ${alerts.join(', ')}.`;
+};
+
+/**
+ * Check if user has permission for an action
+ * @param {string} userRole - User's role
+ * @param {string} requiredRole - Required role for the action
+ * @returns {boolean} Whether user has permission
+ */
+export const hasPermission = (userRole, requiredRole) => {
+  const roleHierarchy = {
+    staff: 1,
+    manager: 2,
+    admin: 3
+  };
+
+  const userLevel = roleHierarchy[userRole] || 0;
+  const requiredLevel = roleHierarchy[requiredRole] || 0;
+
+  return userLevel >= requiredLevel;
+};
+
+/**
+ * Get permission error message
+ * @param {string} action - The action being attempted
+ * @param {string} requiredRole - Required role
+ * @returns {string} Error message
+ */
+export const getPermissionError = (action, requiredRole) => {
+  return `You don't have permission to ${action}. This action requires ${requiredRole} or higher role. Please contact an administrator if you need access.`;
+};
+
+export default {
+  buildContext,
+  getUserContext,
+  getInventoryStats,
+  getQuickSummary,
+  hasPermission,
+  getPermissionError
+};
