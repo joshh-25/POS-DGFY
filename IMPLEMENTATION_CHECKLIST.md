@@ -128,17 +128,17 @@
 ## Session 4: CSV & Extras (Phases 9-10)
 
 ### Phase 9: CSV Import/Export via Chat
-- [ ] Create backend/src/services/tempFileService.js
-- [ ] Create frontend/Components/ai/CsvPreviewTable.jsx
-- [ ] Create frontend/Components/ai/ExportOptionsDialog.jsx
-- [ ] Create frontend/Components/ai/FileDropZone.jsx
-- [ ] Add import_csv_data tool
-- [ ] Add export_to_csv tool
-- [ ] Implement paste CSV text parsing
-- [ ] Implement drag-drop file handling
-- [ ] Implement export preference dialog (display vs download)
-- [ ] Implement temporary file storage (1hr expiry)
-- [ ] Add GET /api/v1/ai/exports/:id endpoint
+- [x] Create backend/src/services/tempFileService.js
+- [x] Create frontend/Components/ai/CsvPreviewTable.jsx
+- [x] Create frontend/Components/ai/ExportOptionsDialog.jsx
+- [x] Create frontend/Components/ai/FileDropZone.jsx
+- [x] Add import_csv_data tool (in aiToolExecutor.js)
+- [x] Add export_to_csv tool (in aiToolExecutor.js)
+- [x] Implement paste CSV text parsing
+- [x] Implement drag-drop file handling
+- [x] Implement export preference dialog (display vs download)
+- [x] Implement temporary file storage (1hr expiry)
+- [x] Add GET /api/v1/ai/exports/:id endpoint
 - [ ] Test: Paste CSV, see preview, confirm import
 - [ ] Test: Export items, choose display, see table
 - [ ] Test: Export items, choose download, get file
@@ -172,9 +172,9 @@
 |---------|--------|-----------|-------|
 | Session 1 | Complete | 25 | 28 |
 | Session 2 | Complete | 19 | 22 |
-| Session 3 | In Progress | 10 | 12 |
-| Session 4 | Pending | 0 | 14 |
-| **Total** | | **54** | **76** |
+| Session 3 | Complete | 12 | 12 |
+| Session 4 | In Progress | 11 | 14 |
+| **Total** | | **67** | **76** |
 
 ---
 

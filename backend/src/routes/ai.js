@@ -70,4 +70,11 @@ router.delete(
   aiController.deleteConversation
 );
 
+/**
+ * @route   GET /api/v1/ai/exports/:id
+ * @desc    Download a temporary CSV export file
+ * @access  Private (authenticated users)
+ */
+router.get('/exports/:id', aiController.downloadExport);
+
 export default router;

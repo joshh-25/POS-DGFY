@@ -19,6 +19,7 @@ import * as alertService from './alertService.js';
 import * as forecastService from './forecastService.js';
 import * as documentationService from './documentationService.js';
 import * as productionFeasibilityService from './productionFeasibilityService.js';
+import * as tempFileService from './tempFileService.js';
 
 /**
  * Execute a tool by name with given arguments
@@ -657,26 +658,266 @@ function formatProductionChain(chain, indent = 0) {
 
 // ============== CSV IMPORT/EXPORT ==============
 
-async function importCsvData({ entity_type, csv_content, options }, user) {
-  // This will be implemented in Phase 9
-  // For now, return a placeholder
-  return {
-    message: 'CSV import will be available soon.',
-    entity_type,
-    preview: 'Parsing...',
-    options
-  };
+async function importCsvData({ entity_type, csv_content, options = {} }, user) {
+  try {
+    // Parse the CSV content
+    const parsed = tempFileService.parseCsv(csv_content);
+
+    if (parsed.error) {
+      return { error: parsed.error };
+    }
+
+    // Define required fields based on entity type
+    const requiredFields = {
+      items: ['sku_code', 'name', 'category', 'max_capacity', 'unit_of_measure'],
+      suppliers: ['name', 'contact_person', 'email']
+    };
+
+    const required = requiredFields[entity_type] || [];
+
+    // Validate structure
+    const validation = tempFileService.validateCsvStructure(parsed, required);
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: 'Validation failed',
+        validation_errors: validation.errors,
+        parse_errors: validation.parseErrors,
+        summary: validation.summary
+      };
+    }
+
+    // Return preview for confirmation
+    return {
+      success: true,
+      requires_confirmation: true,
+      entity_type,
+      preview: {
+        headers: parsed.headers,
+        sample_rows: parsed.rows.slice(0, 5),
+        total_rows: parsed.totalRows
+      },
+      summary: validation.summary,
+      options: {
+        skip_duplicates: options.skip_duplicates !== false,
+        update_existing: options.update_existing === true
+      },
+      message: `Ready to import ${parsed.totalRows} ${entity_type}. Please confirm to proceed.`
+    };
+  } catch (error) {
+    logger.error('Error in importCsvData:', error);
+    return { error: error.message || 'Failed to parse CSV content' };
+  }
 }
 
-async function exportToCsv({ entity_type, filters, output_preference }, user) {
-  // This will be implemented in Phase 9
-  // For now, return a placeholder
-  return {
-    message: 'CSV export will be available soon.',
-    entity_type,
-    filters,
-    output_preference
-  };
+async function exportToCsv({ entity_type, filters = {}, output_preference = 'ask_user' }, user) {
+  try {
+    let data = [];
+    let columns = [];
+    let filename = '';
+
+    // Fetch data based on entity type
+    switch (entity_type) {
+      case 'items': {
+        const result = await itemService.getItems({
+          category: filters.category,
+          status: filters.status || 'active',
+          limit: 1000
+        });
+        data = result.items || result.data?.items || [];
+        columns = [
+          { key: 'sku_code', label: 'SKU Code' },
+          { key: 'name', label: 'Name' },
+          { key: 'category', label: 'Category' },
+          { key: 'current_stock', label: 'Current Stock' },
+          { key: 'max_capacity', label: 'Max Capacity' },
+          { key: 'min_threshold', label: 'Min Threshold' },
+          { key: 'unit_of_measure', label: 'Unit' },
+          { key: 'cost_per_unit', label: 'Cost/Unit' },
+          { key: 'status', label: 'Status' }
+        ];
+        filename = `items_export_${new Date().toISOString().split('T')[0]}.csv`;
+        break;
+      }
+
+      case 'suppliers': {
+        const result = await supplierService.getSuppliers({
+          status: filters.status || 'active',
+          limit: 500
+        });
+        data = result.suppliers || result.data?.suppliers || [];
+        columns = [
+          { key: 'name', label: 'Name' },
+          { key: 'contact_person', label: 'Contact Person' },
+          { key: 'email', label: 'Email' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'address', label: 'Address' },
+          { key: 'quality_rating', label: 'Quality Rating' },
+          { key: 'lead_time', label: 'Lead Time (days)' },
+          { key: 'status', label: 'Status' }
+        ];
+        filename = `suppliers_export_${new Date().toISOString().split('T')[0]}.csv`;
+        break;
+      }
+
+      case 'purchase_orders': {
+        const result = await purchaseOrderService.getPurchaseOrders({
+          status: filters.status,
+          startDate: filters.date_from,
+          endDate: filters.date_to,
+          limit: 500
+        });
+        data = (result.purchaseOrders || result.data?.purchaseOrders || []).map(po => ({
+          po_number: po.po_number,
+          supplier_name: po.supplier?.name || po.Supplier?.name || '',
+          status: po.status,
+          total_amount: po.total_amount,
+          expected_delivery: po.expected_delivery,
+          created_at: po.created_at
+        }));
+        columns = [
+          { key: 'po_number', label: 'PO Number' },
+          { key: 'supplier_name', label: 'Supplier' },
+          { key: 'status', label: 'Status' },
+          { key: 'total_amount', label: 'Total Amount' },
+          { key: 'expected_delivery', label: 'Expected Delivery' },
+          { key: 'created_at', label: 'Created At' }
+        ];
+        filename = `purchase_orders_export_${new Date().toISOString().split('T')[0]}.csv`;
+        break;
+      }
+
+      case 'job_orders': {
+        const result = await jobOrderService.getJobOrders({
+          status: filters.status,
+          limit: 500
+        });
+        data = (result.jobOrders || result.data?.jobOrders || []).map(jo => ({
+          jo_number: jo.jo_number,
+          product_name: jo.product?.name || jo.Product?.name || '',
+          quantity_to_produce: jo.quantity_to_produce,
+          quantity_produced: jo.quantity_produced,
+          status: jo.status,
+          created_at: jo.created_at
+        }));
+        columns = [
+          { key: 'jo_number', label: 'JO Number' },
+          { key: 'product_name', label: 'Product' },
+          { key: 'quantity_to_produce', label: 'Qty to Produce' },
+          { key: 'quantity_produced', label: 'Qty Produced' },
+          { key: 'status', label: 'Status' },
+          { key: 'created_at', label: 'Created At' }
+        ];
+        filename = `job_orders_export_${new Date().toISOString().split('T')[0]}.csv`;
+        break;
+      }
+
+      case 'stock_movements': {
+        const result = await stockMovementService.getStockMovements({
+          item_id: filters.item_id,
+          startDate: filters.date_from,
+          endDate: filters.date_to,
+          limit: 1000
+        });
+        data = (result.movements || result.data?.movements || []).map(m => ({
+          movement_id: m.movement_id,
+          item_name: m.item?.name || m.Item?.name || '',
+          movement_type: m.movement_type,
+          quantity: m.quantity,
+          reference_type: m.reference_type,
+          reference_id: m.reference_id,
+          created_by: m.userResponsible?.username || '',
+          created_at: m.created_at
+        }));
+        columns = [
+          { key: 'movement_id', label: 'Movement ID' },
+          { key: 'item_name', label: 'Item' },
+          { key: 'movement_type', label: 'Type' },
+          { key: 'quantity', label: 'Quantity' },
+          { key: 'reference_type', label: 'Reference Type' },
+          { key: 'reference_id', label: 'Reference ID' },
+          { key: 'created_by', label: 'Created By' },
+          { key: 'created_at', label: 'Created At' }
+        ];
+        filename = `stock_movements_export_${new Date().toISOString().split('T')[0]}.csv`;
+        break;
+      }
+
+      default:
+        return { error: `Export not supported for entity type: ${entity_type}` };
+    }
+
+    if (data.length === 0) {
+      return {
+        success: true,
+        message: `No ${entity_type} found matching the specified filters.`,
+        total_records: 0
+      };
+    }
+
+    // Generate CSV content
+    const csvContent = tempFileService.generateCsv(data, columns);
+
+    // Handle output preference
+    if (output_preference === 'display') {
+      // Return content directly for display in chat
+      const displayRows = data.slice(0, 10);
+      return {
+        success: true,
+        output_mode: 'display',
+        entity_type,
+        total_records: data.length,
+        preview: {
+          headers: columns.map(c => c.label),
+          rows: displayRows.map(row => columns.map(c => row[c.key] || '')),
+          showing: displayRows.length,
+          total: data.length
+        },
+        message: `Showing first ${displayRows.length} of ${data.length} records.${data.length > 10 ? ' Use download option for full data.' : ''}`
+      };
+    }
+
+    if (output_preference === 'download') {
+      // Store file and return download link
+      const fileInfo = await tempFileService.storeTemporaryFile(
+        csvContent,
+        filename,
+        user.user_id
+      );
+
+      return {
+        success: true,
+        output_mode: 'download',
+        entity_type,
+        total_records: data.length,
+        download: {
+          url: fileInfo.downloadUrl,
+          filename: fileInfo.filename,
+          expires_at: fileInfo.expiresAt,
+          expires_in: fileInfo.expiresIn
+        },
+        message: `Export ready! ${data.length} records exported. Download link valid for 1 hour.`
+      };
+    }
+
+    // Default: ask user preference
+    return {
+      success: true,
+      output_mode: 'ask_preference',
+      entity_type,
+      total_records: data.length,
+      message: `Ready to export ${data.length} ${entity_type}. How would you like to receive the data?`,
+      options: [
+        { value: 'display', label: 'Display in chat (first 10 rows)' },
+        { value: 'download', label: 'Generate download link' }
+      ]
+    };
+
+  } catch (error) {
+    logger.error('Error in exportToCsv:', error);
+    return { error: error.message || 'Failed to export data' };
+  }
 }
 
 // ============== HELPER FUNCTIONS ==============

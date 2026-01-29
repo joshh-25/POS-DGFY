@@ -3554,7 +3554,115 @@ Integrated OpenAI's GPT API to create an intelligent AI assistant ("SKUpervisor"
 - `IMPLEMENTATION_CHECKLIST.md` - Updated progress
 
 ### Remaining for Session 4
-- [ ] CSV Import/Export via Chat (Phase 9)
-- [ ] Additional Features (Phase 10)
+- [x] CSV Import/Export via Chat (Phase 9) ✅
+- [ ] Additional Features (Phase 10) (Optional)
+
+---
+
+## Phase 24: AI Integration - Session 4 (CSV Import/Export)
+**Status**: ✅ COMPLETE
+**Date**: January 29, 2026
+**Commit**: Pending
+
+### Phase 9: CSV Import/Export via Chat
+- [x] Created `backend/src/services/tempFileService.js`
+  - `storeTemporaryFile()` - Store CSV with 1-hour expiry
+  - `getTemporaryFile()` - Retrieve file by ID
+  - `parseCsv()` - Parse CSV with quote handling
+  - `generateCsv()` - Generate CSV from data
+  - `validateCsvStructure()` - Validate required fields
+  - `cleanupExpiredFiles()` - Auto-cleanup expired files
+- [x] Created `frontend/Components/ai/CsvPreviewTable.jsx`
+  - Table preview for import/export data
+  - Import summary with validation stats
+  - Truncation for long values
+- [x] Created `frontend/Components/ai/ExportOptionsDialog.jsx`
+  - Choice dialog for display vs download
+  - Download link card component
+- [x] Created `frontend/Components/ai/FileDropZone.jsx`
+  - Drag & drop file handling
+  - Paste CSV text alternative
+  - File validation (type, size)
+- [x] Updated `aiToolExecutor.js` with full implementation
+  - `importCsvData()` - Parse, validate, preview
+  - `exportToCsv()` - Export items, suppliers, POs, JOs, movements
+- [x] Added GET /api/v1/ai/exports/:id endpoint
+  - `downloadExport()` controller method
+  - Route registration in ai.js
+
+### Files Created
+- `backend/src/services/tempFileService.js`
+- `frontend/Components/ai/CsvPreviewTable.jsx`
+- `frontend/Components/ai/ExportOptionsDialog.jsx`
+- `frontend/Components/ai/FileDropZone.jsx`
+
+### Files Modified
+- `backend/src/services/aiToolExecutor.js` - Full CSV implementation
+- `backend/src/controllers/aiController.js` - Added downloadExport
+- `backend/src/routes/ai.js` - Added exports route
+- `IMPLEMENTATION_CHECKLIST.md` - Updated progress
+
+### Remaining (Optional)
+- [ ] Smart reorder recommendations (Phase 10)
+- [ ] Anomaly detection (Phase 10)
+- [ ] Additional analytics (Phase 10)
+
+---
+
+## AI Integration Summary
+
+**Total Implementation Progress**: 67/76 items complete (88%)
+
+### Sessions Completed
+| Session | Focus | Status |
+|---------|-------|--------|
+| Session 1 | Core AI Service (Phases 1-3) | ✅ Complete |
+| Session 2 | RAG & Frontend (Phases 4-6) | ✅ Complete |
+| Session 3 | Production & Docs (Phases 7-8) | ✅ Complete |
+| Session 4 | CSV Import/Export (Phase 9) | ✅ Complete |
+
+### Files Created (21 total)
+**Backend Services:**
+- `aiService.js` - OpenAI integration
+- `aiContextService.js` - Database context gathering
+- `aiToolExecutor.js` - Tool execution bridge
+- `documentationService.js` - RAG documentation
+- `productionFeasibilityService.js` - Production analysis
+- `tempFileService.js` - Temporary file storage
+
+**Backend Config:**
+- `aiTools.js` - 20 tool definitions
+- `aiSystemPrompt.js` - System prompt template
+
+**Backend Controllers/Routes/Validators:**
+- `aiController.js` - HTTP handlers
+- `ai.js` (routes) - API endpoints
+- `aiValidator.js` - Request validation
+
+**Backend Models:**
+- `PendingAIAction.js` - Confirmation workflow
+- `AIConversation.js` - Conversation storage
+
+**Frontend Services:**
+- `aiService.js` - API client
+
+**Frontend Components:**
+- `ConfirmActionDialog.jsx` - Action confirmation
+- `ActionResultCard.jsx` - Result display
+- `ProductionFeasibilityCard.jsx` - Production analysis
+- `CsvPreviewTable.jsx` - CSV preview
+- `ExportOptionsDialog.jsx` - Export options
+- `FileDropZone.jsx` - File upload
+
+**Documentation:**
+- `docs/AI_GUIDELINES.md` - AI usage guide
+
+### Key Features Implemented
+1. **20 AI Tools** - Dashboard, Items, Suppliers, POs, JOs, Movements, Alerts, Forecasts, Docs, Production, CSV
+2. **Confirmation Workflow** - 5-minute expiry for write operations
+3. **30-Day Conversation Retention** - Auto-cleanup of old chats
+4. **Production Feasibility** - Nested product chain analysis
+5. **RAG Documentation** - Searchable project docs
+6. **CSV Import/Export** - Parse, validate, preview, download
 
 ---

@@ -469,6 +469,41 @@ export const deleteConversation = async (req, res, next) => {
 };
 
 /**
+ * GET /api/v1/ai/exports/:id
+ * Download a temporary CSV export file
+ */
+export const downloadExport = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    // Import tempFileService dynamically to avoid circular deps
+    const tempFileService = await import('../services/tempFileService.js');
+
+    const file = await tempFileService.getTemporaryFile(id, user.user_id);
+
+    if (!file) {
+      return res.status(404).json({
+        success: false,
+        message: 'Export file not found or expired',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Set headers for file download
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('Content-Length', Buffer.byteLength(file.content, 'utf8'));
+
+    res.send(file.content);
+
+  } catch (error) {
+    logger.error('Download export error:', error);
+    next(error);
+  }
+};
+
+/**
  * Generate a title for a conversation based on first user message
  */
 function generateConversationTitle(messages) {
