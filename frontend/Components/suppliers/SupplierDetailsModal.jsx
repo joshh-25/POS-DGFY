@@ -8,26 +8,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
-  Star,
-  Truck,
   Mail,
   Phone,
   MapPin,
   FilePlus,
-  Package,
+  Star,
   Percent
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
-import { getQualityColor, getQualityBgColor, dummyPurchaseOrders } from '@/components/data/dummyData';
+import { dummyPurchaseOrders } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import SupplierScorecard from '@/Components/SupplierScorecard';
 
 export default function SupplierDetailsModal({ supplier, open, onClose }) {
   if (!supplier) return null;
-
-  const qualityColor = getQualityColor(supplier.quality_rating);
-  const qualityBgColor = getQualityBgColor(supplier.quality_rating);
 
   // Try to use real supplier_id for filtering
   const sid = supplier.supplier_id || supplier.id;
@@ -65,23 +60,10 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
             )}
           </div>
 
-          {/* Performance Metrics */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className={cn("rounded-xl p-4 border text-center", qualityBgColor)}>
-              <Star className={cn("w-6 h-6 mx-auto mb-2", qualityColor)} fill="currentColor" />
-              <p className={cn("text-2xl font-bold", qualityColor)}>{formatNumber(supplier.quality_rating, 1)}</p>
-              <p className="text-sm text-slate-500">Quality Rating</p>
-            </div>
-            <div className="rounded-xl p-4 border border-slate-200 bg-slate-50 text-center">
-              <Truck className="w-6 h-6 mx-auto mb-2 text-blue-500" />
-              <p className="text-2xl font-bold text-slate-900">{supplier.avg_delivery_days}</p>
-              <p className="text-sm text-slate-500">Avg. Days</p>
-            </div>
-            <div className="rounded-xl p-4 border border-slate-200 bg-slate-50 text-center">
-              <Package className="w-6 h-6 mx-auto mb-2 text-purple-500" />
-              <p className="text-2xl font-bold text-slate-900">{(supplier.items_supplied || []).length}</p>
-              <p className="text-sm text-slate-500">Items</p>
-            </div>
+          {/* Performance Scorecard (AI Analyzed) */}
+          <div>
+            <h4 className="font-medium text-slate-900 mb-3">Performance Scorecard</h4>
+            <SupplierScorecard supplierId={sid} />
           </div>
 
           {/* Items Supplied */}

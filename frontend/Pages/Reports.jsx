@@ -19,8 +19,10 @@ import {
   CheckCircle2,
   XCircle,
   Hourglass,
-  Truck
+  Truck,
+  PieChart
 } from 'lucide-react';
+import CostAnalysisWidget from '@/components/reports/CostAnalysisWidget';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -286,6 +288,10 @@ export default function Reports() {
           <TabsTrigger value="summary" className="flex items-center gap-2 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700">
             <BarChart3 className="w-4 h-4" />
             Executive Summary
+          </TabsTrigger>
+          <TabsTrigger value="cost" className="flex items-center gap-2 data-[state=active]:bg-Rose-50 data-[state=active]:text-rose-700">
+            <PieChart className="w-4 h-4" />
+            Cost Analysis
           </TabsTrigger>
         </TabsList>
 
@@ -933,6 +939,11 @@ export default function Reports() {
               </div>
             </div>
           ) : null}
+        </TabsContent>
+
+        {/* COST ANALYSIS TAB */}
+        <TabsContent value="cost">
+          <CostAnalysisWidget dateFilters={dateFilters} />
         </TabsContent>
       </Tabs>
 

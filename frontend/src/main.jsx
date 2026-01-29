@@ -19,18 +19,15 @@ import { getPageNameFromPath } from '../utils.js'
 import './index.css'
 
 function App() {
-  const [isAuthenticating, setIsAuthenticating] = useState(true)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const location = useLocation()
   const currentPageName = getPageNameFromPath(location.pathname)
 
-  useEffect(() => {
-    // Check authentication status on app startup
-    setIsAuthenticating(false);
-  }, []);
 
-  if (isAuthenticating) {
-    return <div>Loading...</div>;
-  }
+  /* 
+   * Authentication is handled by ProtectedRoute components. 
+   * Global auth check can be added here if needed in future.
+   */
 
   return (
     <Routes>

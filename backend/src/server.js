@@ -168,6 +168,8 @@ app.use('/api/v1/forecast', forecastRoutes);
 app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
+import analyticsRoutes from './routes/analytics.js';
+app.use('/api/v1/analytics', analyticsRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

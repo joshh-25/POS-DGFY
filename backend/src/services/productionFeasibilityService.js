@@ -10,7 +10,7 @@ import Item from '../models/Item.js';
 import ProductComposition from '../models/ProductComposition.js';
 import FIFOBatch from '../models/FIFOBatch.js';
 import sequelize from '../config/database.js';
-import logger from '../utils/logger.js';
+import logger from '../config/logger.js';
 
 /**
  * Get all producible products with their feasibility status
@@ -186,7 +186,7 @@ export const analyzeProductionChain = async (productId, targetQuantity = 1) => {
           model: Item,
           as: 'ingredient',
           attributes: ['item_id', 'name', 'sku_code', 'category', 'current_stock',
-                       'unit_of_measure', 'nesting_level', 'yield_percentage', 'processing_loss']
+            'unit_of_measure', 'nesting_level', 'yield_percentage', 'processing_loss']
         }]
       }]
     });
@@ -318,7 +318,7 @@ export const calculateRawMaterialRequirements = async (productId, quantity = 1, 
       model: Item,
       as: 'ingredient',
       attributes: ['item_id', 'name', 'sku_code', 'category', 'current_stock',
-                   'unit_of_measure', 'yield_percentage', 'processing_loss']
+        'unit_of_measure', 'yield_percentage', 'processing_loss']
     }]
   });
 

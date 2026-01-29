@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AlertBanner from '@/components/dashboard/AlertBanner';
+import AnomalyAlertBanner from '@/components/dashboard/AnomalyAlertBanner';
 import RecentMovements from '@/components/dashboard/RecentMovements';
 import LowStockList from '@/components/dashboard/LowStockList';
 import ExpiringBatchesList from '@/components/dashboard/ExpiringBatchesList';
@@ -39,7 +40,7 @@ export default function Dashboard() {
   const showProcurementReminder = dayOfMonth <= 7;
 
   const loading = statsLoading || lowStockLoading || movementsLoading || poLoading || suppliersLoading || alertsLoading;
-  
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -47,11 +48,11 @@ export default function Dashboard() {
       </div>
     );
   }
-  
+
   if (statsError) {
     return (
       <div className="space-y-8">
-        <AlertBanner 
+        <AlertBanner
           type="critical"
           title="Error Loading Dashboard"
           message={statsError}
@@ -59,7 +60,7 @@ export default function Dashboard() {
       </div>
     );
   }
-  
+
   // Use stats from API or calculate from available data
   const displayStats = stats || {
     totalItems: 0,
@@ -84,6 +85,8 @@ export default function Dashboard() {
 
       {/* Alerts */}
       <div className="space-y-3">
+        <AnomalyAlertBanner />
+
         {displayStats.lowStockCount > 0 && (
           <AlertBanner
             type="critical"
@@ -168,7 +171,7 @@ export default function Dashboard() {
               <Truck className="w-6 h-6 text-white" />
             </div>
           </div>
-          <Link 
+          <Link
             to={createPageUrl("Suppliers")}
             className="inline-flex items-center text-sm text-teal-600 font-medium mt-4 hover:text-teal-700 transition-colors"
           >
@@ -188,7 +191,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2 mt-4">
             <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-emerald-500 rounded-full"
                 style={{ width: `${displayStats.totalItems > 0 ? (displayStats.healthyCount / displayStats.totalItems) * 100 : 0}%` }}
               />

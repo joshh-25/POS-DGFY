@@ -16,6 +16,7 @@ export default defineConfig({
       { find: '@/Pages', replacement: path.resolve(__dirname, './Pages') },
       { find: '@/Entities', replacement: path.resolve(__dirname, './Entities') },
       { find: '@/lib', replacement: path.resolve(__dirname, './src/lib') },
+      { find: '@/services', replacement: path.resolve(__dirname, './src/services') },
       // General alias comes last
       { find: '@', replacement: path.resolve(__dirname, './') },
     ],

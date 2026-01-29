@@ -352,7 +352,12 @@ export const analyzeInventoryCosts = async ({ startDate, endDate }) => {
         where: {
             timestamp: { [Op.between]: [sDate, eDate] },
             movement_type: { [Op.in]: ['production_consumption', 'calculated_loss', 'waste', 'spoilage', 'damage'] }
-        }
+        },
+        include: [{
+            model: Item,
+            as: 'item',
+            attributes: ['cost_per_unit', 'category']
+        }]
     });
 
     let cogs = 0;
@@ -360,7 +365,8 @@ export const analyzeInventoryCosts = async ({ startDate, endDate }) => {
     const categoryBreakdown = {};
 
     for (const m of movements) {
-        const cost = parseFloat(m.weighted_average_cost || 0); // Assuming we track cost at movement time
+        // Use historical cost if available, otherwise current item cost
+        const cost = parseFloat(m.weighted_average_cost || m.item?.cost_per_unit || 0);
         const qty = Math.abs(parseFloat(m.quantity));
         const value = cost * qty;
 

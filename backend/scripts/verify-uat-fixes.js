@@ -1,5 +1,5 @@
-import sequelize from '../backend/src/config/database.js';
-import Supplier from '../backend/src/models/Supplier.js';
+import sequelize from '../src/config/database.js';
+import Supplier from '../src/models/Supplier.js';
 import { Op } from 'sequelize';
 
 // Mocking Export Service (since it might be complex to import depending on how it's structured)

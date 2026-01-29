@@ -65,7 +65,7 @@ export default function AiChat() {
         try {
             setIsLoadingConversations(true);
             const response = await aiService.getConversations();
-            setConversations(response.data || []);
+            setConversations(response.data?.conversations || []);
         } catch (err) {
             console.error('Failed to load conversations:', err);
         } finally {
