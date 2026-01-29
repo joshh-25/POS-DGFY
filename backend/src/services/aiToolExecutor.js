@@ -18,6 +18,7 @@ import * as dashboardService from './dashboardService.js';
 import * as alertService from './alertService.js';
 import * as forecastService from './forecastService.js';
 import * as documentationService from './documentationService.js';
+import * as productionFeasibilityService from './productionFeasibilityService.js';
 
 /**
  * Execute a tool by name with given arguments
@@ -540,14 +541,118 @@ async function searchDocumentation({ query }) {
 // ============== PRODUCTION FEASIBILITY ==============
 
 async function analyzeProductionFeasibility({ product_id, include_partial = true, show_chain = true }) {
-  // This will be implemented in Phase 7
-  // For now, return a placeholder
-  return {
-    message: 'Production feasibility analysis will be available soon.',
-    product_id,
-    include_partial,
-    show_chain
-  };
+  try {
+    // If specific product requested, analyze its production chain
+    if (product_id) {
+      const chainAnalysis = await productionFeasibilityService.analyzeProductionChain(product_id, 1);
+
+      if (!chainAnalysis.success) {
+        return { error: chainAnalysis.error };
+      }
+
+      const { product, productionChain, rawMaterialRequirements, stockAvailability, shortages } = chainAnalysis.data;
+
+      return {
+        product: {
+          id: product.id,
+          name: product.name,
+          sku_code: product.skuCode,
+          nesting_level: product.nestingLevel
+        },
+        can_produce: stockAvailability.allAvailable,
+        max_producible: stockAvailability.maxProducible,
+        production_chain: show_chain ? formatProductionChain(productionChain) : null,
+        raw_materials: rawMaterialRequirements.map(rm => ({
+          id: rm.itemId,
+          name: rm.name,
+          sku_code: rm.skuCode,
+          category: rm.category,
+          required: rm.requiredQuantity,
+          available: rm.availableStock,
+          unit: rm.unit,
+          has_shortage: rm.shortage > 0,
+          shortage: rm.shortage
+        })),
+        shortages: shortages.map(s => ({
+          name: s.name,
+          required: s.required,
+          available: s.available,
+          shortage: s.shortage,
+          unit: s.unit
+        })),
+        message: stockAvailability.allAvailable
+          ? `Can produce ${product.name}. All ${stockAvailability.totalIngredients} ingredients available.`
+          : `Cannot produce ${product.name}. Missing ${shortages.length} ingredient(s).`
+      };
+    }
+
+    // Get all producible products
+    const result = await productionFeasibilityService.getProducibleProducts({
+      limit: 50
+    });
+
+    if (!result.success) {
+      return { error: 'Failed to analyze production feasibility' };
+    }
+
+    const { fullyProducible, partiallyProducible, notProducible, noRecipe } = result.data;
+    const { summary } = result;
+
+    // Build response
+    const response = {
+      summary: {
+        total_products: summary.totalProducts,
+        fully_producible: summary.fullyProducible,
+        partially_producible: summary.partiallyProducible,
+        not_producible: summary.notProducible,
+        no_recipe: summary.noRecipe
+      },
+      fully_producible: fullyProducible.slice(0, 10).map(p => ({
+        id: p.productId,
+        name: p.productName,
+        sku_code: p.skuCode,
+        product_type: p.productType,
+        nesting_level: p.nestingLevel,
+        max_producible: p.maxProducible,
+        message: p.message
+      })),
+      message: `Found ${summary.fullyProducible} product(s) that can be fully produced, ${summary.partiallyProducible} partially producible, and ${summary.notProducible} that cannot be produced due to ingredient shortages.`
+    };
+
+    // Include partially producible if requested
+    if (include_partial && partiallyProducible.length > 0) {
+      response.partially_producible = partiallyProducible.slice(0, 5).map(p => ({
+        id: p.productId,
+        name: p.productName,
+        sku_code: p.skuCode,
+        max_producible: p.maxProducible,
+        bottleneck: p.bottleneck
+      }));
+    }
+
+    return response;
+  } catch (error) {
+    logger.error('Error in analyzeProductionFeasibility:', error);
+    return { error: error.message || 'Failed to analyze production feasibility' };
+  }
+}
+
+// Helper to format production chain for display
+function formatProductionChain(chain, indent = 0) {
+  const prefix = '  '.repeat(indent);
+  let result = `${prefix}${chain.productName} (x${chain.quantity})`;
+
+  if (chain.subProducts && chain.subProducts.length > 0) {
+    result += '\n' + prefix + '  Sub-products needed:';
+    for (const sub of chain.subProducts) {
+      result += '\n' + formatProductionChain(sub, indent + 2);
+      if (sub.needsToProduce > 0) {
+        result += ` [NEED TO PRODUCE: ${sub.needsToProduce}]`;
+      }
+    }
+  }
+
+  return result;
 }
 
 // ============== CSV IMPORT/EXPORT ==============

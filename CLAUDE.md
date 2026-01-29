@@ -318,6 +318,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `docs/api/specification.md` - All endpoint details
 - `docs/api/integration-guide.md` - Frontend-backend integration
 - `docs/architecture/system-architecture.md` - System architecture diagrams
+- `docs/AI_GUIDELINES.md` - AI Assistant capabilities, limitations, and workflows
 
 ---
 
