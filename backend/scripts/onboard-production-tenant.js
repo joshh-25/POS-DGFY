@@ -79,7 +79,7 @@ async function onboard() {
 
             if (mappings.length === 0) {
                 await connection.query(
-                    "INSERT INTO user_tenant_mappings (id, email, tenant_id, created_at, updated_at) VALUES (UUID(), ?, ?, NOW(), NOW())",
+                    "INSERT INTO user_tenant_mappings (email, tenant_id, created_at, updated_at) VALUES (?, ?, NOW(), NOW())",
                     [email, tenantId]
                 );
                 console.log(`   + Mapped: ${email}`);
