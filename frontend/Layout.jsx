@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout } from './src/services/authService.js';
-import FeedbackWidget from './components/common/FeedbackWidget';
+import FeedbackWidget from './Components/common/FeedbackWidget';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
