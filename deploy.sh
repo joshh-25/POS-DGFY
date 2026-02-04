@@ -20,16 +20,16 @@ npm install
 
 echo "📦 Installing backend dependencies..."
 cd backend
-npm install --include=dev
+NODE_ENV=development npm install
 cd ..
 
 echo "📦 Installing frontend dependencies..."
 cd frontend
-npm install --include=dev
+NODE_ENV=development npm install
 
 # 3. Build Frontend
 echo "🏗️  Building frontend..."
-npm run build
+NODE_ENV=development npm run build
 cd ..
 
 # 4. Database Migrations
