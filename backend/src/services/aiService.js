@@ -16,10 +16,18 @@ import { getOpenAITools, getToolByName, toolRequiresConfirmation } from '../conf
 import { buildContext, hasPermission, getPermissionError } from './aiContextService.js';
 import * as toolExecutor from './aiToolExecutor.js';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Lazy initialize OpenAI client
+let _openai = null;
+const getOpenAI = () => {
+  if (_openai) return _openai;
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
+  }
+  _openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+  return _openai;
+};
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 
@@ -92,7 +100,7 @@ export const processMessage = async (message, conversationHistory = [], user, co
     ];
 
     // Call OpenAI API
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: MODEL,
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -277,7 +285,7 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
   const currentToolsExecuted = [...allToolsExecuted, ...results.map(r => r.toolName)];
 
   // Make follow-up API call WITH tools enabled for chaining
-  const finalResponse = await openai.chat.completions.create({
+  const finalResponse = await getOpenAI().chat.completions.create({
     model: MODEL,
     messages: updatedMessages,
     tools: tools.length > 0 ? tools : undefined,

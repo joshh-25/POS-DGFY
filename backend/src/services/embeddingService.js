@@ -2,9 +2,17 @@ import OpenAI from 'openai';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-});
+let _openai = null;
+const getOpenAI = () => {
+    if (_openai) return _openai;
+    if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
+    }
+    _openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+    });
+    return _openai;
+};
 
 // Cache for embeddings to avoid re-fetching active item vectors on every search
 // Keyed by tenantId: { tenantId: { itemId: [vector] } }
@@ -19,7 +27,7 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
  */
 export const generateEmbedding = async (text) => {
     try {
-        const response = await openai.embeddings.create({
+        const response = await getOpenAI().embeddings.create({
             model: "text-embedding-3-small",
             input: text,
             encoding_format: "float",
