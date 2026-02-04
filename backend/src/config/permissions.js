@@ -1,0 +1,124 @@
+export const PERMISSIONS = {
+    // --- INVENTORY MANAGEMENT ---
+    INVENTORY: {
+        label: "Inventory Management",
+        actions: {
+            VIEW_ITEMS: "items:view",     // View item list and details
+            CREATE_ITEMS: "items:create", // Create new items
+            EDIT_ITEMS: "items:edit",     // Edit existing items
+            DELETE_ITEMS: "items:delete", // Delete items (soft delete)
+            EXPORT_ITEMS: "items:export", // Export items to CSV
+            IMPORT_ITEMS: "items:import", // Import items from CSV
+        }
+    },
+
+    // --- SUPPLIER MANAGEMENT ---
+    SUPPLIERS: {
+        label: "Supplier Management",
+        actions: {
+            VIEW_SUPPLIERS: "suppliers:view",
+            CREATE_SUPPLIERS: "suppliers:create",
+            EDIT_SUPPLIERS: "suppliers:edit",
+            DELETE_SUPPLIERS: "suppliers:delete", // Admin only usually
+            EXPORT_SUPPLIERS: "suppliers:export",
+            IMPORT_SUPPLIERS: "suppliers:import",
+        }
+    },
+
+    // --- ORDER MANAGEMENT (PO & JO) ---
+    ORDERS: {
+        label: "Order Management",
+        actions: {
+            VIEW_PO: "po:view",       // View Purchase Orders
+            CREATE_PO: "po:create",   // Create/Draft POs
+            EDIT_PO: "po:edit",       // Edit Draft POs
+            APPROVE_PO: "po:approve", // Finalize POs (Manager/Admin)
+            RECEIVE_PO: "po:receive", // Receive stock from PO (Web & Mobile QR)
+            DELETE_PO: "po:delete",   // Archive/Restore/Delete POs
+
+            VIEW_JO: "jo:view",       // View Job Orders
+            CREATE_JO: "jo:create",   // Create/Draft JOs
+            EDIT_JO: "jo:edit",       // Edit Draft JOs
+            APPROVE_JO: "jo:approve", // Finalize JOs
+            COMPLETE_JO: "jo:complete", // Complete JO (Production) (Web & Mobile QR)
+            DELETE_JO: "jo:delete",   // Archive/Restore/Delete JOs
+        }
+    },
+
+    // --- STOCK CONTROL ---
+    STOCK: {
+        label: "Stock Control",
+        actions: {
+            VIEW_MOVEMENTS: "stock:view",     // View movement history
+            CREATE_ADJUSTMENT: "stock:adjust", // Create manual stock adjustments
+            VIEW_BATCHES: "batches:view",     // View FIFO batches
+            EDIT_BATCHES: "batches:edit",     // Edit batch details (e.g. expiry)
+        }
+    },
+
+    // --- REPORTS & ANALYTICS ---
+    REPORTS: {
+        label: "Reports & Analytics",
+        actions: {
+            VIEW_REPORTS: "reports:view", // Access Reports page
+            EXPORT_REPORTS: "reports:export", // Download report data
+        }
+    },
+
+    // --- AI ASSISTANT ---
+    AI: {
+        label: "AI Assistant",
+        actions: {
+            AI_CHAT_VIEW: "ai:chat",     // Access AI Chat interface and ask questions
+            AI_CHAT_ACTION: "ai:action", // Confirm and execute AI-proposed actions
+        }
+    },
+
+    // --- SYSTEM ADMINISTRATION ---
+    SYSTEM: {
+        label: "System Administration",
+        actions: {
+            VIEW_SETTINGS: "settings:view",  // View system settings
+            EDIT_SETTINGS: "settings:edit",  // Change system settings
+            MANAGE_USERS: "users:manage",    // Manage other users (Master Admin/Admin)
+            VIEW_AUDIT: "audit:view",        // View audit logs
+        }
+    }
+};
+
+// Helper: Get all permission values as a flat array
+export const getAllPermissions = () => {
+    const all = [];
+    Object.values(PERMISSIONS).forEach(group => {
+        Object.values(group.actions).forEach(permission => {
+            all.push(permission);
+        });
+    });
+    return all;
+};
+
+// Helper: Default permissions for migrated roles
+export const DEFAULT_ROLE_PERMISSIONS = {
+    admin: getAllPermissions(), // Admin gets everything by default (legacy support)
+    manager: [
+        ...Object.values(PERMISSIONS.INVENTORY.actions),
+        ...Object.values(PERMISSIONS.SUPPLIERS.actions),
+        ...Object.values(PERMISSIONS.ORDERS.actions),
+        ...Object.values(PERMISSIONS.STOCK.actions),
+        ...Object.values(PERMISSIONS.REPORTS.actions),
+        PERMISSIONS.AI.actions.AI_CHAT_VIEW,
+        PERMISSIONS.AI.actions.AI_CHAT_ACTION,
+        PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
+        PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS,
+        PERMISSIONS.SYSTEM.actions.VIEW_AUDIT
+    ],
+    staff: [
+        PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.SUPPLIERS.actions.VIEW_SUPPLIERS,
+        PERMISSIONS.ORDERS.actions.VIEW_PO,
+        PERMISSIONS.ORDERS.actions.VIEW_JO,
+        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
+        PERMISSIONS.AI.actions.AI_CHAT_VIEW, // Read-only chat
+        // Explicitly NO create/edit/delete/approve/action
+    ]
+};

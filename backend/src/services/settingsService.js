@@ -1,12 +1,11 @@
-import SystemSetting from '../models/SystemSetting.js';
-import Item from '../models/Item.js';
+import dbStore from '../utils/dbStore.js';
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
 
 /**
  * Get all system settings
  */
 export const getAllSettings = async () => {
+  const SystemSetting = dbStore.get('SystemSetting');
   const settings = await SystemSetting.findAll({
     attributes: ['setting_id', 'setting_key', 'setting_value', 'data_type', 'description', 'updated_at']
   });
@@ -44,6 +43,7 @@ export const getAllSettings = async () => {
  * Get a single setting by key
  */
 export const getSettingByKey = async (key) => {
+  const SystemSetting = dbStore.get('SystemSetting');
   const setting = await SystemSetting.findOne({
     where: { setting_key: key }
   });
@@ -82,6 +82,9 @@ export const getSettingByKey = async (key) => {
  * Called when auto-calculate toggle or percentage values change
  */
 export const applyThresholdSettings = async () => {
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const settings = await getAllSettings();
   const autoCalc = settings.enable_auto_reorder?.value ?? true; // Default ON for backward compatibility
   const minPercent = (settings.min_stock_threshold_percent?.value || 40) / 100;
@@ -130,6 +133,7 @@ export const updateSettings = async (settingsData) => {
 
   for (const [key, value] of Object.entries(settingsData)) {
     try {
+      const SystemSetting = dbStore.get('SystemSetting');
       const setting = await SystemSetting.findOne({
         where: { setting_key: key }
       });
@@ -182,6 +186,7 @@ export const updateSettings = async (settingsData) => {
  * Update a single setting by key
  */
 export const updateSettingByKey = async (key, value) => {
+  const SystemSetting = dbStore.get('SystemSetting');
   const setting = await SystemSetting.findOne({
     where: { setting_key: key }
   });
@@ -218,6 +223,7 @@ export const updateSettingByKey = async (key, value) => {
  * Reset all settings to default values (requires admin)
  */
 export const resetSettingsToDefault = async () => {
+  const SystemSetting = dbStore.get('SystemSetting');
   const defaultSettings = {
     'low_stock_threshold': '20',
     'critical_stock_threshold': '10',

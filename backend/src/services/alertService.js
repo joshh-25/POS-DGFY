@@ -1,14 +1,12 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import Item from '../models/Item.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import Supplier from '../models/Supplier.js';
-import SystemSetting from '../models/SystemSetting.js';
+import dbStore from '../utils/dbStore.js';
 
 /**
  * Helper to get a setting value with a default fallback
  */
 const getSettingValue = async (key, defaultValue) => {
+  const SystemSetting = dbStore.get('SystemSetting');
+
   try {
     const setting = await SystemSetting.findOne({
       where: { setting_key: key }
@@ -27,14 +25,17 @@ const getSettingValue = async (key, defaultValue) => {
   }
 };
 
-export const generateAlerts = async () => {
-  const alerts = [];
+/**
+ * Get all low stock alerts
+ */
+export const getLowStockAlerts = async () => {
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  // Low stock alerts
   const lowStockItems = await Item.findAll({
     where: {
       status: 'active',
-      min_threshold: { [Op.ne]: null }, // Only alert for items with thresholds set
+      min_threshold: { [Op.ne]: null },
       [Op.and]: [
         sequelize.where(
           sequelize.col('current_stock'),
@@ -45,34 +46,33 @@ export const generateAlerts = async () => {
     }
   });
 
-  lowStockItems.forEach(item => {
-    alerts.push({
-      type: 'low_stock',
-      severity: 'high',
-      message: `${item.name} (${item.sku_code}) is below minimum threshold`,
-      item_id: item.item_id,
-      current_stock: item.current_stock,
-      min_threshold: item.min_threshold
-    });
-  });
+  return lowStockItems.map(item => ({
+    type: 'low_stock',
+    severity: 'high',
+    message: `${item.name} (${item.sku_code}) is below minimum threshold`,
+    item_id: item.item_id,
+    current_stock: item.current_stock,
+    min_threshold: item.min_threshold
+  }));
+};
 
-  // Fetch configurable expiry thresholds from settings
-  const criticalDays = await getSettingValue('expiry_critical_days', 7);
-  const warningDays = await getSettingValue('expiry_warning_days', 30);
+/**
+ * Get all expiry alerts based on thresholds
+ */
+export const getExpiryAlerts = async (options = {}) => {
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  // Calculate expiry window
+  const criticalDays = options.criticalDays || await getSettingValue('expiry_critical_days', 7);
+  const warningDays = options.warningDays || await getSettingValue('expiry_warning_days', 30);
+
   const warningHorizon = new Date();
   warningHorizon.setDate(warningHorizon.getDate() + warningDays);
 
-  console.log(`[AlertService] Checking for batches expiring on or before ${warningHorizon.toISOString().split('T')[0]}`);
-
-  // Fetch batches expiring within the warning window (OR already expired)
-  // We want anything where expiry_date <= warningHorizon AND quantity > consumed
   const expiringBatches = await FIFOBatch.findAll({
     where: {
-      expiry_date: {
-        [Op.lte]: warningHorizon
-      },
+      expiry_date: { [Op.lte]: warningHorizon },
       [Op.and]: [
         sequelize.where(
           sequelize.col('quantity'),
@@ -84,126 +84,73 @@ export const generateAlerts = async () => {
     include: [{
       model: Item,
       as: 'item',
-      where: { status: 'active' }, // Only active items
-      attributes: [
-        'item_id', 'name', 'sku_code', 'unit_of_measure',
-        'fifo_enabled', 'shelf_life_days'
-      ]
+      where: { status: 'active' },
+      attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'fifo_enabled', 'shelf_life_days']
     }],
-    order: [['expiry_date', 'ASC']] // Sort by earliest expiry first
+    order: [['expiry_date', 'ASC']]
   });
 
-  console.log(`[AlertService] Found ${expiringBatches.length} expiring/expired batches`);
+  const alerts = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   expiringBatches.forEach(batch => {
-    if (!batch.item) {
-      console.warn(`Warning: Batch #${batch.batch_id} refers to non-existent item ID ${batch.item_id}`);
-      return;
-    }
-
+    if (!batch.item) return;
     const expiryDate = new Date(batch.expiry_date);
+    if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) return;
 
-    // Skip batches with invalid expiry dates (NaN or before year 2000 - Excel epoch dates)
-    if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) {
-      console.warn(`[AlertService] Batch #${batch.batch_id} has invalid expiry_date: ${batch.expiry_date}, skipping`);
-      return;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-    const availableQuantity = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
-
-    // Three-tier severity based on configurable thresholds
-    // critical: <= criticalDays (default 7), warning: criticalDays+1 to warningDays
     const severity = daysUntilExpiry <= criticalDays ? 'critical' : 'warning';
 
     alerts.push({
       type: 'expiring_batch',
       severity,
-      message: `Batch #${batch.batch_id} for ${batch.item.name} expires ${daysUntilExpiry === 0 ? 'today' : daysUntilExpiry === 1 ? 'tomorrow' : `in ${daysUntilExpiry} days`}`,
+      message: `Batch #${batch.batch_id} for ${batch.item.name} expires ${daysUntilExpiry <= 0 ? 'today' : daysUntilExpiry === 1 ? 'tomorrow' : `in ${daysUntilExpiry} days`}`,
       item_id: batch.item_id,
       item_name: batch.item.name,
       item_sku: batch.item.sku_code,
       batch_id: batch.batch_id,
       expiry_date: batch.expiry_date,
       days_until_expiry: daysUntilExpiry,
-      available_quantity: availableQuantity,
-      unit_of_measure: batch.item.unit_of_measure,
-      // Additional shelf life context
-      fifo_enabled: batch.item.fifo_enabled,
-      shelf_life_days: batch.item.shelf_life_days,
-      received_date: batch.received_date,
-      po_number: batch.po_number
-    });
-  });
-
-  // Alert for FIFO batches missing expiry_date (data quality issue)
-  const batchesMissingExpiry = await FIFOBatch.findAll({
-    where: {
-      expiry_date: null,
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('quantity'),
-          Op.gt,
-          sequelize.col('quantity_consumed')
-        )
-      ]
-    },
-    include: [{
-      model: Item,
-      as: 'item',
-      where: {
-        fifo_enabled: true,
-        status: 'active'
-      }
-    }]
-  });
-
-  batchesMissingExpiry.forEach(batch => {
-    if (!batch.item) return;
-
-    const availableQuantity = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
-
-    alerts.push({
-      type: 'missing_expiry_date',
-      severity: 'warning',
-      message: `Batch #${batch.batch_id} for ${batch.item.name} is missing expiry date`,
-      item_id: batch.item_id,
-      item_name: batch.item.name,
-      item_sku: batch.item.sku_code,
-      batch_id: batch.batch_id,
-      available_quantity: availableQuantity,
-      unit_of_measure: batch.item.unit_of_measure,
-      received_date: batch.received_date,
-      po_number: batch.po_number,
-      shelf_life_days: batch.item.shelf_life_days,
-      suggestion: batch.item.shelf_life_days
-        ? 'Run the backfill migration or manually set expiry date'
-        : 'Set shelf_life_days on this item first'
-    });
-  });
-
-  // Supplier performance alerts
-  const lowRatedSuppliers = await Supplier.findAll({
-    where: {
-      status: 'active',
-      quality_rating: {
-        [Op.lt]: 3.0
-      }
-    }
-  });
-
-  lowRatedSuppliers.forEach(supplier => {
-    alerts.push({
-      type: 'supplier_performance',
-      severity: 'medium',
-      message: `${supplier.name} has low quality rating (${supplier.quality_rating})`,
-      supplier_id: supplier.supplier_id,
-      quality_rating: supplier.quality_rating
+      available_quantity: parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed)
     });
   });
 
   return alerts;
+};
+
+/**
+ * Get supplier performance alerts
+ */
+export const getSupplierPerformanceAlerts = async () => {
+  const Supplier = dbStore.get('Supplier');
+
+  const lowRatedSuppliers = await Supplier.findAll({
+    where: {
+      status: 'active',
+      quality_rating: { [Op.lt]: 3.0 }
+    }
+  });
+
+  return lowRatedSuppliers.map(supplier => ({
+    type: 'supplier_performance',
+    severity: 'medium',
+    message: `${supplier.name} has low quality rating (${supplier.quality_rating})`,
+    supplier_id: supplier.supplier_id,
+    quality_rating: supplier.quality_rating
+  }));
+};
+
+/**
+ * Generate all system alerts (Legacy compatibility)
+ */
+export const generateAlerts = async () => {
+  const [lowStock, expiry, performance] = await Promise.all([
+    getLowStockAlerts(),
+    getExpiryAlerts(),
+    getSupplierPerformanceAlerts()
+  ]);
+
+  return [...lowStock, ...expiry, ...performance];
 };
 

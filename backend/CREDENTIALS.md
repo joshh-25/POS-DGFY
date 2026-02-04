@@ -12,7 +12,7 @@
 
 - **Host:** `localhost`
 - **Port:** `3306`
-- **Database Name:** `sku_inventory_manager`
+- **Database Name:** `SKU` (Landlord Registry) / `sku_tenant_*` (Tenant Databases)
 - **Username:** `root`
 - **Password:** *(empty - XAMPP default)*
 
@@ -81,12 +81,15 @@ COLLATE utf8mb4_unicode_ci;
 
 ### Test User Credentials
 
-**Admin User:**
-- **Username:** `admin`
+**Original Legacy Data (recovered):**
 - **Email:** `admin@test.com`
 - **Password:** `Admin123!`
-- **Role:** `admin`
-- **User ID:** `1`
+- **Company Token:** `token-original`
+
+**Test Tenant A:**
+- **Email:** `admin@tenant-a.com`
+- **Password:** `Admin123!`
+- **Company Token:** `token-tenant-a`
 
 **⚠️ IMPORTANT:** These credentials are for development/testing only. Do not use in production.
 

@@ -1,9 +1,5 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import StockMovement from '../models/StockMovement.js';
-import Item from '../models/Item.js';
-import Supplier from '../models/Supplier.js';
-import SupplierItem from '../models/SupplierItem.js';
+import dbStore from '../utils/dbStore.js';
 
 /**
  * Analytics Service
@@ -23,6 +19,9 @@ const ANALYSIS_PERIOD_DAYS = 30; // Look back 30 days for burn rate
  * @returns {Promise<Object>} { burnRate, totalConsumed, daysAnalyzed }
  */
 export const calculateBurnRate = async (itemId, days = ANALYSIS_PERIOD_DAYS) => {
+    const StockMovement = dbStore.get('StockMovement');
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
@@ -59,6 +58,10 @@ export const calculateBurnRate = async (itemId, days = ANALYSIS_PERIOD_DAYS) => 
  * @param {number} itemId 
  */
 export const calculateReorderPoint = async (itemId) => {
+    const Item = dbStore.get('Item');
+    const SupplierItem = dbStore.get('SupplierItem');
+    const Supplier = dbStore.get('Supplier');
+
     // 1. Get Item context (Current Stock, Assigned Suppliers)
     const item = await Item.findByPk(itemId, {
         include: [{
@@ -129,6 +132,8 @@ export const calculateReorderPoint = async (itemId) => {
  * Bulk analysis for all active items
  */
 export const getReorderRecommendations = async (category = null) => {
+    const Item = dbStore.get('Item');
+
     const where = { status: 'active' };
     if (category) where.category = category;
 
@@ -162,6 +167,9 @@ export const getReorderRecommendations = async (category = null) => {
  * @param {number} options.days - Lookback period (default 30)
  */
 export const detectAnomalies = async (options = {}) => {
+    const Item = dbStore.get('Item');
+    const StockMovement = dbStore.get('StockMovement');
+
     const { category, itemId, days = 30 } = options;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -275,8 +283,8 @@ export const detectAnomalies = async (options = {}) => {
  * @param {number} supplierId
  */
 export const analyzeSupplierPerformance = async (supplierId) => {
-    const PurchaseOrder = (await import('../models/PurchaseOrder.js')).default;
-    const Supplier = (await import('../models/Supplier.js')).default;
+    const PurchaseOrder = dbStore.get('PurchaseOrder');
+    const Supplier = dbStore.get('Supplier');
 
     const supplier = await Supplier.findByPk(supplierId);
     if (!supplier) throw new Error('Supplier not found');
@@ -345,6 +353,9 @@ export const analyzeSupplierPerformance = async (supplierId) => {
  * @param {Object} options { startDate, endDate }
  */
 export const analyzeInventoryCosts = async ({ startDate, endDate }) => {
+    const StockMovement = dbStore.get('StockMovement');
+    const Item = dbStore.get('Item');
+
     const sDate = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
     const eDate = endDate ? new Date(endDate) : new Date();
 

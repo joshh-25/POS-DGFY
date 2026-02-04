@@ -16,8 +16,10 @@ router.put('/me', authenticate, validateUpdateProfile, userController.updateProf
 router.put('/me/password', authenticate, validateChangePassword, userController.changePassword);
 
 // Admin-only user management endpoints
-router.get('/', authenticate, authorize('admin'), userController.getAllUsers);
+router.get('/', authenticate, authorize('admin', 'manager'), userController.getAllUsers); // Allow manager to view list? Or stick to admin? Old code said admin.
 router.put('/:user_id/role', authenticate, authorize('admin'), validateUpdateUserRole, userController.updateUserRole);
 router.put('/:user_id/status', authenticate, authorize('admin'), validateUpdateUserStatus, userController.updateUserStatus);
+router.put('/:user_id/permissions', authenticate, authorize('admin'), userController.updateUserPermissions); // Allow admin (who will be checked for Master status in service) or use explicit permission?
+// Better to strictly require admin here as entry gate, logic inside handles Master check.
 
 export default router;

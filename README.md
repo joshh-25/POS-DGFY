@@ -140,6 +140,8 @@ backend/
 ### Key Features
 
 *   **Inventory Management**: Track stock levels, costs, and specifications.
+*   **AI Document Parsing**: Automatically extract text from PDF and Word documents for AI context.
+*   **AI Vision Support**: Analyze uploaded images using OpenAI Vision API.
 *   **FIFO Batch Tracking**: Manage inventory using exact-cost First-In-First-Out logic.
 *   **Smart Restock**: Auto-calculate min thresholds (40%) and purchase allowances (20%).
 *   **Nested Products**: Create multi-level recipes (Product A can be an ingredient for Product B).
@@ -148,9 +150,13 @@ backend/
 *   **Purchase Orders**: Complete procurement cycle from drafted POs to received stock.
 *   **PO Wizard Supplier Validation**: Blocks and warns users when selected items have no supplier assigned.
 *   **Item-Supplier Coverage Panel**: Visual dashboard on Suppliers page showing which items have/lack supplier assignments.
-*   **Stock Movements**: Detailed audit trail of every inventory change.
+*   **Stock Movements**: Real-time tracking of inventory ins/outs with audit logs.
+*   **Admin Feedback Dashboard**: Secure, hidden portal for developers to review bug reports and suggestions.
+*   **Interactive Reports**: Custom date filtering and CSV export for business intelligence.
 *   **Supplier Management**: Track supplier performance, lead times, and item assignments with quick-assign functionality.
 *   **User Management**: Role-based access control (Admin, Manager, Staff).
+*   **Multi-Tenancy**: Distributed database architecture with unique subdomains and tokens for each company.
+*   **Legacy Data Support**: Restoration support for original standalone databases.
 
 ### Project Structure
 
@@ -212,9 +218,15 @@ npm test                 # Run tests
 
 After running the seeders, you can log in with:
 
-- **Admin User**:
+- **Admin User (Tenant A)**:
   - Username: `admin`
   - Password: `Admin@123`
+  - Token: `token-tenant-a`
+
+- **Original Legacy Data (recovered)**:
+  - Email: `admin@test.com`
+  - Password: `Admin123!`
+  - Token: `token-original`
 
 See [backend/CREDENTIALS.md](backend/CREDENTIALS.md) for more details.
 
@@ -225,6 +237,7 @@ See [backend/CREDENTIALS.md](backend/CREDENTIALS.md) for more details.
 | Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` |
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
 | Frontend can't reach backend | Check CORS in `backend/src/server.js` |
+| Registration fails (500) | Ensure `TRUST_PROXY=true` is set ONLY if behind a proxy |
 | Backend won't start | Verify `.env` exists in `backend/` |
 | Database connection error | Check MySQL is running, verify credentials |
 | Dependencies not installing | Run `npm run install:all` from root |

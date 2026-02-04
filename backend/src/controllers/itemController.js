@@ -1,4 +1,5 @@
 import * as itemService from '../services/itemService.js';
+import * as itemGroupingService from '../services/itemGroupingService.js';
 import { validateComposition as validateCompositionService } from '../services/compositionValidationService.js';
 
 export const getItems = async (req, res, next) => {
@@ -192,6 +193,33 @@ export const getItemSupplierCoverage = async (req, res, next) => {
     const result = await itemService.getItemSupplierCoverage();
 
     res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getFolders = async (req, res, next) => {
+  try {
+    const folders = await itemGroupingService.listFolders();
+    res.status(200).json({
+      success: true,
+      data: folders,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createFolder = async (req, res, next) => {
+  try {
+    const { name, description } = req.body;
+    const result = await itemGroupingService.createFolder(name, description);
+    res.status(201).json({
       success: true,
       data: result,
       timestamp: new Date().toISOString()

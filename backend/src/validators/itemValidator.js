@@ -153,7 +153,7 @@ export const createItemDraftSchema = Joi.object({
   }),
   product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
     is: 'product',
-    then: Joi.string().valid('work_in_progress', 'finished_goods'),
+    then: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, ''),
     otherwise: Joi.valid(null, '')
   }),
   product_folder: Joi.string().max(100).allow(null, ''),
@@ -353,6 +353,8 @@ export const validateCreateItem = (req, res, next) => {
   const { error, value } = createItemSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
 
   if (error) {
+    console.error('❌ ITEM VALIDATION ERROR:', JSON.stringify(error.details, null, 2));
+    console.error('❌ RECEIVED BODY:', JSON.stringify(req.body, null, 2));
     const errors = error.details.map(detail => ({
       field: detail.path[0],
       message: detail.message

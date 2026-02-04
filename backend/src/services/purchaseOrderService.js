@@ -2,17 +2,15 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
-import POLineItem from '../models/POLineItem.js';
-import Supplier from '../models/Supplier.js';
-import Item from '../models/Item.js';
-import User from '../models/User.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import StockMovement from '../models/StockMovement.js';
+import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
 
 export const getPurchaseOrders = async (queryParams) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const Supplier = dbStore.get('Supplier');
+  const User = dbStore.get('User');
+  const POLineItem = dbStore.get('POLineItem');
+
   const {
     page = 1,
     limit = 20,
@@ -84,6 +82,12 @@ export const getPurchaseOrders = async (queryParams) => {
 };
 
 export const getPurchaseOrderById = async (poId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const Supplier = dbStore.get('Supplier');
+  const User = dbStore.get('User');
+  const POLineItem = dbStore.get('POLineItem');
+  const Item = dbStore.get('Item');
+
   const po = await PurchaseOrder.findByPk(poId, {
     include: [
       { model: Supplier, as: 'supplier' },
@@ -106,6 +110,9 @@ export const getPurchaseOrderById = async (poId) => {
 };
 
 export const createPurchaseOrder = async (poData, userId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const POLineItem = dbStore.get('POLineItem');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
   try {
@@ -188,6 +195,9 @@ export const createPurchaseOrder = async (poData, userId) => {
 };
 
 export const finalizePurchaseOrder = async (poId, userId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const POLineItem = dbStore.get('POLineItem');
+
   const po = await PurchaseOrder.findByPk(poId, {
     include: [{ model: POLineItem, as: 'lineItems' }]
   });
@@ -237,6 +247,10 @@ export const finalizePurchaseOrder = async (poId, userId) => {
 };
 
 export const receivePurchaseOrder = async (poId, receiptData, userId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const POLineItem = dbStore.get('POLineItem');
+  const Item = dbStore.get('Item');
+
   const po = await PurchaseOrder.findByPk(poId, {
     include: [{ model: POLineItem, as: 'lineItems', include: [{ model: Item, as: 'item' }] }]
   });
@@ -300,6 +314,8 @@ export const receivePurchaseOrder = async (poId, receiptData, userId) => {
 };
 
 export const archivePurchaseOrder = async (poId, userId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+
   const po = await PurchaseOrder.findByPk(poId);
 
   if (!po) {
@@ -323,6 +339,8 @@ export const archivePurchaseOrder = async (poId, userId) => {
 };
 
 export const restorePurchaseOrder = async (poId) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+
   const po = await PurchaseOrder.findByPk(poId);
 
   if (!po) {

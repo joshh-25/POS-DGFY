@@ -14,6 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Clock,
   Play,
   CheckCircle,
@@ -23,7 +30,10 @@ import {
   AlertTriangle,
   XCircle,
   Layers,
-  Calendar
+  Calendar,
+  ThumbsUp,
+  ThumbsDown,
+  Activity
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
@@ -32,6 +42,7 @@ import { useJobOrderById } from '@/hooks/useJobOrders.js';
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700", icon: Clock },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Play },
+  partial: { label: "Partial", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Activity },
   completed: { label: "Completed", color: "bg-emerald-100 text-emerald-700", icon: CheckCircle },
   cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700", icon: XCircle }
 };
@@ -42,6 +53,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   const [expiryOverride, setExpiryOverride] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
   const [quantityProduced, setQuantityProduced] = useState('');
+  const [qualityCheck, setQualityCheck] = useState('pass');
 
   // Use hook unconditionally, handle null joId internally or let hook handle it
   const { jobOrder: detailedJO, loading } = useJobOrderById(open ? jo?.jo_id : null);
@@ -55,7 +67,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   // Determine ingredients list (normalize structure)
   // detailedJO.ingredients -> Sequelize models with 'item' and 'batch'
   // jo.ingredients_consumed -> Transformed objects
-  const ingredients = displayJO.ingredients || displayJO.ingredients_consumed || [];
+  const ingredients = displayJO.ingredients_consumed || displayJO.ingredients || [];
 
   const hasInsufficientStock = ingredients.some(ing => {
     // For 'ingredients' (Sequelize), we might need to calculate stock_after if not provided
@@ -67,11 +79,22 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     setCompleteDialogOpen(true);
     setExpiryOverride('');
     setCompletionNotes('');
-    setQuantityProduced(displayJO.quantity_to_produce); // Default to target quantity
+    const remaining = (displayJO.quantity_to_produce - (displayJO.quantity_produced || 0));
+    setQuantityProduced(remaining > 0 ? remaining : displayJO.quantity_to_produce);
+    setQualityCheck('pass');
+  };
+
+  const handleSetMaxQuantity = () => {
+    const remaining = (displayJO.quantity_to_produce - (displayJO.quantity_produced || 0));
+    setQuantityProduced(remaining > 0 ? remaining : displayJO.quantity_to_produce);
   };
 
   const handleConfirmComplete = () => {
-    onComplete(displayJO, expiryOverride || null, completionNotes || null, quantityProduced);
+    const qty = quantityProduced ? parseFloat(quantityProduced) : null;
+    if (!qty || qty <= 0 || isNaN(qty)) {
+      return; // Don't submit invalid quantity
+    }
+    onComplete(displayJO, expiryOverride || null, completionNotes || null, qty, qualityCheck);
     setCompleteDialogOpen(false);
   };
 
@@ -86,6 +109,17 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                 <StatusIcon className="w-3 h-3" />
                 {status.label}
               </Badge>
+              {displayJO.quality_check && (
+                <Badge variant="outline" className={cn(
+                  "flex items-center gap-1",
+                  displayJO.quality_check === 'pass' ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                    displayJO.quality_check === 'fail' ? "bg-red-100 text-red-700 border-red-200" :
+                      "bg-amber-100 text-amber-700 border-amber-200"
+                )}>
+                  <Activity className="w-3 h-3" />
+                  QC: {displayJO.quality_check.toUpperCase()}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -101,7 +135,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                     {displayJO.product_name || displayJO.product?.name || 'Unknown Product'}
                   </p>
                   <p className="text-slate-500">
-                    Quantity to Produce: <span className="font-medium text-slate-900">{displayJO.quantity_to_produce} units</span>
+                    Target Output: <span className="font-medium text-slate-900">{displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || 'units'}</span>
                   </p>
                 </div>
               </div>
@@ -177,8 +211,14 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                       ingredients.map((ing, idx) => {
                         const itemName = ing.item_name || ing.item?.name || 'Unknown';
                         const uom = ing.unit_of_measure || ing.item?.unit_of_measure || '';
-                        const batch = ing.batch || ing.batch_info; // normalize from detailedJO or ingredients_consumed
+                        // Normalize batch info
+                        const batch = ing.batch_info || ing.batch;
                         const isStockLow = ing.stock_after !== undefined && ing.stock_after < 0;
+
+                        // Display consumed if available (completed JO), else required
+                        const displayQty = (displayJO.status === 'completed' && ing.quantity_consumed)
+                          ? ing.quantity_consumed
+                          : ing.quantity_required;
 
                         return (
                           <tr key={idx} className={cn(
@@ -187,48 +227,27 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                           )}>
                             <td className="p-3 font-medium text-slate-900">{itemName}</td>
                             <td className="p-3 text-right text-slate-600">
-                              {/* Show required vs consumed if they differ, or just required */}
-                              {displayJO.status === 'completed' && ing.quantity_consumed
-                                ? formatNumber(ing.quantity_consumed, 2)
-                                : formatNumber(ing.quantity_required, 2)
-                              } {uom}
+                              {formatNumber(displayQty, 2)} {uom}
                             </td>
                             <td className="p-3 text-slate-600 text-sm">
-                              {(() => {
-                                const batchTransactions = ing.batchTransactions || [];
-                                const singleBatch = ing.batch || ing.batch_info;
-
-                                if (batchTransactions.length > 0) {
-                                  return (
-                                    <div className="flex flex-wrap gap-1">
-                                      {batchTransactions.map((bt, i) => (
-                                        <Badge key={i} variant="outline" className="bg-slate-50 font-normal text-xs">
-                                          <Layers className="w-3 h-3 mr-1 text-slate-400" />
-                                          #{bt.batch?.batch_id} ({formatNumber(bt.quantity_consumed, 2)})
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  );
-                                } else if (singleBatch) {
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="outline" className="bg-slate-50 font-normal">
-                                        <Layers className="w-3 h-3 mr-1 text-slate-400" />
-                                        #{singleBatch.batch_id}
-                                      </Badge>
-                                      {singleBatch.expiry_date && (
-                                        <span className="text-xs text-slate-500 whitespace-nowrap">
-                                          Exp: {format(new Date(singleBatch.expiry_date), 'MMM d, yy')}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                } else {
-                                  return <span className="text-slate-400 text-xs italic">
-                                    {displayJO.status === 'completed' ? 'Non-FIFO / Untracked' : '—'}
-                                  </span>;
-                                }
-                              })()}
+                              {/* Display batch info if available */}
+                              {batch ? (
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="bg-slate-50 font-normal">
+                                    <Layers className="w-3 h-3 mr-1 text-slate-400" />
+                                    #{batch.batch_id}
+                                  </Badge>
+                                  {batch.expiry_date && (
+                                    <span className="text-xs text-slate-500 whitespace-nowrap">
+                                      Exp: {format(new Date(batch.expiry_date), 'MMM d, yy')}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">
+                                  {displayJO.status === 'completed' ? 'FIFO Auto' : '—'}
+                                </span>
+                              )}
                             </td>
                             <td className={cn(
                               "p-3 text-right font-medium",
@@ -246,7 +265,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                       <tr>
                         <td colSpan="4" className="p-6 text-center text-slate-500">
                           {displayJO.status === 'completed'
-                            ? 'No ingredient data available'
+                            ? 'No ingredient data found.'
                             : 'Complete this order to see consumption details'}
                         </td>
                       </tr>
@@ -295,20 +314,52 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
             <DialogTitle>Complete Production</DialogTitle>
             <DialogDescription>
               Confirm completion of <strong>{displayJO.product_name || displayJO.product?.name}</strong>.
-              You can optionally override the calculated expiry date for the finished product.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-4">
             <div className="space-y-2">
               <Label>Quantity Produced</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={quantityProduced}
-                onChange={(e) => setQuantityProduced(e.target.value)}
-                placeholder="Enter quantity produced"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={quantityProduced}
+                  onChange={(e) => setQuantityProduced(e.target.value)}
+                  placeholder="Enter quantity produced"
+                  className="font-bold text-lg"
+                />
+                <Button variant="outline" size="sm" onClick={handleSetMaxQuantity} className="h-10 px-3">
+                  Max
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Total Ordered: {displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || ''} |
+                Produced So Far: {displayJO.quantity_produced || 0}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Quality Check</Label>
+              <Select value={qualityCheck} onValueChange={setQualityCheck}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pass">
+                    <div className="flex items-center gap-2">
+                      <ThumbsUp className="w-4 h-4 text-emerald-500" />
+                      Pass (Good Quality)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="fail">
+                    <div className="flex items-center gap-2">
+                      <ThumbsDown className="w-4 h-4 text-red-500" />
+                      Fail (Rejected/Scrap)
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

@@ -132,4 +132,29 @@ Before going live:
 
 ---
 
+---
+
+## Developer Feedback Dashboard (Hidden)
+
+The system includes a secure, developer-only dashboard for viewing user-submitted feedback (bugs and suggestions).
+
+### 1. Access Path
+The dashboard is hidden from all navigation menus and must be accessed directly via URL:
+`http://localhost:5173/admin/feedback`
+
+### 2. Developer Credentials
+Note: These are hardcoded and separate from the standard admin accounts.
+```
+Username: skupervisor
+Password: 252378
+```
+
+### 3. Features
+- **Statistics**: Overview of bug counts and suggestions.
+- **Detailed Logs**: View full descriptions, timestamps, and browser context.
+- **User Identification**: Automatically identifies the username and email of the reporter.
+- **Filtering**: Filter by feedback type, search term, or date range.
+
+---
+
 **Need Help?** Check [admin-account-security.md](.claude/admin-account-security.md) for technical details.

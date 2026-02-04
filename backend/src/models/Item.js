@@ -25,6 +25,9 @@ const Item = sequelize.define('Item', {
     allowNull: true,
     validate: {
       isValidProductType(value) {
+        // Skip validation if status is draft (allows saving incomplete work)
+        if (this.status === 'draft') return;
+
         // product_type is required when category is 'product'
         if (this.category === 'product' && !value) {
           throw new Error('product_type is required when category is "product"');
@@ -39,6 +42,14 @@ const Item = sequelize.define('Item', {
   product_folder: {
     type: DataTypes.STRING(100),
     allowNull: true
+  },
+  folder_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'item_folders',
+      key: 'folder_id'
+    }
   },
   description: {
     type: DataTypes.TEXT,
@@ -120,6 +131,26 @@ const Item = sequelize.define('Item', {
   status: {
     type: DataTypes.ENUM('draft', 'active', 'inactive'),
     defaultValue: 'active'
+  },
+  nesting_level: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+    comment: '0=raw ingredient, 1-3=nested product levels'
+  },
+  max_child_depth: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0
+  },
+  is_leaf_node: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: true
+  },
+  composition_hash: {
+    type: DataTypes.STRING(64),
+    allowNull: true
   },
   wizard_metadata: {
     type: DataTypes.JSON,

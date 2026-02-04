@@ -16,6 +16,7 @@ import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { toast } from 'sonner';
+import { convertQuantity, areCompatible, normalizeUom, getUomShortLabel } from '../../src/utils/uomConverter';
 
 /**
  * Calculate suggested production quantity to bring stock to healthy level
@@ -146,11 +147,24 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
     });
   };
 
-  const handleQuantityChange = (productId, qty) => {
-    setQuantities(prev => ({
-      ...prev,
-      [productId]: qty < 1 ? 1 : qty
-    }));
+  const handleQuantityChange = (productId, rawValue) => {
+    // Allow empty string to permit clearing the input
+    if (rawValue === '') {
+      setQuantities(prev => ({
+        ...prev,
+        [productId]: ''
+      }));
+      return;
+    }
+
+    const qty = parseInt(rawValue);
+    // Only update if it's a valid number
+    if (!isNaN(qty)) {
+      setQuantities(prev => ({
+        ...prev,
+        [productId]: qty
+      }));
+    }
   };
 
   // Calculate ingredients for ALL selected products (or single if editing)
@@ -184,7 +198,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       });
     }
 
-    // Aggregate by item_id
+    // Aggregate by item_id with UOM conversion support
     const aggregated = {};
     reqs.forEach(req => {
       if (!aggregated[req.item_id]) {
@@ -193,12 +207,31 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
           item_id: req.item_id,
           item_name: req.item_name,
           quantity_required: 0,
+          quantity_required_original: 0,
+          recipe_uom: normalizeUom(req.unit_of_measure || item?.unit_of_measure),
           current_stock: item?.current_stock || 0,
-          unit: item?.unit_of_measure || 'units',
-          affected_products: new Set()
+          unit: normalizeUom(item?.unit_of_measure) || 'units',
+          affected_products: new Set(),
+          wasConverted: false
         };
       }
-      aggregated[req.item_id].quantity_required += req.quantity_required;
+
+      // Convert recipe quantity to stock UOM if different but compatible
+      const recipeUom = normalizeUom(req.unit_of_measure || aggregated[req.item_id].unit);
+      const stockUom = aggregated[req.item_id].unit;
+      let convertedQty = req.quantity_required;
+
+      if (areCompatible(recipeUom, stockUom) && recipeUom !== stockUom) {
+        const converted = convertQuantity(req.quantity_required, recipeUom, stockUom);
+        if (converted !== null) {
+          convertedQty = converted;
+          aggregated[req.item_id].wasConverted = true;
+          aggregated[req.item_id].recipe_uom = recipeUom;
+        }
+      }
+
+      aggregated[req.item_id].quantity_required += convertedQty;
+      aggregated[req.item_id].quantity_required_original += req.quantity_required;
       aggregated[req.item_id].affected_products.add(req.jo_product);
     });
 
@@ -206,7 +239,8 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       ...item,
       stock_after: item.current_stock - item.quantity_required,
       isInsufficient: item.current_stock < item.quantity_required,
-      affected_products: Array.from(item.affected_products)
+      affected_products: Array.from(item.affected_products),
+      conversionNote: item.wasConverted ? `(from ${formatNumber(item.quantity_required_original, 2)} ${item.recipe_uom})` : null
     }));
 
   }, [isEditing, singleSelectedProduct, singleQuantity, selectedProductIds, quantities, products, items]);
@@ -227,7 +261,8 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
           quantity_required: reqQty,
           stock_before: item?.current_stock || 0,
           stock_after: (item?.current_stock || 0) - reqQty,
-          isInsufficient: (item?.current_stock || 0) < reqQty
+          isInsufficient: (item?.current_stock || 0) < reqQty,
+          unit_of_measure: ing.unit_of_measure // Include UOM
         };
       }) || [];
 
@@ -265,7 +300,8 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
             quantity_required: reqQty,
             stock_before: item?.current_stock || 0,
             stock_after: (item?.current_stock || 0) - reqQty,
-            isInsufficient: (item?.current_stock || 0) < reqQty
+            isInsufficient: (item?.current_stock || 0) < reqQty,
+            unit_of_measure: ing.unit_of_measure // Include UOM
           };
         }) || [];
 
@@ -387,8 +423,8 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                           type="number"
                           min={1}
                           className="w-24 h-8"
-                          value={quantities[pid] || 1}
-                          onChange={(e) => handleQuantityChange(pid, parseInt(e.target.value) || 0)}
+                          value={quantities[pid] !== undefined ? quantities[pid] : 1}
+                          onChange={(e) => handleQuantityChange(pid, e.target.value)}
                         />
                       </div>
                     )}
@@ -408,7 +444,10 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                     min={1}
                     className="w-24"
                     value={singleQuantity}
-                    onChange={(e) => setSingleQuantity(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSingleQuantity(val === '' ? '' : parseInt(val));
+                    }}
                   />
                 </div>
               </div>
@@ -442,7 +481,11 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                         {formatNumber(req.isInsufficient ? Math.abs(req.stock_after) : req.stock_after)} {req.unit}
                       </div>
                       <div className="text-xs text-slate-500">
-                        Req: {formatNumber(req.quantity_required)} / Stock: {formatNumber(req.current_stock)}
+                        Req: {formatNumber(req.quantity_required)} {req.unit}
+                        {req.conversionNote && (
+                          <span className="text-blue-500 ml-1">{req.conversionNote}</span>
+                        )}
+                        {' / Stock: '}{formatNumber(req.current_stock)}
                       </div>
                     </div>
                   </div>

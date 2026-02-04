@@ -53,56 +53,38 @@ The `babel-plugin-transform-import-meta` plugin is **NOT** correctly transformin
 ## Proposed Solution
 
 > [!IMPORTANT]
-> **Strategy:** Create a dedicated Jest configuration file with correct ESM transformation settings. This is a **configuration-only** fix that does not modify any source code.
-
-### Approach
-
-We will:
-
-1. **Create a Jest configuration file** (`jest.config.cjs`) that explicitly tells Jest how to handle ES Modules
-2. **Update the Babel configuration** to use a newer plugin that correctly handles `import.meta`
-3. **Test the fix** by running the test suite
-4. **Document the fix** in the tests README
-
-> [!NOTE]
-> The fix uses `.cjs` extension for the Jest config because the project is ESM (`"type": "module"`), and Node/Jest require CommonJS syntax for config files.
-
----
+> **Performance Note**: This solution involves loading item embeddings (vectors) into server memory. For < 10,000 items, this is extremely fast and efficient. If you scale to millions of items later, we will simply move this logic to a dedicated Vector Database (like Pinecone) without changing the core logic.
+> **Cost Note**: Generating embeddings costs a tiny fraction of a cent per item.
 
 ## Proposed Changes
 
----
+### Database
+#### [MODIFY] `Item` Model
+- Add a field `embedding` (TEXT/JSON) to store the vector representation of the item.
 
-### Configuration
+### Backend Services
+#### [NEW] `services/embeddingService.js`
+- `generateEmbedding(text)`: Calls OpenAI `text-embedding-3-small` API.
+- `calculateCosineSimilarity(vecA, vecB)`: Math logic to compare concepts.
+- `semanticSearch(query, items)`: Sorts items by conceptual similarity.
 
-#### [NEW] [jest.config.cjs](file:///c:/xampp/htdocs/SKU-Inventory-Manager/backend/jest.config.cjs)
+#### [MODIFY] `services/itemService.js`
+- `createItem`/`updateItem`: Auto-generate embedding for the item's `name + description + category` and save it.
+- `getItems`:
+    - **Step 0**: Perform standard SQL query (Status filters etc).
+    - **Step 1**: If text match fails (or optional `semantic: true` flag), load all active item embeddings.
+    - **Step 2**: Generate embedding for the User's Search Query.
+    - **Step 3**: Compare Query Vector vs Item Vectors.
+    - **Step 4**: Return items with high similarity (> 0.4) even if keywords don't match.
 
-A new Jest configuration file that:
-- Sets `testEnvironment: 'node'`
-- Sets `transform` to use `babel-jest`
-- Sets `transformIgnorePatterns` to allow node_modules to be transformed as needed
-- Sets `moduleFileExtensions` for `.js` files
-- Enables `testTimeout` of 30 seconds for database tests
+## Verification Plan
 
----
-
-#### [MODIFY] [babel.config.json](file:///c:/xampp/htdocs/SKU-Inventory-Manager/backend/babel.config.json)
-
-Update to use `@babel/plugin-syntax-import-meta` instead of `babel-plugin-transform-import-meta`, and add `@babel/plugin-transform-modules-commonjs` to convert ESM to CJS during testing.
-
-**Before:**
-```json
-{
-    "plugins": ["transform-import-meta"]
-}
-```
-
-**After:**
-```diff
-{
-    "presets": [
-        [
-            "@babel/preset-env",
+### Automated Tests
+- Test Script `scripts/test_semantic_search.js`:
+    1. Create item "Glass Bottle".
+    2. Search for "Vessel" (No keyword match).
+    3. Assert that Semantic Search finds "Glass Bottle" due to high conceptual similarity.
+reset-env",
             {
                 "targets": {
 -                   "node": "current"

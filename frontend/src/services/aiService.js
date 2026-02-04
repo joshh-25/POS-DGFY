@@ -12,7 +12,29 @@ import api from './api';
  * @param {string|null} conversationId - Optional conversation ID for context
  * @returns {Promise<Object>} AI response
  */
-export const sendMessage = async (message, conversationId = null) => {
+export const sendMessage = async (message, conversationId = null, attachments = []) => {
+  if (attachments && attachments.length > 0) {
+    const formData = new FormData();
+    formData.append('message', message);
+    if (conversationId) {
+      formData.append('conversationId', conversationId);
+    }
+
+    // Append files
+    attachments.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    // Send as multipart/form-data (axios detects it automatically when data is FormData)
+    const response = await api.post('/ai/chat', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  // Regular JSON request
   const response = await api.post('/ai/chat', {
     message,
     conversationId

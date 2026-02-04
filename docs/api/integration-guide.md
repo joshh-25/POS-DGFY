@@ -1,5 +1,30 @@
 # Frontend-Backend Integration Guide
 
+## Table of Contents
+
+> **Navigation Tip:** Click a section to jump directly to that part.
+
+### Setup & Services
+- [Overview](#overview)
+- [Part 1: API Client Setup](#part-1-api-client-setup)
+- [Part 2: State Management with Zustand](#part-2-state-management-with-zustand)
+- [Part 3: Custom Hooks for Data Fetching](#part-3-custom-hooks-for-data-fetching)
+
+### Real-time & Error Handling
+- [Part 4: Real-time Updates with WebSocket](#part-4-real-time-updates-with-websocket)
+- [Part 5: Error Handling & Retry Logic](#part-5-error-handling--retry-logic)
+- [Part 6: Updating Existing Components](#part-6-updating-existing-components)
+
+### Configuration & Testing
+- [Part 7: Environment Configuration](#part-7-environment-configuration)
+- [Part 8: Testing Integration](#part-8-testing-integration)
+- [Part 9: Performance Optimization](#part-9-performance-optimization)
+- [Checklist for Integration](#checklist-for-integration)
+
+---
+
+# Frontend-Backend Integration Guide
+
 ## Overview
 
 This guide provides detailed instructions for integrating the React frontend with the Node.js/Express backend, including API client setup, state management, real-time updates, and error handling.
@@ -27,13 +52,20 @@ const api = axios.create({
   },
 });
 
-// Request interceptor - Add JWT token to headers
+// Request interceptor - Add JWT token and Company Token to headers
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
+    const companyToken = localStorage.getItem('companyToken');
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    if (companyToken) {
+      config.headers['x-company-token'] = companyToken;
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)

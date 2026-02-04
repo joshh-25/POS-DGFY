@@ -17,13 +17,69 @@ import * as stockMovementService from './stockMovementService.js';
 import * as csvImportService from './csvImportService.js';
 import * as csvExportService from './csvExportService.js';
 import * as analyticsService from './analyticsService.js';
-import db from '../models/index.js'; // For raw queries if needed for stats
+
 import * as dashboardService from './dashboardService.js';
 import * as alertService from './alertService.js';
 import * as forecastService from './forecastService.js';
 import * as documentationService from './documentationService.js';
-import * as productionFeasibilityService from './productionFeasibilityService.js';
+// import * as productionFeasibilityService from './productionFeasibilityService.js';
 import * as tempFileService from './tempFileService.js';
+import * as settingsService from './settingsService.js';
+import * as userService from './userService.js';
+import * as auditService from './auditService.js';
+import * as fileManagementService from './fileManagementService.js';
+import * as itemGroupingService from './itemGroupingService.js';
+
+/**
+ * Map tool names to audit actions
+ * @param {string} toolName
+ * @returns {Object|null} { action, entityType } or null if not auditable
+ */
+const getAuditConfig = (toolName) => {
+  const mapping = {
+    // ITEMS
+    'create_item': { action: 'CREATE', entityType: 'Item' },
+    'update_item': { action: 'UPDATE', entityType: 'Item' },
+    'delete_item': { action: 'DELETE', entityType: 'Item' },
+
+    // SUPPLIERS
+    'create_supplier': { action: 'CREATE', entityType: 'Supplier' },
+    'update_supplier': { action: 'UPDATE', entityType: 'Supplier' },
+    'delete_supplier': { action: 'DELETE', entityType: 'Supplier' },
+    'add_supplier_item': { action: 'UPDATE', entityType: 'SupplierItem' },
+
+    // PURCHASE ORDERS
+    'create_purchase_order': { action: 'CREATE', entityType: 'PurchaseOrder' },
+    'receive_purchase_order': { action: 'UPDATE', entityType: 'PurchaseOrder' },
+
+    // JOB ORDERS
+    'create_job_order': { action: 'CREATE', entityType: 'JobOrder' },
+    'complete_job_order': { action: 'UPDATE', entityType: 'JobOrder' },
+
+    // STOCK MOVEMENTS
+    'create_stock_adjustment': { action: 'CREATE', entityType: 'StockMovement' },
+
+    // USERS
+    'update_user_role': { action: 'UPDATE', entityType: 'User' },
+    'toggle_user_status': { action: 'UPDATE', entityType: 'User' },
+
+    // SETTINGS
+    'update_system_settings': { action: 'UPDATE', entityType: 'SystemSettings' },
+
+    // IMPORT
+    'import_csv_data': { action: 'CREATE', entityType: 'BulkImport' },
+
+    // FILE MANAGEMENT
+    'create_folder': { action: 'CREATE', entityType: 'Folder' },
+    'move_file': { action: 'UPDATE', entityType: 'File' },
+
+    // INVENTORY GROUPING
+    'create_inventory_folder': { action: 'CREATE', entityType: 'ItemFolder' },
+    'move_items_to_inventory_folder': { action: 'UPDATE', entityType: 'Item' }
+  };
+
+  return mapping[toolName] || null;
+};
 
 /**
  * Execute a tool by name with given arguments
@@ -33,117 +89,184 @@ import * as tempFileService from './tempFileService.js';
  * @returns {Promise<Object>} Tool execution result
  */
 export const execute = async (toolName, args, user) => {
-  logger.info(`Executing AI tool: ${toolName}`, { args, userId: user.user_id });
+  const startTime = Date.now();
+  const context = { tool: toolName, userId: user.user_id };
+
+  logger.info(`AI_TOOL_START: ${toolName}`, { ...context, args });
 
   try {
+    let result;
     switch (toolName) {
       // ============== DASHBOARD & STATS ==============
       case 'get_dashboard_stats':
-        return await getDashboardStats();
+        result = await dashboardService.getDashboardStats();
+        break;
 
       case 'get_low_stock_items':
-        return await getLowStockItems(args);
+        result = await getLowStockItems(args);
+        break;
 
       // ============== ITEMS ==============
       case 'get_items':
-        return await getItems(args);
+        result = await getItems(args);
+        break;
 
       case 'get_item_details':
-        return await getItemDetails(args);
+        result = await getItemDetails(args);
+        break;
 
       case 'create_item':
-        return await createItem(args, user);
+        result = await createItem(args, user);
+        break;
 
       case 'update_item':
-        return await updateItem(args, user);
+        result = await updateItem(args, user);
+        break;
 
       case 'delete_item':
-        return await deleteItem(args, user);
+        result = await deleteItem(args, user);
+        break;
 
       // ============== SUPPLIERS ==============
       case 'get_suppliers':
-        return await getSuppliers(args);
+        result = await getSuppliers(args);
+        break;
 
       case 'get_supplier_details':
-        return await getSupplierDetails(args);
+        result = await getSupplierDetails(args);
+        break;
+
+      case 'create_supplier':
+        result = await createSupplier(args, user);
+        break;
+
+      case 'update_supplier':
+        result = await updateSupplier(args, user);
+        break;
+
+      case 'delete_supplier':
+        result = await deleteSupplier(args, user);
+        break;
+
+      case 'add_supplier_item':
+        result = await addSupplierItem(args, user);
+        break;
 
       // ============== PURCHASE ORDERS ==============
       case 'get_purchase_orders':
-        return await getPurchaseOrders(args);
+        result = await getPurchaseOrders(args);
+        break;
 
       case 'create_purchase_order':
-        return await createPurchaseOrder(args, user);
+        result = await createPurchaseOrder(args, user);
+        break;
 
       case 'receive_purchase_order':
-        return await receivePurchaseOrder(args, user);
+        result = await receivePurchaseOrder(args, user);
+        break;
+
+      // ============== SYSTEM SETTINGS ==============
+      case 'get_system_settings':
+        result = await getSystemSettings();
+        break;
+
+      case 'update_system_settings':
+        result = await updateSystemSettings(args, user);
+        break;
+
+      // ============== USER MANAGEMENT ==============
+      case 'get_users':
+        result = await getUsers();
+        break;
+
+      case 'update_user_role':
+        result = await updateUserRole(args, user);
+        break;
+
+      case 'toggle_user_status':
+        result = await toggleUserStatus(args, user);
+        break;
+
+      // ============== STRATEGIC REPORTING ==============
+      case 'generate_executive_summary':
+        result = await generateExecutiveSummary();
+        break;
 
       // ============== JOB ORDERS ==============
       case 'get_job_orders':
-        return await getJobOrders(args);
+        result = await getJobOrders(args);
+        break;
 
       case 'create_job_order':
-        return await createJobOrder(args, user);
+        result = await createJobOrder(args, user);
+        break;
 
       case 'complete_job_order':
-        return await completeJobOrder(args, user);
+        result = await completeJobOrder(args, user);
+        break;
 
       // ============== STOCK MOVEMENTS ==============
       case 'get_stock_movements':
-        return await getStockMovements(args);
+        result = await getStockMovements(args);
+        break;
 
       case 'create_stock_adjustment':
-        return await createStockAdjustment(args, user);
+        result = await createStockAdjustment(args, user);
+        break;
 
       // ============== ALERTS & FORECASTING ==============
       case 'get_expiry_alerts':
-        return await getExpiryAlerts(args);
+        result = await getExpiryAlerts(args);
+        break;
 
       case 'get_forecast':
-        return await getForecast(args);
+        result = await getForecast(args);
+        break;
 
       // ============== DOCUMENTATION (RAG) ==============
       case 'search_documentation':
-        return await searchDocumentation(args);
+        result = await searchDocumentation(args);
+        break;
 
       // ============== PRODUCTION FEASIBILITY ==============
-      // Production Feasibility
       case 'analyze_production_feasibility':
         if (args.product_id) {
-          return await jobOrderService.checkProductionFeasibility(args.product_id, 1, args.show_chain !== false);
+          result = await jobOrderService.checkProductionFeasibility(args.product_id, 1, args.show_chain !== false);
         } else if (args.product_ids) {
-          // Check multiple products
           const results = [];
           for (const pid of args.product_ids) {
             results.push(await jobOrderService.checkProductionFeasibility(pid, 1, args.show_chain !== false));
           }
-          return results;
+          result = results;
         } else {
-          // If no specific product, list all products that CAN be produced right now
           throw new Error("Please specify a product_id or list of product_ids to check feasibility for.");
         }
+        break;
 
       // Smart Reorder Analytics (Phase 5)
       case 'analyze_reorder_needs':
         if (args.item_id) {
-          return await analyticsService.calculateReorderPoint(args.item_id);
+          result = await analyticsService.calculateReorderPoint(args.item_id);
         } else {
-          return await analyticsService.getReorderRecommendations(args.category);
+          result = await analyticsService.getReorderRecommendations(args.category);
         }
+        break;
 
       // Anomaly Detection (Phase 6)
       case 'detect_anomalies':
-        return await analyticsService.detectAnomalies({
+        result = await analyticsService.detectAnomalies({
           category: args.category,
-          days: 30 // Default lookback
+          days: 30
         });
+        break;
 
       // Advanced Analytics (Phase 7)
       case 'get_advanced_analytics':
         if (args.analysis_type === 'supplier_performance') {
-          if (!args.target_id) throw new Error("target_id (Supplier ID) is required for supplier performance analysis");
-          return await analyticsService.analyzeSupplierPerformance(args.target_id);
+          if (!args.target_id) throw new Error("target_id (Supplier ID) is required");
+          result = await analyticsService.analyzeSupplierPerformance(args.target_id);
         } else if (args.analysis_type === 'cost_analysis') {
-          return await analyticsService.analyzeInventoryCosts({
+          result = await analyticsService.analyzeInventoryCosts({
             startDate: args.date_range?.start,
             endDate: args.date_range?.end
           });
@@ -152,16 +275,106 @@ export const execute = async (toolName, args, user) => {
 
       // CSV Import/Export
       case 'import_csv_data':
-        return await importCsvData(args, user);
+        result = await importCsvData(args, user);
+        break;
 
       case 'export_to_csv':
-        return await exportToCsv(args, user);
+        result = await exportToCsv(args, user);
+        break;
+
+      // ============== FILE MANAGEMENT ==============
+      case 'list_files':
+        result = await fileManagementService.listFiles(args.path);
+        break;
+
+      case 'create_folder':
+        result = await fileManagementService.createFolder(args.path);
+        break;
+
+      case 'move_file':
+        result = await fileManagementService.moveFile(args.source, args.destination);
+        break;
+
+      // ============== INVENTORY GROUPING ==============
+      case 'get_inventory_folders':
+        result = await itemGroupingService.listFolders();
+        break;
+
+      case 'create_inventory_folder':
+        result = await itemGroupingService.createFolder(args.name, args.description);
+        break;
+
+      case 'move_items_to_inventory_folder':
+        result = await itemGroupingService.assignItemsToFolder(args.folder_name, args.item_ids);
+        break;
+
+      case 'get_items_in_inventory_folder':
+        result = await itemGroupingService.getFolderDetails(args.folder_name);
+        break;
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
+
+    const duration = Date.now() - startTime;
+    logger.info(`AI_TOOL_SUCCESS: ${toolName}`, { ...context, durationMs: duration });
+
+    // AUDIT LOGGING
+    const auditConfig = getAuditConfig(toolName);
+    if (auditConfig) {
+      // For create actions, entityId usually comes from result
+      let entityId = null;
+      let changes = args;
+
+      // Extract entity ID based on action type/result structure
+      if (auditConfig.action === 'CREATE') {
+        // Most create tools return an object with the ID, e.g. { item_id: 1, ... }
+        // We look for common ID patterns or rely on result structure
+        if (result) {
+          if (auditConfig.entityType === 'Item' && result.item?.id) entityId = result.item.id;
+          else if (auditConfig.entityType === 'Supplier' && result.supplier?.id) entityId = result.supplier.id;
+          else if (auditConfig.entityType === 'PurchaseOrder' && result.po_id) entityId = result.po_id;
+          else if (auditConfig.entityType === 'JobOrder' && result.jo_id) entityId = result.jo_id;
+          else if (auditConfig.entityType === 'StockMovement' && result.movement_id) entityId = result.movement_id;
+        }
+      } else {
+        // For Update/Delete, ID is usually in args
+        if (args.item_id) entityId = args.item_id;
+        else if (args.supplier_id) entityId = args.supplier_id;
+        else if (args.po_id) entityId = args.po_id;
+        else if (args.jo_id) entityId = args.jo_id;
+        else if (args.target_user_id) entityId = args.target_user_id;
+      }
+
+      // Log it
+      await auditService.logAction(
+        user.user_id,
+        auditConfig.entityType,
+        entityId,
+        auditConfig.action,
+        changes,
+        {
+          tool: toolName,
+          duration_ms: duration
+        }
+      );
+
+      // Append audit info to result if possible to let AI know
+      if (result && typeof result === 'object' && !Array.isArray(result)) {
+        result._audit = {
+          logged: true,
+          action: auditConfig.action,
+          entity: auditConfig.entityType,
+          id: entityId
+        };
+      }
+    }
+
+    return result;
+
   } catch (error) {
-    logger.error(`Tool execution failed: ${toolName}`, error);
+    const duration = Date.now() - startTime;
+    logger.error(`AI_TOOL_ERROR: ${toolName}`, { ...context, durationMs: duration, error: error.message });
     throw error;
   }
 };
@@ -244,6 +457,12 @@ async function getItemDetails({ item_id, sku_code }) {
 
   return {
     ...formatItem(item),
+    suppliers: item.suppliers?.map(s => ({
+      supplier_id: s.supplier_id,
+      name: s.name,
+      moq: s.moq,
+      price_per_unit: s.price_per_unit
+    })) || [],
     batches: batches.map(b => ({
       batch_id: b.batch_id,
       quantity: b.quantity,
@@ -279,6 +498,18 @@ async function createItem(args, user) {
   return {
     success: true,
     message: `Item "${item.name}" created successfully`,
+    details: {
+      "SKU": item.sku_code,
+      "Name": item.name,
+      "Category": item.category,
+      "Unit": item.unit_of_measure,
+      "Initial Stock": "0"
+    },
+    related_entity: {
+      type: 'item',
+      id: item.item_id,
+      label: item.sku_code
+    },
     item: formatItem(item)
   };
 }
@@ -286,9 +517,26 @@ async function createItem(args, user) {
 async function updateItem(args, user) {
   const { item_id, ...updates } = args;
   const item = await itemService.updateItem(item_id, updates, user.user_id);
+
+  // Format details for display
+  const details = Object.entries(updates).reduce((acc, [key, val]) => {
+    // Skip internal fields
+    if (['updated_at', 'updated_by'].includes(key)) return acc;
+    // Format key for display
+    const readableKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    acc[readableKey] = String(val);
+    return acc;
+  }, {});
+
   return {
     success: true,
-    message: `Item updated successfully`,
+    message: `Item "${item.name}" updated successfully`,
+    details: details,
+    related_entity: {
+      type: 'item',
+      id: item.item_id,
+      label: item.sku_code
+    },
     item: formatItem(item)
   };
 }
@@ -297,7 +545,12 @@ async function deleteItem({ item_id, reason }, user) {
   await itemService.deleteItem(item_id, user.user_id, reason);
   return {
     success: true,
-    message: `Item ${item_id} has been soft-deleted`,
+    message: `Item has been soft-deleted`,
+    details: {
+      "Item ID": String(item_id),
+      "Reason": reason || "No reason provided",
+      "Status": "Inactive"
+    },
     note: 'The item can be restored by an administrator if needed'
   };
 }
@@ -339,6 +592,98 @@ async function getSupplierDetails({ supplier_id }) {
       price_per_unit: si.price_per_unit,
       moq: si.moq
     })) || []
+  };
+}
+
+async function createSupplier(args, user) {
+  const supplierData = {
+    name: args.name,
+    contact_person: args.contact_person,
+    email: args.email,
+    phone: args.phone,
+    address: args.address,
+    avg_delivery_days: args.lead_time,
+    status: 'active'
+  };
+
+  const supplier = await supplierService.createSupplier(supplierData, user.user_id);
+  return {
+    success: true,
+    message: `Supplier "${supplier.name}" registered successfully`,
+    details: {
+      "Name": supplier.name,
+      "Contact": supplier.contact_person,
+      "Email": supplier.email,
+      "Lead Time": `${supplier.avg_delivery_days} days`
+    },
+    related_entity: {
+      type: 'supplier',
+      id: supplier.supplier_id,
+      label: supplier.name
+    },
+    suggested_actions: [
+      { label: "Create Purchase Order", prompt: `Create a purchase order for ${supplier.name}` }
+    ],
+    supplier: {
+      id: supplier.supplier_id,
+      name: supplier.name,
+      contact: supplier.contact_person
+    }
+  };
+}
+
+async function updateSupplier(args, user) {
+  const { supplier_id, ...updates } = args;
+
+  // Map lead_time to db column avg_delivery_days if present
+  if (updates.lead_time) {
+    updates.avg_delivery_days = updates.lead_time;
+    delete updates.lead_time;
+  }
+
+  const supplier = await supplierService.updateSupplier(supplier_id, updates, user.user_id);
+  return {
+    success: true,
+    message: `Supplier "${supplier.name}" updated successfully`,
+    supplier: {
+      id: supplier.supplier_id,
+      name: supplier.name,
+      status: supplier.status
+    }
+  };
+}
+
+async function deleteSupplier({ supplier_id, reason }, user) {
+  await supplierService.deleteSupplier(supplier_id, user.user_id);
+  return {
+    success: true,
+    message: `Supplier has been soft-deleted`,
+    details: {
+      "Supplier ID": String(supplier_id),
+      "Reason": reason || "No reason provided",
+      "Status": "Inactive"
+    },
+    note: 'Active POs were checked before deletion. Supplier is now inactive.'
+  };
+}
+
+async function addSupplierItem(args, user) {
+  const { supplier_id, item_id, moq, price_per_unit } = args;
+
+  await supplierService.addSupplierItem(supplier_id, {
+    item_id,
+    moq: moq || 1,
+    price_per_unit
+  });
+
+  return {
+    success: true,
+    message: `Item linked to supplier successfully`,
+    details: {
+      supplier_id,
+      item_id,
+      price: price_per_unit
+    }
   };
 }
 
@@ -384,6 +729,18 @@ async function createPurchaseOrder(args, user) {
   return {
     success: true,
     message: `Purchase Order ${po.po_number} created successfully`,
+    details: {
+      "PO Number": po.po_number,
+      "Supplier": typeof args.supplier_name === 'string' ? args.supplier_name : `ID: ${args.supplier_id}`,
+      "Total Amount": `$${po.total_amount?.toFixed(2) || '0.00'}`,
+      "Expected Delivery": po.expected_delivery_date ? new Date(po.expected_delivery_date).toLocaleDateString() : 'N/A',
+      "Items Count": String(args.items.length)
+    },
+    related_entity: {
+      type: 'purchase_order',
+      id: po.po_id,
+      label: po.po_number
+    },
     po_id: po.po_id,
     po_number: po.po_number,
     total_amount: po.total_amount
@@ -400,9 +757,136 @@ async function receivePurchaseOrder({ po_id, received_items }, user) {
   return {
     success: true,
     message: `Purchase Order received successfully`,
+    details: {
+      "Items Received": String(result.itemsReceived || 0),
+      "Batches Created": String(result.batchesCreated || 0),
+      "Status": "Completed"
+    },
+    stats: {
+      items_received: result.itemsReceived || 0,
+      batches_created: result.batchesCreated || 0
+    },
+    related_entity: {
+      type: 'purchase_order',
+      id: po_id,
+      label: `PO #${po_id}` // Ideally we'd have the number, but ID is sufficient for link
+    },
     po_id,
     batches_created: result.batchesCreated,
     items_received: result.itemsReceived
+  };
+}
+
+// ============== SYSTEM SETTINGS ==============
+
+async function getSystemSettings() {
+  const settings = await settingsService.getAllSettings();
+  // Flatten for AI consumption (AI reads better when it's just key: value)
+  const simplified = {};
+  for (const [key, data] of Object.entries(settings)) {
+    simplified[key] = data.value;
+  }
+  return simplified;
+}
+
+async function updateSystemSettings(args, user) {
+  const { updates } = args;
+
+  // The service handles type conversion (boolean strings etc)
+  const result = await settingsService.updateSettings(updates);
+
+  return {
+    success: true,
+    message: `System settings updated successfully`,
+    updated_count: result.updated,
+    details: updates
+  };
+}
+
+// ============== USER MANAGEMENT ==============
+
+async function getUsers() {
+  const users = await userService.getAllUsers();
+  return {
+    count: users.length,
+    users: users.map(u => ({
+      id: u.user_id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      status: u.is_active ? 'active' : 'inactive',
+      last_login: u.last_login
+    }))
+  };
+}
+
+async function updateUserRole(args, user) {
+  const { target_user_id, new_role } = args;
+
+  // The service handles self-modification checks
+  const updatedUser = await userService.updateUserRole(user.user_id, target_user_id, { role: new_role });
+
+  return {
+    success: true,
+    message: `User ${updatedUser.username} role updated to ${new_role}`,
+    user: {
+      id: updatedUser.user_id,
+      username: updatedUser.username,
+      new_role: updatedUser.role
+    }
+  };
+}
+
+async function toggleUserStatus(args, user) {
+  const { target_user_id, is_active } = args;
+
+  // The service handles self-deactivation checks
+  const updatedUser = await userService.toggleUserStatus(user.user_id, target_user_id, is_active);
+
+  return {
+    success: true,
+    message: `User ${updatedUser.username} is now ${is_active ? 'active' : 'inactive'}`,
+    user: {
+      id: updatedUser.user_id,
+      username: updatedUser.username,
+      status: updatedUser.is_active ? 'active' : 'inactive'
+    }
+  };
+}
+
+// ============== STRATEGIC REPORTING ==============
+
+async function generateExecutiveSummary() {
+  const [stats, expiryAlerts, lowStockItems] = await Promise.all([
+    dashboardService.getDashboardStats(),
+    alertService.getExpiryAlerts({ criticalDays: 7, warningDays: 30 }),
+    dashboardService.getLowStockItems()
+  ]);
+
+  return {
+    financial_overview: {
+      total_inventory_value: stats.totalValue,
+      item_count: stats.totalItems
+    },
+    operational_health: {
+      low_stock_critical: stats.lowStockCount,
+      overstocked: stats.overStockCount,
+      healthy_percentage: stats.totalItems > 0
+        ? ((stats.healthyCount / stats.totalItems) * 100).toFixed(1) + '%'
+        : '0%'
+    },
+    action_items: {
+      pending_purchase_orders: stats.pending_purchase_orders,
+      active_job_orders: stats.active_job_orders,
+      expiring_soon_batches: expiryAlerts.length
+    },
+    top_issues: {
+      critical_stock_shortages: lowStockItems.slice(0, 5).map(i => `${i.name} (${i.current_stock}/${i.min_threshold})`),
+      expiring_critical: expiryAlerts
+        .filter(a => a.severity === 'critical')
+        .slice(0, 3)
+        .map(a => `${a.item_name} expires ${a.expiry_date}`)
+    }
   };
 }
 
@@ -431,14 +915,26 @@ async function getJobOrders({ status, product_id, limit = 50 }) {
 async function createJobOrder(args, user) {
   const joData = {
     product_id: args.product_id,
-    quantity_to_produce: args.quantity_to_produce,
-    notes: args.notes
+    quantity_to_produce: args.quantity_to_produce || args.quantity, // Handle potential AI naming mismatch
+    notes: args.notes,
+    status: 'in_progress' // AI created orders should be active immediately
   };
 
   const jo = await jobOrderService.createJobOrder(joData, user.user_id);
   return {
     success: true,
     message: `Job Order ${jo.jo_number} created successfully`,
+    details: {
+      "JO Number": jo.jo_number,
+      "Product": `ID: ${args.product_id}`, // Name would be better if we fetched it, but this is fast
+      "Quantity": String(args.quantity_to_produce),
+      "Status": "Pending"
+    },
+    related_entity: {
+      type: 'job_order',
+      id: jo.jo_id,
+      label: jo.jo_number
+    },
     jo_id: jo.jo_id,
     jo_number: jo.jo_number,
     ingredients_reserved: jo.ingredientsReserved
@@ -457,6 +953,16 @@ async function completeJobOrder({ jo_id, quantity_produced, expiry_date }, user)
   return {
     success: true,
     message: `Job Order completed successfully`,
+    details: {
+      "Produced Quantity": String(quantity_produced),
+      "Expiry Date": expiry_date ? new Date(expiry_date).toLocaleDateString() : 'Auto-calculated',
+      "Ingredients Consumed": String(result.ingredientsConsumed || 0)
+    },
+    related_entity: {
+      type: 'job_order',
+      id: jo_id,
+      label: `JO #${jo_id}`
+    },
     jo_id,
     quantity_produced,
     batch_created: result.batchId,
@@ -707,8 +1213,16 @@ function formatProductionChain(chain, indent = 0) {
 
 // ============== CSV IMPORT/EXPORT ==============
 
-async function importCsvData({ entity_type, csv_content, options = {} }, user) {
+async function importCsvData({ entity_type, csv_content, options = {}, _confirmed = false }, user) {
   try {
+    // Check if csv_content is provided
+    if (!csv_content) {
+      return {
+        error: 'No CSV content provided. Please attach a CSV file or paste the CSV data.',
+        success: false
+      };
+    }
+
     // Parse the CSV content
     const parsed = tempFileService.parseCsv(csv_content);
 
@@ -737,7 +1251,66 @@ async function importCsvData({ entity_type, csv_content, options = {} }, user) {
       };
     }
 
-    // Return preview for confirmation
+    // If this is a confirmed execution, actually perform the import
+    if (_confirmed) {
+      const results = {
+        imported: 0,
+        skipped: 0,
+        errors: []
+      };
+
+      for (const row of parsed.rows) {
+        try {
+          if (entity_type === 'suppliers') {
+            // Import supplier
+            await supplierService.createSupplier({
+              name: row.name,
+              contact_person: row.contact_person || '',
+              email: row.email || '',
+              phone: row.phone || '',
+              address: row.address || '',
+              status: 'active'
+            }, user.user_id);
+            results.imported++;
+          } else if (entity_type === 'items') {
+            // Import item
+            await itemService.createItem({
+              sku_code: row.sku_code,
+              name: row.name,
+              category: row.category,
+              max_capacity: parseFloat(row.max_capacity) || 100,
+              unit_of_measure: row.unit_of_measure || 'pcs',
+              description: row.description || '',
+              cost_per_unit: parseFloat(row.cost_per_unit) || 0,
+              status: 'active'
+            }, user.user_id);
+            results.imported++;
+          }
+        } catch (rowError) {
+          if (options.skip_duplicates && rowError.message?.includes('duplicate')) {
+            results.skipped++;
+          } else {
+            results.errors.push({
+              row: row.name || row.sku_code || 'unknown',
+              error: rowError.message
+            });
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Import completed: ${results.imported} ${entity_type} imported, ${results.skipped} skipped, ${results.errors.length} errors.`,
+        stats: {
+          "imported": results.imported,
+          "skipped": results.skipped,
+          "errors": results.errors.length
+        },
+        results
+      };
+    }
+
+    // Return preview for confirmation (first-time call)
     return {
       success: true,
       requires_confirmation: true,

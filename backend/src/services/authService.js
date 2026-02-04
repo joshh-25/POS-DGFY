@@ -10,8 +10,13 @@ dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Op } from 'sequelize';
-import User from '../models/User.js';
+import dbStore from '../utils/dbStore.js';
 import * as cacheService from './cacheService.js';
+import * as landlordService from './landlordService.js';
+import fs from 'fs';
+import path from 'path';
+
+
 
 // Validate required environment variables
 if (!process.env.JWT_SECRET) {
@@ -75,6 +80,7 @@ export const registerUser = async (userData) => {
   const role = 'staff';
 
   // Check if user already exists
+  const User = dbStore.get('User');
   const existingUser = await User.findOne({
     where: {
       [Op.or]: [{ email }, { username }]
@@ -96,8 +102,20 @@ export const registerUser = async (userData) => {
     email,
     password_hash,
     role,
-    is_active: true // Keep is_active for User model as it's still BOOLEAN in User.js
+    is_active: true
   });
+
+  // Add email-to-tenant mapping for future token-less login
+  const store = dbStore.getStore();
+  const tenantId = store?.tenantId;
+  if (tenantId) {
+    try {
+      await landlordService.addEmailTenantMapping(email, tenantId);
+    } catch (mappingError) {
+      // Log but don't fail registration if mapping fails
+      console.warn('Failed to add email-tenant mapping:', mappingError.message);
+    }
+  }
 
   // Generate tokens
   const token = generateToken(user);
@@ -111,26 +129,30 @@ export const registerUser = async (userData) => {
     username: user.username,
     email: user.email,
     role: user.role,
+    permissions: user.permissions || [],
+    is_master_admin: user.is_master_admin || false,
     token,
     refreshToken
   };
 };
 
 export const loginUser = async (email, password) => {
-  console.log(`[AuthDebug] Attempting login for: ${email}`); // DEBUG LOG
   // Find user by email
+  const User = dbStore.get('User');
+  if (User.sequelize) {
+    console.log(`[AuthDebug] User Model DB: ${User.sequelize.config.database}`);
+  } else {
+    console.log('[AuthDebug] User Model has no sequelize instance');
+  }
   const user = await User.findOne({ where: { email } });
 
   if (!user) {
-    console.log(`[AuthDebug] User not found: ${email}`); // DEBUG LOG
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;
   }
 
-  // Check if user is active
   if (!user.is_active) {
-    console.log(`[AuthDebug] User inactive: ${email}`); // DEBUG LOG
     const error = new Error('User account is inactive');
     error.statusCode = 403;
     throw error;
@@ -140,7 +162,6 @@ export const loginUser = async (email, password) => {
   const isPasswordValid = await comparePassword(password, user.password_hash);
 
   if (!isPasswordValid) {
-    console.log(`[AuthDebug] Password invalid for: ${email}`); // DEBUG LOG
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;
@@ -161,6 +182,8 @@ export const loginUser = async (email, password) => {
     username: user.username,
     email: user.email,
     role: user.role,
+    permissions: user.permissions || [],
+    is_master_admin: user.is_master_admin || false,
     token,
     refreshToken,
     expiresIn
@@ -179,6 +202,7 @@ export const refreshUserToken = async (refreshToken) => {
     }
 
     // Find user
+    const User = dbStore.get('User');
     const user = await User.findByPk(decoded.user_id);
 
     if (!user || !user.is_active) {
@@ -219,16 +243,12 @@ export const blacklistToken = async (token) => {
       return false;
     }    // Calculate TTL: time until token expires
     const currentTime = Math.floor(Date.now() / 1000);
-    const ttl = decoded.exp - currentTime;
-
-    // Only blacklist if token hasn't expired yet
+    const ttl = decoded.exp - currentTime;    // Only blacklist if token hasn't expired yet
     if (ttl > 0) {
       const blacklistKey = `blacklist:token:${token}`;
       await cacheService.set(blacklistKey, 'true', ttl);
       return true;
-    }
-
-    return false;
+    } return false;
   } catch (error) {
     // If Redis is unavailable, log warning but don't throw
     // Token will still be invalidated client-side

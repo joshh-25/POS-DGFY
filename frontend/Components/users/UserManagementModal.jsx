@@ -1,18 +1,85 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
+import PermissionMatrix from './PermissionMatrix';
+import UserAvatar from './UserAvatar';
+import PermissionPickerModal from './PermissionPickerModal';
+import {
+  Shield,
+  Search,
+  RefreshCw,
+  ChevronDown,
+  Users2,
+  UserCheck,
+  UserX,
+  Settings2
+} from 'lucide-react';
+import axios from 'axios';
+
+// Permission templates for bulk operations
+const PERMISSION_TEMPLATES = {
+  manager: {
+    label: 'Manager',
+    permissions: [
+      'items:view', 'items:create', 'items:edit', 'items:export',
+      'suppliers:view', 'suppliers:create', 'suppliers:edit',
+      'po:view', 'po:create', 'po:approve', 'po:receive',
+      'jo:view', 'jo:create', 'jo:approve', 'jo:complete',
+      'stock:view', 'stock:adjust', 'stock:movements',
+      'reports:view',
+      'ai:chat', 'ai:action'
+    ]
+  },
+  staff: {
+    label: 'Staff',
+    permissions: [
+      'items:view',
+      'suppliers:view',
+      'po:view', 'po:receive',
+      'jo:view', 'jo:complete',
+      'stock:view', 'stock:movements'
+    ]
+  },
+  viewer: {
+    label: 'Viewer (Read-Only)',
+    permissions: [
+      'items:view',
+      'suppliers:view',
+      'po:view',
+      'jo:view',
+      'stock:view',
+      'reports:view'
+    ]
+  }
+};
 
 export default function UserManagementModal({ open, onOpenChange }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showPermissionMatrix, setShowPermissionMatrix] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
+
+  // New features state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const [bulkAction, setBulkAction] = useState(null); // 'template' | 'grant' | 'revoke'
+  const [showPermissionPicker, setShowPermissionPicker] = useState(false);
+  const [permissionPickerMode, setPermissionPickerMode] = useState('grant');
 
   // Fetch all users when modal opens
   useEffect(() => {
     if (open) {
       fetchUsers();
+      setSelectedUserIds([]);
+      setSearchQuery('');
+      setFilter('all');
     }
   }, [open]);
 
@@ -28,11 +95,30 @@ export default function UserManagementModal({ open, onOpenChange }) {
     }
   };
 
+  // Filtered users based on search and filter
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      // Search filter
+      const matchesSearch = !searchQuery ||
+        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // Role/status filter
+      let matchesFilter = true;
+      if (filter === 'admin') matchesFilter = user.role === 'admin';
+      else if (filter === 'manager') matchesFilter = user.role === 'manager';
+      else if (filter === 'staff') matchesFilter = user.role === 'staff';
+      else if (filter === 'inactive') matchesFilter = !user.is_active;
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [users, searchQuery, filter]);
+
   const handleRoleChange = async (userId, newRole) => {
     try {
       await userService.updateUserRole(userId, newRole);
       toast.success('User role updated successfully');
-      fetchUsers(); // Refresh list
+      fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update role');
     }
@@ -42,123 +128,433 @@ export default function UserManagementModal({ open, onOpenChange }) {
     try {
       await userService.updateUserStatus(userId, !currentStatus);
       toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
-      fetchUsers(); // Refresh list
+      fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update status');
     }
   };
 
-  const getRoleBadgeColor = (role) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-purple-100 text-purple-700';
-      case 'manager':
-        return 'bg-blue-100 text-blue-700';
-      case 'staff':
-        return 'bg-slate-100 text-slate-700';
-      default:
-        return 'bg-slate-100 text-slate-700';
+  const openPermissionMatrix = (user) => {
+    setSelectedUser(user);
+    setShowPermissionMatrix(true);
+  };
+
+  const handleUpdatePermissions = async (userId, permissions, isMasterAdmin) => {
+    setSavingPermissions(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
+        { permissions, is_master_admin: isMasterAdmin },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('Permissions updated successfully');
+      setShowPermissionMatrix(false);
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Failed to update permissions');
+    } finally {
+      setSavingPermissions(false);
     }
   };
 
+  // Bulk selection handlers
+  const toggleUserSelection = (userId, event) => {
+    if (event.shiftKey && selectedUserIds.length > 0) {
+      // Shift+click for range select
+      const lastSelected = selectedUserIds[selectedUserIds.length - 1];
+      const currentIndex = filteredUsers.findIndex(u => u.user_id === userId);
+      const lastIndex = filteredUsers.findIndex(u => u.user_id === lastSelected);
+      const start = Math.min(currentIndex, lastIndex);
+      const end = Math.max(currentIndex, lastIndex);
+      const rangeIds = filteredUsers.slice(start, end + 1).map(u => u.user_id);
+      setSelectedUserIds([...new Set([...selectedUserIds, ...rangeIds])]);
+    } else {
+      setSelectedUserIds(prev =>
+        prev.includes(userId)
+          ? prev.filter(id => id !== userId)
+          : [...prev, userId]
+      );
+    }
+  };
+
+  const selectAllVisible = () => {
+    const allVisibleIds = filteredUsers.map(u => u.user_id);
+    const allSelected = allVisibleIds.every(id => selectedUserIds.includes(id));
+    if (allSelected) {
+      setSelectedUserIds(prev => prev.filter(id => !allVisibleIds.includes(id)));
+    } else {
+      setSelectedUserIds([...new Set([...selectedUserIds, ...allVisibleIds])]);
+    }
+  };
+
+  // Bulk actions
+  const applyBulkTemplate = async (templateKey) => {
+    const template = PERMISSION_TEMPLATES[templateKey];
+    if (!template) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await Promise.all(
+        selectedUserIds.map(userId =>
+          axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
+            { permissions: template.permissions, is_master_admin: false },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+        )
+      );
+      toast.success(`Applied "${template.label}" template to ${selectedUserIds.length} users`);
+      setSelectedUserIds([]);
+      setShowBulkMenu(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Failed to apply template to some users');
+    }
+  };
+
+  const handleBulkPermissionChange = async (permissionsToChange) => {
+    try {
+      const token = localStorage.getItem('token');
+      const mode = permissionPickerMode;
+
+      await Promise.all(
+        selectedUserIds.map(async (userId) => {
+          const user = users.find(u => u.user_id === userId);
+          if (!user) return;
+
+          let newPermissions = [...(user.permissions || [])];
+          if (mode === 'grant') {
+            // Add all selected permissions that aren't already present
+            permissionsToChange.forEach(perm => {
+              if (!newPermissions.includes(perm)) {
+                newPermissions.push(perm);
+              }
+            });
+          } else if (mode === 'revoke') {
+            // Remove all selected permissions
+            newPermissions = newPermissions.filter(p => !permissionsToChange.includes(p));
+          }
+
+          await axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
+            { permissions: newPermissions, is_master_admin: user.is_master_admin },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        })
+      );
+
+      const permCount = permissionsToChange.length;
+      toast.success(`${mode === 'grant' ? 'Granted' : 'Revoked'} ${permCount} permission${permCount !== 1 ? 's' : ''} for ${selectedUserIds.length} users`);
+      setSelectedUserIds([]);
+      setShowBulkMenu(false);
+      setShowPermissionPicker(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Failed to update permissions for some users');
+    }
+  };
+
+  const formatLastLogin = (date) => {
+    if (!date) return 'Never';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const FILTER_OPTIONS = [
+    { key: 'all', label: 'All', icon: Users2 },
+    { key: 'admin', label: 'Admins', icon: Shield },
+    { key: 'manager', label: 'Managers', icon: UserCheck },
+    { key: 'staff', label: 'Staff', icon: UserCheck },
+    { key: 'inactive', label: 'Inactive', icon: UserX },
+  ];
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>User Management</DialogTitle>
-          <p className="text-sm text-slate-500 mt-1">
-            Manage user accounts, roles, and permissions
-          </p>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-0">
+          {/* Sticky Header */}
+          <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
+            <DialogHeader>
+              <DialogTitle className="text-xl">User Management</DialogTitle>
+              <p className="text-sm text-slate-500">
+                Manage user accounts, roles, and permissions
+              </p>
+            </DialogHeader>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-            <p className="mt-2 text-sm text-slate-500">Loading users...</p>
-          </div>
-        ) : users.length === 0 ? (
-          <div className="text-center py-12 text-slate-500">
-            No users found
-          </div>
-        ) : (
-          <div className="mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-slate-700">Username</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-slate-700">Email</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-slate-700">Role</th>
-                    <th className="text-center py-3 px-4 font-semibold text-sm text-slate-700">Status</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-slate-700">Last Login</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-slate-700">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.user_id} className="border-b hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4">
-                        <span className="font-medium text-slate-900">{user.username}</span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{user.email}</td>
-                      <td className="py-3 px-4">
-                        <select
-                          value={user.role}
-                          onChange={(e) => handleRoleChange(user.user_id, e.target.value)}
-                          className="px-3 py-1 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            {/* Search and Actions Row */}
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Search by username or email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              {/* Bulk Actions */}
+              {selectedUserIds.length > 0 && (
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowBulkMenu(!showBulkMenu)}
+                    className="flex items-center gap-2"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                    Bulk Actions ({selectedUserIds.length})
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+
+                  {showBulkMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-white border rounded-xl shadow-lg z-20 py-2">
+                      <p className="px-3 py-1 text-xs text-slate-500 uppercase font-semibold">
+                        Apply Template
+                      </p>
+                      {Object.entries(PERMISSION_TEMPLATES).map(([key, template]) => (
+                        <button
+                          key={key}
+                          onClick={() => applyBulkTemplate(key)}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
                         >
-                          <option value="staff">Staff</option>
-                          <option value="manager">Manager</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <Switch
-                            checked={user.is_active}
-                            onCheckedChange={() => handleStatusToggle(user.user_id, user.is_active)}
-                          />
-                          <span className={`text-xs font-medium ${user.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">
-                        {user.last_login
-                          ? new Date(user.last_login).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })
-                          : 'Never'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">
-                        {new Date(user.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          {template.label}
+                        </button>
+                      ))}
+                      <div className="border-t my-1" />
+                      <button
+                        onClick={() => {
+                          setPermissionPickerMode('grant');
+                          setShowPermissionPicker(true);
+                          setShowBulkMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm text-teal-600"
+                      >
+                        Grant Specific Permission
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPermissionPickerMode('revoke');
+                          setShowPermissionPicker(true);
+                          setShowBulkMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm text-red-600"
+                      >
+                        Revoke Specific Permission
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Total count */}
-            <div className="mt-4 flex items-center justify-between px-4 py-3 bg-slate-50 rounded-lg">
-              <span className="text-sm text-slate-600">
-                Total users: <span className="font-semibold text-slate-900">{users.length}</span>
-              </span>
-              <Button onClick={fetchUsers} variant="outline" size="sm">
-                Refresh
+              <Button onClick={fetchUsers} variant="outline" size="icon">
+                <RefreshCw className="w-4 h-4" />
               </Button>
             </div>
+
+            {/* Filter Pills */}
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {FILTER_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                const isActive = filter === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    onClick={() => setFilter(option.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isActive
+                      ? 'bg-teal-100 text-teal-700'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                <p className="mt-2 text-sm text-slate-500">Loading users...</p>
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                {searchQuery ? 'No users match your search' : 'No users found'}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Select All Header */}
+                <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.includes(u.user_id))}
+                    onChange={selectAllVisible}
+                    className="w-4 h-4 rounded border-slate-300 text-teal-600"
+                  />
+                  <span className="flex-1">Select All ({filteredUsers.length})</span>
+                  <span className="w-24">Role</span>
+                  <span className="w-24">Access</span>
+                  <span className="w-20 text-center">Status</span>
+                </div>
+
+                {/* User Rows */}
+                {filteredUsers.map((user) => (
+                  <div
+                    key={user.user_id}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors cursor-pointer ${selectedUserIds.includes(user.user_id)
+                      ? 'bg-teal-50 border-teal-200'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    onClick={(e) => {
+                      if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+                        toggleUserSelection(user.user_id, e);
+                      }
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.includes(user.user_id)}
+                      onChange={(e) => toggleUserSelection(user.user_id, e)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 rounded border-slate-300 text-teal-600"
+                    />
+
+                    {/* Avatar + Name */}
+                    <UserAvatar username={user.username} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-900 truncate" title={formatLastLogin(user.last_login)}>
+                        {user.username}
+                        {user.is_master_admin && (
+                          <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                            Master
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-slate-500 truncate">{user.email}</p>
+                    </div>
+
+                    {/* Role Dropdown */}
+                    <div className="w-24">
+                      <select
+                        value={user.role}
+                        onChange={(e) => handleRoleChange(user.user_id, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full px-2 py-1 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      >
+                        <option value="staff">Staff</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+
+                    {/* Permissions Button */}
+                    <div className="w-24">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPermissionMatrix(user);
+                        }}
+                        className="w-full flex items-center justify-center gap-1"
+                      >
+                        <Shield className="w-3 h-3" />
+                        <span className="text-xs">Edit</span>
+                      </Button>
+                    </div>
+
+                    {/* Status Toggle */}
+                    <div className="w-20 flex justify-center">
+                      <div
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Switch
+                          checked={user.is_active}
+                          onCheckedChange={() => handleStatusToggle(user.user_id, user.is_active)}
+                        />
+                        <span className={`text-xs ${user.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                          {user.is_active ? 'On' : 'Off'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="sticky bottom-0 bg-white border-t px-6 py-3 flex items-center justify-between">
+            <span className="text-sm text-slate-600">
+              {selectedUserIds.length > 0
+                ? `${selectedUserIds.length} selected`
+                : `${filteredUsers.length} users`}
+            </span>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Permission Matrix Dialog */}
+      {showPermissionMatrix && selectedUser && (
+        <Dialog open={showPermissionMatrix} onOpenChange={setShowPermissionMatrix}>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-teal-600" />
+                Manage Permissions: {selectedUser.username}
+              </DialogTitle>
+            </DialogHeader>
+            <PermissionMatrix
+              permissions={selectedUser.permissions || []}
+              isMasterAdmin={selectedUser.is_master_admin}
+              onChange={(newPerms) => {
+                setSelectedUser(prev => ({ ...prev, permissions: newPerms }));
+              }}
+              onMasterAdminChange={(value) => {
+                setSelectedUser(prev => ({ ...prev, is_master_admin: value }));
+              }}
+            />
+            <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+              <Button variant="outline" onClick={() => setShowPermissionMatrix(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleUpdatePermissions(
+                  selectedUser.user_id,
+                  selectedUser.permissions,
+                  selectedUser.is_master_admin
+                )}
+                disabled={savingPermissions}
+                className="bg-teal-600 hover:bg-teal-700"
+              >
+                {savingPermissions ? 'Saving...' : 'Save Permissions'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Permission Picker Modal for Bulk Operations */}
+      <PermissionPickerModal
+        open={showPermissionPicker}
+        onClose={() => setShowPermissionPicker(false)}
+        onSelect={handleBulkPermissionChange}
+        title={permissionPickerMode === 'grant' ? 'Grant Permission to Selected Users' : 'Revoke Permission from Selected Users'}
+        mode={permissionPickerMode}
+      />
+    </>
   );
 }

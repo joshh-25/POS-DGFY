@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
 import Dashboard from '../Pages/Dashboard.jsx'
 import Items from '../Pages/Items.jsx'
@@ -12,9 +12,15 @@ import Reports from '../Pages/Reports.jsx'
 import Settings from '../Pages/Settings.jsx'
 import Login from '../Pages/Login.jsx'
 import Register from '../Pages/Register.jsx'
+import RegisterCompany from '../Pages/RegisterCompany.jsx'
 import MobileReceive from '../Pages/MobileReceive.jsx'
 import AiChat from '../Pages/AiChat.jsx'
+import FeedbackViewer from '../Pages/FeedbackViewer.jsx'
+import AdminLayout from '../Components/admin/AdminLayout.jsx'
+import FeedbackDashboard from '../Pages/admin/FeedbackDashboard.jsx'
+import TenantManager from '../Pages/admin/TenantManager.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import './index.css'
 
@@ -34,6 +40,7 @@ function App() {
       {/* Public routes - Login and Register pages */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/register-company" element={<RegisterCompany />} />
 
       {/* Protected routes - require authentication */}
       <Route path="/" element={
@@ -106,6 +113,16 @@ function App() {
           <MobileReceive />
         </ProtectedRoute>
       } />
+
+      {/* Admin Portal - nested routes with AdminLayout */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<Navigate to="/admin/tenants" replace />} />
+        <Route path="feedback" element={<FeedbackDashboard />} />
+        <Route path="tenants" element={<TenantManager />} />
+      </Route>
+
+      {/* Legacy route - redirect to new admin portal */}
+      <Route path="/admin/feedback-old" element={<FeedbackViewer />} />
     </Routes>
   )
 }
@@ -119,7 +136,9 @@ ReactDOM.createRoot(rootElement).render(
         v7_relativeSplatPath: true,
       }}
     >
-      <App />
+      <PermissionProvider>
+        <App />
+      </PermissionProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

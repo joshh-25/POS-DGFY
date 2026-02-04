@@ -79,3 +79,13 @@ export const getItemSupplierCoverage = async () => {
   const response = await api.get('/items/supplier-coverage');
   return response.data.data;
 };
+
+export const getFolders = async () => {
+  const response = await api.get('/items/folders');
+  return response.data.data;
+};
+
+export const createFolder = async (folderData) => {
+  const response = await api.post('/items/folders', folderData);
+  return response.data.data;
+};

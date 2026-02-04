@@ -4,7 +4,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -14,8 +14,13 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
+    const companyToken = localStorage.getItem('companyToken');
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (companyToken) {
+      config.headers['x-company-token'] = companyToken;
     }
     return config;
   },

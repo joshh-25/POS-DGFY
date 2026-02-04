@@ -39,14 +39,56 @@ export const processMessage = async (message, conversationHistory = [], user, co
     // Get tools available for user's role
     const tools = getOpenAITools(user.role);
 
-    // Build messages array
+    // Build messages array with context preservation
+    // DEBUG: Log conversation history to trace context flow
+    console.log(`\n========== [CONTEXT DEBUG] aiService.processMessage ==========`);
+    console.log(`Processing message. History has ${conversationHistory.length} messages`);
+    conversationHistory.forEach((msg, idx) => {
+      console.log(`History[${idx}]: role=${msg.role}, hasContext=${!!msg.context}, contextKeys=${msg.context ? Object.keys(msg.context).join(',') : 'none'}`);
+    });
+    console.log(`===============================================================\n`);
+
+    // Extract text for special query handling
+    let textContent = '';
+    if (typeof message === 'string') {
+      textContent = message;
+    } else if (Array.isArray(message)) {
+      // Find text part
+      const textPart = message.find(m => m.type === 'text');
+      if (textPart) textContent = textPart.text;
+    } else if (typeof message === 'object' && message.content) {
+      // Handle case where message is already an object wrapper
+      textContent = message.content;
+    }
+
+    // Check for special queries (capabilities, limitations)
+    const specialResponse = handleSpecialQueries(textContent);
+    if (specialResponse) {
+      // ... special response logic (return early)
+      return {
+        ...specialResponse,
+        conversationId
+      };
+    }
+
     const messages = [
       { role: 'system', content: buildSystemPrompt(context) },
-      ...conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      { role: 'user', content: message }
+      ...conversationHistory.map(msg => {
+        // For assistant messages with tool context, append it to help AI remember
+        if (msg.role === 'assistant' && msg.context) {
+          const contextSummary = formatContextForMemory(msg.context);
+          console.log(`[CONTEXT DEBUG] APPENDING context to assistant message: ${contextSummary}`);
+          return {
+            role: msg.role,
+            content: `${msg.content}\n\n[Context from tools: ${contextSummary}]`
+          };
+        }
+        return {
+          role: msg.role,
+          content: msg.content
+        };
+      }),
+      { role: 'user', content: message } // OpenAI supports array content here
     ];
 
     // Call OpenAI API
@@ -68,7 +110,11 @@ export const processMessage = async (message, conversationHistory = [], user, co
         messages,
         user,
         conversationId,
-        context
+        context,
+        tools,  // Pass tools for chaining
+        [],     // Initial empty list of executed tools
+        0,      // Initial iteration count
+        []      // Initial empty list of accumulated results
       );
     }
 
@@ -108,15 +154,31 @@ export const processMessage = async (message, conversationHistory = [], user, co
 };
 
 /**
- * Handle tool calls from the AI
+ * Handle tool calls from the AI with support for chaining (multiple sequential tool calls)
  * @param {Object} assistantMessage - The assistant's message with tool calls
  * @param {Array} messages - Current message history
  * @param {Object} user - User object
  * @param {string} conversationId - Conversation ID
  * @param {Object} context - Current context
+ * @param {Array} tools - Available tools for the user's role
+ * @param {Array} allToolsExecuted - Accumulator for all tools executed across iterations
+ * @param {number} iteration - Current iteration count (for safety limit)
  * @returns {Promise<Object>} Response with confirmation or result
  */
-const handleToolCalls = async (assistantMessage, messages, user, conversationId, context) => {
+const MAX_TOOL_ITERATIONS = 5; // Safety limit to prevent infinite loops
+
+const handleToolCalls = async (assistantMessage, messages, user, conversationId, context, tools = [], allToolsExecuted = [], iteration = 0, allResults = []) => {
+  // Safety check: prevent infinite tool call loops
+  if (iteration >= MAX_TOOL_ITERATIONS) {
+    logger.warn(`AI reached max tool iterations (${MAX_TOOL_ITERATIONS}), forcing response`);
+    return {
+      type: 'text',
+      content: 'I gathered the information but reached my processing limit. Here\'s what I found so far. Please ask a follow-up question if you need more details.',
+      conversationId,
+      toolsExecuted: allToolsExecuted
+    };
+  }
+
   const toolCalls = assistantMessage.tool_calls;
   const results = [];
 
@@ -211,20 +273,166 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
     ...toolResults
   ];
 
+  // Track all tools executed so far
+  const currentToolsExecuted = [...allToolsExecuted, ...results.map(r => r.toolName)];
+
+  // Make follow-up API call WITH tools enabled for chaining
   const finalResponse = await openai.chat.completions.create({
     model: MODEL,
     messages: updatedMessages,
+    tools: tools.length > 0 ? tools : undefined,
+    tool_choice: tools.length > 0 ? 'auto' : undefined,
     temperature: 0.7,
     max_tokens: 4096
   });
 
+  const finalMessage = finalResponse.choices[0].message;
+
+  // Check if AI wants to call more tools (chaining)
+  if (finalMessage.tool_calls && finalMessage.tool_calls.length > 0) {
+    logger.info(`AI chaining tool calls (iteration ${iteration + 1}): ${finalMessage.tool_calls.map(tc => tc.function.name).join(', ')}`);
+
+    // Recursively handle the next round of tool calls
+    // Pass accumulated results so we don't lose context from earlier iterations
+    return await handleToolCalls(
+      finalMessage,
+      updatedMessages,
+      user,
+      conversationId,
+      context,
+      tools,
+      currentToolsExecuted,
+      iteration + 1,
+      [...allResults, ...results]  // Accumulate all results
+    );
+  }
+
+  // No more tool calls, return the final text response
+  // Extract key context from ALL tool results (including previous iterations) for conversation memory
+  const allAccumulatedResults = [...allResults, ...results];
+  const toolContext = extractToolContext(allAccumulatedResults);
+
+  console.log(`\n[CONTEXT DEBUG] EXTRACTED tool context:`, JSON.stringify(toolContext, null, 2));
+
   return {
     type: 'text',
-    content: finalResponse.choices[0].message.content,
+    content: finalMessage.content,
     conversationId,
-    toolsExecuted: results.map(r => r.toolName)
+    toolsExecuted: currentToolsExecuted,
+    toolContext  // Include structured data for conversation memory
   };
 };
+
+/**
+ * Extract key context from tool results for conversation memory
+ * This helps the AI remember item IDs, supplier IDs, etc. across turns
+ * @param {Array} results - Tool execution results
+ * @returns {Object} Extracted context
+ */
+function extractToolContext(results) {
+  const context = {
+    items: [],
+    suppliers: [],
+    purchaseOrders: [],
+    jobOrders: []
+  };
+
+  for (const r of results) {
+    if (r.type !== 'result' || !r.result) continue;
+
+    const result = r.result;
+
+    // Extract items from get_items or get_item_details
+    if (r.toolName === 'get_items' && result.items) {
+      context.items.push(...result.items.map(item => ({
+        id: item.id,
+        sku_code: item.sku_code,
+        name: item.name,
+        category: item.category
+      })));
+    }
+
+    if (r.toolName === 'get_item_details') {
+      context.items.push({
+        id: result.id,
+        sku_code: result.sku_code,
+        name: result.name,
+        category: result.category,
+        suppliers: result.suppliers || []
+      });
+      // Also extract suppliers from item details
+      if (result.suppliers && result.suppliers.length > 0) {
+        context.suppliers.push(...result.suppliers.map(s => ({
+          id: s.supplier_id,
+          name: s.name,
+          price_per_unit: s.price_per_unit,
+          moq: s.moq,
+          for_item: result.name
+        })));
+      }
+    }
+
+    // Extract suppliers from get_suppliers
+    if (r.toolName === 'get_suppliers' && result.suppliers) {
+      context.suppliers.push(...result.suppliers.map(s => ({
+        id: s.id,
+        name: s.name
+      })));
+    }
+
+    // Extract supplier details
+    if (r.toolName === 'get_supplier_details') {
+      context.suppliers.push({
+        id: result.supplier_id,
+        name: result.name,
+        items_supplied: result.items_supplied
+      });
+    }
+  }
+
+  // Only return non-empty context
+  const filteredContext = {};
+  if (context.items.length > 0) filteredContext.items = context.items;
+  if (context.suppliers.length > 0) filteredContext.suppliers = context.suppliers;
+
+  return Object.keys(filteredContext).length > 0 ? filteredContext : null;
+}
+
+/**
+ * Format context for memory - creates a concise summary for the AI to remember
+ * @param {Object} context - The extracted tool context
+ * @returns {string} Formatted context string
+ */
+function formatContextForMemory(context) {
+  const parts = [];
+
+  if (context.items && context.items.length > 0) {
+    const itemSummaries = context.items.map(item => {
+      let summary = `Item "${item.name}" (ID: ${item.id}, SKU: ${item.sku_code})`;
+      if (item.suppliers && item.suppliers.length > 0) {
+        const supplierInfo = item.suppliers.map(s =>
+          `${s.name} (ID: ${s.supplier_id}, $${s.price_per_unit}/unit, MOQ: ${s.moq})`
+        ).join(', ');
+        summary += ` - Suppliers: ${supplierInfo}`;
+      }
+      return summary;
+    });
+    parts.push(`Items: ${itemSummaries.join('; ')}`);
+  }
+
+  if (context.suppliers && context.suppliers.length > 0) {
+    const supplierSummaries = context.suppliers.map(s => {
+      let summary = `"${s.name}" (ID: ${s.id})`;
+      if (s.price_per_unit) summary += ` at $${s.price_per_unit}/unit`;
+      if (s.moq) summary += `, MOQ: ${s.moq}`;
+      if (s.for_item) summary += ` for ${s.for_item}`;
+      return summary;
+    });
+    parts.push(`Suppliers: ${supplierSummaries.join('; ')}`);
+  }
+
+  return parts.join(' | ') || 'No specific entities found';
+}
 
 /**
  * Generate a confirmation request for a write operation
@@ -322,10 +530,80 @@ const generateConfirmation = async (toolName, args, user, conversationId, contex
 
     case 'import_csv_data':
       description = `Import ${args.entity_type} from CSV data`;
+      // CRITICAL: Store all args including csv_content for re-execution after confirmation
       details = {
         entity_type: args.entity_type,
-        preview: 'Parsing CSV for preview...',
-        options: args.options
+        csv_content: args.csv_content,
+        options: args.options,
+        _confirmed: true  // Flag to indicate this is a confirmed execution
+      };
+      break;
+
+    // Supplier Management
+    case 'create_supplier':
+      description = `Register new supplier "${args.name}"`;
+      details = { ...args };
+      break;
+
+    case 'update_supplier':
+      description = `Update details for supplier ID ${args.supplier_id}`;
+      details = { ...args };
+      break;
+
+    case 'delete_supplier':
+      description = `Delete supplier ID ${args.supplier_id}`;
+      details = {
+        supplier_id: args.supplier_id,
+        reason: args.reason,
+        note: 'This will soft-delete the supplier.'
+      };
+      break;
+
+    case 'add_supplier_item':
+      description = `Link item ID ${args.item_id} to supplier ID ${args.supplier_id}`;
+      details = {
+        item_id: args.item_id,
+        supplier_id: args.supplier_id,
+        price: args.price_per_unit,
+        moq: args.moq
+      };
+      break;
+
+    // System Settings
+    case 'update_system_settings':
+      description = `Update system configuration settings`;
+      details = {
+        updates: args.updates,
+        count: Object.keys(args.updates || {}).length
+      };
+      break;
+
+    // User Management
+    case 'update_user_role':
+      description = `Change user ID ${args.target_user_id} role to ${args.new_role}`;
+      details = { ...args };
+      break;
+
+    case 'toggle_user_status':
+      description = `${args.is_active ? 'Reactivate' : 'Deactivate'} user ID ${args.target_user_id}`;
+      details = { ...args };
+      break;
+
+    // File Management
+    case 'create_folder':
+      description = `Create new folder: "${args.path}"`;
+      details = {
+        path: args.path,
+        location: 'uploads/' + args.path
+      };
+      break;
+
+    case 'move_file':
+      description = `Move "${args.source}" to "${args.destination}"`;
+      details = {
+        from: args.source,
+        to: args.destination,
+        note: 'This operation is within the uploads directory.'
       };
       break;
 
@@ -375,12 +653,15 @@ export const executeConfirmedAction = async (actionId, pendingAction, user) => {
       user
     );
 
+    // Format result for UI (Success Card)
+    const uiResult = formatResultForUI(pendingAction.toolName, pendingAction.args, result);
+
     return {
       type: 'success',
       action_id: actionId,
       toolName: pendingAction.toolName,
-      result,
-      message: `✅ ${pendingAction.description} completed successfully!`
+      result: uiResult, // Enhanced result for UI
+      message: `✅ ${uiResult.summary || pendingAction.description} completed successfully!`
     };
 
   } catch (error) {
@@ -394,6 +675,150 @@ export const executeConfirmedAction = async (actionId, pendingAction, user) => {
 };
 
 /**
+ * Format raw tool execution results into a structured UI-friendly format
+ * @param {string} toolName - Name of the tool executed
+ * @param {Object} args - Arguments passed to the tool
+ * @param {Object} result - Raw result from tool executor
+ * @returns {Object} Structured UI result with summary, impact, and details
+ */
+const formatResultForUI = (toolName, args, result) => {
+  // Base structure
+  const uiResult = {
+    success: true,
+    summary: result.message || 'Action Completed',
+    details: {},      // Detailed attributes (read-only chips)
+    impact: {},       // Key business metrics (stats grid)
+    related_entity: result.related_entity || null
+  };
+
+  try {
+    switch (toolName) {
+      // --- ITEMS ---
+      case 'create_item':
+        uiResult.summary = `Item "${result.item.name}" Created`;
+        uiResult.impact = {
+          "Stock Tracking": result.item.fifo_enabled ? "Enabled (FIFO)" : "Disabled",
+          "Initial Stock": "0 " + result.item.unit_of_measure,
+          "Max Capacity": args.max_capacity + " " + result.item.unit_of_measure
+        };
+        uiResult.details = {
+          "SKU": result.item.sku_code,
+          "Category": result.item.category
+        };
+        break;
+
+      case 'update_item':
+        uiResult.summary = `Item "${result.item.name}" Updated`;
+        uiResult.details = result.details || {};
+        break;
+
+      // --- PURCHASE ORDERS ---
+      case 'create_purchase_order':
+        uiResult.summary = `Purchase Order #${result.po_number} Created`;
+        const totalAmount = typeof result.total_amount === 'number'
+          ? `$${result.total_amount.toFixed(2)}`
+          : result.total_amount || '$0.00';
+
+        uiResult.impact = {
+          "Total Cost": totalAmount,
+          "Items Ordered": String(args.items.length),
+          "Status": "Pending"
+        };
+        uiResult.details = {
+          "Supplier": result.details?.Supplier || "Unknown",
+          "Delivery": result.details?.["Expected Delivery"] || "N/A"
+        };
+        break;
+
+      case 'receive_purchase_order':
+        uiResult.summary = `Purchase Order Received`;
+        uiResult.impact = {
+          "Items Received": String(result.items_received || 0),
+          "Batches Created": String(result.batches_created || 0),
+          "Stock Status": "Updated"
+        };
+        break;
+
+      // --- JOB ORDERS ---
+      case 'create_job_order':
+        uiResult.summary = `Job Order Created`;
+        uiResult.impact = {
+          "To Produce": `${args.quantity_to_produce} units`,
+          "Ingredients": "Reserved",
+          "Status": "In Progress"
+        };
+        uiResult.details = {
+          "Product": `ID: ${args.product_id}` // ideally name, but ID is safe fallback
+        };
+        break;
+
+      case 'complete_job_order':
+        uiResult.summary = `Production Completed`;
+        uiResult.impact = {
+          "Produced": `${args.quantity_produced} units`,
+          "Ingredients": "Consumed",
+          "Finished Goods": "Added to Stock"
+        };
+        uiResult.details = {
+          "Job Order": `#${args.jo_id}`
+        };
+        break;
+
+      // --- STOCK MOVEMENTS ---
+      case 'create_stock_adjustment':
+        const qty = args.quantity > 0 ? `+${args.quantity}` : `${args.quantity}`;
+        uiResult.summary = `Stock Adjustment Recorded`;
+        uiResult.impact = {
+          "Change": `${qty} units`,
+          "Type": args.movement_type,
+          "Reason": args.reason
+        };
+        break;
+
+      // --- SUPPLIERS ---
+      case 'create_supplier':
+        uiResult.summary = `Supplier Registered`;
+        uiResult.impact = {
+          "Status": "Active",
+          "Lead Time": `${args.lead_time || 0} days`
+        };
+        uiResult.details = {
+          "Name": args.name,
+          "Contact": args.contact_person
+        };
+        break;
+
+      case 'add_supplier_item':
+        uiResult.summary = `Item Linked to Supplier`;
+        uiResult.impact = {
+          "Price": `$${args.price_per_unit}/unit`,
+          "MOQ": args.moq
+        };
+        break;
+
+      // --- FILE MANAGEMENT ---
+      case 'import_csv_data':
+        uiResult.summary = `Data Import Completed`;
+        uiResult.impact = {
+          "Records Processed": result.details?.success_count || "All",
+          "Errors": result.details?.error_count || "0"
+        };
+        break;
+
+      default:
+        // Fallback for other tools: use existing details if available
+        uiResult.details = result.details || args;
+    }
+  } catch (err) {
+    logger.warn(`Failed to format UI result for ${toolName}:`, err);
+    // Fallback on raw result
+    uiResult.details = result;
+  }
+
+  return uiResult;
+};
+
+/**
  * Handle special queries about capabilities
  * @param {string} message - User message
  * @returns {Object|null} Special response or null
@@ -402,8 +827,8 @@ export const handleSpecialQueries = (message) => {
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes('what can you do') ||
-      lowerMessage.includes('what are your capabilities') ||
-      lowerMessage.includes('help me understand')) {
+    lowerMessage.includes('what are your capabilities') ||
+    lowerMessage.includes('help me understand')) {
     return {
       type: 'text',
       content: getCapabilitiesExplanation()
@@ -411,8 +836,8 @@ export const handleSpecialQueries = (message) => {
   }
 
   if (lowerMessage.includes("what can't you do") ||
-      lowerMessage.includes('what are your limitations') ||
-      lowerMessage.includes('what you cannot do')) {
+    lowerMessage.includes('what are your limitations') ||
+    lowerMessage.includes('what you cannot do')) {
     return {
       type: 'text',
       content: getLimitationsExplanation()

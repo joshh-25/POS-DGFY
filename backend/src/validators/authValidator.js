@@ -6,8 +6,9 @@ export const registerSchema = Joi.object({
     'string.max': 'Username must not exceed 50 characters',
     'any.required': 'Username is required'
   }),
-  email: Joi.string().email().required().messages({
-    'string.email': 'Please provide a valid email address',
+  // Joi version compatibility issue with TLD options, falling back to simple validation
+  email: Joi.string().pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required().messages({
+    'string.pattern.base': 'Please provide a valid email address',
     'any.required': 'Email is required'
   }),
   password: Joi.string().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).+$/).required().messages({
@@ -20,8 +21,8 @@ export const registerSchema = Joi.object({
 });
 
 export const loginSchema = Joi.object({
-  email: Joi.string().email().required().messages({
-    'string.email': 'Please provide a valid email address',
+  email: Joi.string().pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required().messages({
+    'string.pattern.base': 'Please provide a valid email address',
     'any.required': 'Email is required'
   }),
   password: Joi.string().required().messages({
@@ -32,6 +33,13 @@ export const loginSchema = Joi.object({
 export const refreshTokenSchema = Joi.object({
   refreshToken: Joi.string().required().messages({
     'any.required': 'Refresh token is required'
+  })
+});
+
+export const emailLookupSchema = Joi.object({
+  email: Joi.string().pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required().messages({
+    'string.pattern.base': 'Please provide a valid email address',
+    'any.required': 'Email is required'
   })
 });
 
@@ -81,6 +89,28 @@ export const validateLogin = (req, res, next) => {
 
 export const validateRefreshToken = (req, res, next) => {
   const { error, value } = refreshTokenSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+export const validateEmailLookup = (req, res, next) => {
+  const { error, value } = emailLookupSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
     const errors = error.details.map(detail => ({

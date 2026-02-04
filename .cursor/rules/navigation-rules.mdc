@@ -1,0 +1,75 @@
+---
+alwaysApply: true
+---
+# Documentation Navigation Rules
+
+## Overview
+
+This project has large documentation files (300+ lines). To reduce token usage and improve efficiency, follow these navigation rules.
+
+## Core Principle
+
+**Read the Table of Contents first** — Do NOT load entire large files. Navigate to specific sections as needed.
+
+## Files with Table of Contents
+
+These files have TOCs at the top for efficient navigation:
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `DEVELOPMENT_HISTORY.md` | 4000+ | Project phases and history |
+| `docs/api/specification.md` | 1400+ | API endpoints |
+| `docs/api/integration-guide.md` | 1100+ | Frontend-backend integration |
+| `docs/database/schema.md` | 700+ | Database tables |
+| `docs/architecture/system-architecture.md` | 750+ | System diagrams |
+| `TROUBLESHOOTING.md` | 800+ | Error solutions |
+
+## Navigation Workflow
+
+### Step 1: Read CLAUDE.md
+Always read `CLAUDE.md` first when starting a session. It contains:
+- Project overview and tech stack
+- Critical rules for frontend/backend
+- Project structure
+- Documentation links
+
+### Step 2: Use TOCs for Large Files
+When you need information from a large file:
+1. Read the **first 50 lines** (the TOC section)
+2. Identify the relevant section from the TOC
+3. Navigate directly to that section using line ranges
+4. **Do NOT load the entire file**
+
+### Step 3: Check Documentation Hierarchy
+
+| Need | Start Here | Then Check |
+|------|------------|------------|
+| Project context | `CLAUDE.md` | — |
+| What was already built | `DEVELOPMENT_HISTORY.md` (TOC) | Specific phase |
+| How to run the project | `QUICK_START.md` | `TROUBLESHOOTING.md` |
+| API details | `docs/api/specification.md` (TOC) | Specific endpoint |
+| Database schema | `docs/database/schema.md` (TOC) | Specific table |
+| System architecture | `docs/architecture/system-architecture.md` (TOC) | Specific diagram |
+| Frontend integration | `docs/api/integration-guide.md` (TOC) | Specific service |
+
+## Avoiding Duplicate Work
+
+Before implementing a feature, search `DEVELOPMENT_HISTORY.md` for:
+- Similar past implementations
+- Bug fixes that might be relevant
+- Design decisions that were already made
+
+Use grep or search tools rather than loading the full file.
+
+## Token Efficiency Rules
+
+1. **Never load files > 300 lines in full** without checking if a TOC exists
+2. **Use grep/search** to find specific content rather than scrolling
+3. **Read documentation in layers**: overview first, details only as needed
+4. **Cross-reference** between documents using links provided in TOCs
+
+## Reference Files
+
+- **Project Context**: `CLAUDE.md`
+- **Documentation Guidelines**: `.cursor/rules/documentation-guidelines.mdc`
+- **Project Goals**: `.cursor/rules/project-goal.mdc`

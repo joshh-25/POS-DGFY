@@ -19,6 +19,11 @@ const JOIngredient = sequelize.define('JOIngredient', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false
   },
+  unit_of_measure: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'Recipe UOM used for quantity_required'
+  },
   quantity_consumed: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true

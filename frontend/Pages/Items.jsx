@@ -20,7 +20,7 @@ import CSVImportModal from '@/components/items/CSVImportModal';
 import ImportExportModal from '@/components/items/ImportExportModal';
 import CSVExportModal from '@/components/items/CSVExportModal';
 import { getStockStatus } from '@/components/data/dummyData';
-import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem } from '@/hooks/useItems.js';
+import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem, useFolders } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/userService.js';
 import { toast } from 'sonner';
 import { cn } from "../src/lib/utils.js";
@@ -41,7 +41,9 @@ export default function Items() {
   const { updateItem, loading: updating } = useUpdateItem();
   const { deleteItem, loading: deleting } = useDeleteItem();
   const { createItemDraft } = useCreateItemDraft();
+
   const { finalizeItem } = useFinalizeItem();
+  const { folders: apiFolders, createFolder: createApiFolder, refetch: refetchFolders } = useFolders();
 
   // Helper to load initial state from localStorage or defaults
   const getInitialState = (key, defaultValue) => {
@@ -140,13 +142,21 @@ export default function Items() {
 
   const folders = useMemo(() => {
     const folderSet = new Set(transientFolders);
+
+    // Add API folders (persistent)
+    if (apiFolders && Array.isArray(apiFolders)) {
+      apiFolders.forEach(f => folderSet.add(f.name));
+    }
+
+    // Add derived folders from items (legacy/compatibility)
     items.forEach(item => {
       if (item.product_folder) {
         folderSet.add(item.product_folder);
       }
     });
+
     return Array.from(folderSet).sort();
-  }, [items, transientFolders]);
+  }, [items, transientFolders, apiFolders]);
 
   const productFolders = folders;
 
@@ -398,13 +408,23 @@ export default function Items() {
   };
 
   // Folder handlers
-  const handleCreateFolder = (folderName) => {
+  const handleCreateFolder = async (folderName) => {
     if (folders.includes(folderName)) {
       toast.error(`Folder "${folderName}" already exists`);
       return;
     }
-    toast.success(`Folder "${folderName}" created. Assign items to populate it.`);
-    setTransientFolders(prev => new Set(prev).add(folderName));
+
+    try {
+      await createApiFolder(folderName, '');
+      toast.success(`Folder "${folderName}" created successfully.`);
+      // No need for transient set as apiFolders will update
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      // Fallback to transient if API fails (or if implementation specific)
+      setTransientFolders(prev => new Set(prev).add(folderName));
+      toast.warning(`Folder created locally only (API error: ${error.message})`);
+    }
+
     setCurrentFolder(folderName);
   };
 

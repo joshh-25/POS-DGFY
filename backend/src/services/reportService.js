@@ -1,13 +1,5 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import Item from '../models/Item.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import Supplier from '../models/Supplier.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
-import StockMovement from '../models/StockMovement.js';
-import JobOrder from '../models/JobOrder.js';
-import POLineItem from '../models/POLineItem.js';
-import ReportSnapshot from '../models/ReportSnapshot.js';
+import dbStore from '../utils/dbStore.js';
 
 // ============================================
 // EXPIRY REPORT (P0 Priority)
@@ -18,6 +10,10 @@ import ReportSnapshot from '../models/ReportSnapshot.js';
  * @param {Object} filters - { startDate, endDate } for filtering
  */
 export const getExpiryReport = async (filters = {}) => {
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -147,6 +143,10 @@ export const getExpiryReport = async (filters = {}) => {
  * Get batch-level stock aging report with turnover calculation
  */
 export const getEnhancedStockAgingReport = async (filters = {}) => {
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -283,6 +283,10 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
  * Get production/consumption report from Job Orders
  */
 export const getProductionReport = async (filters = {}) => {
+  const JobOrder = dbStore.get('JobOrder');
+  const Item = dbStore.get('Item');
+  const StockMovement = dbStore.get('StockMovement');
+
   // Build date filter
   const dateFilter = {};
   if (filters.startDate) {
@@ -431,6 +435,11 @@ export const getProductionReport = async (filters = {}) => {
  * Get Purchase Order analysis with supplier performance
  */
 export const getPurchaseOrderAnalysis = async (filters = {}) => {
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const Supplier = dbStore.get('Supplier');
+  const POLineItem = dbStore.get('POLineItem');
+  const Item = dbStore.get('Item');
+
   // Build date filter
   const dateFilter = {};
   if (filters.startDate) {
@@ -604,6 +613,10 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
  * Get executive summary with key metrics
  */
 export const getExecutiveSummary = async (filters = {}) => {
+  const Item = dbStore.get('Item');
+  const StockMovement = dbStore.get('StockMovement');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   // Get all component reports
   const [expiryData, agingData, financialData, productionData, poData] = await Promise.all([
     getExpiryReport(filters),
@@ -726,6 +739,9 @@ export const getExecutiveSummary = async (filters = {}) => {
 // ============================================
 
 export const getStockAgingReport = async () => {
+  const Item = dbStore.get('Item');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+
   const items = await Item.findAll({
     where: { is_active: true },
     include: [
@@ -763,6 +779,8 @@ export const getStockAgingReport = async () => {
 };
 
 export const getSurplusShortageReport = async () => {
+  const Item = dbStore.get('Item');
+
   const items = await Item.findAll({
     where: { is_active: true }
   });
@@ -792,6 +810,8 @@ export const getSurplusShortageReport = async () => {
 };
 
 export const getFinancialSummary = async () => {
+  const Item = dbStore.get('Item');
+
   const items = await Item.findAll({
     where: { status: 'active' },
     attributes: ['current_stock', 'cost_per_unit']
@@ -853,6 +873,7 @@ export const getSupplierPerformanceReport = async () => {
  * Save a report snapshot for historical viewing
  */
 export const saveReportSnapshot = async (reportType, snapshotData, dateRange = {}, userId = null, reportName = null) => {
+  const ReportSnapshot = dbStore.get('ReportSnapshot');
   const summaryMetrics = snapshotData.summary || {};
 
   const snapshot = await ReportSnapshot.create({
@@ -872,6 +893,7 @@ export const saveReportSnapshot = async (reportType, snapshotData, dateRange = {
  * Get historical snapshots for a report type
  */
 export const getReportSnapshots = async (reportType, limit = 20) => {
+  const ReportSnapshot = dbStore.get('ReportSnapshot');
   const snapshots = await ReportSnapshot.findAll({
     where: { report_type: reportType },
     attributes: ['snapshot_id', 'report_name', 'summary_metrics', 'date_range_start', 'date_range_end', 'created_at'],
@@ -886,6 +908,7 @@ export const getReportSnapshots = async (reportType, limit = 20) => {
  * Get a specific snapshot by ID
  */
 export const getReportSnapshotById = async (snapshotId) => {
+  const ReportSnapshot = dbStore.get('ReportSnapshot');
   const snapshot = await ReportSnapshot.findByPk(snapshotId);
   return snapshot;
 };

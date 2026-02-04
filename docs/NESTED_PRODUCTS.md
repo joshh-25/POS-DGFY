@@ -131,6 +131,8 @@ npx sequelize-cli db:migrate
 ```bash
 cd backend
 node src/scripts/calculateNestingLevels.js
+# This script will automatically iterate through ALL active tenants and the default database.
+```
 ```
 
 ## Example Workflow

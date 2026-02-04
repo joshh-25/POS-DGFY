@@ -130,3 +130,33 @@ export const updateUserStatus = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Update user permissions (Master Admin only)
+ */
+export const updateUserPermissions = async (req, res, next) => {
+  try {
+    const adminUserId = req.user.user_id;
+    const targetUserId = req.params.user_id;
+    const { permissions, is_master_admin } = req.body;
+
+    // permissions should be an array of strings
+    if (permissions && !Array.isArray(permissions)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Permissions must be an array of strings'
+      });
+    }
+
+    const result = await userService.updateUserPermissions(adminUserId, targetUserId, permissions, is_master_admin);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: 'User permissions updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};

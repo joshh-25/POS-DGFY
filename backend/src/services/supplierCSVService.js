@@ -1,8 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { Op } from 'sequelize';
-import Supplier from '../models/Supplier.js';
+import dbStore from '../utils/dbStore.js';
 import { createSupplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
-import sequelize from '../config/database.js';
 
 
 // Valid Statuses
@@ -114,6 +113,7 @@ export const previewImport = async (csvContent) => {
     }
 
     // Load existing suppliers for duplicate check
+    const Supplier = dbStore.get('Supplier');
     const existingSuppliers = await Supplier.findAll({
         attributes: ['supplier_id', 'name'],
         where: { deleted_at: null }
@@ -182,6 +182,7 @@ export const confirmImport = async (rows, userId) => {
         }
 
         try {
+            const Supplier = dbStore.get('Supplier');
             if (row.action === 'CREATE') {
                 const newSupplier = await Supplier.create({
                     ...row.data,
@@ -263,6 +264,8 @@ export const exportSuppliers = async (filters = {}) => {
             where.supplier_id = { [Op.in]: filters.ids };
         }
 
+
+        const Supplier = dbStore.get('Supplier');
         const suppliers = await Supplier.findAll({
             where,
             order: [['name', 'ASC']],

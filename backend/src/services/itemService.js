@@ -1,26 +1,10 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import Item from '../models/Item.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import ItemNutrition from '../models/ItemNutrition.js';
-import ItemAllergen from '../models/ItemAllergen.js';
-import ItemPhysicalProperties from '../models/ItemPhysicalProperties.js';
-import ItemShelfLife from '../models/ItemShelfLife.js';
-import ItemPackaging from '../models/ItemPackaging.js';
-import ItemQualityControl from '../models/ItemQualityControl.js';
-import ItemRegulatoryCompliance from '../models/ItemRegulatoryCompliance.js';
-import ItemCostBreakdown from '../models/ItemCostBreakdown.js';
-import ProductComposition from '../models/ProductComposition.js';
-import SupplierItem from '../models/SupplierItem.js';
-import Supplier from '../models/Supplier.js';
-import StockMovement from '../models/StockMovement.js';
-import User from '../models/User.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
-import POLineItem from '../models/POLineItem.js';
-import JobOrder from '../models/JobOrder.js';
-import JOIngredient from '../models/JOIngredient.js';
+import dbStore from '../utils/dbStore.js';
 import { validateComposition, invalidateDependencyGraphCache } from './compositionValidationService.js';
+import { generateEmbedding, searchByMeaning, syncItemEmbedding } from './embeddingService.js';
+import { getVariations } from '../config/searchSynonyms.js';
 import { getAllSettings } from './settingsService.js';
+import { createStockMovement } from './stockMovementService.js';
 
 /**
  * Calculate min_threshold and purchase_allowance based on max_capacity
@@ -74,6 +58,11 @@ const calculateRecipeCost = (productCompositions) => {
 };
 
 export const getItems = async (queryParams) => {
+  // Get models from tenant context
+  const Item = dbStore.get('Item');
+  const ProductComposition = dbStore.get('ProductComposition');
+  const ItemFolder = dbStore.get('ItemFolder');
+
   const {
     page = 1,
     limit = 20,
@@ -86,6 +75,21 @@ export const getItems = async (queryParams) => {
 
   const offset = (page - 1) * limit;
   const where = {};
+
+  let semanticIds = [];
+
+  // Semantic Search Pre-fetch
+  if (search && search.length > 2) {
+    try {
+      const semanticResults = await searchByMeaning(search, 50, 0.4);
+      if (semanticResults.length > 0) {
+        semanticIds = semanticResults.map(r => r.item_id);
+      }
+    } catch (err) {
+      // Silent fail (log debug) to ensure main search still works
+      console.error("Semantic search failed", err);
+    }
+  }
 
   // Filter by category
   if (category) {
@@ -100,14 +104,77 @@ export const getItems = async (queryParams) => {
     where.status = { [Op.ne]: 'inactive' };
   }
 
-  // Search filter
-  if (search) {
-    where[Op.or] = [
-      { name: { [Op.like]: `%${search}%` } },
-      { sku_code: { [Op.like]: `%${search}%` } },
-      { description: { [Op.like]: `%${search}%` } }
-    ];
+  // Filter by folder
+  if (queryParams.folder_id) {
+    if (queryParams.folder_id === 'null' || queryParams.folder_id === 'none') {
+      where.folder_id = null; // Filter for items currently NOT in a folder
+    } else {
+      where.folder_id = queryParams.folder_id;
+    }
   }
+
+  // Smart Search: Handle multi-word queries and flexible separators
+  if (search) {
+    const cleanSearch = search.trim();
+    // Split by spaces to allow "word salad" matching (e.g. "red apple" matches "apple red")
+    const terms = cleanSearch.split(/\s+/).filter(t => t.length > 0);
+
+    if (terms.length > 0) {
+      // Create an AND condition where EACH term must match at least one field
+      where[Op.and] = terms.map(term => {
+        // Get all variations from config (synonyms + basic stemming)
+        const variations = getVariations(term);
+
+        // Construct OR block for this term (and its variations) against all fields
+        return {
+          [Op.or]: [
+            // Name matches ANY variation
+            ...variations.map(v => ({ name: { [Op.like]: `%${v}%` } })),
+            // SKU matches ANY variation
+            ...variations.map(v => ({ sku_code: { [Op.like]: `%${v}%` } })),
+            // Description matches ANY variation
+            ...variations.map(v => ({ description: { [Op.like]: `%${v}%` } }))
+          ]
+        };
+      });
+    }
+
+    // INTEGRATION: If we have semantic matches, add them to the OR condition
+    if (semanticIds && semanticIds.length > 0) {
+      // If keyword logic creates a complex AND, we want to allow Semantic Matches via OR
+      // BUT strict keyword matches are usually better?
+      // Let's make it: (Keywords Match) OR (ID IN SemanticIDs)
+
+      // This is tricky with Sequelize 'where' object structure.
+      // Easiest way:
+      // If keyword search returns results, great.
+      // But we want to mix them.
+
+      // Current logic: where[Op.and] = terms...
+
+      // We can wrap the entire existing search logic in an OR with semantic IDs?
+      // OR: We just add semanticIds to the results of the specific keyword check?
+
+      // Let's modify approach.
+      // We will stick to the plan:
+      // If keyword search is too strict, we might miss semantic matches.
+
+      // Let's add a top-level OR for semantic IDs if they exist.
+      if (where[Op.and]) {
+        const keywordLogic = where[Op.and];
+        delete where[Op.and]; // Remove strict constraint temporarily
+
+        where[Op.or] = [
+          { [Op.and]: keywordLogic }, // Original keyword logic
+          { item_id: { [Op.in]: semanticIds } } // Semantic matches
+        ];
+      } else {
+        // If no Op.and was set (unlikely inside search block), just use semantic
+        where.item_id = { [Op.in]: semanticIds };
+      }
+    }
+  }
+
 
   // Sort order
   const order = [[sortBy, sortOrder.toUpperCase()]];
@@ -124,6 +191,11 @@ export const getItems = async (queryParams) => {
           as: 'ingredient',
           attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock', 'cost_per_unit']
         }]
+      },
+      {
+        model: ItemFolder,
+        as: 'folder',
+        attributes: ['folder_id', 'name']
       }
     ],
     limit: parseInt(limit),
@@ -201,6 +273,21 @@ export const getItems = async (queryParams) => {
 };
 
 export const getItemById = async (itemId) => {
+  // Get models from tenant context
+  const Item = dbStore.get('Item');
+  const ItemNutrition = dbStore.get('ItemNutrition');
+  const ItemAllergen = dbStore.get('ItemAllergen');
+  const ItemPhysicalProperties = dbStore.get('ItemPhysicalProperties');
+  const ItemShelfLife = dbStore.get('ItemShelfLife');
+  const ItemPackaging = dbStore.get('ItemPackaging');
+  const ItemQualityControl = dbStore.get('ItemQualityControl');
+  const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
+  const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
+  const ProductComposition = dbStore.get('ProductComposition');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const SupplierItem = dbStore.get('SupplierItem');
+  const Supplier = dbStore.get('Supplier');
+
   const item = await Item.findByPk(itemId, {
     include: [
       {
@@ -271,6 +358,11 @@ export const getItemById = async (itemId) => {
             required: false
           }
         ]
+      },
+      {
+        model: dbStore.get('ItemFolder'),
+        as: 'folder',
+        required: false
       }
     ]
   });
@@ -382,6 +474,9 @@ export const getItemById = async (itemId) => {
 };
 
 export const createItem = async (itemData, userId = null) => {
+  // Get models and sequelize from tenant context
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
   try {
@@ -449,7 +544,25 @@ export const createItem = async (itemData, userId = null) => {
     // Create the item
     const dataToCreate = { ...dbFields };
 
+    // If FIFO is enabled and initial stock is provided, we'll create the stock via a movement 
+    // to ensure a batch is created. We set column to 0 initially.
+    const initialStock = parseFloat(dbFields.current_stock || 0);
+    if (dbFields.fifo_enabled && initialStock > 0) {
+      dataToCreate.current_stock = 0;
+    }
+
     const item = await Item.create(dataToCreate, { transaction });
+
+    // Handle initial stock for FIFO items
+    if (dbFields.fifo_enabled && initialStock > 0) {
+      await createStockMovement({
+        item_id: item.item_id,
+        quantity: initialStock,
+        movement_type: 'adjustment',
+        notes: 'Initial stock entry from item creation',
+        reference_type: 'MANUAL'
+      }, userId, transaction);
+    }
 
     // For active products, save wizard data to relational tables
     if (itemData.status === 'active' && itemData.category === 'product') {
@@ -474,6 +587,11 @@ export const createItem = async (itemData, userId = null) => {
 
     await transaction.commit();
 
+    // ASYNC: Generate Embedding
+    syncItemEmbedding(item).catch(err =>
+      console.error(`Embedding sync failed for new item ${item.item_id}:`, err.message)
+    );
+
     // Fetch and return complete item with all associations (outside transaction)
     const completeItem = await getItemById(item.item_id);
     return completeItem;
@@ -488,6 +606,9 @@ export const createItem = async (itemData, userId = null) => {
 };
 
 export const updateItem = async (itemId, itemData, userId = null) => {
+  // Get models and sequelize from tenant context  
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
   try {
@@ -563,7 +684,29 @@ export const updateItem = async (itemId, itemData, userId = null) => {
 
     // Update item basic fields
     dbFields.updated_by = userId;
-    await item.update(dbFields, { transaction });
+
+    // If FIFO is enabled and current_stock is being manually updated via the item form,
+    // we should create a stock movement and batch if the value has changed.
+    const newStockValue = dbFields.current_stock !== undefined ? parseFloat(dbFields.current_stock || 0) : null;
+    const oldStockValue = parseFloat(item.current_stock || 0);
+
+    if (newStockValue !== null && newStockValue !== oldStockValue && item.fifo_enabled) {
+      const delta = newStockValue - oldStockValue;
+      // We'll update the item WITHOUT the current_stock first, then let the movement handle the column update
+      delete dbFields.current_stock;
+
+      await item.update(dbFields, { transaction });
+
+      await createStockMovement({
+        item_id: itemId,
+        quantity: Math.abs(delta),
+        movement_type: delta > 0 ? 'adjustment' : 'calculated_loss', // adjustment for up, loss for down
+        notes: `Manual stock adjustment from item update form (Old: ${oldStockValue}, New: ${newStockValue})`,
+        reference_type: 'MANUAL'
+      }, userId, transaction);
+    } else {
+      await item.update(dbFields, { transaction });
+    }
 
     // For active products, save wizard data to relational tables
     if (item.status === 'active' && item.category === 'product') {
@@ -601,6 +744,14 @@ export const updateItem = async (itemId, itemData, userId = null) => {
 };
 
 export const deleteItem = async (itemId, userId) => {
+  // Get models from tenant context
+  const Item = dbStore.get('Item');
+  const ProductComposition = dbStore.get('ProductComposition');
+  const POLineItem = dbStore.get('POLineItem');
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const JOIngredient = dbStore.get('JOIngredient');
+  const JobOrder = dbStore.get('JobOrder');
+
   const item = await Item.findByPk(itemId);
 
   if (!item) {
@@ -692,6 +843,17 @@ export const deleteItem = async (itemId, userId) => {
  * @param {Transaction} transaction - Sequelize transaction
  */
 const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
+  // Get models from tenant context
+  const ItemNutrition = dbStore.get('ItemNutrition');
+  const ItemAllergen = dbStore.get('ItemAllergen');
+  const ItemPhysicalProperties = dbStore.get('ItemPhysicalProperties');
+  const ItemShelfLife = dbStore.get('ItemShelfLife');
+  const ItemPackaging = dbStore.get('ItemPackaging');
+  const ItemQualityControl = dbStore.get('ItemQualityControl');
+  const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
+  const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
+  const ProductComposition = dbStore.get('ProductComposition');
+
   const promises = [];
 
   // 1. Nutritional Info
@@ -822,6 +984,8 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
       }
 
       // Update item nesting metadata
+      // Get models from tenant context (Item is locally bound above in createItem/updateItem if passed, but better to get fresh)
+      const Item = dbStore.get('Item');
       await Item.update({
         nesting_level: validation.nestingLevel,
         max_child_depth: Math.max(0, validation.nestingLevel - 1)
@@ -837,6 +1001,7 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
     );
 
     // Determine is_subproduct for each ingredient
+    const Item = dbStore.get('Item');
     const ingredientItems = await Item.findAll({
       where: { item_id: ingredientIds },
       attributes: ['item_id', 'category']
@@ -897,6 +1062,9 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
 };
 
 export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
+  // Get models and sequelize from tenant context
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
   try {
@@ -1015,7 +1183,23 @@ export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
 
     await transaction.commit();
 
+    // ASYNC: Update Embedding
+    syncItemEmbedding(item).catch(err =>
+      console.error(`Embedding sync failed for item ${item.item_id}:`, err.message)
+    );
+
     // Reload item with all associations
+    const ItemNutrition = dbStore.get('ItemNutrition');
+    const ItemAllergen = dbStore.get('ItemAllergen');
+    const ItemPhysicalProperties = dbStore.get('ItemPhysicalProperties');
+    const ItemShelfLife = dbStore.get('ItemShelfLife');
+    const ItemPackaging = dbStore.get('ItemPackaging');
+    const ItemQualityControl = dbStore.get('ItemQualityControl');
+    const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
+    const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
+    const FIFOBatch = dbStore.get('FIFOBatch');
+    const ProductComposition = dbStore.get('ProductComposition');
+
     const finalizedItem = await Item.findByPk(itemId, {
       include: [
         { model: ItemNutrition, as: 'nutrition', required: false },
@@ -1049,6 +1233,10 @@ export const finalizeItem = async (itemId, itemData = {}, userId = null) => {
 };
 
 export const getItemStockHistory = async (itemId, queryParams) => {
+  // Get models from tenant context
+  const StockMovement = dbStore.get('StockMovement');
+  const User = dbStore.get('User');
+
   const {
     startDate,
     endDate,
@@ -1102,6 +1290,10 @@ export const getItemStockHistory = async (itemId, queryParams) => {
 };
 
 export const getItemBatches = async (itemId) => {
+  // Get models from tenant context
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const batches = await FIFOBatch.findAll({
     where: {
       item_id: itemId,
@@ -1120,6 +1312,9 @@ export const getItemBatches = async (itemId) => {
 };
 
 export const getItemMovements = async (itemId) => {
+  // Get models from tenant context
+  const StockMovement = dbStore.get('StockMovement');
+
   const movements = await StockMovement.findAll({
     where: { item_id: itemId },
     order: [['timestamp', 'DESC']],
@@ -1136,82 +1331,101 @@ export const getItemMovements = async (itemId) => {
  * @returns {Promise<object>} Object with items_with_supplier and items_without_supplier arrays
  */
 export const getItemSupplierCoverage = async () => {
-  // Get all active purchasable items (raw_material, packaging, supplies)
-  const purchasableCategories = ['raw_material', 'packaging', 'supplies'];
+  try {
+    // Get active models from store - FIX FOR ReferenceError
+    const Item = dbStore.get('Item');
+    const Supplier = dbStore.get('Supplier');
+    const SupplierItem = dbStore.get('SupplierItem');
 
-  const allItems = await Item.findAll({
-    where: {
-      status: 'active',
-      category: { [Op.in]: purchasableCategories }
-    },
-    attributes: ['item_id', 'name', 'sku_code', 'category', 'current_stock', 'min_threshold', 'unit_of_measure'],
-    order: [['name', 'ASC']]
-  });
+    // Get all active purchasable items (raw_material, packaging, supplies)
+    const purchasableCategories = ['raw_material', 'packaging', 'supplies'];
 
-  // Get all supplier-item relationships
-  const supplierItems = await SupplierItem.findAll({
-    include: [{
-      model: Supplier,
-      as: 'supplier',
-      attributes: ['supplier_id', 'name', 'status'],
-      where: { status: 'active' } // Only count active suppliers
-    }],
-    attributes: ['item_id', 'supplier_id', 'moq', 'price_per_unit']
-  });
-
-  // Create a map of item_id -> supplier count
-  const itemSupplierMap = new Map();
-  supplierItems.forEach(si => {
-    const itemId = si.item_id;
-    if (!itemSupplierMap.has(itemId)) {
-      itemSupplierMap.set(itemId, []);
-    }
-    itemSupplierMap.get(itemId).push({
-      supplier_id: si.supplier_id,
-      supplier_name: si.supplier.name,
-      moq: si.moq,
-      price_per_unit: si.price_per_unit
+    const allItems = await Item.findAll({
+      where: {
+        status: 'active',
+        category: { [Op.in]: purchasableCategories }
+      },
+      attributes: ['item_id', 'name', 'sku_code', 'category', 'current_stock', 'min_threshold', 'unit_of_measure'],
+      order: [['name', 'ASC']]
     });
-  });
 
-  // Separate items into two arrays
-  const itemsWithSupplier = [];
-  const itemsWithoutSupplier = [];
+    // Get all supplier-item relationships
+    const supplierItems = await SupplierItem.findAll({
+      include: [{
+        model: Supplier,
+        as: 'supplier',
+        attributes: ['supplier_id', 'name', 'status'],
+        where: { status: 'active' } // Only count active suppliers
+      }],
+      attributes: ['item_id', 'supplier_id', 'moq', 'price_per_unit']
+    });
 
-  allItems.forEach(item => {
-    const itemData = {
-      item_id: item.item_id,
-      id: item.item_id, // Frontend compatibility
-      name: item.name,
-      sku_code: item.sku_code,
-      category: item.category,
-      current_stock: item.current_stock,
-      min_threshold: item.min_threshold,
-      unit_of_measure: item.unit_of_measure
+    // Create a map of item_id -> supplier count
+    const itemSupplierMap = new Map();
+    supplierItems.forEach(si => {
+      try {
+        const itemId = si.item_id;
+        if (!itemId) return; // Skip records without item_id
+
+        if (!itemSupplierMap.has(itemId)) {
+          itemSupplierMap.set(itemId, []);
+        }
+
+        const supplierName = (si.supplier && si.supplier.name)
+          ? si.supplier.name
+          : 'Unknown Supplier';
+
+        itemSupplierMap.get(itemId).push({
+          supplier_id: si.supplier_id,
+          supplier_name: supplierName,
+          moq: si.moq || 0,
+          price_per_unit: si.price_per_unit || 0
+        });
+      } catch (err) {
+        console.error(`Error processing supplier item ${si.supplier_item_id || 'unknown'}:`, err.message);
+      }
+    });
+
+    // Separate items into two arrays
+    const itemsWithSupplier = [];
+    const itemsWithoutSupplier = [];
+
+    allItems.forEach(item => {
+      const itemData = {
+        item_id: item.item_id,
+        id: item.item_id, // Frontend compatibility
+        name: item.name,
+        sku_code: item.sku_code,
+        category: item.category,
+        current_stock: item.current_stock,
+        min_threshold: item.min_threshold,
+        unit_of_measure: item.unit_of_measure
+      };
+
+      if (itemSupplierMap.has(item.item_id)) {
+        itemData.suppliers = itemSupplierMap.get(item.item_id);
+        itemData.supplier_count = itemData.suppliers.length;
+        itemsWithSupplier.push(itemData);
+      } else {
+        itemData.suppliers = [];
+        itemData.supplier_count = 0;
+        itemsWithoutSupplier.push(itemData);
+      }
+    });
+
+    return {
+      items_with_supplier: itemsWithSupplier,
+      items_without_supplier: itemsWithoutSupplier,
+      summary: {
+        total_purchasable_items: allItems.length,
+        items_with_supplier_count: itemsWithSupplier.length,
+        items_without_supplier_count: itemsWithoutSupplier.length,
+        coverage_percent: allItems.length > 0
+          ? Math.round((itemsWithSupplier.length / allItems.length) * 100)
+          : 100
+      }
     };
-
-    if (itemSupplierMap.has(item.item_id)) {
-      itemData.suppliers = itemSupplierMap.get(item.item_id);
-      itemData.supplier_count = itemData.suppliers.length;
-      itemsWithSupplier.push(itemData);
-    } else {
-      itemData.suppliers = [];
-      itemData.supplier_count = 0;
-      itemsWithoutSupplier.push(itemData);
-    }
-  });
-
-  return {
-    items_with_supplier: itemsWithSupplier,
-    items_without_supplier: itemsWithoutSupplier,
-    summary: {
-      total_purchasable_items: allItems.length,
-      items_with_supplier_count: itemsWithSupplier.length,
-      items_without_supplier_count: itemsWithoutSupplier.length,
-      coverage_percent: allItems.length > 0
-        ? Math.round((itemsWithSupplier.length / allItems.length) * 100)
-        : 100
-    }
-  };
+  } catch (error) {
+    throw error;
+  }
 };
-

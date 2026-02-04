@@ -39,3 +39,12 @@ export const resetSettingsToDefault = async () => {
   const response = await api.post('/settings/reset');
   return response.data.data;
 };
+
+/**
+ * Get company info (Master Admin only)
+ * Returns company token and registration link
+ */
+export const getCompanyInfo = async () => {
+  const response = await api.get('/settings/company-info');
+  return response.data.data;
+};

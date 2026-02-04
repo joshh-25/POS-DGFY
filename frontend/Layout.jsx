@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { usePermission } from './src/hooks/usePermission'; // Created next
+import { PERMISSIONS } from './src/config/permissions_frontend'; // Need to create this or hardcode strings for now.
+// Hardcoding strings is safer until I sync config. Or I can just use strings matching backend.
 import { createPageUrl } from './utils.js';
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from 'sonner';
@@ -19,22 +22,30 @@ import {
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout } from './src/services/authService.js';
+import FeedbackWidget from './components/common/FeedbackWidget';
 
-const navItems = [
-  { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
-  { name: 'Items', icon: Package, page: 'Items' },
-  { name: 'Suppliers', icon: Truck, page: 'Suppliers' },
-  { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders' },
-  { name: 'Job Orders', icon: Factory, page: 'JobOrders' },
-  { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements' },
-  { name: 'Reports', icon: FileText, page: 'Reports' },
-  { name: 'AI Chat', icon: Bot, page: 'AiChat' },
-  { name: 'Settings', icon: Settings, page: 'Settings' },
+const ALL_NAV_ITEMS = [
+  { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
+  { name: 'Items', icon: Package, page: 'Items', permission: 'items:view' },
+  { name: 'Suppliers', icon: Truck, page: 'Suppliers', permission: 'suppliers:view' },
+  { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
+  { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
+  { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
+  { name: 'Reports', icon: FileText, page: 'Reports', permission: 'reports:view' },
+  { name: 'AI Chat', icon: Bot, page: 'AiChat', permission: 'ai:chat' },
+  { name: 'Settings', icon: Settings, page: 'Settings', permission: 'settings:view' },
 ];
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const { can, userRole } = usePermission();
+
+  // Filter nav items
+  const navItems = ALL_NAV_ITEMS.filter(item => {
+    if (!item.permission) return true; // Always show if no permission required
+    return can(item.permission);
+  });
 
   const handleLogout = async () => {
     try {
@@ -133,6 +144,7 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </main>
       <Toaster position="top-right" />
+      <FeedbackWidget />
     </div>
   );
 }

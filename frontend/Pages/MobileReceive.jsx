@@ -14,8 +14,17 @@ import {
     Truck,
     Factory,
     Minus,
-    Plus
+    Plus,
+    ThumbsUp,
+    ThumbsDown
 } from 'lucide-react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { toast } from 'sonner';
 import { validateReceiveToken, markTokenUsed } from '../src/services/receiveTokenService.js';
 import { receivePurchaseOrder } from '../src/services/purchaseOrderService.js';
@@ -39,6 +48,8 @@ export default function MobileReceive() {
     const [receivedQuantities, setReceivedQuantities] = useState({});
     // State for JO production quantity
     const [productionQuantity, setProductionQuantity] = useState(0);
+    // State for JO quality check
+    const [qualityCheck, setQualityCheck] = useState('pass');
 
     useEffect(() => {
         validateToken();
@@ -173,7 +184,7 @@ export default function MobileReceive() {
                     return;
                 }
 
-                await completeJobOrder(orderData.order_id, null, notes, productionQuantity);
+                await completeJobOrder(orderData.order_id, null, notes, productionQuantity, qualityCheck);
             }
 
             // Mark token as used
@@ -423,6 +434,30 @@ export default function MobileReceive() {
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+
+                                {/* Quality Check */}
+                                <div className="mt-6 pt-4 border-t border-slate-100">
+                                    <p className="text-sm font-medium text-slate-700 mb-3">Quality Check</p>
+                                    <Select value={qualityCheck} onValueChange={setQualityCheck}>
+                                        <SelectTrigger className="w-full h-12">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="pass">
+                                                <div className="flex items-center gap-2">
+                                                    <ThumbsUp className="w-4 h-4 text-emerald-500" />
+                                                    Pass (Good Quality)
+                                                </div>
+                                            </SelectItem>
+                                            <SelectItem value="fail">
+                                                <div className="flex items-center gap-2">
+                                                    <ThumbsDown className="w-4 h-4 text-red-500" />
+                                                    Fail (Rejected/Scrap)
+                                                </div>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                         )}

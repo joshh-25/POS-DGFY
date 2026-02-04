@@ -17,13 +17,13 @@ export default defineConfig({
       { find: '@/Entities', replacement: path.resolve(__dirname, './Entities') },
       { find: '@/lib', replacement: path.resolve(__dirname, './src/lib') },
       { find: '@/services', replacement: path.resolve(__dirname, './src/services') },
-      // General alias comes last
+      // General alias to src folder
       { find: '@', replacement: path.resolve(__dirname, './') },
     ],
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
   server: {
-    allowedHosts: ['skupervisor.surebizcorp.com'],
+    allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49'],
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
@@ -35,7 +35,7 @@ export default defineConfig({
   preview: {
     port: 5173,
     host: true,
-    allowedHosts: ['skupervisor.surebizcorp.com'],
+    allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49'],
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

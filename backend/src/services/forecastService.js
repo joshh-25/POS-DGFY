@@ -1,8 +1,10 @@
 import { Op } from 'sequelize';
-import Item from '../models/Item.js';
-import StockMovement from '../models/StockMovement.js';
+import dbStore from '../utils/dbStore.js';
 
 export const forecastStockLevels = async (daysAhead = 30) => {
+  const Item = dbStore.get('Item');
+  const StockMovement = dbStore.get('StockMovement');
+
   const items = await Item.findAll({
     where: { is_active: true }
   });

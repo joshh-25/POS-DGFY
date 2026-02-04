@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
-import User from '../models/User.js';
+import dbStore from '../utils/dbStore.js';
 import { hashPassword, comparePassword, generateToken } from './authService.js';
+import * as landlordService from './landlordService.js';
 
 /**
  * Get current user profile by user ID
@@ -8,8 +9,9 @@ import { hashPassword, comparePassword, generateToken } from './authService.js';
  * @returns {Promise<Object>} User profile data
  */
 export const getCurrentUser = async (userId) => {
+  const User = dbStore.get('User');
   const user = await User.findByPk(userId, {
-    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at']
+    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
 
   if (!user) {
@@ -25,7 +27,9 @@ export const getCurrentUser = async (userId) => {
     role: user.role,
     is_active: user.is_active,
     last_login: user.last_login,
-    created_at: user.created_at
+    created_at: user.created_at,
+    permissions: user.permissions || [],
+    is_master_admin: user.is_master_admin
   };
 };
 
@@ -36,6 +40,7 @@ export const getCurrentUser = async (userId) => {
  * @returns {Promise<Object>} Updated user data with new token if needed
  */
 export const updateUserProfile = async (userId, updateData) => {
+  const User = dbStore.get('User');
   const user = await User.findByPk(userId);
 
   if (!user) {
@@ -83,8 +88,25 @@ export const updateUserProfile = async (userId, updateData) => {
     }
   }
 
+  // Capture old email before update for mapping update
+  const oldEmail = user.email;
+
   // Update user
   await user.update(updateData);
+
+  // If email changed, update the email-tenant mapping
+  if (updateData.email && updateData.email !== oldEmail) {
+    const store = dbStore.getStore();
+    const tenantId = store?.tenantId;
+    if (tenantId) {
+      try {
+        await landlordService.updateEmailTenantMapping(oldEmail, updateData.email, tenantId);
+      } catch (mappingError) {
+        // Log but don't fail the profile update
+        console.warn('Failed to update email-tenant mapping:', mappingError.message);
+      }
+    }
+  }
 
   // Generate new token if username or email changed (token payload includes these)
   let newToken = null;
@@ -109,6 +131,7 @@ export const updateUserProfile = async (userId, updateData) => {
  * @returns {Promise<void>}
  */
 export const changePassword = async (userId, currentPassword, newPassword) => {
+  const User = dbStore.get('User');
   const user = await User.findByPk(userId);
 
   if (!user) {
@@ -135,8 +158,9 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
  * @returns {Promise<Array>} List of all users
  */
 export const getAllUsers = async () => {
+  const User = dbStore.get('User');
   const users = await User.findAll({
-    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at'],
+    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin'],
     order: [['created_at', 'DESC']]
   });
 
@@ -147,7 +171,9 @@ export const getAllUsers = async () => {
     role: user.role,
     is_active: user.is_active,
     last_login: user.last_login,
-    created_at: user.created_at
+    created_at: user.created_at,
+    permissions: user.permissions || [],
+    is_master_admin: user.is_master_admin
   }));
 };
 
@@ -166,6 +192,7 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
     throw error;
   }
 
+  const User = dbStore.get('User');
   const targetUser = await User.findByPk(targetUserId);
 
   if (!targetUser) {
@@ -200,6 +227,7 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
     throw error;
   }
 
+  const User = dbStore.get('User');
   const targetUser = await User.findByPk(targetUserId);
 
   if (!targetUser) {
@@ -210,11 +238,72 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
 
   await targetUser.update({ is_active: isActive });
 
+  // Update email-tenant mapping based on active status
+  const store = dbStore.getStore();
+  const tenantId = store?.tenantId;
+  if (tenantId) {
+    try {
+      if (isActive) {
+        // Reactivating user - add mapping back
+        await landlordService.addEmailTenantMapping(targetUser.email, tenantId);
+      } else {
+        // Deactivating user - remove mapping so they can't log in without token
+        await landlordService.removeEmailTenantMapping(targetUser.email, tenantId);
+      }
+    } catch (mappingError) {
+      // Log but don't fail the status update
+      console.warn('Failed to update email-tenant mapping:', mappingError.message);
+    }
+  }
+
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
     email: targetUser.email,
     role: targetUser.role,
     is_active: targetUser.is_active
+  };
+};
+
+/**
+ * Update user permissions (Master Admin only)
+ * @param {number} adminUserId - ID of admin performing action
+ * @param {number} targetUserId - ID of user to update
+ * @param {Array} permissions - List of permission strings
+ * @param {boolean} isMaster - Grant Master Admin access (dangerous)
+ */
+export const updateUserPermissions = async (adminUserId, targetUserId, permissions, isMaster) => {
+  // Check if admin is authorized (double check happened in controller, but safe to check here)
+  const User = dbStore.get('User');
+  const adminUser = await User.findByPk(adminUserId);
+  if (!adminUser || !adminUser.is_master_admin) {
+    const error = new Error('Only Master Admins can manage permissions');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const targetUser = await User.findByPk(targetUserId);
+  if (!targetUser) {
+    const error = new Error('Target user not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Prevent revoking your own master admin status if you are the one doing it
+  if (adminUserId === parseInt(targetUserId) && isMaster === false) {
+    // Optional safety check: allow it for now, but UI should warn
+  }
+
+  const updateData = { permissions };
+  if (typeof isMaster === 'boolean') {
+    updateData.is_master_admin = isMaster;
+  }
+
+  await targetUser.update(updateData);
+
+  return {
+    user_id: targetUser.user_id,
+    permissions: targetUser.permissions,
+    is_master_admin: targetUser.is_master_admin
   };
 };

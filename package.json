@@ -15,7 +15,11 @@
     "start:backend": "cd backend && npm start",
     "test": "npm run test:frontend && npm run test:backend",
     "test:frontend": "cd frontend && npm test",
-    "test:backend": "cd backend && npm test"
+    "test:backend": "cd backend && npm test",
+    "validate:ai": "cd backend && npm run validate:ai",
+    "generate:ai-docs": "cd backend && npm run generate:ai-docs",
+    "ai:check": "cd backend && npm run ai:check",
+    "prepare": "husky"
   },
   "keywords": [
     "inventory",
@@ -27,7 +31,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "husky": "^9.0.0"
   },
   "engines": {
     "node": ">=18.0.0",

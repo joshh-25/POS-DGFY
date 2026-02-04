@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
-import { ITEM_UNITS } from '../../src/lib/constants';
+import { UomSelect } from '@/components/ui/UomSelect';
 
 export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft, folders = [] }) {
   const [formData, setFormData] = useState({
@@ -278,6 +278,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
       max_capacity: Number(cleanedData.max_capacity) || null, // Allow null for drafts
       min_threshold: toNumberOrNull(cleanedData.min_threshold),
       purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
+      current_stock: toNumberOrNull(cleanedData.current_stock),
       fifo_enabled: cleanedData.fifo_enabled || false,
       product_folder: cleanedData.product_folder || null,
       batch_size: toNumberOrNull(cleanedData.batch_size),
@@ -383,18 +384,11 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               </div>
               <div className="space-y-2">
                 <Label>Unit of Measure</Label>
-                <Select value={formData.unit_of_measure || 'kg'} onValueChange={(v) => handleChange('unit_of_measure', v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ITEM_UNITS.map((unit) => (
-                      <SelectItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <UomSelect
+                  value={formData.unit_of_measure || 'kg'}
+                  onValueChange={(v) => handleChange('unit_of_measure', v)}
+                  placeholder="Select unit..."
+                />
               </div>
             </div>
 

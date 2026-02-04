@@ -5,21 +5,155 @@
  * Uses database models for persistence.
  */
 
+import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
 import { Op } from 'sequelize';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
 import * as aiService from '../services/aiService.js';
-import PendingAIAction from '../models/PendingAIAction.js';
-import AIConversation from '../models/AIConversation.js';
+import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 
 /**
  * POST /api/v1/ai/chat
- * Process a chat message
  */
 export const chat = async (req, res, next) => {
   try {
     const { message, conversationId } = req.body;
+    const files = req.files || []; // Handled by multer
     const user = req.user;
+
+    // Process files and append content to message
+    let finalMessageText = message;
+    const imageParts = [];
+
+    if (files.length > 0) {
+      console.log(`\n[UPLOAD DEBUG] Received ${files.length} files:`);
+
+      const fileContents = [];
+
+      for (const f of files) {
+        console.log(` - ${f.originalname} (${f.mimetype}, ${f.size} bytes)`);
+
+        const ext = f.originalname.split('.').pop()?.toLowerCase() || '';
+
+        // Text-based MIME types
+        const textMimeTypes = [
+          'text/plain', 'text/csv', 'text/html', 'text/xml', 'text/markdown',
+          'text/tab-separated-values', 'text/css', 'text/javascript',
+          'application/json', 'application/xml', 'application/javascript',
+          'application/x-yaml', 'application/x-www-form-urlencoded'
+        ];
+
+        // Text-based file extensions
+        const textExtensions = [
+          'txt', 'csv', 'json', 'xml', 'md', 'yaml', 'yml', 'html', 'htm',
+          'css', 'js', 'ts', 'jsx', 'tsx', 'sql', 'log', 'ini', 'cfg', 'conf',
+          'sh', 'bat', 'ps1', 'py', 'rb', 'php', 'java', 'c', 'cpp', 'h',
+          'go', 'rs', 'env', 'gitignore', 'tsv'
+        ];
+
+        const isText = textMimeTypes.some(t => f.mimetype.includes(t)) ||
+          textExtensions.includes(ext);
+
+        // Binary file categories
+        const excelExtensions = ['xlsx', 'xls', 'xlsm'];
+        const pdfExtensions = ['pdf'];
+        const wordExtensions = ['docx', 'doc'];
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+
+        if (isText) {
+          try {
+            const content = await fs.readFile(f.path, 'utf8');
+            const truncated = content.length > 50000;
+            const safeContent = truncated ? content.substring(0, 50000) + '\n...[Content truncated at 50KB]...' : content;
+            fileContents.push(`\n\n--- FILE: ${f.originalname} (${ext.toUpperCase()}) ---\n${safeContent}\n--- END FILE ---\n`);
+            console.log(`  [OK] Read ${content.length} chars from text file`);
+          } catch (readErr) {
+            console.error(`  [ERR] Failed to read file ${f.originalname}:`, readErr.message);
+            fileContents.push(`\n[Error reading file ${f.originalname}: ${readErr.message}]`);
+          }
+        } else if (excelExtensions.includes(ext)) {
+          fileContents.push(`\n\n[Attached Excel File: ${f.originalname}]\n[Note: Excel parsing not yet implemented. Please export to CSV for import functionality.]\n`);
+          console.log(`  [INFO] Excel file attached - parsing not yet implemented`);
+        } else if (pdfExtensions.includes(ext)) {
+          console.log(`  [INFO] Processing PDF file: ${f.originalname}`);
+          try {
+            const dataBuffer = await fs.readFile(f.path);
+            const data = await pdfParse(dataBuffer);
+            const content = data.text;
+
+            const truncated = content.length > 50000;
+            const safeContent = truncated ? content.substring(0, 50000) + '\n...[Content truncated at 50KB]...' : content;
+
+            fileContents.push(`\n\n--- FILE: ${f.originalname} (PDF) ---\n${safeContent}\n--- END FILE ---\n`);
+            console.log(`  [OK] Extracted ${content.length} chars from PDF`);
+          } catch (pdfErr) {
+            console.error(`  [ERR] Failed to parse PDF ${f.originalname}:`, pdfErr.message);
+            fileContents.push(`\n[Error reading PDF ${f.originalname}: ${pdfErr.message}]`);
+          }
+        } else if (wordExtensions.includes(ext)) {
+          console.log(`  [INFO] Processing Word file: ${f.originalname}`);
+          try {
+            const result = await mammoth.extractRawText({ path: f.path });
+            const content = result.value;
+
+            const truncated = content.length > 50000;
+            const safeContent = truncated ? content.substring(0, 50000) + '\n...[Content truncated at 50KB]...' : content;
+
+            fileContents.push(`\n\n--- FILE: ${f.originalname} (DOCX) ---\n${safeContent}\n--- END FILE ---\n`);
+            console.log(`  [OK] Extracted ${content.length} chars from DOCX`);
+          } catch (docErr) {
+            console.error(`  [ERR] Failed to parse DOCX ${f.originalname}:`, docErr.message);
+            fileContents.push(`\n[Error reading DOCX ${f.originalname}: ${docErr.message}]`);
+          }
+        } else if (imageExtensions.includes(ext) || f.mimetype.startsWith('image/')) {
+          console.log(`  [INFO] Processing Image for Vision: ${f.originalname}`);
+          try {
+            const imageBuffer = await fs.readFile(f.path);
+            const base64Image = imageBuffer.toString('base64');
+            // Check if mimetype is valid for data URI, default to jpeg if missing
+            const mimeType = f.mimetype || 'image/jpeg';
+
+            imageParts.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64Image}`
+              }
+            });
+            console.log(`  [OK] Converted image to Base64 for Vision API`);
+          } catch (imgErr) {
+            console.error(`  [ERR] Failed to process image ${f.originalname}:`, imgErr.message);
+            fileContents.push(`\n[Error reading Image ${f.originalname}: ${imgErr.message}]`);
+          }
+        } else {
+          fileContents.push(`\n\n[Attached File: ${f.originalname} (${f.mimetype})]\n[Note: This file type is not yet supported for content extraction.]\n`);
+          console.log(`  [WARN] Unsupported file type: ${f.mimetype} / .${ext}`);
+        }
+      }
+
+      if (fileContents.length > 0) {
+        finalMessageText += "\n" + fileContents.join('');
+      }
+    }
+
+    // Construct final message payload (String or Array)
+    let messagePayload = finalMessageText;
+    if (imageParts.length > 0) {
+      messagePayload = [
+        { type: "text", text: finalMessageText },
+        ...imageParts
+      ];
+    }
+
+    // DEBUG: Log user info
+    console.log(`\n[AUTH DEBUG] User: ${user.username}, Role: ${user.role}, User ID: ${user.user_id}`);
+
+    // Get models from context
+    const AIConversation = dbStore.get('AIConversation');
+    const PendingAIAction = dbStore.get('PendingAIAction');
 
     // Generate or use existing conversation ID
     const convId = conversationId || uuidv4();
@@ -39,12 +173,38 @@ export const chat = async (req, res, next) => {
     // Get messages array
     let messages = conversation.messages || [];
 
+    // Defensive check: ensure messages is an array (Sequelize JSON sometimes returns string)
+    if (typeof messages === 'string') {
+      try {
+        messages = JSON.parse(messages);
+      } catch (e) {
+        messages = [];
+      }
+    }
+
+    if (!Array.isArray(messages)) {
+      messages = [];
+    }
+
+
+
     // Check for special queries (capabilities, limitations)
-    const specialResponse = aiService.handleSpecialQueries(message);
+    // Note: handleSpecialQueries now expects the TEXT content.
+    // aiService.processMessage handles this extraction, but we might want to check here if logic was duplicated.
+    // The previous logic called aiService.handleSpecialQueries(message);
+    // Since we now have messagePayload, we should pass that to processMessage, which handles extraction.
+    // However, the controller block below effectively DUPLICATES the check.
+    // Let's rely on aiService.processMessage to handle it if possible, OR extraction here.
+    // Ideally, we keep the controller logic for special queries simple:
+
+    // Extract text for local check
+    const textForCheck = finalMessageText;
+
+    const specialResponse = aiService.handleSpecialQueries(textForCheck);
     if (specialResponse) {
       // Add to conversation history
       messages.push(
-        { role: 'user', content: message, timestamp: new Date().toISOString() },
+        { role: 'user', content: finalMessageText, timestamp: new Date().toISOString() },
         { role: 'assistant', content: specialResponse.content, timestamp: new Date().toISOString() }
       );
 
@@ -68,21 +228,26 @@ export const chat = async (req, res, next) => {
 
     // Process message with AI
     const response = await aiService.processMessage(
-      message,
+      messagePayload, // Pass the complex payload (string or array)
       messages,
       user,
       convId
     );
 
     // Add user message to history
+    // NOTE: If payload is array, we store it as is. Frontend needs to handle rendering.
+    // But currently frontend might expect string content.
+    // Storing full object is better for future.
     messages.push({
       role: 'user',
-      content: message,
+      content: messagePayload, // Store the array including images
       timestamp: new Date().toISOString()
     });
 
     // Handle different response types
     if (response.type === 'confirmation_required') {
+      response.message = `🔔 I'm ready to ${response.description.toLowerCase()}. Please confirm to proceed.`;
+
       // Store pending action in database
       await PendingAIAction.create({
         action_id: response.action_id,
@@ -105,20 +270,32 @@ export const chat = async (req, res, next) => {
       });
 
     } else if (response.type === 'text') {
-      // Add AI response to history
-      messages.push({
+      // Add AI response to history with tool context for memory
+      const assistantMessage = {
         role: 'assistant',
         content: response.content,
         timestamp: new Date().toISOString()
-      });
+      };
+
+      // Include tool context if available (helps AI remember item/supplier IDs)
+      if (response.toolContext) {
+        assistantMessage.context = response.toolContext;
+      }
+
+      messages.push(assistantMessage);
     }
 
+
     // Update conversation
-    await conversation.update({
-      messages,
-      last_message_at: new Date(),
-      title: conversation.title || generateConversationTitle(messages)
-    });
+
+    // Update conversation
+    // Force Sequelize to recognize the JSON change (it sometimes misses nested object changes)
+    conversation.messages = messages;
+    conversation.last_message_at = new Date();
+    conversation.title = conversation.title || generateConversationTitle(messages);
+    conversation.changed('messages', true);  // Force detection of nested changes
+
+    await conversation.save();
 
     res.json({
       success: true,
@@ -141,6 +318,10 @@ export const confirmAction = async (req, res, next) => {
   try {
     const { actionId } = req.body;
     const user = req.user;
+
+    // Get models from context
+    const PendingAIAction = dbStore.get('PendingAIAction');
+    const AIConversation = dbStore.get('AIConversation');
 
     // Get pending action from database
     const pendingAction = await PendingAIAction.findByPk(actionId);
@@ -181,12 +362,27 @@ export const confirmAction = async (req, res, next) => {
       });
     }
 
+    // Parse action_payload if it's a string (defensive check for JSON fields)
+    let actionPayload = pendingAction.action_payload;
+    if (typeof actionPayload === 'string') {
+      try {
+        actionPayload = JSON.parse(actionPayload);
+      } catch (e) {
+        logger.error('Failed to parse action_payload:', e);
+        actionPayload = {};
+      }
+    }
+
     // Execute the action
+    // We pass the pendingAction model instance or a structured object that matches what executeConfirmedAction expects
     const actionData = {
-      action_type: pendingAction.action_type,
+      action_id: pendingAction.action_id,
+      user_id: pendingAction.user_id, // CRITICAL: explicit user_id for the check
       toolName: pendingAction.action_type,
-      args: pendingAction.action_payload,
-      conversation_id: pendingAction.conversation_id
+      args: actionPayload,
+      conversation_id: pendingAction.conversation_id,
+      description: pendingAction.description,
+      expires_at: pendingAction.expires_at
     };
 
     const result = await aiService.executeConfirmedAction(actionId, actionData, user);
@@ -198,28 +394,78 @@ export const confirmAction = async (req, res, next) => {
       execution_result: result
     });
 
+    let finalMessageContent = result.message;
+
     // Update conversation history
     if (pendingAction.conversation_id) {
       const conversation = await AIConversation.findByPk(pendingAction.conversation_id);
       if (conversation) {
-        const messages = conversation.messages || [];
+        // Defensive parsing for messages
+        let messages = conversation.messages || [];
+        if (typeof messages === 'string') {
+          try {
+            messages = JSON.parse(messages);
+          } catch (e) {
+            messages = [];
+          }
+        }
+        if (!Array.isArray(messages)) {
+          messages = [];
+        }
+
+        // ---------------------------------------------------------
+        // Generate AI follow-up
+        // ---------------------------------------------------------
+        try {
+          // We ask the AI to generate a follow-up based on the result
+          // We use a hidden system prompt or just inject the result as a context
+          const followUpPrompt = `[System Notification]: The user confirmed the action "${pendingAction.description}". It was executed successfully. Result: ${JSON.stringify(result)}. Please provide a short, natural follow-up response to the user, confirming it's done and asking if they need anything else related to this. Do not repeat the technical details excessively, just be helpful.`;
+
+          // We temporarily append this to history for the AI to see, but we don't save the prompt itself to DB history if we want to keep it clean,
+          // OR we can just pass it as the 'message' to processMessage.
+          // Let's use string concatenation to add the result message to the conversation history logic
+
+          const followUpResponse = await aiService.processMessage(
+            followUpPrompt,
+            messages, // Pass current history
+            user,
+            pendingAction.conversation_id
+          );
+
+          if (followUpResponse && followUpResponse.content) {
+            // Combine the system success message with the AI's natural response
+            // This ensures the frontend gets one nice message bubble
+            finalMessageContent = `${result.message}\n\n${followUpResponse.content}`;
+          }
+
+        } catch (aiError) {
+          console.error('Error generating AI follow-up:', aiError);
+          // Fallback to just the system message if AI fails
+        }
+
         messages.push({
           role: 'assistant',
-          content: result.message,
+          content: finalMessageContent,
           timestamp: new Date().toISOString(),
           action_result: result
         });
-        await conversation.update({
-          messages,
-          last_message_at: new Date()
-        });
+
+        // Force update including the JSON content
+        conversation.messages = messages;
+        conversation.changed('messages', true);
+        conversation.last_message_at = new Date();
+
+        await conversation.save();
       }
     }
 
     res.json({
       success: result.type === 'success',
-      data: result,
-      message: result.message,
+      data: {
+        ...result,
+        message: finalMessageContent // Return the combined message
+      },
+      message: finalMessageContent,
       timestamp: new Date().toISOString()
     });
 
@@ -237,6 +483,10 @@ export const cancelAction = async (req, res, next) => {
   try {
     const { actionId } = req.body;
     const user = req.user;
+
+    // Get models from context
+    const PendingAIAction = dbStore.get('PendingAIAction');
+    const AIConversation = dbStore.get('AIConversation');
 
     // Get pending action from database
     const pendingAction = await PendingAIAction.findByPk(actionId);
@@ -307,6 +557,7 @@ export const cancelAction = async (req, res, next) => {
 export const getConversations = async (req, res, next) => {
   try {
     const user = req.user;
+    const AIConversation = dbStore.get('AIConversation');
 
     // Get all non-expired conversations for user
     const conversations = await AIConversation.findAll({
@@ -359,6 +610,7 @@ export const getConversation = async (req, res, next) => {
   try {
     const { id } = req.params;
     const user = req.user;
+    const AIConversation = dbStore.get('AIConversation');
 
     const conversation = await AIConversation.findByPk(id);
 
@@ -391,13 +643,25 @@ export const getConversation = async (req, res, next) => {
       (new Date(conversation.expires_at) - new Date()) / (1000 * 60 * 60 * 24)
     );
 
+    let messages = conversation.messages || [];
+    if (typeof messages === 'string') {
+      try {
+        messages = JSON.parse(messages);
+      } catch (e) {
+        messages = [];
+      }
+    }
+    if (!Array.isArray(messages)) {
+      messages = [];
+    }
+
     res.json({
       success: true,
       data: {
         id: conversation.conversation_id,
         user_id: conversation.user_id,
         title: conversation.title,
-        messages: conversation.messages || [],
+        messages: messages,
         created_at: conversation.created_at,
         expires_at: conversation.expires_at,
         last_message_at: conversation.last_message_at,
@@ -422,6 +686,8 @@ export const deleteConversation = async (req, res, next) => {
   try {
     const { id } = req.params;
     const user = req.user;
+    const AIConversation = dbStore.get('AIConversation');
+    const PendingAIAction = dbStore.get('PendingAIAction');
 
     const conversation = await AIConversation.findByPk(id);
 
@@ -527,6 +793,10 @@ export const cleanupExpiredData = async () => {
   const now = new Date();
 
   try {
+    // Get models from dbStore (will fallback to Landlord DB if no context)
+    const AIConversation = dbStore.get('AIConversation');
+    const PendingAIAction = dbStore.get('PendingAIAction');
+
     // Delete expired conversations
     const deletedConversations = await AIConversation.destroy({
       where: {

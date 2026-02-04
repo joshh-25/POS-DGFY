@@ -10,20 +10,171 @@ export const TOOL_CATEGORIES = {
   READ: 'read',           // No confirmation needed
   WRITE: 'write',         // Requires confirmation
   ANALYSIS: 'analysis',   // No confirmation needed
-  IMPORT_EXPORT: 'import_export' // Requires confirmation for imports
+  IMPORT_EXPORT: 'import_export', // Requires confirmation for imports
+  FILE_MANAGEMENT: 'file_management', // Physical file system operations
+  INVENTORY_GROUPING: 'inventory_grouping' // Logical item grouping (folders)
 };
 
 // Role requirements for each tool
 export const TOOL_PERMISSIONS = {
   staff: ['read', 'analysis'],
-  manager: ['read', 'write', 'analysis', 'import_export'],
-  admin: ['read', 'write', 'analysis', 'import_export']
+  manager: ['read', 'write', 'analysis', 'import_export', 'file_management', 'inventory_grouping'],
+  admin: ['read', 'write', 'analysis', 'import_export', 'file_management', 'inventory_grouping']
 };
 
 /**
  * OpenAI Function Calling Tool Definitions
  */
 export const AI_TOOLS = [
+  // ============== FILE MANAGEMENT ==============
+  {
+    type: "function",
+    function: {
+      name: "list_files",
+      description: "List files and folders in the physical 'uploads/' directory on the server. Use this for management of uploaded documents/images, NOT for organizing inventory items.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative path to list (default: root uploads folder)"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.FILE_MANAGEMENT,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_folder",
+      description: "Create a new physical folder in the server's 'uploads/' directory. Use this for file storage organization, NOT for inventory items.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Name or relative path of the new folder (e.g., 'Reports' or '2024/Invoices')"
+          }
+        },
+        required: ["path"]
+      }
+    },
+    category: TOOL_CATEGORIES.FILE_MANAGEMENT,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "move_file",
+      description: "Move or rename a physical file/folder within the 'uploads/' directory.",
+      parameters: {
+        type: "object",
+        properties: {
+          source: {
+            type: "string",
+            description: "Current path of the file/folder"
+          },
+          destination: {
+            type: "string",
+            description: "New path or folder location"
+          }
+        },
+        required: ["source", "destination"]
+      }
+    },
+    category: TOOL_CATEGORIES.FILE_MANAGEMENT,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+
+  // ============== INVENTORY GROUPING (LOGICAL FOLDERS) ==============
+  {
+    type: "function",
+    function: {
+      name: "get_inventory_folders",
+      description: "List logical inventory folders (groups) used to organize SKU items. Returns folder names and item counts.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_inventory_folder",
+      description: "Create a new logical folder to group inventory items together (e.g., 'Packaging', 'Raw Materials').",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name of the logical folder"
+          },
+          description: {
+            type: "string",
+            description: "Description of what this folder contains"
+          }
+        },
+        required: ["name"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "move_items_to_inventory_folder",
+      description: "Move items into a logical inventory folder. Both existing and new folders can be used.",
+      parameters: {
+        type: "object",
+        properties: {
+          folder_name: {
+            type: "string",
+            description: "Target folder name"
+          },
+          item_ids: {
+            type: "array",
+            items: { type: "integer" },
+            description: "List of item IDs to move"
+          }
+        },
+        required: ["folder_name", "item_ids"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_items_in_inventory_folder",
+      description: "List all inventory items assigned to a specific logical folder.",
+      parameters: {
+        type: "object",
+        properties: {
+          folder_name: {
+            type: "string",
+            description: "Folder name to filter by"
+          }
+        },
+        required: ["folder_name"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: false
+  },
+
   // ============== DASHBOARD & STATS ==============
   {
     type: "function",
@@ -64,7 +215,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_items",
-      description: "Search and list inventory items with filtering options. Can filter by category, status, stock level, or search by name/SKU.",
+      description: "Search and list inventory items with filtering options. Can filter by category, status, stock level, or search by name/SKU. USE THIS FIRST when a user mentions any item by name - search for it before asking for clarification.",
       parameters: {
         type: "object",
         properties: {
@@ -106,7 +257,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_item_details",
-      description: "Get detailed information about a specific item including FIFO batches, stock history, and composition (for products).",
+      description: "Get detailed information about a specific item including FIFO batches, stock history, suppliers who provide this item, and composition (for products). USE THIS to find which suppliers can fulfill orders for a specific item.",
       parameters: {
         type: "object",
         properties: {
@@ -245,7 +396,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_suppliers",
-      description: "List all suppliers with optional filtering.",
+      description: "List all suppliers with optional filtering. USE THIS when user asks about suppliers or when you need to present supplier options for ordering.",
       parameters: {
         type: "object",
         properties: {
@@ -287,6 +438,144 @@ export const AI_TOOLS = [
     },
     category: TOOL_CATEGORIES.READ,
     requiresConfirmation: false
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "create_supplier",
+      description: "Register a new supplier. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Supplier name"
+          },
+          contact_person: {
+            type: "string",
+            description: "Contact person name"
+          },
+          email: {
+            type: "string",
+            description: "Email address"
+          },
+          phone: {
+            type: "string",
+            description: "Phone number"
+          },
+          address: {
+            type: "string",
+            description: "Physical address"
+          },
+          lead_time: {
+            type: "integer",
+            description: "Average lead time in days"
+          }
+        },
+        required: ["name"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_supplier",
+      description: "Update supplier details. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          supplier_id: {
+            type: "integer",
+            description: "Supplier ID"
+          },
+          name: {
+            type: "string",
+            description: "Updated name"
+          },
+          contact_person: {
+            type: "string",
+            description: "Updated contact person"
+          },
+          email: {
+            type: "string",
+            description: "Updated email"
+          },
+          phone: {
+            type: "string",
+            description: "Updated phone"
+          },
+          status: {
+            type: "string",
+            enum: ["active", "inactive"],
+            description: "Update status"
+          }
+        },
+        required: ["supplier_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_supplier",
+      description: "Soft-delete a supplier. Requires admin role. Will fail if supplier has active Purchase Orders.",
+      parameters: {
+        type: "object",
+        properties: {
+          supplier_id: {
+            type: "integer",
+            description: "Supplier ID to delete"
+          },
+          reason: {
+            type: "string",
+            description: "Reason for deletion"
+          }
+        },
+        required: ["supplier_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin"
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_supplier_item",
+      description: "Link an item to a supplier with price and MOQ. Essential for PO creation.",
+      parameters: {
+        type: "object",
+        properties: {
+          supplier_id: {
+            type: "integer",
+            description: "Supplier ID"
+          },
+          item_id: {
+            type: "integer",
+            description: "Item ID"
+          },
+          moq: {
+            type: "integer",
+            description: "Minimum Order Quantity"
+          },
+          price_per_unit: {
+            type: "number",
+            description: "Agreed price per unit"
+          }
+        },
+        required: ["supplier_id", "item_id", "price_per_unit"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
   },
 
   // ============== PURCHASE ORDERS ==============
@@ -332,7 +621,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "create_purchase_order",
-      description: "Create a new purchase order for a supplier. Requires manager or admin role.",
+      description: "Create a new purchase order for a supplier. Requires manager or admin role. BEFORE calling this, you should have already looked up the item and its suppliers using get_item_details.",
       parameters: {
         type: "object",
         properties: {
@@ -420,6 +709,126 @@ export const AI_TOOLS = [
     },
     category: TOOL_CATEGORIES.WRITE,
     requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+
+  // ============== SYSTEM SETTINGS ==============
+  {
+    type: "function",
+    function: {
+      name: "get_system_settings",
+      description: "Get all system configuration settings (thresholds, alerts, preferences). Requires admin role.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false,
+    requiredRole: "admin"
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_system_settings",
+      description: "Update system configuration. Requires admin role. Can update multiple settings at once.",
+      parameters: {
+        type: "object",
+        properties: {
+          updates: {
+            type: "object",
+            description: "Key-value pairs of settings to update (e.g., { 'low_stock_threshold': '15', 'enable_email_alerts': 'true' })"
+          }
+        },
+        required: ["updates"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin"
+  },
+
+  // ============== USER MANAGEMENT ==============
+  {
+    type: "function",
+    function: {
+      name: "get_users",
+      description: "List all system users. Requires admin role.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false,
+    requiredRole: "admin"
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_user_role",
+      description: "Update a user's role. Requires admin role. Cannot change own role.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_user_id: {
+            type: "integer",
+            description: "ID of the user to update"
+          },
+          new_role: {
+            type: "string",
+            enum: ["staff", "manager", "admin"],
+            description: "New role to assign"
+          }
+        },
+        required: ["target_user_id", "new_role"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin"
+  },
+  {
+    type: "function",
+    function: {
+      name: "toggle_user_status",
+      description: "Activate or deactivate a user account. Requires admin role. Cannot deactivate own account.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_user_id: {
+            type: "integer",
+            description: "ID of the user to update"
+          },
+          is_active: {
+            type: "boolean",
+            description: "True to activate, False to deactivate"
+          }
+        },
+        required: ["target_user_id", "is_active"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin"
+  },
+
+  // ============== STRATEGIC REPORTING ==============
+  {
+    type: "function",
+    function: {
+      name: "generate_executive_summary",
+      description: "Generate a high-level executive summary of the inventory status, including financial value, critical alerts, and operational bottlenecks. Good for daily briefings.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.ANALYSIS,
+    requiresConfirmation: false,
     requiredRole: "manager"
   },
 
@@ -751,9 +1160,10 @@ export const AI_TOOLS = [
           },
           date_range: {
             type: "object",
+            description: "Optional date range filter for the analysis",
             properties: {
-              start: { type: "string", format: "date" },
-              end: { type: "string", format: "date" }
+              start: { type: "string", format: "date", description: "Start date in YYYY-MM-DD format" },
+              end: { type: "string", format: "date", description: "End date in YYYY-MM-DD format" }
             }
           }
         },
@@ -769,7 +1179,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "import_csv_data",
-      description: "Parse and validate CSV data for import. Supports items and suppliers. Returns preview for confirmation before actual import.",
+      description: "Parse and validate CSV data for import. Supports items and suppliers. When the user attaches a CSV file, EXTRACT the CSV content from the message (it will appear between '--- FILE: ... ---' and '--- END FILE ---' markers) and pass it as csv_content. Returns preview for confirmation before actual import.",
       parameters: {
         type: "object",
         properties: {
@@ -780,10 +1190,11 @@ export const AI_TOOLS = [
           },
           csv_content: {
             type: "string",
-            description: "The CSV content (header row + data rows)"
+            description: "The raw CSV content (header row + data rows). Extract this from the file attachment in the user's message if they uploaded a file."
           },
           options: {
             type: "object",
+            description: "Import options to control behavior",
             properties: {
               skip_duplicates: {
                 type: "boolean",
@@ -820,11 +1231,11 @@ export const AI_TOOLS = [
             type: "object",
             description: "Optional filters to apply",
             properties: {
-              status: { type: "string" },
-              category: { type: "string" },
-              date_from: { type: "string", format: "date" },
-              date_to: { type: "string", format: "date" },
-              stock_status: { type: "string" }
+              status: { type: "string", description: "Filter by status value" },
+              category: { type: "string", description: "Filter by category" },
+              date_from: { type: "string", format: "date", description: "Start date filter in YYYY-MM-DD format" },
+              date_to: { type: "string", format: "date", description: "End date filter in YYYY-MM-DD format" },
+              stock_status: { type: "string", description: "Filter by stock status (low, healthy, overstock)" }
             }
           },
           output_preference: {

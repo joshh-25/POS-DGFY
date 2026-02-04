@@ -13,7 +13,10 @@ import {
   Lock,
   Eye,
   EyeOff,
-  Users
+  Users,
+  Building2,
+  Copy,
+  Link as LinkIcon
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import useStore from '../src/store/useStore.js';
+import { usePermission } from '../src/hooks/usePermission';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
@@ -55,7 +59,9 @@ export default function Settings() {
 
   const [profileErrors, setProfileErrors] = useState({});
   const [showUserManagement, setShowUserManagement] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState(null);
   const { currentUser, setCurrentUser } = useStore();
+  const { can } = usePermission();
 
   // Fetch current user and system settings on mount
   useEffect(() => {
@@ -85,6 +91,17 @@ export default function Settings() {
           qualityThreshold: systemSettings.supplier_rating_threshold?.value || 3.5,
           autoCalculateThresholds: systemSettings.enable_auto_reorder?.value ?? true
         });
+
+        // Fetch company info if master admin
+        if (user.is_master_admin) {
+          try {
+            const companyData = await settingsService.getCompanyInfo();
+            setCompanyInfo(companyData);
+          } catch (companyError) {
+            // Silently fail - not critical for page load
+            console.warn('Failed to load company info:', companyError.message);
+          }
+        }
       } catch (error) {
         toast.error('Failed to load settings');
       }
@@ -200,7 +217,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -370,8 +387,82 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* User Management - Admin Only */}
-        {currentUser?.role === 'admin' && (
+        {/* Company Information - Master Admin Only */}
+        {currentUser?.is_master_admin && companyInfo && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Company Information
+              </CardTitle>
+              <CardDescription>
+                Share these details with new employees to join your company
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Company Name */}
+              <div className="space-y-2">
+                <Label>Company Name</Label>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <span className="font-medium text-slate-900">{companyInfo.company_name}</span>
+                </div>
+              </div>
+
+              {/* Company Token */}
+              <div className="space-y-2">
+                <Label>Company Token</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={companyInfo.company_token}
+                    readOnly
+                    className="font-mono bg-slate-50"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(companyInfo.company_token);
+                      toast.success('Token copied to clipboard');
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  New employees can use this token when registering
+                </p>
+              </div>
+
+              {/* Registration Link */}
+              <div className="space-y-2">
+                <Label>Registration Link</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={companyInfo.registration_link}
+                    readOnly
+                    className="text-sm bg-slate-50"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(companyInfo.registration_link);
+                      toast.success('Link copied to clipboard');
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Share this link with new employees - it pre-fills the company token
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* User Management - Admin Only (Granular Permission) */}
+        {can('users:manage') && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

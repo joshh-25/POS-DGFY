@@ -1,12 +1,12 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import StockMovement from '../models/StockMovement.js';
-import Item from '../models/Item.js';
-import User from '../models/User.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import BatchTransaction from '../models/BatchTransaction.js';
+import dbStore from '../utils/dbStore.js';
 
 export const getStockMovements = async (queryParams) => {
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const User = dbStore.get('User');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+
   const {
     page = 1,
     limit = 20,
@@ -61,10 +61,17 @@ export const getStockMovements = async (queryParams) => {
  * - Creates a new FIFO batch if item is FIFO-enabled
  * - Uses expiry_date if provided, otherwise calculates from shelf_life_days
  */
-export const createStockMovement = async (movementData, userId) => {
-  const { item_id, quantity, movement_type, batch_id, expiry_date } = movementData;
+export const createStockMovement = async (movementData, userId, transaction = null) => {
+  const Item = dbStore.get('Item');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const StockMovement = dbStore.get('StockMovement');
+  const BatchTransaction = dbStore.get('BatchTransaction');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  const item = await Item.findByPk(item_id);
+  const { item_id, quantity, movement_type, batch_id, expiry_date } = movementData;
+  const options = transaction ? { transaction } : {};
+
+  const item = await Item.findByPk(item_id, options);
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -99,7 +106,7 @@ export const createStockMovement = async (movementData, userId) => {
         received_date: receivedDate,
         expiry_date: movementExpiryDate,
         po_number: movementData.po_number || `MANUAL-${Date.now()}` // Manual adjustment reference or PO Number
-      });
+      }, options);
       createdBatchId = batch.batch_id;
     }
   }
@@ -118,7 +125,7 @@ export const createStockMovement = async (movementData, userId) => {
 
       // If specific batch_id provided, deduct from that batch only
       if (batch_id) {
-        const targetBatch = await FIFOBatch.findByPk(batch_id);
+        const targetBatch = await FIFOBatch.findByPk(batch_id, options);
         if (!targetBatch) {
           const error = new Error('Specified batch not found');
           error.statusCode = 404;
@@ -134,7 +141,7 @@ export const createStockMovement = async (movementData, userId) => {
 
         await targetBatch.update({
           quantity_consumed: parseFloat(targetBatch.quantity_consumed) + remaining
-        });
+        }, options);
         createdBatchId = batch_id;
         movementExpiryDate = targetBatch.expiry_date;
 
@@ -158,7 +165,8 @@ export const createStockMovement = async (movementData, userId) => {
               )
             ]
           },
-          order: [['received_date', 'ASC']]
+          order: [['received_date', 'ASC']],
+          ...options
         });
 
 
@@ -176,7 +184,7 @@ export const createStockMovement = async (movementData, userId) => {
 
           await batch.update({
             quantity_consumed: parseFloat(batch.quantity_consumed) + consume
-          });
+          }, options);
 
           batchTransactionsData.push({
             batch_id: batch.batch_id,
@@ -189,16 +197,53 @@ export const createStockMovement = async (movementData, userId) => {
         }
 
         if (remaining > 0) {
-          const error = new Error(`Unable to fulfill entire quantity from FIFO batches. Shortfall: ${remaining}`);
-          error.statusCode = 400;
-          throw error;
+          // Check if this is a legacy data issue (current_stock exists but no FIFO batches)
+          const hasLegacyStock = currentStock > 0 && batches.length === 0;
+          if (hasLegacyStock) {
+            // Create a legacy batch to represent existing stock before consuming
+            console.warn(`[StockMovement] Creating legacy FIFO batch for item ${item.name} (ID: ${item.item_id}) with ${currentStock} ${item.unit_of_measure}`);
+            const legacyBatch = await FIFOBatch.create({
+              item_id: item.item_id,
+              quantity: currentStock,
+              cost_per_unit: item.cost_per_unit || 0,
+              received_date: new Date(),
+              expiry_date: null,
+              po_number: 'LEGACY-STOCK',
+              notes: 'Auto-created from existing stock during JO completion'
+            }, options);
+
+            // Now consume from the legacy batch
+            const consume = Math.min(remaining, currentStock);
+            await legacyBatch.update({
+              quantity_consumed: consume
+            }, options);
+
+            if (createdBatchId === null) {
+              createdBatchId = legacyBatch.batch_id;
+            }
+
+            batchTransactionsData.push({
+              batch_id: legacyBatch.batch_id,
+              quantity_consumed: consume,
+              remaining_after: currentStock - consume,
+              cost_per_unit: legacyBatch.cost_per_unit
+            });
+
+            remaining -= consume;
+          }
+
+          if (remaining > 0) {
+            const error = new Error(`Unable to fulfill quantity from FIFO batches for "${item.name}". Required: ${parseFloat(quantity)}, Shortfall: ${remaining.toFixed(2)} ${item.unit_of_measure}. Please ensure sufficient stock batches exist.`);
+            error.statusCode = 400;
+            throw error;
+          }
         }
       }
     }
   }
 
   // Update item stock
-  await item.update({ current_stock: newStock });
+  await item.update({ current_stock: newStock }, options);
 
   // Create stock movement record
   const movement = await StockMovement.create({
@@ -214,7 +259,7 @@ export const createStockMovement = async (movementData, userId) => {
     loss_reason: movementData.loss_reason || null,
     batch_id: createdBatchId,
     expiry_date: movementExpiryDate
-  });
+  }, options);
 
   // Create Batch Transactions if any
   if (typeof batchTransactionsData !== 'undefined' && batchTransactionsData.length > 0) {
@@ -222,7 +267,7 @@ export const createStockMovement = async (movementData, userId) => {
       BatchTransaction.create({
         movement_id: movement.movement_id,
         ...data
-      })
+      }, options)
     ));
   }
 
@@ -234,6 +279,9 @@ export const createStockMovement = async (movementData, userId) => {
  * Used by frontend for batch selection in manual adjustments
  */
 export const getItemBatches = async (itemId) => {
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const batches = await FIFOBatch.findAll({
     where: {
       item_id: itemId,
@@ -265,6 +313,11 @@ export const getItemBatches = async (itemId) => {
  * Get a single stock movement by ID with full details
  */
 export const getMovementById = async (movementId) => {
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const User = dbStore.get('User');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+
   const movement = await StockMovement.findByPk(movementId, {
     include: [
       { model: Item, as: 'item', attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'category', 'current_stock'] },
@@ -292,6 +345,10 @@ export const getMovementById = async (movementId) => {
  * @returns {Object} Statistics summary
  */
 export const getMovementStats = async (params = {}) => {
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const { startDate, endDate, item_id } = params;
 
   const where = {};
@@ -383,6 +440,11 @@ export const getMovementStats = async (params = {}) => {
  * For multi-batch consumption, restores ALL affected batches via BatchTransaction records
  */
 export const voidMovement = async (movementId, userId, reason) => {
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const BatchTransaction = dbStore.get('BatchTransaction');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
   try {
@@ -503,6 +565,7 @@ export const voidMovement = async (movementId, userId, reason) => {
  * Executes multiple movement creations within a single transaction
  */
 export const createBulkMovements = async (movements, userId) => {
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
   const results = [];
 

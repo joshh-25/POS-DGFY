@@ -1,6 +1,6 @@
 import express from 'express';
 import * as settingsController from '../controllers/settingsController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, authorize, requireMasterAdmin } from '../middleware/auth.js';
 import { validateUpdateSettings, validateUpdateSingleSetting } from '../validators/settingsValidator.js';
 
 const router = express.Router();
@@ -11,6 +11,13 @@ const router = express.Router();
  * @access  Private (authenticated users)
  */
 router.get('/', authenticate, settingsController.getAllSettings);
+
+/**
+ * @route   GET /api/v1/settings/company-info
+ * @desc    Get company token and registration link
+ * @access  Private (Master Admin only)
+ */
+router.get('/company-info', authenticate, requireMasterAdmin, settingsController.getCompanyInfo);
 
 /**
  * @route   GET /api/v1/settings/:key

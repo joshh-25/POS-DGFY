@@ -1,0 +1,30 @@
+#!/bin/sh
+# AI Tools Validation Pre-commit Hook
+#
+# This hook validates AI tool definitions before allowing commits.
+# To skip: git commit --no-verify
+
+# Check if any AI-related files are staged
+AI_FILES=$(git diff --cached --name-only | grep -E "(aiTools|aiToolExecutor|aiSystemPrompt)" || true)
+
+if [ -n "$AI_FILES" ]; then
+  echo "📋 AI-related files changed. Running validation..."
+  echo "   Changed: $AI_FILES"
+  echo ""
+
+  # Run validation
+  cd backend && npm run validate:ai
+
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ AI validation failed. Please fix errors before committing."
+    echo ""
+    echo "To bypass this check (not recommended):"
+    echo "  git commit --no-verify"
+    exit 1
+  fi
+
+  echo ""
+  echo "✅ AI validation passed!"
+  echo ""
+fi

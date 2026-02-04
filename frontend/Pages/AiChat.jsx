@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Send,
     Bot,
@@ -15,15 +16,25 @@ import {
     Trash2,
     AlertCircle,
     RefreshCw,
-    Clock
+    Clock,
+    X,
+    FileText,
+    Upload
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import * as aiService from '@/services/aiService';
 import ConfirmActionDialog from '@/Components/ai/ConfirmActionDialog';
 import ActionResultCard from '@/Components/ai/ActionResultCard';
+import { MarkdownRenderer } from '@/Components/ai/MarkdownRenderer';
+import DeleteConfirmDialog from '@/Components/ui/DeleteConfirmDialog';
+import { usePermission } from '@/hooks/usePermission';
+import { toast } from 'sonner';
 
 export default function AiChat() {
+    const navigate = useNavigate();
+    const { can } = usePermission();
+
     // State management
     const [messages, setMessages] = useState([]);
     const [inputValue, setInputValue] = useState('');
@@ -35,9 +46,16 @@ export default function AiChat() {
     const [pendingAction, setPendingAction] = useState(null);
     const [actionResult, setActionResult] = useState(null);
     const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+    const [conversationToDelete, setConversationToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [attachments, setAttachments] = useState([]);
+    const [isDragging, setIsDragging] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const imageInputRef = useRef(null);
+    const dragCounter = useRef(0);
 
     // Initial welcome message
     const welcomeMessage = {
@@ -107,16 +125,102 @@ export default function AiChat() {
         inputRef.current?.focus();
     };
 
-    const deleteConversation = async (convId, e) => {
+    const deleteConversation = (convId, e) => {
         e.stopPropagation();
+        setConversationToDelete(convId);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!conversationToDelete) return;
+
         try {
-            await aiService.deleteConversation(convId);
-            setConversations(prev => prev.filter(c => c.conversation_id !== convId));
-            if (selectedConversation === convId) {
+            setIsDeleting(true);
+            await aiService.deleteConversation(conversationToDelete);
+            setConversations(prev => prev.filter(c => c.id !== conversationToDelete));
+            if (selectedConversation === conversationToDelete) {
                 startNewChat();
             }
+            setConversationToDelete(null);
         } catch (err) {
             console.error('Failed to delete conversation:', err);
+            // Optionally set an error state here if you want to show it in the dialog
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    // File Handling
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current++;
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            setIsDragging(true);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current--;
+        if (dragCounter.current === 0) {
+            setIsDragging(false);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        dragCounter.current = 0;
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const newFiles = Array.from(e.dataTransfer.files);
+            addFiles(newFiles);
+        }
+    };
+
+    const handleFileSelect = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const newFiles = Array.from(e.target.files);
+            addFiles(newFiles);
+        }
+        // Reset input value to allow selecting the same file again
+        e.target.value = '';
+    };
+
+    const addFiles = (newFiles) => {
+        // Filter logical max size or type here if needed
+        // For now, valid types are handled by backend, frontend just restricts images button
+
+        // Prevent duplicates by name+size check? 
+        // For simplicity, just add them. Limit is 5 total.
+        setAttachments(prev => {
+            const combined = [...prev, ...newFiles];
+            if (combined.length > 5) {
+                setError("You can only upload up to 5 files at a time.");
+                return combined.slice(0, 5);
+            }
+            return combined;
+        });
+    };
+
+    const removeAttachment = (index) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleActionClick = (action) => {
+        if (typeof action === 'string') {
+            navigate(action);
+        } else if (action?.type === 'suggestion') {
+            setInputValue(action.prompt);
+            // Optional: Auto-submit? For now let user confirm.
+            setTimeout(() => inputRef.current?.focus(), 0);
         }
     };
 
@@ -137,10 +241,12 @@ export default function AiChat() {
         setActionResult(null);
 
         try {
-            const response = await aiService.sendMessage(inputValue, conversationId);
+            const response = await aiService.sendMessage(inputValue, conversationId, attachments);
+            setAttachments([]); // Clear attachments after sending
+            console.log("DEBUG: AI Raw Response", JSON.stringify(response, null, 2));
 
             // Update conversation ID if this is a new conversation
-            if (response.data.conversationId && !conversationId) {
+            if (response.data?.conversationId && !conversationId) {
                 setConversationId(response.data.conversationId);
                 setSelectedConversation(response.data.conversationId);
                 // Refresh conversation list
@@ -148,14 +254,16 @@ export default function AiChat() {
             }
 
             // Handle different response types
-            if (response.data.requiresConfirmation) {
+            if (response.data?.type === 'confirmation_required') {
+                console.log("DEBUG: Confirmation required detected", response.data);
                 // Store pending action for confirmation dialog
+                // Use snake_case to match what ConfirmActionDialog expects
                 setPendingAction({
-                    actionId: response.data.actionId,
-                    actionType: response.data.actionType,
+                    action_id: response.data.action_id,
+                    action_type: response.data.action_type,
                     description: response.data.description,
                     details: response.data.details,
-                    expiresAt: response.data.expiresAt
+                    expires_in: response.data.expires_in || 300
                 });
 
                 // Add assistant message about the pending action
@@ -172,14 +280,14 @@ export default function AiChat() {
                 const assistantMessage = {
                     id: `assistant-${Date.now()}`,
                     role: 'assistant',
-                    content: response.data.message,
+                    content: response.data.content || response.data.message, // Fallback to message just in case
                     timestamp: new Date().toISOString()
                 };
                 setMessages(prev => [...prev, assistantMessage]);
             }
         } catch (err) {
             console.error('AI chat error:', err);
-            const errorMessage = err.response?.data?.error || 'Failed to get response from AI';
+            const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to get response from AI';
             setError(errorMessage);
 
             // Add error message to chat
@@ -196,12 +304,19 @@ export default function AiChat() {
         }
     };
 
+
     const handleConfirmAction = async () => {
         if (!pendingAction) return;
 
+        // Permission check
+        if (!can('ai:action')) {
+            toast.error("You don't have permission to execute AI actions.");
+            return;
+        }
+
         setIsTyping(true);
         try {
-            const response = await aiService.confirmAction(pendingAction.actionId);
+            const response = await aiService.confirmAction(pendingAction.action_id);
 
             // Show result
             setActionResult({
@@ -234,7 +349,7 @@ export default function AiChat() {
         if (!pendingAction) return;
 
         try {
-            await aiService.cancelAction(pendingAction.actionId);
+            await aiService.cancelAction(pendingAction.action_id);
 
             // Add cancellation message
             const cancelMessage = {
@@ -289,7 +404,13 @@ export default function AiChat() {
     }, []);
 
     return (
-        <div className="flex h-[calc(100vh-6rem)] bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div
+            className="flex h-[calc(100vh-6rem)] bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative"
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+        >
             {/* Sidebar - Chat History */}
             <div className="w-80 bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex">
                 <div className="p-4 border-b border-slate-200">
@@ -318,11 +439,11 @@ export default function AiChat() {
                     ) : (
                         conversations.map((conv) => (
                             <div
-                                key={conv.conversation_id}
-                                onClick={() => loadConversation(conv.conversation_id)}
+                                key={conv.id || conv.conversation_id}
+                                onClick={() => loadConversation(conv.id || conv.conversation_id)}
                                 className={cn(
                                     "group w-full text-left px-3 py-3 rounded-xl text-base transition-colors flex items-center gap-3 font-medium cursor-pointer",
-                                    selectedConversation === conv.conversation_id
+                                    selectedConversation === conv.id
                                         ? "bg-white shadow-sm border border-slate-200 text-slate-900"
                                         : "text-slate-600 hover:bg-slate-200/50"
                                 )}
@@ -335,7 +456,7 @@ export default function AiChat() {
                                     </span>
                                 </div>
                                 <button
-                                    onClick={(e) => deleteConversation(conv.conversation_id, e)}
+                                    onClick={(e) => deleteConversation(conv.id, e)}
                                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-all"
                                 >
                                     <Trash2 className="w-4 h-4 text-red-500" />
@@ -421,12 +542,19 @@ export default function AiChat() {
                                                 ? "bg-amber-50 border border-amber-200 text-amber-900 rounded-tl-none"
                                                 : "bg-white border border-slate-200 text-slate-800 rounded-tl-none"
                                 )}>
-                                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                                    {msg.role === 'user' ? (
+                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                    ) : (
+                                        <MarkdownRenderer content={msg.content} />
+                                    )}
 
                                     {/* Show action result card if this message has result data */}
                                     {msg.isResult && msg.resultData && (
                                         <div className="mt-3">
-                                            <ActionResultCard result={msg.resultData} />
+                                            <ActionResultCard
+                                                result={msg.resultData}
+                                                onViewDetails={handleActionClick}
+                                            />
                                         </div>
                                     )}
                                 </div>
@@ -473,12 +601,54 @@ export default function AiChat() {
                             </div>
                         )}
 
+                        {/* File Preview Area */}
+                        {attachments.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                {attachments.map((file, index) => (
+                                    <div key={index} className="relative group shrink-0">
+                                        <div className="w-20 h-20 rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-1 overflow-hidden p-1">
+                                            {file.type.startsWith('image/') ? (
+                                                <img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={file.name}
+                                                    className="w-full h-full object-cover rounded-md"
+                                                />
+                                            ) : (
+                                                <>
+                                                    <FileText className="w-8 h-8 text-slate-400" />
+                                                    <span className="text-[10px] text-slate-500 text-center w-full truncate px-1">
+                                                        {file.name}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => removeAttachment(index)}
+                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="relative flex items-end gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500/20 transition-all">
                             <div className="flex items-center gap-1 pb-2 pl-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
                                     <Paperclip className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                                    onClick={() => imageInputRef.current?.click()}
+                                >
                                     <ImageIcon className="w-4 h-4" />
                                 </Button>
                             </div>
@@ -489,7 +659,7 @@ export default function AiChat() {
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyPress}
                                 placeholder="Ask me anything about your inventory..."
-                                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2.5 text-base text-slate-900 placeholder:text-slate-500 font-medium"
+                                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2.5 px-4 text-base text-slate-900 placeholder:text-slate-500 font-medium"
                                 rows={1}
                                 disabled={isTyping}
                             />
@@ -497,10 +667,10 @@ export default function AiChat() {
                             <div className="pb-1 pr-1">
                                 <Button
                                     onClick={handleSendMessage}
-                                    disabled={!inputValue.trim() || isTyping}
+                                    disabled={(!inputValue.trim() && attachments.length === 0) || isTyping}
                                     className={cn(
                                         "h-9 w-9 p-0 rounded-lg transition-all duration-200",
-                                        inputValue.trim()
+                                        (inputValue.trim() || attachments.length > 0)
                                             ? "bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-500/20"
                                             : "bg-slate-200 text-slate-400 hover:bg-slate-300"
                                     )}
@@ -524,13 +694,55 @@ export default function AiChat() {
             {/* Confirmation Dialog */}
             {pendingAction && (
                 <ConfirmActionDialog
-                    isOpen={!!pendingAction}
+                    open={!!pendingAction}
                     onClose={() => setPendingAction(null)}
                     onConfirm={handleConfirmAction}
                     onCancel={handleCancelAction}
                     action={pendingAction}
                     isLoading={isTyping}
                 />
+            )}
+
+            {/* Delete Confirmation Dialog */}
+            <DeleteConfirmDialog
+                open={!!conversationToDelete}
+                onClose={() => setConversationToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title="Delete Conversation"
+                description="Are you sure you want to delete this conversation? This action cannot be undone."
+                confirmText="Delete"
+                loading={isDeleting}
+            />
+            {/* Hidden File Inputs */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                onChange={handleFileSelect}
+            />
+            <input
+                type="file"
+                ref={imageInputRef}
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+            />
+
+            {/* Drag Overlay */}
+            {isDragging && (
+                <div className="absolute inset-0 bg-teal-500/10 backdrop-blur-[2px] z-50 flex items-center justify-center border-2 border-dashed border-teal-500 rounded-2xl pointer-events-none">
+                    <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-200">
+                        <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center">
+                            <Upload className="w-8 h-8 text-teal-600" />
+                        </div>
+                        <div className="text-center">
+                            <h3 className="text-lg font-bold text-slate-900">Drop files here</h3>
+                            <p className="text-slate-500">to add them to the chat</p>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

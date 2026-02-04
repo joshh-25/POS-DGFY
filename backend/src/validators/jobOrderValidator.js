@@ -20,7 +20,8 @@ export const createJobOrderSchema = Joi.object({
       stock_before: Joi.number(),
       stock_after: Joi.number(),
       isInsufficient: Joi.boolean(),
-      unit: Joi.string()
+      unit: Joi.string(),
+      unit_of_measure: Joi.string().allow(null, '') // Add support for standard UOM field
     })
   ).allow(null),
   status: Joi.string().valid('draft', 'in_progress', 'partial', 'completed', 'cancelled').default('draft')
@@ -45,7 +46,8 @@ export const createJobOrderDraftSchema = Joi.object({
       stock_before: Joi.number().allow(null),
       stock_after: Joi.number().allow(null),
       isInsufficient: Joi.boolean().allow(null),
-      unit: Joi.string().allow(null, '')
+      unit: Joi.string().allow(null, ''),
+      unit_of_measure: Joi.string().allow(null, '') // Add support for standard UOM field
     })
   ).allow(null),
   status: Joi.string().valid('draft').default('draft')
@@ -63,6 +65,8 @@ export const validateCreateJobOrder = (req, res, next) => {
   const { error, value } = createJobOrderSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
+    console.error('❌ JO VALIDATION ERROR:', JSON.stringify(error.details, null, 2));
+    console.error('❌ RECEIVED BODY:', JSON.stringify(req.body, null, 2));
     const errors = error.details.map(detail => ({
       field: detail.path.join('.'),
       message: detail.message
@@ -82,7 +86,7 @@ export const validateCreateJobOrder = (req, res, next) => {
 };
 
 export const validateCreateJobOrderDraft = (req, res, next) => {
-  const { error, value } = createJobOrderDraftSchema.validate(req.body, { abortEarly: false });
+  const { error, value } = createJobOrderDraftSchema.validate(req.body, { abortEarly: false, allowUnknown: true });
 
   if (error) {
     const errors = error.details.map(detail => ({

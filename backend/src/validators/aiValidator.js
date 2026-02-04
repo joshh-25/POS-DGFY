@@ -22,6 +22,7 @@ export const chatSchema = Joi.object({
 
   conversationId: Joi.string()
     .uuid()
+    .allow(null)
     .optional()
     .messages({
       'string.guid': 'Invalid conversation ID format'

@@ -1,12 +1,12 @@
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import Item from '../models/Item.js';
-import StockMovement from '../models/StockMovement.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
-import JobOrder from '../models/JobOrder.js';
-import User from '../models/User.js';
+import dbStore from '../utils/dbStore.js';
 
 export const getDashboardStats = async () => {
+  const Item = dbStore.get('Item');
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const JobOrder = dbStore.get('JobOrder');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const totalItems = await Item.count({ where: { status: 'active' } });
 
   const lowStockItems = await Item.count({
@@ -86,6 +86,9 @@ export const getDashboardStats = async () => {
 };
 
 export const getLowStockItems = async () => {
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
   const items = await Item.findAll({
     where: {
       status: 'active',
@@ -114,6 +117,10 @@ export const getLowStockItems = async () => {
 };
 
 export const getRecentMovements = async (limit = 10) => {
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const User = dbStore.get('User');
+
   const movements = await StockMovement.findAll({
     include: [
       { model: Item, as: 'item', attributes: ['name', 'sku_code'] },

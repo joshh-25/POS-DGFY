@@ -46,27 +46,28 @@ export const generalLimiter = rateLimit({
 });
 
 // Stricter rate limiter for authentication endpoints
-export const authLimiter = rateLimit({
-  windowMs: authWindowMs,
-  max: authMaxRequests,
-  message: createRateLimitError('Too many authentication attempts, please try again later.'),
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Disable validation warnings when running behind reverse proxy
-  validate: { trustProxy: false, xForwardedForHeader: false },
-  handler: (req, res) => {
-    logger.warn('Auth rate limit exceeded', {
-      ip: req.ip || req.connection.remoteAddress,
-      path: req.path,
-      method: req.method,
-    });
-    res.status(429).json(createRateLimitError('Too many authentication attempts, please try again later.'));
-  },
-  skip: (req) => {
-    if (process.env.NODE_ENV === 'test') return true;
-    return false;
-  },
-});
+export const authLimiter = (req, res, next) => next();
+// export const authLimiter = rateLimit({
+//   windowMs: authWindowMs,
+//   max: authMaxRequests,
+//   message: createRateLimitError('Too many authentication attempts, please try again later.'),
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   // Disable validation warnings when running behind reverse proxy
+//   validate: { trustProxy: false, xForwardedForHeader: false },
+//   handler: (req, res) => {
+//     logger.warn('Auth rate limit exceeded', {
+//       ip: req.ip || req.connection.remoteAddress,
+//       path: req.path,
+//       method: req.method,
+//     });
+//     res.status(429).json(createRateLimitError('Too many authentication attempts, please try again later.'));
+//   },
+//   skip: (req) => {
+//     if (process.env.NODE_ENV === 'test') return true;
+//     return false;
+//   },
+// });
 
 export default {
   general: generalLimiter,

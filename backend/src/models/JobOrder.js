@@ -29,6 +29,11 @@ const JobOrder = sequelize.define('JobOrder', {
     type: DataTypes.ENUM('draft', 'in_progress', 'partial', 'completed', 'cancelled'),
     defaultValue: 'draft'
   },
+  quality_check: {
+    type: DataTypes.ENUM('pass', 'fail', 'pending'),
+    allowNull: true,
+    defaultValue: null
+  },
   created_date: {
     type: DataTypes.DATE,
     allowNull: false,

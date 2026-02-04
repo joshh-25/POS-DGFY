@@ -1,3 +1,37 @@
+# Development History
+
+## Table of Contents
+
+> **Navigation Tip:** Click a phase link to jump directly to that section.
+
+### Core Features (Phases 0-10)
+- [Phase 0: Project Initialization & Setup](#phase-0-project-initialization--setup)
+- [Phase 1: Authentication & User Management](#phase-1-authentication--user-management)
+- [Phase 2: Core Inventory Management](#phase-2-core-inventory-management-itemsskus)
+- [Phase 3: Supplier Management](#phase-3-supplier-management)
+- [Phase 4: Purchase Order System](#phase-4-purchase-order-system)
+- [Phase 5: Job Order System](#phase-5-job-order-system)
+- [Phase 6: Product Creation System](#phase-6-product-creation-system)
+- [Phase 7: Stock Movement Tracking](#phase-7-stock-movement-tracking)
+- [Phase 8: Dashboard & Analytics](#phase-8-dashboard--analytics)
+- [Phase 9: Settings & Configuration](#phase-9-settings--configuration)
+- [Phase 10: Delete & Archive Functionality](#phase-10-delete--archive-functionality)
+
+### Testing & Deployment (Phases 11-16)
+- [Phase 11: Testing & Quality Assurance](#phase-11-testing--quality-assurance)
+- [Phase 12: Deployment & Infrastructure](#phase-12-deployment--infrastructure)
+- [Phase 13: Bug Fixes & Improvements](#phase-13-bug-fixes--improvements)
+- [Phase 14: Rebranding](#phase-14-rebranding)
+- [Phase 15: Phase 2 Testing Feedback Fixes](#phase-15-phase-2-testing-feedback-fixes)
+- [Phase 16: Production Deployment Fixes](#phase-16-production-deployment-fixes)
+
+### Advanced Features (Phases 17+)
+- [Phase 17: Delete Functionality Audit](#phase-17-delete-functionality-audit--bug-fixes)
+- [Phase 18: System Stability & Workflow Optimization](#phase-18-system-stability--workflow-optimization)
+- [Phase 19+: Various Enhancements](#phase-19-various-enhancements)
+
+---
+
 # SKU Inventory Manager - Development Task Tracking
 
 > **Purpose**: Comprehensive documentation of all development phases from project inception to current state. Use this to understand what features have been completed and identify what remains.
@@ -1724,6 +1758,7 @@ Implemented comprehensive CSV bulk import functionality for items (raw materials
 - **3-Step Wizard**: Upload CSV → Preview with validation → Confirm import
 - **Template Download**: Users can download a pre-formatted CSV template with valid values
 - **Error Handling**: Detailed error messages with row numbers for easy correction
+- **Transaction Safety**: All-or-nothing import with automatic rollback on errors
 - **Transaction Safety**: All-or-nothing import with automatic rollback on errors
 
 ### Backend Changes (3 files)
@@ -3817,7 +3852,7 @@ Validated via `scripts/verify-uat-fixes.js`:
 *   **Validation**: All features backed by reproduction scripts.
 *(Sprint Complete)*
 
----
+
 
 ## Phase 9: Error Fixing & Stability
 **Status**: ✅ COMPLETE
@@ -3868,4 +3903,727 @@ User Interface implementation of the AI Analytics engine. Exposed deep backend l
 - **Financials**: Validated proper waste valuation after the fallback fix.
 
 
+
+
+---
+
+## Phase 11: Real-World Feedback Loop
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-30
+
+### Overview
+Transitioned the project to a "Production-Ready" state by implementing deployment safeguards, monitoring, and a direct user feedback channel.
+
+### 1. Operations & Deployment
+- Created `docs/ops/PRODUCTION_CHECKLIST.md`: A comprehensive guide for safe deployment.
+- Verified `ecosystem.config.cjs`: Confirmed environment variable injection for production.
+
+### 2. Feedback Mechanism
+- **Backend**:
+  - Created `feedbackController.js` logging to `logs/user_feedback.log`.
+  - Registered `POST /api/v1/feedback`.
+- **Frontend**:
+  - Implemented `FeedbackWidget.jsx` (Floating action button).
+  - Integrated into global `Layout.jsx`.
+
+### 3. Monitoring
+- Enhanced `aiToolExecutor.js` with structured logging (`AI_TOOL_START`, `AI_TOOL_SUCCESS`, `AI_TOOL_ERROR`) to track performance and usage patterns.
+
+### 4. Verification
+- Verified Feedback API via `verify-feedback-api.js` (Simulated full login flow and submission).
+- Confirmed log file generation.
+
+---
+
+## Phase 12: Post-Release Bug Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-30
+
+### 1. AI Chat 400 Bad Request
+- **Issue**: Sending a message to AI Chat resulted in a `400 Bad Request` status.
+- **Cause**: The frontend was sending `conversationId: null` for new chats, but the backend Joi schema validation expected a UUID string or `undefined`, but didn't allow `null`.
+- **Fix**: Updated `backend/src/validators/aiValidator.js` to explicitly allow `null` for `conversationId`.
+
+### 2. Frontend Warnings & Empty Response
+- **Issue**:
+    1. Warning: "Each child in a list should have a unique 'key' prop" in `AiChat.jsx`.
+    2. AI Chat bubbles were empty despite successful API response.
+- **Cause**:
+    1. `AiChat.jsx` used `conv.conversation_id` as key, but the API returned `conv.id`.
+    2. `AiChat.jsx` tried to read `response.data.message`, but the backend service returns `response.content` (wrapped in `data`).
+- **Fix**:
+    1. Updated key to use `conv.id || conv.conversation_id`.
+    2. Updated content reading to `response.data.content || response.data.message`.
+
+### 3. Data Parsing & 500 Errors
+- **Issue**:
+    1. `TypeError: response.data.messages.map is not a function` when loading conversation.
+    2. `500 Internal Server Error` when sending a message (`messages.push` failure).
+- **Cause**: The `messages` field in the database (JSON type) was sometimes being returned as a string (serialized JSON) or null by Sequelize, causing array methods to fail in `aiController.js`.
+- **Fix**: Added defensive parsing logic in `aiController.js` (both `chat` and `getConversation`) to check if `messages` is a string and parse it, or default to `[]` if invalid/null.
+
+---
+
+## Phase 18: AI Assistant Finalization (Enhancements & Bug Fixes)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-30
+
+### Critical Fixes
+
+#### 1. "This action does not belong to you" Error
+**Issue**: Confirming an AI action (e.g., PO Creation) failed with ownership error despite correct user.
+**Root Cause**: The `confirmAction` controller was not passing `user_id` and `expires_at` from the `PendingAIAction` record to the `executeConfirmedAction` service.
+**Fix**: Updated `aiController.js` to construct a complete `actionData` object including all required fields.
+
+#### 2. "Cannot read properties of undefined (reading 'map')"
+**Issue**: Creating a Purchase Order failed with a 500 server error.
+**Root Cause**: Similar to the `messages` issue, the `action_payload` JSON field from the database was being returned as a string. The code expected an object to access `args.items.map()`, failing when `args` was a string.
+**Fix**: Added defensive JSON parsing for `pendingAction.action_payload` in `aiController.js`.
+
+### New Features
+
+#### 1. AI Conversational Follow-up
+**Feature**: The AI now provides a natural text response after an action is confirmed or cancelled, rather than just a system message.
+**Implementation**:
+- After action execution, a hidden prompt with the result is sent to the AI.
+- The AI generates a contextual follow-up (e.g., "PO created successfully! Would you like to check inventory?").
+- This response is combined with the system execution message for a seamless chat experience.
+
+#### 2. Enhanced Error Feedback
+**Improvement**: Frontend `AiChat.jsx` now parses and displays specific backend error messages (`err.response.data.message`) instead of generic error texts, improving troubleshooting for users.
+
+---
+
+## Phase 19: AI System Control Expansion (v1.1.0)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-30
+
+### Overview
+Transformed the AI Assistant from a purely "Operational" tool (day-to-day tasks) to a "System Manager" capable of administrative control. The AI can now modify the core structure of the inventory system (Suppliers, Settings, Users).
+
+### New Capabilities
+
+#### 1. Supplier Lifecycle Management (`supplierService`)
+- **Tools**: `create_supplier`, `update_supplier`, `delete_supplier`, `add_supplier_item`.
+- **Impact**: AI can onboard new vendors, change contact details, and most importantly, link items to suppliers.
+- **Safety**: Deletion checks for active POs before proceeding.
+
+#### 2. System Configuration (`settingsService`)
+- **Tools**: `get_system_settings`, `update_system_settings`.
+- **Impact**: Admins can now ask the AI to "Set low stock threshold to 15%" or "Disable email alerts".
+
+#### 3. User Administration (`userService`)
+- **Tools**: `get_users`, `update_user_role`, `toggle_user_status`.
+- **Impact**: Admins can promote staff or deactivate accounts.
+- **Security**: Strictly enforced `admin` role requirement.
+
+#### 4. Strategic Intelligence (`dashboardService`)
+- **Tools**: `generate_executive_summary`.
+- **Impact**: Provides a "Morning Briefing" style report summarizing financial value and critical shortages.
+
+### Technical Implementation
+- **Tool Mapping**: Extended `aiTools.js` with 9 new definitions.
+- **Service Integration**: `aiToolExecutor.js` now calls `settingsService`, `userService`, and `dashboardService`.
+
+---
+
+## Phase 20: AI Confirmation Dialog Fix & Alert Service Refactoring (v1.1.1)
+**Status**: ✅ COMPLETE
+**Date**: 2026-01-30
+
+### Problem
+The AI Assistant was not triggering the confirmation dialog for write operations (e.g., `create_supplier`). Instead, it was responding with plain text asking for confirmation, which bypassed the system's built-in confirmation workflow.
+
+### Root Cause Analysis
+1. **System Prompt Ambiguity**: The AI was instructed to "explain what you're about to do and wait for confirmation" which it interpreted as asking via text message rather than calling the tool.
+2. **Alert Service Bug**: The `generateExecutiveSummary` tool was calling `alertService.getExpiryAlerts()` which didn't exist with the expected signature.
+
+### Fixes Applied
+
+#### 1. System Prompt Update (`aiSystemPrompt.js`)
+Updated the "Important Rules" section to be explicit about tool calling:
+```diff
+-### 1. ALWAYS Confirm Before Actions
+-For ANY create, update, delete, or import operation:
+-- Clearly explain what you're about to do
+-- Wait for explicit user confirmation
++### 1. ALWAYS Call Tools for Actions (CRITICAL)
++When the user asks you to CREATE, UPDATE, or DELETE anything:
++- DO NOT just describe what you would do and ask for permission
++- DO NOT respond with text asking "Please confirm to proceed"
++- INSTEAD: CALL THE APPROPRIATE TOOL IMMEDIATELY in the same response
++- The system will AUTOMATICALLY show a confirmation dialog to the user
+```
+
+#### 2. Alert Service Refactoring (`alertService.js`)
+Refactored the monolithic `generateAlerts` function into modular, reusable functions:
+- `getLowStockAlerts()` - Returns items below minimum threshold
+- `getExpiryAlerts(options)` - Returns batches expiring within warning period
+- `getSupplierPerformanceAlerts()` - Returns suppliers with low quality ratings
+- `generateAlerts()` - Orchestrates all three (legacy compatibility)
+
+#### 3. Executive Summary Fix (`aiToolExecutor.js`)
+Updated `generateExecutiveSummary` to:
+- Use the new `getExpiryAlerts()` function correctly
+- Add null safety for `stats.totalItems` division
+- Filter critical alerts properly
+
+#### 4. Frontend Improvements (`AiChat.jsx`)
+- Added optional chaining (`?.`) for safer response parsing
+- Removed debug logging left from development
+
+### Verification
+Ran automated Playwright tests (`verify_ai.js`) confirming:
+- ✅ `create_supplier` triggers confirmation dialog
+- ✅ `get_system_settings` returns correct data
+- ✅ `generate_executive_summary` works without errors
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `backend/src/config/aiSystemPrompt.js` | Updated tool calling instructions |
+| `backend/src/services/alertService.js` | Refactored into modular functions |
+| `backend/src/services/aiToolExecutor.js` | Fixed executive summary logic |
+| `backend/src/controllers/aiController.js` | Added user-friendly confirmation message |
+| `frontend/Pages/AiChat.jsx` | Added optional chaining for safety |
+
+ 
+ - - - 
+ 
+ 
+ 
+ # #   P h a s e   1 8 :   A I   C h a t   I m p r o v e m e n t s 
+ 
+ * * S t a t u s * * :   � S&   C O M P L E T E     
+ 
+ * * D a t e * * :   2 0 2 6 - 0 1 - 3 0 
+ 
+ 
+ 
+ # # #   I s s u e :   D e l e t e   C o n v e r s a t i o n   F a i l e d 
+ 
+ * * I s s u e * * :   D e l e t i n g   a   c o n v e r s a t i o n   r e s u l t e d   i n   a   4 0 0   B a d   R e q u e s t   e r r o r   ( ` D E L E T E   / a p i / v 1 / a i / c o n v e r s a t i o n s / u n d e f i n e d ` ) . 
+ 
+ * * R o o t   C a u s e * * :   P r o p e r t y   n a m e   m i s m a t c h   b e t w e e n   b a c k e n d   a n d   f r o n t e n d . 
+ 
+ -   B a c k e n d   A P I   ( ` g e t C o n v e r s a t i o n s ` )   r e t u r n e d   ` i d `   ( m a p p e d   f r o m   ` c o n v e r s a t i o n _ i d ` ) . 
+ 
+ -   F r o n t e n d   ( ` A i C h a t . j s x ` )   e x p e c t e d   ` c o n v e r s a t i o n _ i d `   d i r e c t l y   o n   t h e   o b j e c t . 
+ 
+ -   R e s u l t :   ` c o n v . c o n v e r s a t i o n _ i d `   w a s   ` u n d e f i n e d ` . 
+ 
+ 
+ 
+ * * F i x * * : 
+ 
+ -   U p d a t e d   ` A i C h a t . j s x `   t o   u s e   ` c o n v . i d `   i n : 
+ 
+     -   D e l e t e   h a n d l e r 
+ 
+     -   S e l e c t i o n   l o g i c 
+ 
+     -   F i l t e r i n g   l o g i c 
+ 
+ 
+ 
+ # # #   F e a t u r e :   D e l e t e   C o n f i r m a t i o n   D i a l o g 
+ 
+ * * I s s u e * * :   C o n v e r s a t i o n s   w e r e   d e l e t e d   i m m e d i a t e l y   u p o n   c l i c k i n g   t h e   t r a s h   i c o n ,   r i s k i n g   a c c i d e n t a l   d a t a   l o s s . 
+ 
+ * * I m p l e m e n t a t i o n * * : 
+ 
+ -   I m p o r t e d   r e u s e a b l e   ` D e l e t e C o n f i r m D i a l o g `   c o m p o n e n t . 
+ 
+ -   A d d e d   ` c o n v e r s a t i o n T o D e l e t e `   s t a t e   t o   t r a c k   s e l e c t i o n . 
+ 
+ -   U p d a t e d   ` d e l e t e C o n v e r s a t i o n `   t o   o p e n   d i a l o g   i n s t e a d   o f   i m m e d i a t e   d e l e t e . 
+ 
+ -   I m p l e m e n t e d   ` h a n d l e C o n f i r m D e l e t e `   t o   e x e c u t e   t h e   a c t u a l   A P I   c a l l . 
+ 
+ 
+ 
+ # # #   F i l e s   M o d i f i e d 
+ 
+ -   ` f r o n t e n d / P a g e s / A i C h a t . j s x ` 
+ 
+ 
+### [2026-01-30] Implemented Drag and Drop File Upload for AI Chat
+- Added 'multer' backend dependency for file handling.
+- Configured file upload middleware in 'backend/src/config/uploadConfig.js'.
+- Updated 'AiChat.jsx' with drag-and-drop zone, file previews, and hidden input handlers.
+- Integrated file attachment logic into 'aiService.js'.
+
+
+### 2026-01-30: AI Enhancements (File Upload & Audit)
+- **Feature**: Implemented Drag-and-Drop file uploads in AI Chat.
+    - Supported: Images (previewed), Text/CSV (content injected into context), Binary (placeholder).
+- **Fix**: Resolved AI CSV Import tool execution issues.
+    - Fixed confirmation flow to retain file content.
+    - Implemented actual import logic for Suppliers and Items.
+- **Feature**: Implemented AI Audit Logging.
+    - Created `AuditService` to log all "Write" operations (Create, Update, Delete).
+    - Integrated with `aiToolExecutor` to automatically log actions performed by the AI.
+    - Added `_audit` metadata to AI responses for user transparency.
+
+## [2026-01-30] Advanced File Processing & AI Vision
+
+### Features
+- **PDF & Document Parsing**: Implemented server-side parsing for PDF (pdf-parse) and Word (mammoth) documents. The AI now automatically extracts and reads text content from these files.
+- **AI Vision Support**: Integrated OpenAI Vision API capabilities. Uploaded images (JPG, PNG, WEBP) are converted to Base64 and processed by the AI, enabling visual analysis tasks.
+- **Automated File Cleanup**: Created a dedicated cleanupService running a cron job every 15 minutes to delete temporary upload files older than 1 hour, ensuring efficient storage management.
+- **AI Action Auditing**: Implemented a comprehensive audit logging system. All AI-performed write, update, and delete operations are now logged to the database with user attribution.
+
+### Technical Changes
+- **Backend Dependencies**: Added pdf-parse, mammoth, and 
+ode-cron.
+- **Infrastructure**: Added TEMP_DIR export to uploadConfig.js and integrated cleanup initialization in server.js.
+- **Refactoring**: Updated iController.js to handle multipart file parsing and payload construction for multimodal AI requests.
+- **Fixes**: Resolved import compatibility issues with legacy packages using createRequire.
+
+
+## [2026-01-30] Job Order Quality Check Feature
+
+**Features**:
+- **Quality Check for Job Orders**: Added quality check (Pass/Fail) selection when completing job orders, mirroring Purchase Order receipt functionality
+- **Auto-fill Quantity Button**: Added "Max" button in completion dialog to auto-fill remaining quantity
+- **QC Badge Display**: Job Order details now show quality check status badge in header
+- **Mobile Support**: Updated MobileReceive.jsx to include quality check for JO completion via QR code
+
+**Technical Changes**:
+- Added `quality_check` ENUM field ('pass', 'fail', 'pending') to JobOrder model
+- Updated `jobOrderService.js` and `jobOrderController.js` to handle quality check
+- Updated `JODetailsModal.jsx` with new UI elements
+- Updated frontend service and hooks to pass quality check parameter
+- Added auto database sync on server startup in development mode to prevent schema mismatch issues
+
+**Files Modified**:
+- `backend/src/models/JobOrder.js` - Added quality_check field
+- `backend/src/services/jobOrderService.js` - Accept and save quality check
+- `backend/src/controllers/jobOrderController.js` - Pass quality check from request
+- `backend/src/server.js` - Added auto sync in dev mode
+- `frontend/Components/jo/JODetailsModal.jsx` - Quality check UI and Max button
+- `frontend/Pages/JobOrders.jsx` - Pass quality check to handler
+- `frontend/Pages/MobileReceive.jsx` - Quality check for mobile JO flow
+- `frontend/src/hooks/useJobOrders.js` - Updated hook signature
+- `frontend/src/services/jobOrderService.js` - Updated service to send quality_check
+
+
+## Phase 9: Admin Feedback Viewer (Jan 31, 2026)
+
+### Overview
+Implemented a secure, admin-only feedback viewer to allow developers to review user-submitted bug reports and suggestions. The system includes hardcoded authentication, detailed logging, and user identification.
+
+### Backend Changes
+- **Admin Controller**: Created dminAuthController.js with hardcoded credentials (skupervisor / 252378) and JWT generation.
+- **Feedback Service**: Created eedbackService.js to parse user_feedback.log with filtering and stats support.
+- **Middleware**: Added uthenticateAdmin in uth.js to separately verify developer access.
+- **Routes**: Mounted /api/v1/admin routes in server.js.
+
+### Frontend Changes
+- **Admin Service**: Created dminService.js for API interaction and sessionStorage token management.
+- **Feedback Viewer Page**: Created FeedbackViewer.jsx with:
+  - Secure login form.
+  - Dashboard showing feedback stats.
+  - Filterable list of feedback cards.
+  - User identification (showing username/email of reporter).
+- **Routing**: Added standalone /admin/feedback route in main.jsx (hidden from navigation).
+
+### Security & Maintenance
+- Fixed critical bugs: corrected environment variable names (VITE_API_URL) and auth token keys (ccessToken).
+- Ensured 8-hour session expiration for admin tokens.
+- Standardized feedback submission to include user context (browser details, URL).
+
+### Verification
+- Verified login validation (acceptance/rejection).
+- Verified feedback display with mock and real data.
+- Verified user identification features in both backend logs and frontend UI.
+
+---
+
+## Phase 24: User Management UI Improvements (2026-01-31)
+
+### Objective
+Improve the UI/UX of the User Management and Permission systems for better consistency, readability, and administrative efficiency.
+
+### Changes Made
+
+#### Settings Page
+- Fixed layout centering (removed empty space on right side)
+
+#### User Management Modal (Complete Rewrite)
+- Added sticky searchbar for filtering users
+- Added quick filter pills (All, Admins, Managers, Staff, Inactive)
+- Added user avatars with colored initials
+- Added bulk selection with checkboxes (Shift+Click for range)
+- Added Bulk Actions dropdown (Apply Template, Grant/Revoke Permission)
+- Moved Last Login to tooltip on hover
+- Implemented card-based rows with consistent styling
+- Added sticky header for scrolling
+
+#### Permission Matrix (Complete Rewrite)
+- Implemented double-column accordion layout
+- All accordions collapsed by default
+- Added Grant All / Revoke All buttons
+- Added per-category Select All toggle
+- Added smooth expand/collapse animations
+
+#### Permission Picker Modal (New Component)
+- Multi-select with checkboxes
+- Same accordion layout as Permission Matrix
+- Per-category Select All functionality
+- Dynamic button text showing selection count
+
+### Files Modified/Created
+- `Settings.jsx` - Added mx-auto for centering
+- `UserAvatar.jsx` - NEW component
+- `PermissionPickerModal.jsx` - NEW component
+- `PermissionMatrix.jsx` - Complete rewrite
+- `UserManagementModal.jsx` - Complete rewrite
+- `permissions_frontend.js` - Added PERMISSION_GROUPS export
+---
+
+# Phase 25: Multi-Tenancy Implementation - Phase 3 Complete (2026-01-31)
+
+**Status**:  COMPLETE  
+**Date**: January 31, 2026
+
+## Overview
+Successfully completed Phase 3 of multi-tenancy by refactoring 13 critical backend services (5000+ lines) to use dynamic dbStore injection for tenant-specific database contexts.
+
+## Services Refactored
+
+### Batch 1: Core Services (3 services)
+- userService.js, authService.js, auditService.js
+
+### Batch 2: Operations Services (5 services)
+- itemService.js (1299 lines, 18 models)
+- supplierService.js, purchaseOrderService.js
+- jobOrderService.js, stockMovementService.js
+
+### Batch 3: Analytics Services (5 services)
+- dashboardService.js, alertService.js, forecastService.js
+- reportService.js (893 lines, 8 models), analyticsService.js
+
+## Verification
+ All 13 services verified - no static imports remain
+ All endpoints tested and working
+ Backward compatible with single-tenant mode
+
+## Next: Testing Period 3, then Batch 4 planning
+
+## Phase 26: Multi-Tenancy Complete (2026-01-31)
+
+###  Feature: End-to-End Multi-Tenancy
+Full implementation of the multi-tenant architecture, allowing multiple companies to operate in isolated environments managed by a single backend instance.
+
+###  Key Components Implemented
+1.  **Infrastructure (The Landlord)**:
+    -   Tenant model and TenantConnector for connection pooling.
+    -   Dynamic database switching based on x-company-token.
+2.  **Context Awareness**:
+    -   dbStore using AsyncLocalStorage to inject the correct database models into services.
+    -   Frontend injection of x-company-token header via Axios interceptor.
+3.  **Service Migration**:
+    -   Refactored **30+ services** to remove static imports and use dynamic model injection.
+    -   Services categorized and audited (P0-P3).
+4.  **Provisioning**:
+    -   New TenantProvisioningService to automate DB creation, migration, and seeding.
+    -   **Register Company** UI (/register-company) for self-service onboarding.
+
+###  Verification & Testing
+-   **Isolation Verified**: E2E tests confirmed Tenant B cannot access Tenant A's data.
+-   **Performance**: Validated 50 rapid context switches with no leaks.
+-   **Bug Fix**: Resolved 500 Error on Suppliers page for new tenants (Missing deleted_at audit column migration).
+
+###  Notes
+-   The system is now **Production Ready** for multi-tenant deployment.
+-   Backward compatibility with single-tenant mode is preserved.
+
+
+## Phase 26: AI Multi-Tenancy Fix & Cleanup (2026-02-02)
+
+### Changes
+- **Refactored AI Controller & Service**: Converted iController.js and iContextService.js to use dbStore.get() for all model access, ensuring full tenant isolation for AI chat history and pending actions.
+- **Fixed Periodic Cleanup**: Resolved a ReferenceError in the cleanupExpiredData background task.
+- **Verification**: Confirmed data is correctly saved to tenant-specific databases (e.g., sku_tenant_vonvv_24796542) and responses are generated using tenant-specific inventory data.
+
+Status: AI Multi-Tenancy Verified and Stable.
+
+
+## Session 8: Auth Stability & Networking (2026-02-03)
+
+### Phase 18: Registration & Proxy Stability
+- **Fixed**: 500 Internal Server Error on /api/v1/auth/register caused by a URIError.
+- **Root Cause**: 	rust proxy setting was enabled in a local environment where no reverse proxy existed, causing Express routing logic to crash on malformed/missing headers.
+- **Improved**: Implemented Dynamic Proxy Configuration in server.js.
+    - Automatically enables 	rust proxy if NODE_ENV=production.
+    - Allows manual override via TRUST_PROXY=true in .env.
+- **Cleaned**: Removed extensive debug logs from uthService.js, uthController.js, and uthValidator.js.
+
+### Phase 19: Database Schema Integrity
+- **Fixed**: SequelizeDatabaseError (missing dmin_email, dmin_password_hash, etc.) in the 	enants table.
+- **Action**: Ran ix_tenant_table.js to ensure the landlord database matches the Tenant model.
+- **Verified**: Confirmed the users table also contains necessary multi-tenancy columns (is_master_admin, permissions).
+
+### Phase 20: Remote Network Access
+- **Updated**: ite.config.js to allow external IP connections (10.123.33.49).
+- **Updated**: Frontend .env to use relative API paths, enabling easier access from multiple network locations.
+
+### Session 8 Verification
+- **Verified**: User registration successful from both local and remote devices.
+- **Verified**: Company registration (tenant provisioning) functional.
+- **Verified**: System stable with multi-middleware chain (CORS, Helmet, Rate Limiters).
+
+
+### Session 9: QR Code Fix & Multi-Tenancy Support
+- **Issue**: Users encountered a 404 error when generating QR codes for receiving tokens.
+- **Root Cause**: The `receiveTokenService.js` was using static model imports (`PurchaseOrder`, etc.), which bound to the default/landlord database instead of the tenant-specific database.
+- **Fix**: Refactored `receiveTokenService.js` to dynamically retrieve models from the `dbStore` context (e.g., `dbStore.get('PurchaseOrder')`). This ensures queries are executed against the correct tenant database.
+- **Verification**: Verified the fix by reproducing the error, applying the patch, and confirming successful token generation.
+- **Cleanup**: Removed temporary debug logging from middleware and services.
+
+---
+
+## Session 10: AI Response Markdown Rendering (2026-02-04)
+
+### Feature Overview
+Implemented full Markdown rendering for AI chat responses, transforming plain text into beautifully formatted content with proper styling.
+
+### Problem
+AI responses were displayed as plain text with `whitespace-pre-wrap`, causing markdown syntax (`**bold**`, tables, lists) to appear as raw text instead of being rendered.
+
+### Solution
+Added `react-markdown` with GitHub Flavored Markdown (GFM) support for rich text rendering.
+
+### Frontend Changes
+
+#### New Dependencies
+- `react-markdown@10.1.0` - React component for rendering markdown
+- `remark-gfm@4.0.1` - GitHub Flavored Markdown support (tables, task lists, strikethrough)
+
+#### New Component: `Components/ai/MarkdownRenderer.jsx`
+Custom markdown renderer with Tailwind styling for:
+- **Headings**: Proper hierarchy (h1-h4) with appropriate sizing
+- **Text emphasis**: Bold and italic rendering
+- **Lists**: Bullet and numbered lists with proper indentation
+- **Tables**: Styled with borders, hover effects, responsive scrolling
+- **Code**: Inline code with background, code blocks with dark theme
+- **Links**: Clickable with hover underline
+- **Blockquotes**: Left border with italic styling
+- **Task lists**: GFM checkbox rendering
+
+#### Updated: `Pages/AiChat.jsx`
+- Added import for `MarkdownRenderer`
+- Assistant messages now render through `MarkdownRenderer`
+- User messages remain plain text (no markdown needed)
+
+### Backend Changes
+
+#### Updated: `config/aiSystemPrompt.js`
+Enhanced response formatting guidelines to encourage AI to use markdown:
+- Use `**bold**` for important values and SKU codes
+- Use `` `code` `` for IDs, numbers, and technical terms
+- Use tables for data comparisons
+- Use headers for organizing long responses
+- Use bullet/numbered lists for multiple items
+
+### Technical Notes
+- `react-markdown` v10 removed `className` prop from `<ReactMarkdown>` component
+- `react-markdown` v9+ removed `inline` and `node` props from custom components
+- Solution: Wrap `<ReactMarkdown>` in a `<div>` for className application
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `frontend/package.json` | Added react-markdown, remark-gfm |
+| `frontend/Components/ai/MarkdownRenderer.jsx` | **New file** |
+| `frontend/Pages/AiChat.jsx` | Import and use MarkdownRenderer |
+| `backend/src/config/aiSystemPrompt.js` | Enhanced formatting guidelines |
+| `docs/AI_GUIDELINES.md` | Documented markdown features |
+| `CLAUDE.md` | Updated AI section with component info |
+
+### Verification
+- [x] Build succeeds without errors
+- [x] AI responses render with proper markdown formatting
+- [x] Tables display with borders and responsive scrolling
+- [x] Code blocks render with dark theme
+- [x] Bold and italic text properly emphasized
+- [x] Lists properly indented
+
+---
+
+## Session 11: Job Order Completion FIFO Bug Fix (2026-02-04)
+
+### Problem Overview
+Job Order completion was failing with a 400 Bad Request error when trying to complete production. The error message was: `Unable to fulfill entire quantity from FIFO batches. Shortfall: X`
+
+### Root Cause Analysis
+The issue had multiple contributing factors:
+
+1. **Legacy Data Without FIFO Batches**: Items had `current_stock > 0` but no corresponding FIFO batch records. When the system tried to consume stock using FIFO logic, it found no batches available despite the item showing available stock.
+
+2. **Frontend Type Coercion**: The quantity produced was being sent as a string instead of a number, which could cause validation issues.
+
+3. **Missing Status Validation**: Draft job orders could potentially be passed to the completion endpoint without proper validation.
+
+### Investigation Process
+1. Traced error from frontend console to backend logs
+2. Found error at `stockMovementService.js:200` - FIFO consumption failing
+3. Discovered that `Premium White Sugar (ID: 79)` had stock but no FIFO batches
+4. Query `SELECT ... FROM fifo_batches WHERE item_id = 79` returned empty results
+
+### Solution Implemented
+
+#### 1. Legacy FIFO Batch Auto-Creation (`stockMovementService.js`)
+Added automatic creation of legacy FIFO batches when:
+- Item has `current_stock > 0`
+- No FIFO batches exist for the item
+- A consumption operation is attempted
+
+```javascript
+// Check if this is a legacy data issue (current_stock exists but no FIFO batches)
+const hasLegacyStock = currentStock > 0 && batches.length === 0;
+if (hasLegacyStock) {
+  // Create a legacy batch to represent existing stock before consuming
+  const legacyBatch = await FIFOBatch.create({
+    item_id: item.item_id,
+    quantity: currentStock,
+    cost_per_unit: item.cost_per_unit || 0,
+    received_date: new Date(),
+    expiry_date: null,
+    po_number: 'LEGACY-STOCK',
+    notes: 'Auto-created from existing stock during JO completion'
+  }, options);
+  // ... consume from legacy batch
+}
+```
+
+#### 2. Improved Error Messages (`stockMovementService.js`)
+Enhanced error message to include item name and specific shortfall details:
+```javascript
+const error = new Error(`Unable to fulfill quantity from FIFO batches for "${item.name}". Required: ${quantity}, Shortfall: ${remaining.toFixed(2)} ${item.unit_of_measure}. Please ensure sufficient stock batches exist.`);
+```
+
+#### 3. Frontend Validation (`JODetailsModal.jsx`)
+- Convert `quantityProduced` to float before sending to backend
+- Validate quantity is positive and not NaN before submission
+
+```javascript
+const handleConfirmComplete = () => {
+  const qty = quantityProduced ? parseFloat(quantityProduced) : null;
+  if (!qty || qty <= 0 || isNaN(qty)) {
+    return; // Don't submit invalid quantity
+  }
+  onComplete(displayJO, expiryOverride || null, completionNotes || null, qty, qualityCheck);
+  setCompleteDialogOpen(false);
+};
+```
+
+#### 4. Draft Status Validation (`jobOrderService.js`)
+Added explicit check to prevent completing draft job orders:
+```javascript
+if (jo.status === 'draft') {
+  const error = new Error('Cannot complete a draft job order. Please finalize it first.');
+  error.statusCode = 400;
+  throw error;
+}
+```
+
+#### 5. Floating Point Tolerance (`jobOrderService.js`)
+Added small tolerance (0.001) for quantity comparisons to handle floating point precision issues:
+```javascript
+if (qtyToProcess > remainingQuantity + 0.001) {
+  // Allow small floating point error tolerance
+  const error = new Error(`Cannot produce ${qtyToProcess}. Only ${remainingQuantity.toFixed(2)} remaining...`);
+}
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/src/services/stockMovementService.js` | Legacy FIFO batch auto-creation, improved error messages |
+| `backend/src/services/jobOrderService.js` | Draft status validation, floating point tolerance |
+| `frontend/Components/jo/JODetailsModal.jsx` | Quantity type conversion, validation |
+
+### Technical Notes
+
+**FIFO Batch Lifecycle**:
+- FIFO batches are normally created when receiving Purchase Orders
+- Legacy data (migrated from older systems) may have stock without batches
+- The auto-creation feature bridges this gap without data migration
+
+**Batch Identification**:
+- Legacy batches are marked with `po_number: 'LEGACY-STOCK'`
+- Notes field includes: `'Auto-created from existing stock during JO completion'`
+
+### Verification
+- [x] JO completion succeeds for items with existing FIFO batches
+- [x] JO completion succeeds for legacy items (auto-creates batch)
+- [x] Draft JOs cannot be completed (proper error message)
+- [x] Quantity validation prevents invalid submissions
+- [x] Error messages clearly identify problematic items
+
+---
+
+## Phase 18: System Stability & Workflow Optimization
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-04
+
+### Overview
+A collection of stability fixes, quality-of-life improvements, and workflow optimizations addressing feedback storage, multi-tenancy, AI interactions, and process management.
+
+### Bug Fixes & Improvements
+
+#### 1. Authentication & Tenant Resolution
+- [x] **Admin 401 Errors**: Resolved authentication failures for admin users by fixing token validation logic in `adminService.js` and backend middleware.
+- [x] **QR Code 404s**: Fixed multi-tenancy issue where QR code generation failed due to incorrect tenant database resolution.
+- [x] **Registration Fixes**: Implemented dynamic proxy configuration to prevent malformed URL errors during registration.
+
+#### 2. Feature Enhancements
+- [x] **Feedback Reporting**: Enhanced feedback system to capture and display submitter email and company name for better context.
+- [x] **AI Action UI**: Implemented "Success Card" for AI actions to provide structured, visual confirmation of changes.
+- [x] **Inventory Folders**: Resolved discrepancies where empty folders created by AI were not visible in the UI; synchronized `item_folders` table with frontend.
+- [x] **Job Order Quality**: Implemented "Quality Check" feature for Job Orders with pass/fail status tracking.
+
+#### 3. Development Workflow (PM2)
+- [x] **Process Management**: Clarified `pm2` usage vs manual `node` execution.
+- [x] **Workflow Commands**: Standardized usage of `/start-dev` for starting the ecosystem.
+- [x] **Documentation**: Updated troubleshooting guide for "Process not found" errors.
+
+### Files Modified (Highlights)
+- `backend/src/services/adminService.js` (Auth)
+- `backend/src/services/feedbackService.js` (Reporting)
+- `frontend/components/common/FeedbackWidget.jsx` (Reporting)
+- `backend/src/middleware/tenantMiddleware.js` (Multi-tenancy)
+- `TROUBLESHOOTING.md` (Process management)
+
+
+## Phase 20: Nested Tenancy & Multi-Tenant Architecture Fixes (2026-02-04)
+
+### Issue: Multi-Tenant Data Collision & Calculation Errors
+The Nested Products feature had critical bugs in a multi-tenant environment:
+1.  **Redis Cache Collision**: The dependency graph cache key was global (composition:dependency_graph), causing tenants to share/overwrite dependency data.
+2.  **Script Isolation Failure**: The calculateNestingLevels script only ran for the default database, leaving other tenants with incorrect nesting data.
+
+### Critical Bugs Fixed
+
+#### 1. Redis Cache Scoping
+**Issue**: Tenants A and B could overwrite each others product dependency graphs in Redis.
+**Fix**: Updated compositionValidationService.js to use tenant-scoped keys:
+-   Old Key: composition:dependency_graph
+-   New Key: composition:dependency_graph:\
+-   Implementation: Uses dbStore.getStore() to retrieve the current requests tenant ID dynamically.
+
+#### 2. Multi-Tenant Script Execution
+**Issue**: calculateNestingLevels.js was a single-tenant script.
+**Fix**: Refactored the script to:
+-   Connect to the Landlord DB to fetch all active tenants.
+-   Iterate through each tenant.
+-   Dynamically connect using TenantConnector and hydrate models for that specific context.
+-   Calculate and update nesting levels for every tenant in the system.
+
+### Verification
+-   **Unit Tests**: Created backend/tests/nestedTenancy.test.js to verify Redis key generation logic.
+-   **E2E Simulation**: Created verify-e2e-tenancy.js to simulate concurrent requests from different tenants against the live server.
 

@@ -27,6 +27,12 @@ import ReceiveToken from './ReceiveToken.js';
 import ReportSnapshot from './ReportSnapshot.js';
 import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
+import ItemEmbedding from './ItemEmbedding.js';
+import ItemFolder from './ItemFolder.js';
+import TenantFactory from './Landlord/Tenant.js';
+import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
+const Tenant = TenantFactory(sequelize);
+const UserTenantMapping = UserTenantMappingFactory(sequelize);
 
 // Define associations
 // User associations
@@ -34,6 +40,12 @@ User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
 User.hasMany(PurchaseOrder, { foreignKey: 'created_by', as: 'createdPurchaseOrders' });
 User.hasMany(JobOrder, { foreignKey: 'responsible_user', as: 'jobOrders' });
 User.hasMany(StockMovement, { foreignKey: 'user_responsible', as: 'stockMovements' });
+
+// ItemFolder associations
+ItemFolder.hasMany(Item, { foreignKey: 'folder_id', as: 'items' });
+ItemFolder.hasMany(ItemFolder, { foreignKey: 'parent_id', as: 'children' });
+ItemFolder.belongsTo(ItemFolder, { foreignKey: 'parent_id', as: 'parent' });
+Item.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
 
 // Item associations
 Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
@@ -51,7 +63,9 @@ Item.hasMany(SupplierItem, { foreignKey: 'item_id', as: 'supplierItems' });
 Item.hasMany(POLineItem, { foreignKey: 'item_id', as: 'poLineItems' });
 Item.hasMany(JobOrder, { foreignKey: 'product_id', as: 'jobOrders' });
 Item.hasMany(JOIngredient, { foreignKey: 'item_id', as: 'joIngredients' });
+
 Item.hasMany(StockMovement, { foreignKey: 'item_id', as: 'stockMovements' });
+Item.hasOne(ItemEmbedding, { foreignKey: 'item_id', as: 'embedding' });
 
 // Supplier associations
 Supplier.hasMany(SupplierItem, { foreignKey: 'supplier_id', as: 'supplierItems' });
@@ -149,6 +163,10 @@ AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(PendingAIAction, { foreignKey: 'user_id', as: 'pendingAIActions' });
 User.hasMany(AIConversation, { foreignKey: 'user_id', as: 'aiConversations' });
 
+// UserTenantMapping associations (Landlord DB)
+UserTenantMapping.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(UserTenantMapping, { foreignKey: 'tenant_id', as: 'userMappings' });
+
 const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
@@ -179,7 +197,11 @@ const db = {
   ReceiveToken,
   ReportSnapshot,
   PendingAIAction,
-  AIConversation
+  AIConversation,
+  ItemEmbedding,
+  ItemFolder,
+  Tenant,
+  UserTenantMapping
 };
 
 export default db;
@@ -212,6 +234,11 @@ export {
   ReceiveToken,
   ReportSnapshot,
   PendingAIAction,
-  AIConversation
+  AIConversation,
+  ItemEmbedding,
+  ItemFolder,
+  Tenant,
+  UserTenantMapping
 };
+
 

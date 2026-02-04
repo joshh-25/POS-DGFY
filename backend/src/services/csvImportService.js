@@ -1,8 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { Op } from 'sequelize';
-import Item from '../models/Item.js';
+import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
-import sequelize from '../config/database.js';
 import { createItem, updateItem } from './itemService.js';
 
 // Valid values for enums
@@ -270,6 +269,7 @@ export const previewImport = async (csvContent) => {
     const templateType = detectTemplateType(headers);
 
     // Get all existing SKUs for upsert detection
+    const Item = dbStore.get('Item');
     const existingItems = await Item.findAll({
         attributes: ['item_id', 'sku_code'],
         where: { status: { [Op.in]: ['active', 'draft'] } }
@@ -367,6 +367,8 @@ export const confirmImport = async (rows, userId) => {
                     });
                 } else {
                     // Use direct Item.create for non-products (simpler, faster)
+                    const Item = dbStore.get('Item');
+                    const sequelize = dbStore.get('sequelize');
                     const transaction = await sequelize.transaction();
                     try {
                         const newItem = await Item.create({
@@ -400,6 +402,8 @@ export const confirmImport = async (rows, userId) => {
                     });
                 } else {
                     // Use direct Item.update for non-products (simpler, faster)
+                    const Item = dbStore.get('Item');
+                    const sequelize = dbStore.get('sequelize');
                     const transaction = await sequelize.transaction();
                     try {
                         await Item.update(row.data, {

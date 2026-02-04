@@ -1,0 +1,117 @@
+Connected to MySQL server.
+Found databases: ["nexuscommand","sieijjdi_hubomoto","sku","sku_inventory_manager","sku_inventory_manager_test","sku_tenant_autoprovisionedtenant_7a83d9ca","sku_tenant_autoprovisionedtenant_a9046df1","sku_tenant_autoprovisionedtenant_c1f013d0","sku_tenant_autoprovisionedtenant_d167e0be","sku_tenant_autoprovisionedtenant_e107caa0","sku_tenant_sigmacorp2_276c19d1","sku_tenant_vonvv_24796542","sku_test_tenant_a","sku_test_tenant_b","spacebar_menu","tenant_43993681-1c0f-489a-8280-e4d0f02e2889","workedka_core"]
+
+=== Inspecting Database: nexuscommand ===
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sieijjdi_hubomoto ===
+
+=== Inspecting Database: sku ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_inventory_manager ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Found suppliers with addresses:
+[
+  {
+    "supplier_id": 1,
+    "name": "Supplier A - Premium Foods",
+    "address": "123 Industrial Blvd, Suite 100, Metro City, MC 12345"
+  },
+  {
+    "supplier_id": 2,
+    "name": "Supplier B - Organic Spices",
+    "address": "456 Spice Lane, Flavor Town, FT 67890"
+  },
+  {
+    "supplier_id": 3,
+    "name": "Supplier C - PackagePro",
+    "address": "789 Packaging Way, Box City, BC 11223"
+  },
+  {
+    "supplier_id": 4,
+    "name": "BB",
+    "address": ""
+  },
+  {
+    "supplier_id": 5,
+    "name": "VOMBB",
+    "address": "sidasjikdn"
+  }
+]
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_inventory_manager_test ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Found suppliers with addresses:
+[
+  {
+    "supplier_id": 49,
+    "name": "Test Supplier Inc",
+    "address": "123 Supply Chain Rd"
+  }
+]
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_tenant_autoprovisionedtenant_7a83d9ca ===
+
+=== Inspecting Database: sku_tenant_autoprovisionedtenant_a9046df1 ===
+
+=== Inspecting Database: sku_tenant_autoprovisionedtenant_c1f013d0 ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_tenant_autoprovisionedtenant_d167e0be ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_tenant_autoprovisionedtenant_e107caa0 ===
+
+=== Inspecting Database: sku_tenant_sigmacorp2_276c19d1 ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_tenant_vonvv_24796542 ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_test_tenant_a ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: sku_test_tenant_b ===
+Found system_settings table. Checking for address/location configs...
+No specific address/company settings found.
+Found suppliers table. Checking for addresses...
+Suppliers table is empty.
+Found tenants table (Landlord DB or similar).
+
+=== Inspecting Database: spacebar_menu ===
+
+=== Inspecting Database: tenant_43993681-1c0f-489a-8280-e4d0f02e2889 ===
+
+=== Inspecting Database: workedka_core ===
+Found tenants table (Landlord DB or similar).

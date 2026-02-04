@@ -1,4 +1,6 @@
 import * as settingsService from '../services/settingsService.js';
+import { Tenant } from '../models/index.js';
+import dbStore from '../utils/dbStore.js';
 
 /**
  * @route   GET /api/v1/settings
@@ -103,6 +105,55 @@ export const resetSettingsToDefault = async (req, res, next) => {
       success: true,
       data: result,
       message: 'Settings reset to default values',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   GET /api/v1/settings/company-info
+ * @desc    Get company token and registration link (Master Admin only)
+ * @access  Private (Master Admin only)
+ */
+export const getCompanyInfo = async (req, res, next) => {
+  try {
+    const store = dbStore.getStore();
+    const tenantId = store?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'No tenant context found',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const tenant = await Tenant.findByPk(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        message: 'Tenant not found',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Build registration link
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const registrationLink = `${frontendUrl}/register?token=${tenant.company_token}`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        company_name: tenant.name,
+        company_token: tenant.company_token,
+        registration_link: registrationLink
+      },
+      message: 'Company information retrieved successfully',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

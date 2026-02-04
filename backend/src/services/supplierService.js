@@ -1,11 +1,12 @@
 import { Op } from 'sequelize';
-import Supplier from '../models/Supplier.js';
-import SupplierItem from '../models/SupplierItem.js';
-import BulkDiscount from '../models/BulkDiscount.js';
-import Item from '../models/Item.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
+import dbStore from '../utils/dbStore.js';
 
 export const getSuppliers = async (queryParams) => {
+  const Supplier = dbStore.get('Supplier');
+  const SupplierItem = dbStore.get('SupplierItem');
+  const BulkDiscount = dbStore.get('BulkDiscount');
+  const Item = dbStore.get('Item');
+
   const {
     page = 1,
     limit = 20,
@@ -84,6 +85,11 @@ export const getSuppliers = async (queryParams) => {
 };
 
 export const getSupplierById = async (supplierId) => {
+  const Supplier = dbStore.get('Supplier');
+  const SupplierItem = dbStore.get('SupplierItem');
+  const BulkDiscount = dbStore.get('BulkDiscount');
+  const Item = dbStore.get('Item');
+
   const supplier = await Supplier.findByPk(supplierId, {
     include: [
       {
@@ -127,6 +133,10 @@ export const getSupplierById = async (supplierId) => {
 };
 
 export const createSupplier = async (supplierData, userId = null) => {
+  const Supplier = dbStore.get('Supplier');
+  const SupplierItem = dbStore.get('SupplierItem');
+  const BulkDiscount = dbStore.get('BulkDiscount');
+
   // Extract items_supplied and bulk_discounts before creating supplier
   const { items_supplied, bulk_discounts, ...supplierFields } = supplierData;
 
@@ -164,6 +174,10 @@ export const createSupplier = async (supplierData, userId = null) => {
 };
 
 export const updateSupplier = async (supplierId, supplierData, userId = null) => {
+  const Supplier = dbStore.get('Supplier');
+  const SupplierItem = dbStore.get('SupplierItem');
+  const BulkDiscount = dbStore.get('BulkDiscount');
+
   const supplier = await Supplier.findByPk(supplierId);
   if (!supplier) {
     const error = new Error('Supplier not found');
@@ -223,6 +237,8 @@ export const updateSupplier = async (supplierId, supplierData, userId = null) =>
 };
 
 export const finalizeSupplier = async (supplierId, userId = null) => {
+  const Supplier = dbStore.get('Supplier');
+
   const supplier = await Supplier.findByPk(supplierId);
 
   if (!supplier) {
@@ -255,6 +271,9 @@ export const finalizeSupplier = async (supplierId, userId = null) => {
 };
 
 export const addSupplierItem = async (supplierId, itemData) => {
+  const Item = dbStore.get('Item');
+  const SupplierItem = dbStore.get('SupplierItem');
+
   const { item_id, moq, price_per_unit } = itemData;
 
   // Check if item exists
@@ -287,6 +306,9 @@ export const addSupplierItem = async (supplierId, itemData) => {
 };
 
 export const deleteSupplier = async (supplierId, userId) => {
+  const Supplier = dbStore.get('Supplier');
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+
   const supplier = await Supplier.findByPk(supplierId);
   if (!supplier) {
     const error = new Error('Supplier not found');

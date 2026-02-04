@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ITEM_UNITS } from '../../../src/lib/constants';
+import { UomSelect } from '@/components/ui/UomSelect';
 
 export default function BasicInfoStep({ data, updateData }) {
   return (
@@ -53,18 +53,11 @@ export default function BasicInfoStep({ data, updateData }) {
 
         <div className="space-y-2">
           <Label>Unit of Measure *</Label>
-          <Select value={data.unit_of_measure} onValueChange={(val) => updateData({ unit_of_measure: val })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ITEM_UNITS.map((unit) => (
-                <SelectItem key={unit.value} value={unit.value}>
-                  {unit.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <UomSelect
+            value={data.unit_of_measure}
+            onValueChange={(val) => updateData({ unit_of_measure: val })}
+            placeholder="Select unit..."
+          />
         </div>
       </div>
 

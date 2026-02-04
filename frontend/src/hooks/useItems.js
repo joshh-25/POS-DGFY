@@ -194,3 +194,37 @@ export const useItemSupplierCoverage = () => {
   };
 };
 
+export const useFolders = () => {
+  const [folders, setFolders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchFolders = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await itemService.getFolders();
+      setFolders(data || []);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch folders');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const createFolder = useCallback(async (name, description) => {
+    try {
+      await itemService.createFolder({ name, description });
+      await fetchFolders(); // Refresh list
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchFolders]);
+
+  useEffect(() => {
+    fetchFolders();
+  }, [fetchFolders]);
+
+  return { folders, loading, error, refetch: fetchFolders, createFolder };
+};
+

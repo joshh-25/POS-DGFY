@@ -1,6 +1,6 @@
-import BatchLineage from '../models/BatchLineage.js';
-import FIFOBatch from '../models/FIFOBatch.js';
-import Item from '../models/Item.js';
+import { Op } from 'sequelize';
+import logger from '../config/logger.js';
+import dbStore from '../utils/dbStore.js';
 import { Op } from 'sequelize';
 import logger from '../config/logger.js';
 
@@ -24,6 +24,7 @@ export const createBatchLineage = async (parentBatchId, consumedBatches, joNumbe
         jo_number: joNumber
     }));
 
+    const BatchLineage = dbStore.get('BatchLineage');
     const created = await BatchLineage.bulkCreate(lineageRecords, { transaction });
 
     logger.info(`Created ${created.length} batch lineage records for batch ${parentBatchId}`);
@@ -38,6 +39,10 @@ export const createBatchLineage = async (parentBatchId, consumedBatches, joNumbe
  * @returns {Promise<Object>} Tree structure of ancestor batches
  */
 export const getBatchAncestry = async (batchId, maxDepth = 5) => {
+    const FIFOBatch = dbStore.get('FIFOBatch');
+    const Item = dbStore.get('Item');
+    const BatchLineage = dbStore.get('BatchLineage');
+
     const batch = await FIFOBatch.findByPk(batchId, {
         include: [{
             model: Item,
@@ -95,6 +100,10 @@ export const getBatchAncestry = async (batchId, maxDepth = 5) => {
  * @returns {Promise<Object>} Tree structure of descendant batches
  */
 export const getBatchDescendants = async (batchId, maxDepth = 5) => {
+    const FIFOBatch = dbStore.get('FIFOBatch');
+    const Item = dbStore.get('Item');
+    const BatchLineage = dbStore.get('BatchLineage');
+
     const batch = await FIFOBatch.findByPk(batchId, {
         include: [{
             model: Item,
@@ -173,6 +182,10 @@ export const getBatchLineageTree = async (batchId, maxDepth = 5) => {
  * @returns {Promise<Array>} Array of lineage records with batch details
  */
 export const getLineageByJobOrder = async (joNumber) => {
+    const BatchLineage = dbStore.get('BatchLineage');
+    const FIFOBatch = dbStore.get('FIFOBatch');
+    const Item = dbStore.get('Item');
+
     const lineages = await BatchLineage.findAll({
         where: { jo_number: joNumber },
         include: [

@@ -79,3 +79,26 @@ See `/docs` folder in the root project for:
 - Database Schema: `docs/database/schema.md`
 - Integration Guide: `docs/api/integration-guide.md`
 
+
+##  Multi-Tenancy Architecture
+
+This project uses a **Multi-Tenant Database per Tenant** architecture, managed by a Landlord database.
+
+### Core Concepts
+*   **Landlord DB**: Stores the 	enants table (ID, Name, Domain, DB Name, Token).
+*   **Tenant DB**: Isolated database for each company.
+*   **Tenant Connector**: Manages connection pools dynamically.
+
+### Authentication & Context
+*   **Login**: Returns a JWT + x-company-token.
+*   **API Requests**: MUST include x-company-token header to route to the correct database.
+*   **Provisioning**: Master Admins can create new tenants via POST /api/v1/admin/tenants/provision.
+
+### Setup for Development
+1.  **Landlord Setup**: Runs automatically.
+2.  **Tenant A**: Default dev tenant sku_test_tenant_a is created by scripts/setup-test-tenants.js.
+3.  **New Tenants**: Use the Register Company UI or API.
+
+### Troubleshooting
+*   **500 Errors on new tenants?** Ensure migrations are up to date (utils/tenantProvisioningService.js handles this, or use scheduler for updates).
+

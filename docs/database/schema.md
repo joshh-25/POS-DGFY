@@ -1,11 +1,87 @@
 # MySQL Database Schema Design - SKU Inventory Manager
 
+## Table of Contents
+
+> **Navigation Tip:** Click a table name to jump directly to its schema definition.
+
+### Overview
+- [Database Overview](#database-overview)
+- [Entity-Relationship Diagram](#entity-relationship-diagram)
+
+### Multi-Tenant Architecture
+- [Landlord Database (Registry)](#landlord-database-registry)
+- [Tenant Databases (Isolated Contexts)](#tenant-databases-isolated-contexts)
+
+### Table Definitions
+- [1. Users Table](#1-users-table)
+- [2. Items (SKU Master) Table](#2-items-sku-master-table)
+- [3. FIFO Batches Table](#3-fifo-batches-table)
+- [4. Item Nutrition Table](#4-item-nutrition-table)
+- [5. Item Allergens Table](#5-item-allergens-table)
+- [6. Product Composition Table](#6-product-composition-table)
+- [7. Suppliers Table](#7-suppliers-table)
+- [8. Supplier Items Table](#8-supplier-items-table)
+- [9. Bulk Discounts Table](#9-bulk-discounts-table)
+- [10. Purchase Orders Table](#10-purchase-orders-table)
+- [11. PO Line Items Table](#11-po-line-items-table)
+- [12. Job Orders Table](#12-job-orders-table)
+- [13. JO Ingredients Table](#13-jo-ingredients-table)
+- [14. Stock Movements Table](#14-stock-movements-table)
+- [15. Batch Transactions Table](#15-batch-transactions-table)
+- [16. Audit Logs Table](#16-audit-logs-table)
+- [17. System Settings Table](#17-system-settings-table)
+
+### Database Administration
+- [Key Indexes & Performance Optimization](#key-indexes--performance-optimization)
+- [Data Integrity Constraints](#data-integrity-constraints)
+- [Initial Data Setup](#initial-data-setup)
+- [Backup & Recovery Strategy](#backup--recovery-strategy)
+- [Migration Strategy](#migration-strategy)
+
+---
+
+# MySQL Database Schema Design - SKU Inventory Manager
+
 ## Database Overview
 
-**Database Name**: `sku_inventory_manager`
 **MySQL Version**: 8.0+
 **Character Set**: utf8mb4
 **Collation**: utf8mb4_unicode_ci
+
+## Multi-Tenant Architecture
+
+This system uses a **Database-per-Tenant** isolation strategy. A central **Landlord** database manages the registry, while each company has its own isolated **Tenant** database.
+
+### 1. Landlord Database (Registry)
+**Database Name**: `SKU` (or as configured in `DB_NAME`)
+
+This database identifies each tenant and routes API requests to the correct data source.
+
+```sql
+CREATE TABLE tenants (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    domain VARCHAR(255),
+    subdomain VARCHAR(100),
+    db_name VARCHAR(100) NOT NULL UNIQUE,
+    company_token VARCHAR(255) NOT NULL UNIQUE,
+    db_host VARCHAR(255),
+    db_username VARCHAR(255),
+    db_password VARCHAR(255),
+    status ENUM('active', 'inactive', 'pending') DEFAULT 'active',
+    plan VARCHAR(50) DEFAULT 'free',
+    settings JSON,
+    admin_email VARCHAR(255),
+    admin_password_hash VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+### 2. Tenant Databases (Isolated Contexts)
+**Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
+
+Every tenant database follows the **Master Schema** defined below. When a new company is registered, the system creates a new database and executes all migrations to ensure it matches this structure.
 
 ---
 
@@ -278,7 +354,7 @@ CREATE TABLE items (
     max_capacity DECIMAL(12, 2) NOT NULL,
     min_threshold DECIMAL(12, 2),
     purchase_allowance DECIMAL(12, 2),
-    unit_of_measure VARCHAR(50) NOT NULL,
+    unit_of_measure VARCHAR(50) NOT NULL,  -- See UOM Standards below
     cost_per_unit DECIMAL(10, 4),
     fifo_enabled BOOLEAN DEFAULT FALSE,
     batch_size DECIMAL(12, 2),
@@ -296,6 +372,33 @@ CREATE TABLE items (
 );
 ```
 
+#### UOM (Unit of Measure) Standards
+
+The `unit_of_measure` field uses standardized abbreviations organized into three groups. Units within the same group are **automatically convertible** for job order calculations.
+
+| Group | UOM Code | Display Name | Conversion Factor |
+|-------|----------|--------------|-------------------|
+| **Weight** | mg | Milligram | 0.001 g |
+| | g | Gram | 1 (base) |
+| | kg | Kilogram | 1000 g |
+| | lb | Pound | 453.592 g |
+| | oz | Ounce | 28.3495 g |
+| **Volume** | mL | Milliliter | 1 (base) |
+| | L | Liter | 1000 mL |
+| | gal | Gallon | 3785.41 mL |
+| | cup | Cup | 236.588 mL |
+| | tbsp | Tablespoon | 14.787 mL |
+| | tsp | Teaspoon | 4.929 mL |
+| **Count** | pcs | Pieces | 1 (base) |
+| | units | Units | 1 (equivalent to pcs) |
+| | dozen | Dozen | 12 pcs |
+
+**Conversion Rules:**
+- Units within the same group convert automatically (e.g., kg ↔ g, L ↔ mL)
+- Units in different groups are **incompatible** (e.g., kg ↔ L = error)
+- `pcs` and `units` are treated as equivalent (1:1)
+- Legacy values (e.g., "Kilogram", "liters") are normalized via migration script
+
 ### 3. FIFO Batches Table
 
 ```sql
@@ -307,16 +410,20 @@ CREATE TABLE fifo_batches (
     received_date DATE NOT NULL,
     expiry_date DATE,
     po_number VARCHAR(50),
+    notes TEXT,
     quantity_consumed DECIMAL(12, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE,
     INDEX idx_item_id (item_id),
     INDEX idx_expiry_date (expiry_date),
     INDEX idx_received_date (received_date)
 );
 ```
+
+**Special Values:**
+- `po_number = 'LEGACY-STOCK'`: Auto-created batch for legacy items that had `current_stock` but no FIFO batches. Created during JO completion when consumption is attempted on items without batches.
 
 ### 4. Item Nutrition Table
 
@@ -498,7 +605,12 @@ CREATE TABLE job_orders (
     jo_number VARCHAR(50) UNIQUE NOT NULL,
     product_id INT NOT NULL,
     quantity_to_produce DECIMAL(12, 2) NOT NULL,
-    status ENUM('draft', 'in_progress', 'completed', 'cancelled') DEFAULT 'draft',
+    status ENUM('draft', 'in_progress', 'partial', 'completed', 'cancelled') DEFAULT 'draft',
+    quantity_produced DECIMAL(12, 2) DEFAULT 0,
+    quality_check ENUM('pass', 'fail') NULL,
+    completed_by INT NULL,
+    archived_by INT NULL,
+    archived_at TIMESTAMP NULL,
     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completion_date TIMESTAMP NULL,
     responsible_user INT,
@@ -515,6 +627,18 @@ CREATE TABLE job_orders (
 );
 ```
 
+**Status Lifecycle:**
+- `draft` → JO created but not finalized (no JO number assigned)
+- `in_progress` → JO finalized and ready for production
+- `partial` → Production partially completed (quantity_produced < quantity_to_produce)
+- `completed` → Production fully completed
+- `cancelled` → JO cancelled
+
+**Partial Completion Support:**
+- `quantity_produced` tracks how much has been produced so far
+- Multiple completion operations can be performed until `quantity_produced = quantity_to_produce`
+- Each partial completion consumes proportional ingredients
+
 ### 13. JO Ingredients Table
 
 ```sql
@@ -523,13 +647,16 @@ CREATE TABLE jo_ingredients (
     jo_id INT NOT NULL,
     item_id INT NOT NULL,
     quantity_required DECIMAL(12, 2) NOT NULL,
+    unit_of_measure VARCHAR(20),          -- Recipe UOM (may differ from item's stock UOM)
     quantity_consumed DECIMAL(12, 2),
     stock_before DECIMAL(12, 2),
     stock_after DECIMAL(12, 2),
+    batch_id INT NULL,                    -- Primary FIFO batch used for consumption
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (jo_id) REFERENCES job_orders(jo_id) ON DELETE CASCADE,
     FOREIGN KEY (item_id) REFERENCES items(item_id),
+    FOREIGN KEY (batch_id) REFERENCES fifo_batches(batch_id),
     INDEX idx_jo_id (jo_id),
     INDEX idx_item_id (item_id)
 );

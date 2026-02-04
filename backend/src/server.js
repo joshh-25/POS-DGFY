@@ -20,14 +20,28 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import logger from './config/logger.js';
 import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
+import { initCleanupJob } from './services/cleanupService.js';
+import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
+import { tenantHandler } from './middleware/tenantHandler.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Trust proxy - required when running behind nginx/apache reverse proxy
 // This allows Express to correctly read X-Forwarded-For headers
-app.set('trust proxy', true);
+// We enable it automatically in production or if explicitly requested in .env
+const isProduction = process.env.NODE_ENV === 'production';
+const trustProxyRequested = process.env.TRUST_PROXY === 'true';
+
+if (isProduction || trustProxyRequested) {
+  app.set('trust proxy', true);
+  logger.info(`🛡️ Trust proxy enabled (Production: ${isProduction}, Override: ${trustProxyRequested})`);
+} else {
+  // In development/test, we don't trust the proxy by default to avoid URIError crashes
+  // with malformed headers in local network setups
+  app.set('trust proxy', false);
+}
 
 // CORS configuration - must be applied before helmet
 const corsOptions = {
@@ -41,11 +55,11 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   } : (origin, callback) => {
-    // In development, allow localhost and any IP on port 5173
+    // In development, allow localhost and any IP on ports 5173-5179 (Vite dev ports)
     if (!origin ||
-      origin.startsWith('http://localhost:5173') ||
-      origin.startsWith('http://127.0.0.1:5173') ||
-      /^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:5173$/.test(origin)) {
+      /^http:\/\/localhost:517[0-9]$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1:517[0-9]$/.test(origin) ||
+      /^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:517[0-9]$/.test(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -75,6 +89,9 @@ if (process.env.NODE_ENV === 'development') {
 
 // Rate limiting - apply general limiter to all routes
 app.use('/api', generalLimiter);
+
+// Tenant Resolution & Context Middleware (Must be before API routes)
+app.use(tenantHandler);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
@@ -151,7 +168,11 @@ import forecastRoutes from './routes/forecast.js';
 import alertRoutes from './routes/alerts.js';
 import settingsRoutes from './routes/settings.js';
 import receiveTokenRoutes from './routes/receiveTokens.js';
+import analyticsRoutes from './routes/analytics.js';
+import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
+import adminAuthRoutes from './routes/adminAuth.js';
+import adminTenantRoutes from './routes/adminTenants.js';
 
 // Apply stricter rate limiter to auth routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
@@ -168,8 +189,14 @@ app.use('/api/v1/forecast', forecastRoutes);
 app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
-import analyticsRoutes from './routes/analytics.js';
 app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/feedback', feedbackRoutes);
+// Mount specific admin routes first to avoid catching issues
+console.log('Mounting admin tenant routes');
+app.use('/api/v1/admin/tenants', adminTenantRoutes);
+
+console.log('Mounting admin auth routes');
+app.use('/api/v1/admin', adminAuthRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
@@ -178,11 +205,25 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
+    // Initialize cleanup job
+    initCleanupJob();
+
     // Test database connection
     const dbConnected = await testConnection();
     if (!dbConnected) {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
+    }
+
+    // In development mode, sync database schema to apply any model changes
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      try {
+        await sequelize.sync({ alter: true });
+        logger.info('📦 Database schema synced (development mode)');
+      } catch (syncError) {
+        logger.warn('⚠️ Database sync warning:', syncError.message);
+        // Don't exit - table may already be in sync
+      }
     }
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)
@@ -242,3 +283,4 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 export default app;
+// End of file

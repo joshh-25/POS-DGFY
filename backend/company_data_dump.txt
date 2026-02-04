@@ -1,0 +1,95 @@
+Connecting to database...
+Connected.
+
+--- EXTRACTING TENANT DATA ---
+Tenant ID: 1e68b6a5-8c82-44f2-9091-2ccab4b60b1d
+Name: Test Tenant A
+Domain: tenant-a.localhost
+DB Name: sku_test_tenant_a
+DB Host: localhost
+Company Token: token-tenant-a
+Settings: null
+---
+Tenant ID: 24796542-3f8d-4df2-8cb7-ce422aa5ced5
+Name: VonVV
+Domain: vonvv-24796542
+DB Name: sku_tenant_vonvv_24796542
+DB Host: localhost
+Company Token: token-vonvv-24796542
+Settings: "{}"
+---
+Tenant ID: 276c19d1-44ee-46f7-bcd3-4b8d8a913426
+Name: Sigma Corp 2
+Domain: sigmacorp2-276c19d1
+DB Name: sku_tenant_sigmacorp2_276c19d1
+DB Host: localhost
+Company Token: token-sigmacorp2-276c19d1
+Settings: "{}"
+---
+Tenant ID: 366dfeb5-0fc0-49f2-9050-28cae0184bd8
+Name: Delta Corp Test
+Domain: deltacorptest-366dfeb5
+DB Name: sku_tenant_deltacorptest_366dfeb5
+DB Host: localhost
+Company Token: token-deltacorptest-366dfeb5
+Settings: "{\"0\":\"{\",\"1\":\"}\",\"rejection_reason\":\"pARA KANG PAKSHET\"}"
+---
+Tenant ID: 7a83d9ca-22ad-42c2-b8a5-2befe1a4983c
+Name: Auto Provisioned Tenant
+Domain: autoprovisionedtenant
+DB Name: sku_tenant_autoprovisionedtenant_7a83d9ca
+DB Host: localhost
+Company Token: token-autoprovisionedtenant-7a83d9ca
+Settings: "{}"
+---
+Tenant ID: a9046df1-d444-4bda-b61a-620a0942ef9b
+Name: Auto Provisioned Tenant
+Domain: autoprovisionedtenant-a9046df1
+DB Name: sku_tenant_autoprovisionedtenant_a9046df1
+DB Host: localhost
+Company Token: token-autoprovisionedtenant-a9046df1
+Settings: "{}"
+---
+Tenant ID: bbabef38-b6d4-4c5c-8282-9dbb1fe2a554
+Name: Test Tenant B
+Domain: tenant-b.localhost
+DB Name: sku_test_tenant_b
+DB Host: localhost
+Company Token: token-tenant-b
+Settings: null
+---
+Tenant ID: c1f013d0-c8ad-4427-8acf-228263e26cec
+Name: Auto Provisioned Tenant
+Domain: autoprovisionedtenant-c1f013d0
+DB Name: sku_tenant_autoprovisionedtenant_c1f013d0
+DB Host: localhost
+Company Token: token-autoprovisionedtenant-c1f013d0
+Settings: "{}"
+---
+Tenant ID: d167e0be-c8af-47da-beb0-2b6d751c797d
+Name: Auto Provisioned Tenant
+Domain: autoprovisionedtenant-d167e0be
+DB Name: sku_tenant_autoprovisionedtenant_d167e0be
+DB Host: localhost
+Company Token: token-autoprovisionedtenant-d167e0be
+Settings: "{}"
+---
+Tenant ID: e107caa0-f1d9-4541-94e8-4ae180877f33
+Name: Auto Provisioned Tenant
+Domain: autoprovisionedtenant-e107caa0
+DB Name: sku_tenant_autoprovisionedtenant_e107caa0
+DB Host: localhost
+Company Token: token-autoprovisionedtenant-e107caa0
+Settings: "{}"
+---
+Tenant ID: original-data-id-001
+Name: Original Legacy Data
+Domain: null
+DB Name: sku_inventory_manager
+DB Host: localhost
+Company Token: token-original
+Settings: null
+---
+
+--- EXTRACTING SUPPLIER DATA ---
+No suppliers found.

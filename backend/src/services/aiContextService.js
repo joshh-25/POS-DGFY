@@ -6,11 +6,7 @@
  */
 
 import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import Item from '../models/Item.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
-import JobOrder from '../models/JobOrder.js';
-import User from '../models/User.js';
+import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 
 /**
@@ -54,8 +50,9 @@ export const buildContext = async (userId) => {
  */
 export const getUserContext = async (userId) => {
   try {
+    const User = dbStore.get('User');
     const user = await User.findByPk(userId, {
-      attributes: ['user_id', 'username', 'full_name', 'email', 'role']
+      attributes: ['user_id', 'username', 'email', 'role']
     });
 
     if (!user) {
@@ -64,7 +61,7 @@ export const getUserContext = async (userId) => {
 
     return {
       id: user.user_id,
-      name: user.full_name || user.username,
+      name: user.username,
       email: user.email,
       role: user.role
     };
@@ -80,6 +77,11 @@ export const getUserContext = async (userId) => {
  */
 export const getInventoryStats = async () => {
   try {
+    const Item = dbStore.get('Item');
+    const PurchaseOrder = dbStore.get('PurchaseOrder');
+    const JobOrder = dbStore.get('JobOrder');
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
     // Get item counts
     const [totalItems, lowStockItems, healthyItems, overstockItems] = await Promise.all([
       Item.count({

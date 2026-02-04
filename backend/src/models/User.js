@@ -32,6 +32,16 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   },
+  permissions: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  is_master_admin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  },
   last_login: {
     type: DataTypes.DATE,
     allowNull: true

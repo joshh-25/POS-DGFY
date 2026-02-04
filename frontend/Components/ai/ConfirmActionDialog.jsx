@@ -10,7 +10,12 @@ import {
   Truck,
   Edit,
   Trash2,
-  Plus
+  Plus,
+  Building2,
+  Settings,
+  UserCog,
+  UserX,
+  Link
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +37,16 @@ const ACTION_ICONS = {
   update_item: Edit,
   delete_item: Trash2,
   create_stock_adjustment: Package,
+  // Supplier Management
+  create_supplier: Building2,
+  update_supplier: Edit,
+  delete_supplier: Trash2,
+  add_supplier_item: Link,
+  // Settings
+  update_system_settings: Settings,
+  // User Management
+  update_user_role: UserCog,
+  toggle_user_status: UserX,
   default: AlertTriangle
 };
 
@@ -45,6 +60,16 @@ const ACTION_COLORS = {
   update_item: 'text-amber-600 bg-amber-100',
   delete_item: 'text-red-600 bg-red-100',
   create_stock_adjustment: 'text-orange-600 bg-orange-100',
+  // Supplier Management
+  create_supplier: 'text-indigo-600 bg-indigo-100',
+  update_supplier: 'text-indigo-600 bg-indigo-100',
+  delete_supplier: 'text-red-600 bg-red-100',
+  add_supplier_item: 'text-cyan-600 bg-cyan-100',
+  // Settings
+  update_system_settings: 'text-violet-600 bg-violet-100',
+  // User Management
+  update_user_role: 'text-fuchsia-600 bg-fuchsia-100',
+  toggle_user_status: 'text-rose-600 bg-rose-100',
   default: 'text-slate-600 bg-slate-100'
 };
 
@@ -204,9 +229,8 @@ export default function ConfirmActionDialog({
           {renderDetails()}
 
           {/* Timer warning */}
-          <div className={`flex items-center gap-2 mt-4 p-2 rounded-lg ${
-            timeLeft < 60 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-          }`}>
+          <div className={`flex items-center gap-2 mt-4 p-2 rounded-lg ${timeLeft < 60 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+            }`}>
             <Clock className="w-4 h-4" />
             <span className="text-sm font-medium">
               Expires in {formatTime(timeLeft)}

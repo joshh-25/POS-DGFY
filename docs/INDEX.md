@@ -14,6 +14,7 @@ Welcome to the SKU Inventory Manager documentation hub.
 - **[Delete & Archive Guide](guides/DELETE_ARCHIVE_GUIDE.md)**: Policy on data deletion and logical archiving.
 - **[Documentation Guide](guides/DOCUMENTATION_GUIDE.md)**: How to contribute to docs.
 - **[Nested Products](NESTED_PRODUCTS.md)**: How the multi-level recipe system works.
+- **[Inventory Folders (AI & UI)](INVENTORY_FOLDERS.md)**: How inventory is organized.
 - **[Quick Reference](QUICK_REFERENCE.md)**: Cheat sheet (commands, troubleshooting).
 
 ## ⚙️ Operations & Maintenance (`docs/ops/`)

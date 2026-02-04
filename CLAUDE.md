@@ -4,11 +4,11 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Jan 29, 2026
-> **Version:** 2.0.0
+> **Last Updated:** Feb 4, 2026
+> **Version:** 2.3.0
 
 # 🎯 Project Overview (Critical Context)
-**SKU Inventory Manager** is a full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements. It features FIFO batch tracking, nested product recipes, and smart restock logic.
+**SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
 
 **Tech Stack:**
 **Frontend:**
@@ -25,7 +25,8 @@
 - Redis (Caching - Optional)
 
 ## 🔑 Key Features
-1.  **Inventory Management**: CRUD for items, categories (Raw/Packaging/Product), and units.
+1.  **Multi-Tenancy**: Distributed database architecture with unique subdomains and tokens for each company.
+2.  **Inventory Management**: CRUD for items, categories (Raw/Packaging/Product), and units.
 2.  **FIFO Batch Tracking**: First-In-First-Out logic for cost tracking and lot traceability. Works with or without expiry dates (non-perishable items supported).
 3.  **Nested Products**: Products can be ingredients for other products (Level 1-3).
 4.  **Smart Restock Logic**: Auto-calculation of thresholds (40%) and purchase allowances (20%).
@@ -35,7 +36,7 @@
 8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
-11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with 20 tools for querying, creating, and managing inventory data.
+11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **36 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence.
 
 ## 🤖 AI Assistant Features
 The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
@@ -47,12 +48,20 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - Search project documentation (RAG)
 - Export data to CSV (display or download)
 - Import CSV data with validation preview
+- **Vision & File Processing**: Analyze images, PDFs, and Word docs
 
 **Key Technical Details:**
 - Write operations require confirmation (5-minute expiry)
 - Conversations retained for 30 days
 - Role-based permissions (Staff: read-only, Manager+: write access)
-- 20 AI tools mapped to existing backend services
+- 36 AI tools mapped to existing backend services
+- **Multi-Tenant Isolation**: Uses `dbStore.get()` for tenant-aware database writes
+- **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
+
+**Frontend Components:**
+- `Components/ai/MarkdownRenderer.jsx` - Markdown rendering with Tailwind styling
+- `Components/ai/ActionResultCard.jsx` - Structured result display
+- `Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
 
 **Files:** See `docs/AI_GUIDELINES.md` for full documentation.
 
@@ -60,9 +69,9 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 | Entity | Key Fields | Notes |
 | :--- | :--- | :--- |
 | **Item** | `sku_code`, `category`, `current_stock`, `deleted_by`, `deleted_at`, `nesting_level` | `category` determines logic. Soft deletes via `status='inactive'`. |
-| **FIFOBatch** | `batch_id`, `item_id`, `expiry_date`, `cost_per_unit`, `notes` | Tracks specific stock instances. `expiry_date` is optional (null for non-perishables). |
+| **FIFOBatch** | `batch_id`, `item_id`, `expiry_date`, `cost_per_unit`, `notes` | Tracks specific stock instances. `expiry_date` is optional (null for non-perishables). Legacy batches (auto-created for items without batches) have `po_number='LEGACY-STOCK'`. |
 | **PurchaseOrder** | `po_number`, `supplier_id`, `status`, `archived_at` | Status: `pending` -> `received` -> `stock_updated`. |
-| **JobOrder** | `jo_number`, `product_id`, `status`, `archived_at` | Status: `draft` -> `in_progress` -> `completed`. |
+| **JobOrder** | `jo_number`, `product_id`, `status`, `archived_at` | Status: `draft` -> `in_progress` -> `partial` -> `completed`. Partial completion supported. |
 | **Supplier** | `name`, `quality_rating`, `lead_time` | Linked to items via `SupplierItems`. |
 | **StockMovement** | `movement_type`, `quantity`, `reference_id` | Audit trail for ALL stock changes. |
 
@@ -151,6 +160,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   ├── Entities/                         # Frontend data models
 │   ├── Pages/                            # Page components (routed)
 │   │   ├── Dashboard.jsx
+│   │   ├── FeedbackViewer.jsx            # Admin feedback dashboard (standalone)
 │   │   ├── Items.jsx
 │   │   ├── Login.jsx
 │   │   ├── Register.jsx
@@ -182,6 +192,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   │   │   └── settings.js
 │   │   ├── controllers/                  # Business logic
 │   │   │   ├── authController.js
+│   │   │   ├── adminAuthController.js     # Developer portal auth
 │   │   │   ├── userController.js
 │   │   │   └── settingsController.js
 │   │   ├── models/                       # Sequelize models
@@ -249,6 +260,8 @@ SKU-Inventory-Manager/                    # Monorepo root
 - POST `/api/v1/auth/register` - Register new user
 - POST `/api/v1/auth/login` - User login
 - POST `/api/v1/auth/logout` - User logout
+- POST `/api/v1/admin/login` - Developer portal login (hardcoded)
+- GET `/api/v1/admin/feedback` - Retrieve user feedback logs
 
 **Items:**
 - GET `/api/v1/items` - List items
@@ -375,3 +388,42 @@ SKU-Inventory-Manager/                    # Monorepo root
 - This file is optimized for Claude Code context efficiency
 - Detailed specs are linked, not embedded
 - Keep context under 1,000 tokens for optimal performance
+
+---
+
+## 📖 How to Navigate Documentation Efficiently
+
+### For Large Files (300+ lines)
+1. **Read the Table of Contents first** — Do NOT load the entire file
+2. **Use anchor links** to jump to specific sections
+3. **Only load what's relevant** to the current task
+
+### Documentation Hierarchy
+
+| Need | Start Here | Then Check |
+|------|------------|------------|
+| Project context | `CLAUDE.md` | — |
+| What was already built | `DEVELOPMENT_HISTORY.md` (TOC) | Specific phase |
+| How to run the project | `QUICK_START.md` | `TROUBLESHOOTING.md` |
+| API details | `docs/api/specification.md` (TOC) | Specific endpoint |
+| Database schema | `docs/database/schema.md` (TOC) | Specific table |
+| System architecture | `docs/architecture/system-architecture.md` (TOC) | Specific diagram |
+| Frontend integration | `docs/api/integration-guide.md` (TOC) | Specific service |
+
+### Avoiding Duplicate Work
+
+Before implementing a feature, search `DEVELOPMENT_HISTORY.md` for:
+- Similar past implementations
+- Bug fixes that might be relevant
+- Design decisions that were already made
+
+### Files with Table of Contents
+
+These files have TOCs for efficient navigation:
+- `DEVELOPMENT_HISTORY.md` — Project phases and history
+- `docs/api/specification.md` — API endpoints
+- `docs/api/integration-guide.md` — Frontend-backend integration
+- `docs/database/schema.md` — Database tables
+- `docs/architecture/system-architecture.md` — System diagrams
+- `TROUBLESHOOTING.md` — Error solutions
+

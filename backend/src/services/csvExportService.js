@@ -1,15 +1,7 @@
 import { Op } from 'sequelize';
 import archiver from 'archiver';
 import { PassThrough } from 'stream';
-import Item from '../models/Item.js';
-import ItemNutrition from '../models/ItemNutrition.js';
-import ItemAllergen from '../models/ItemAllergen.js';
-import ItemPhysicalProperties from '../models/ItemPhysicalProperties.js';
-import ItemShelfLife from '../models/ItemShelfLife.js';
-import ItemPackaging from '../models/ItemPackaging.js';
-import ItemQualityControl from '../models/ItemQualityControl.js';
-import ItemRegulatoryCompliance from '../models/ItemRegulatoryCompliance.js';
-import ItemCostBreakdown from '../models/ItemCostBreakdown.js';
+import dbStore from '../utils/dbStore.js';
 import {
     getTemplateHeaders,
     ITEMS_HEADERS,
@@ -23,16 +15,31 @@ import {
  * Get Sequelize include options for fetching related product data
  * Used to ensure exports include all wizard fields from related tables
  */
-const getProductExportIncludes = () => [
-    { model: ItemNutrition, as: 'nutrition', required: false },
-    { model: ItemAllergen, as: 'allergens', required: false },
-    { model: ItemPhysicalProperties, as: 'physicalProperties', required: false },
-    { model: ItemShelfLife, as: 'shelfLife', required: false },
-    { model: ItemPackaging, as: 'packaging', required: false },
-    { model: ItemQualityControl, as: 'qualityControl', required: false },
-    { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
-    { model: ItemCostBreakdown, as: 'costBreakdown', required: false }
-];
+/**
+ * Get Sequelize include options for fetching related product data
+ * Used to ensure exports include all wizard fields from related tables
+ */
+const getProductExportIncludes = () => {
+    const ItemNutrition = dbStore.get('ItemNutrition');
+    const ItemAllergen = dbStore.get('ItemAllergen');
+    const ItemPhysicalProperties = dbStore.get('ItemPhysicalProperties');
+    const ItemShelfLife = dbStore.get('ItemShelfLife');
+    const ItemPackaging = dbStore.get('ItemPackaging');
+    const ItemQualityControl = dbStore.get('ItemQualityControl');
+    const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
+    const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
+
+    return [
+        { model: ItemNutrition, as: 'nutrition', required: false },
+        { model: ItemAllergen, as: 'allergens', required: false },
+        { model: ItemPhysicalProperties, as: 'physicalProperties', required: false },
+        { model: ItemShelfLife, as: 'shelfLife', required: false },
+        { model: ItemPackaging, as: 'packaging', required: false },
+        { model: ItemQualityControl, as: 'qualityControl', required: false },
+        { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
+        { model: ItemCostBreakdown, as: 'costBreakdown', required: false }
+    ];
+};
 
 /**
  * Transform an Item to a CSV row for Items template
@@ -347,6 +354,7 @@ export const exportFiltered = async (filters = {}) => {
     try {
         const where = buildFilterConditions(filters);
         // Include related tables for complete product data export
+        const Item = dbStore.get('Item');
         const items = await Item.findAll({
             where,
             order: [['name', 'ASC']],
@@ -399,6 +407,8 @@ export const exportByIds = async (itemIds) => {
         }
 
         // Include related tables for complete product data export
+        // Include related tables for complete product data export
+        const Item = dbStore.get('Item');
         const items = await Item.findAll({
             where: {
                 item_id: { [Op.in]: itemIds },
@@ -450,6 +460,8 @@ export const exportByIds = async (itemIds) => {
 export const exportAll = async () => {
     try {
         // Include related tables for complete product data export
+        // Include related tables for complete product data export
+        const Item = dbStore.get('Item');
         const items = await Item.findAll({
             where: { status: { [Op.in]: ['active', 'draft'] } },
             order: [['name', 'ASC']],

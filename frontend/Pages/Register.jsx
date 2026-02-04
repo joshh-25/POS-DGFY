@@ -1,23 +1,70 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { register } from '../src/services/authService.js';
+import api from '../src/services/api.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, CheckCircle2, XCircle } from 'lucide-react';
+import { Package, CheckCircle2, XCircle, Building2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Get token from URL query param
+  const tokenFromUrl = searchParams.get('token') || '';
+
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
-    confirmPassword: ''
-    // role is always 'staff' - only admins can change roles via User Management
+    confirmPassword: '',
+    companyToken: tokenFromUrl
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordFocus, setPasswordFocus] = useState(false);
+
+  // Token validation state
+  const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [tokenValid, setTokenValid] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [tokenError, setTokenError] = useState('');
+
+  // Validate token when it changes
+  useEffect(() => {
+    const validateToken = async () => {
+      if (!formData.companyToken) {
+        setTokenValid(false);
+        setCompanyName('');
+        setTokenError('');
+        return;
+      }
+
+      setIsValidatingToken(true);
+      setTokenError('');
+
+      try {
+        const response = await api.get(`/auth/validate-token/${formData.companyToken}`);
+        setCompanyName(response.data.data.company_name);
+        setTokenValid(true);
+      } catch (err) {
+        setTokenValid(false);
+        setCompanyName('');
+        if (err.response?.status === 404) {
+          setTokenError('Invalid or expired company token');
+        } else {
+          setTokenError('Could not validate token');
+        }
+      } finally {
+        setIsValidatingToken(false);
+      }
+    };
+
+    // Debounce validation
+    const timeoutId = setTimeout(validateToken, 500);
+    return () => clearTimeout(timeoutId);
+  }, [formData.companyToken]);
 
   // Password validation rules
   const passwordValidations = {
@@ -34,6 +81,17 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validate company token
+    if (!formData.companyToken) {
+      setError('Company token is required. Please get the token from your company administrator.');
+      return;
+    }
+
+    if (!tokenValid) {
+      setError('Please enter a valid company token');
+      return;
+    }
 
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
@@ -54,8 +112,7 @@ export default function Register() {
         username: formData.username,
         email: formData.email,
         password: formData.password
-        // role will default to 'staff' in backend
-      });
+      }, formData.companyToken);
 
       // Get redirect path or default to dashboard
       const redirectPath = localStorage.getItem('redirectAfterLogin') || '/';
@@ -100,6 +157,19 @@ export default function Register() {
             <p className="text-slate-600 mt-2">Join SKUpervisor</p>
           </div>
 
+          {/* Company Name Badge (when token is valid) */}
+          {tokenValid && companyName && (
+            <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-teal-600" />
+                <div>
+                  <p className="text-sm font-medium text-teal-900">Joining Company</p>
+                  <p className="text-lg font-semibold text-teal-700">{companyName}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -109,6 +179,34 @@ export default function Register() {
 
           {/* Registration Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Company Token Field */}
+            <div>
+              <Label htmlFor="companyToken">Company Token *</Label>
+              <div className="relative">
+                <Input
+                  id="companyToken"
+                  type="text"
+                  placeholder="e.g., token-company-abc123"
+                  value={formData.companyToken}
+                  onChange={(e) => setFormData({ ...formData, companyToken: e.target.value })}
+                  required
+                  disabled={isLoading}
+                  className={`mt-1 pr-10 ${tokenValid ? 'border-green-500' : tokenError ? 'border-red-500' : ''}`}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {isValidatingToken && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                  {!isValidatingToken && tokenValid && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                  {!isValidatingToken && tokenError && <AlertCircle className="w-4 h-4 text-red-500" />}
+                </div>
+              </div>
+              {tokenError && (
+                <p className="text-xs text-red-600 mt-1">{tokenError}</p>
+              )}
+              <p className="text-xs text-slate-500 mt-1">
+                Get this token from your company administrator
+              </p>
+            </div>
+
             <div>
               <Label htmlFor="username">Username</Label>
               <Input
@@ -198,7 +296,7 @@ export default function Register() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !isPasswordValid || !passwordsMatch}
+              disabled={isLoading || !isPasswordValid || !passwordsMatch || !tokenValid}
             >
               {isLoading ? 'Creating Account...' : 'Create Account'}
             </Button>

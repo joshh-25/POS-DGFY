@@ -196,18 +196,32 @@ export default function JobOrders() {
 
   const handleStartProduction = async (jo) => {
     try {
-      // Update status to in_progress - this might need a separate API endpoint
-      // For now, we'll use updateJobOrder if available, or handle it in the component
+      await finalizeJobOrder(jo.jo_id || jo.id);
       toast.success('Production started');
       refetch();
     } catch (error) {
-      toast.error(error.message || 'Failed to start production');
+      const errorData = error.response?.data;
+      if (errorData?.insufficientIngredients) {
+        toast.error(
+          <div>
+            <p className="font-semibold">{errorData.message}</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {errorData.insufficientIngredients.map((ing, idx) => (
+                <li key={idx}>• {ing.message}</li>
+              ))}
+            </ul>
+          </div>,
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(errorData?.message || error.message || 'Failed to start production');
+      }
     }
   };
 
-  const handleCompleteProduction = async (jo, expiryOverride, notes = null, quantityProduced = null) => {
+  const handleCompleteProduction = async (jo, expiryOverride, notes = null, quantityProduced = null, qualityCheck = null) => {
     try {
-      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride, notes, quantityProduced);
+      const completedJO = await completeJobOrder(jo.jo_id || jo.id, expiryOverride, notes, quantityProduced, qualityCheck);
       toast.success('Job order completed successfully');
 
       // Update the selected JO with enriched data including ingredients_consumed

@@ -89,6 +89,7 @@ DB_PASS=your_password
 DB_NAME=sku_inventory_manager
 JWT_SECRET=your_jwt_secret
 NODE_ENV=production
+TRUST_PROXY=true # Set to true if behind Nginx/Apache
 ```
 
 ### Frontend

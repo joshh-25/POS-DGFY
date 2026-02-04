@@ -218,7 +218,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Batch Size (units produced per batch)</Label>
+          <Label>Batch Size (units produced per batch{data.unit_of_measure ? ` in ${data.unit_of_measure}` : ''})</Label>
           <Input
             type="number"
             min="1"

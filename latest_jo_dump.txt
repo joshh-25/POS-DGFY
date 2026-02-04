@@ -1,0 +1,15 @@
+
+FOUND JO #34 in DB: sku_inventory_manager
+JO: JO-2026-611445, Status: in_progress
+Qty to Produce: 100.00, Produced: 0.00
+Ingredients (2):
+  - Item 82 (Water):
+    Req: 3301.00 null (Recipe UOM)
+    Stock: 1087.30 L (Stock UOM)
+  - Item 79 (Premium White Sugar):
+    Req: 100.00 null (Recipe UOM)
+    Stock: 100.00 kg (Stock UOM)
+Error in sku_tenant_autoprovisionedtenant_7a83d9ca: Table 'sku_tenant_autoprovisionedtenant_7a83d9ca.job_orders' doesn't exist
+Error in sku_tenant_autoprovisionedtenant_a9046df1: Table 'sku_tenant_autoprovisionedtenant_a9046df1.job_orders' doesn't exist
+Error in sku_tenant_autoprovisionedtenant_e107caa0: Table 'sku_tenant_autoprovisionedtenant_e107caa0.job_orders' doesn't exist
+Error in sku_tenant_deltacorptest_366dfeb5: Unknown database 'sku_tenant_deltacorptest_366dfeb5'

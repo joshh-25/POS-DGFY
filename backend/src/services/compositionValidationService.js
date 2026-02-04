@@ -1,11 +1,13 @@
-import ProductComposition from '../models/ProductComposition.js';
-import Item from '../models/Item.js';
+import dbStore from '../utils/dbStore.js';
 import { getRedisClient, isRedisConnected } from '../config/redis.js';
 import logger from '../config/logger.js';
 
 const MAX_NESTING_DEPTH = 3;
-const CACHE_TTL = 300; // 5 minutes
-const CACHE_KEY = 'composition:dependency_graph';
+const getCacheKey = () => {
+    const store = dbStore.getStore();
+    const tenantId = store?.tenantId || 'global';
+    return `composition:dependency_graph:${tenantId}`;
+};
 
 /**
  * Build a dependency graph from all product compositions
@@ -16,7 +18,8 @@ export const buildDependencyGraph = async () => {
     if (isRedisConnected()) {
         try {
             const redis = getRedisClient();
-            const cached = await redis.get(CACHE_KEY);
+            const cacheKey = getCacheKey();
+            const cached = await redis.get(cacheKey);
             if (cached) {
                 return JSON.parse(cached);
             }
@@ -26,6 +29,7 @@ export const buildDependencyGraph = async () => {
     }
 
     // Build graph from database
+    const ProductComposition = dbStore.get('ProductComposition');
     const compositions = await ProductComposition.findAll({
         attributes: ['product_id', 'ingredient_id']
     });
@@ -45,7 +49,8 @@ export const buildDependencyGraph = async () => {
     if (isRedisConnected()) {
         try {
             const redis = getRedisClient();
-            await redis.setEx(CACHE_KEY, CACHE_TTL, JSON.stringify(graph));
+            const cacheKey = getCacheKey();
+            await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify(graph));
         } catch (error) {
             logger.warn('Failed to cache dependency graph:', error.message);
         }
@@ -62,7 +67,8 @@ export const invalidateDependencyGraphCache = async () => {
     if (isRedisConnected()) {
         try {
             const redis = getRedisClient();
-            await redis.del(CACHE_KEY);
+            const cacheKey = getCacheKey();
+            await redis.del(cacheKey);
         } catch (error) {
             logger.warn('Failed to invalidate dependency graph cache:', error.message);
         }
@@ -126,6 +132,7 @@ export const calculateNestingLevel = async (productId, ingredientIds) => {
     }
 
     // Get all ingredients with their categories and nesting levels
+    const Item = dbStore.get('Item');
     const ingredients = await Item.findAll({
         where: { item_id: ingredientIds },
         attributes: ['item_id', 'category', 'nesting_level']
@@ -223,6 +230,7 @@ export const validateComposition = async (productId, ingredientIds) => {
  * @returns {Promise<number[]>} Array of product IDs using this ingredient
  */
 export const getProductsUsingIngredient = async (ingredientId) => {
+    const ProductComposition = dbStore.get('ProductComposition');
     const compositions = await ProductComposition.findAll({
         where: { ingredient_id: ingredientId },
         attributes: ['product_id']
