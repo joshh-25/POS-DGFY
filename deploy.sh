@@ -20,12 +20,12 @@ npm install
 
 echo "📦 Installing backend dependencies..."
 cd backend
-npm install
+npm install --include=dev
 cd ..
 
 echo "📦 Installing frontend dependencies..."
 cd frontend
-npm install
+npm install --include=dev
 
 # 3. Build Frontend
 echo "🏗️  Building frontend..."
