@@ -129,4 +129,27 @@ lsof -ti:5000 | xargs kill -9
 **Solution**:
 - **Start the Development Ecosystem**: Use the workflow command `/start-dev` or run `pm2 start ecosystem.config.cjs`.
 - **Check Status**: Always run `pm2 list` to see what is actually managed by PM2.
-- **Workflow**: Avoid mixing manual `node` runs with PM2 commands to prevent port conflicts and confusion.
+### 10. 404 Not Found on /auth/lookup (Production)
+**Symptoms**:
+- After deploying Multi-Tenancy to production, logging in fails with a 404 error on the `lookup` endpoint.
+- Console says `Email not registered in any company`.
+
+**Cause**:
+- The Landlord (central) database is empty. Even though users exist in the main website database, they aren't "mapped" to a company in the new Multi-Tenant architecture.
+
+**Solution**:
+- Run the production onboarding script to register the default company and map existing users.
+- **Run**: `node backend/scripts/onboard-production-tenant.js`
+- **Verify**: The script should list "Mapped: [email]" for all your active users.
+
+### 11. Backend Won't Start (Husky Error)
+**Symptoms**:
+- `npm install` fails with `sh: 1: husky: not found`.
+
+**Cause**:
+- `husky` is a devDependency but the environment is set to `production`, or git hooks are failing in a non-git environment.
+
+**Solution**:
+- We have added a bypass in `package.json`. If it still fails, run:
+- `npm install --no-scripts`
+- Or explicitly bypass: `STAGED_HINT=none npm install`

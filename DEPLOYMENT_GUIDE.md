@@ -45,6 +45,19 @@ chmod +x deploy.sh
 
 ---
 
+### 2. Multi-Tenancy Onboarding (One-time)
+When upgrading an existing production database to Multi-Tenancy for the first time, you **must** run the onboarding script to register your company and map your users:
+
+```bash
+node backend/scripts/onboard-production-tenant.js
+```
+This script will:
+- Create a primary tenant record in the central Landlord DB.
+- Map all current active users to this tenant so they can log in.
+- Generate your `x-company-token`.
+
+---
+
 ### 2. Manual Deployment (Fallback)
 If the auto-deployment script fails, you can fall back to manual steps:
 
@@ -90,6 +103,8 @@ DB_NAME=sku_inventory_manager
 JWT_SECRET=your_jwt_secret
 NODE_ENV=production
 TRUST_PROXY=true # Set to true if behind Nginx/Apache
+OPENAI_API_KEY=your_openai_key # Optional: AI features will be disabled if missing
+FRONTEND_URL=https://skupervisor.surebizcorp.com
 ```
 
 ### Frontend

@@ -434,10 +434,16 @@ For issues not resolved by the AI:
 - **UX**: Cards display business impact (e.g., "Stock +50", "Cost $500") and removed "Next Steps" for a cleaner look.
 - **Backend**: `aiService` now formats tool results into user-friendly summaries instead of raw JSON data.
 
-### v1.3.0 (February 4, 2026) - UOM Conversion System
+### v1.4.0 (February 4, 2026) - UOM Conversion System
 - **UOM Auto-Conversion**: Job orders now automatically convert between compatible units (e.g., g ↔ kg, mL ↔ L).
 - **Standardized UOMs**: 14 predefined UOMs across Weight (5), Volume (6), and Count (3) groups.
 - **Grouped Dropdown**: New `UomSelect` component with visually grouped options.
 - **Backend Integration**: `jobOrderService` functions updated for accurate stock calculations with conversion.
 - **Migration Script**: `scripts/migrate-uom-data.js` normalizes legacy UOM values.
 - **Verification**: 24 unit tests for the UOM converter utility.
+
+### v1.4.1 (February 4, 2026) - Production Stability & Onboarding
+- **AI Robustness**: Implemented **Lazy Initialization** for OpenAI services. The server now starts gracefully even without an `OPENAI_API_KEY`.
+- **Deployment Fixes**: Improved `deploy.sh` for Linux servers and fixed `package.json` husky install loops.
+- **Multi-Tenancy Onboarding**: Added `onboard-production-tenant.js` to migrate existing production users to the new tenant architecture.
+- **Migration Fix**: Standardized `user_tenant_mappings` ID as auto-incrementing integer.

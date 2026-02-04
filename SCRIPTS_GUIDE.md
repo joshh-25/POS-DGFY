@@ -87,6 +87,27 @@ Kills all common development ports at once (5000, 5173, 5174).
 
 ---
 
+### 4. `onboard-production-tenant.js` - Production Multi-Tenancy Setup
+
+Registers existing production data into the central Landlord database.
+
+**Usage:**
+```bash
+node backend/scripts/onboard-production-tenant.js
+```
+
+**What it does:**
+1. Checks the `tenants` table for an existing primary tenant.
+2. If none exists, creates "SureBiz Corp" as the primary tenant.
+3. Automatically maps all active users from the `users` table to this tenant.
+4. Generates a unique `company_token` for the company.
+
+**When to use:**
+- One-time setup when upgrading a single-tenant database to the Multi-Tenant version.
+- If you see 404 errors during the "Email Lookup" phase of login on production.
+
+---
+
 ## 🎓 Tutorial: How to Use These Scripts
 
 ### Scenario 1: "Port 5000 is already in use" Error

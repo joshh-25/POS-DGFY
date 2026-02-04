@@ -54,6 +54,12 @@ cd backend
 npm run migrate # or equivalent command
 ```
 
+## 8. Multi-Tenancy Onboarding (One-time after migration)
+If upgrading to Multi-Tenancy from a single-tenant version:
+```bash
+node backend/scripts/onboard-production-tenant.js
+```
+
 ## 8. Restart Services
 Use PM2 to zero-downtime reload or restart.
 ```bash

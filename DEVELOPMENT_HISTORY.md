@@ -24,6 +24,7 @@
 - [Phase 14: Rebranding](#phase-14-rebranding)
 - [Phase 15: Phase 2 Testing Feedback Fixes](#phase-15-phase-2-testing-feedback-fixes)
 - [Phase 16: Production Deployment Fixes](#phase-16-production-deployment-fixes)
+- [Phase 20: Multi-Tenancy & AI Production Onboarding](#phase-20-multi-tenancy--ai-production-onboarding)
 
 ### Advanced Features (Phases 17+)
 - [Phase 17: Delete Functionality Audit](#phase-17-delete-functionality-audit--bug-fixes)
@@ -797,9 +798,8 @@ Comprehensive audit of all delete and archive functionality across the system to
 **Root Cause**: Backend `getItems()` function didn't filter out inactive items by default.
 
 **Fix**:
-- Updated `itemService.js` getItems() function (lines 43-48)
-- Added default filter: `where.status = { [Op.ne]: 'inactive' }` when no status parameter provided
-- Inactive items only shown when explicitly requested via `status=inactive` query parameter
+- [x] Backend: Update `getItems()` function (lines 43-48) to filter for `is_active: true`
+- [x] Backend: Update `getSuppliers()` function to filter for `is_active: true`
 
 **Files Modified**:
 - `backend/src/services/itemService.js`
