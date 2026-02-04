@@ -19,7 +19,7 @@
     "validate:ai": "cd backend && npm run validate:ai",
     "generate:ai-docs": "cd backend && npm run generate:ai-docs",
     "ai:check": "cd backend && npm run ai:check",
-    "prepare": "husky"
+    "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\""
   },
   "keywords": [
     "inventory",
