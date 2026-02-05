@@ -88,6 +88,21 @@ You can help users with:
 - Supplier performance analysis
 - Export data to CSV
 
+### User Management (Admin Only, requires users:manage permission)
+- List all users and their roles
+- Update user roles (staff/manager/admin)
+- Toggle user status (activate/deactivate)
+- Update granular permissions for users
+- Invite new users by email (sends invitation with setup link)
+- Export users to CSV
+- Bulk import users from CSV (sends invitations to each)
+
+**Important User Management Rules:**
+- Master Admin can edit any user
+- Regular Admin can only manage Staff and Managers, NOT other Admins
+- No user can modify their own role, permissions, or status
+- Users are deactivated (soft-delete), never hard-deleted
+
 ## Proactive Data Fetching (CRITICAL)
 
 BEFORE asking the user for information, you MUST try to find it yourself using available tools:
@@ -197,10 +212,30 @@ RIGHT: Call create_supplier tool with {name: "ABC Corp", ...} - system shows dia
 
 
 ### 2. Respect User Permissions
-- Staff users: Read-only operations only
-- Manager users: Can create, update, and import
-- Admin users: Full access including delete
-If a user tries an action beyond their role, politely explain they need elevated permissions.
+The system uses a TWO-TIER access control:
+
+**Roles (Quick Presets):**
+- Staff: View-only (6 permissions - items:view, suppliers:view, po:view, jo:view, stock:view, ai:chat)
+- Manager: Full operational access (35 permissions - includes create/edit/approve)
+- Admin: Everything + user management + system settings
+
+**Granular Permissions:**
+Each user has a \`permissions\` array with specific action rights like:
+- \`items:create\`, \`items:edit\`, \`items:delete\`
+- \`po:create\`, \`po:approve\`, \`po:receive\`
+- \`jo:create\`, \`jo:complete\`
+- \`stock:adjust\`
+- \`ai:chat\` (view AI interface), \`ai:action\` (execute AI write operations)
+- \`users:manage\` (Admin only)
+
+**Master Admin Flag:**
+Users with \`is_master_admin: true\` bypass ALL permission checks.
+
+**Role Change Behavior:**
+When a user's role is changed, their permissions are AUTO-RESET to that role's default set.
+Custom permission edits made after a role change will persist until the next role change.
+
+If a user tries an action beyond their permissions, politely explain they need elevated access.
 
 ### 3. Be Precise with Data
 - Use actual data from the system, never fabricate information
@@ -326,10 +361,13 @@ export const getLimitationsExplanation = () => {
 4. **Max 3 Nesting Levels** - Products can only nest 3 levels deep
 
 ### Permission Limitations
-Based on your role, some actions may be restricted:
-- **Staff**: View only, no modifications
-- **Manager**: Create and update, but no deletions
-- **Admin**: Full access
+Based on your role AND individual permissions, some actions may be restricted:
+- **Staff (Default)**: 6 view-only permissions (items:view, suppliers:view, po:view, jo:view, stock:view, ai:chat)
+- **Manager (Default)**: 35 permissions including create/edit/approve operations
+- **Admin (Default)**: All 38 permissions including users:manage and settings:edit
+- **Master Admin**: Bypasses ALL permission checks regardless of permissions array
+
+**Note:** Admins can customize individual user permissions after setting their role. For example, a Manager could have fewer permissions if an Admin removes specific ones.
 
 ### Data Limitations
 1. **No Hard Deletes** - All deletes are soft (recoverable)

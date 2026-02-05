@@ -4655,3 +4655,78 @@ Remove development-only credentials from the production environment and harden t
 - `backend/src/config/database.js` - Removed hardcoded defaults
 - `backend/src/server.js` - Added safety checks and logging
 - `deploy.sh` - Updated build environment and dependency installation
+
+---
+
+## Phase 22: Robust AI User Management
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-05
+
+### Issue: AI User Targeting Ambiguity
+The AI assistant previously updated the wrong user's permissions (User ID 2 instead of User ID 10) because it relied solely on numeric IDs, which can be hallucinated or confused by the model.
+
+### Solution: Multi-Identifier User Resolution
+Implemented a robust user resolution system in the AI backend layer.
+
+#### 1. Backend Service Updates
+- **`userService.js`**: Added helper methods `getUserByEmail(email)` and `getUserByUsername(username)`.
+
+#### 2. AI Tool Executor Logic (`aiToolExecutor.js`)
+- **New `resolveUser(args)` helper**:
+  - Accepts `target_user_id`, `email`, and `username`.
+  - Prioritizes resolution by Email/Username (semantic identifiers).
+  - **Cross-Validation**: If multiple identifiers are provided, it verifies they all point to the SAME `user_id`.
+  - **Conflict Detection**: Throws explicit errors if identifiers mismatch (e.g., "Email belongs to User A, but ID provided is User B").
+
+#### 3. Impact
+- Prevents accidental modifications to wrong user accounts.
+- Allows AI to use natural language identifiers (names, emails) which are more reliable in chat context.
+- significantly improves safety of Admin-level AI operations.
+
+### Files Modified
+- `backend/src/services/userService.js`
+- `backend/src/services/aiToolExecutor.js`
+
+---
+
+## Phase 23: Structural Inventory & Multi-Tenancy Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-05
+
+### Goal
+Resolve critical data integrity issues where ingredient quantities were being truncated, miscalculated, or "shrunk" across save/load cycles for high-volume products.
+
+### Critical Bugs Fixed
+
+#### 1. Universal Database Precision (Multi-Tenancy)
+- **Issue**: Per-unit ingredient requirements (e.g., `1 / 1,000,000`) were rounded to `0.00` because the database column only supported 2 decimals (`DECIMAL(12,2)`).
+- **Fix**: Executed a global migration across ALL tenant databases to update `product_composition.quantity_required` to `DECIMAL(24, 12)`.
+- **Backend Sync**: Updated the `ProductComposition` Sequelize model to support high-precision floats.
+
+#### 2. Ingredient "Shrinking" Bug (Normalization Loop)
+- **Issue**: Saving a product repeatedly caused quantities to shrink (e.g., 1kg → 0.000001kg) because the wizard divided by batch size on save but failed to multiply back on load.
+- **Fix**: Implemented denormalization logic in `ProductCreateWizard.jsx` to correctly restore "Per Batch" quantities during product initialization.
+
+#### 3. Redundant Cost Multiplier
+- **Issue**: Product unit costs were incorrectly inflated (e.g., ₱55.00 instead of ₱0.000055) because the costing step was multiplying by `batchSize` a second time.
+- **Fix**: Removed redundant multipliers in `CostFinancialStep.jsx` and `RecipeFormulationStep.jsx`.
+
+#### 4. High-Precision UI Displays
+- **Issue**: Microscopic requirements and costs appeared as `0.00` in the UI, causing user confusion.
+- **Fix**: Enhanced `formatNumber` usage in all inventory components to automatically show up to **8 decimal places** for values smaller than 0.01.
+
+### Verification Results
+- **Inventory integrity**: Confirmed that a 1kg requirement for a 1M unit batch remains exactly 1kg through multiple edits.
+- **Costing Accuracy**: Verified unit costs correctly reflect fractional cent values for large production runs.
+- **Job Order Success**: Confirmed ingredients scale perfectly (e.g., 70M units correctly requires 70kg).
+
+### Related Files Modified
+- `backend/src/models/ProductComposition.js`
+- `backend/scripts/migrate_all_dbs.js`
+- `backend/src/services/aiToolExecutor.js`
+- `frontend/Components/products/ProductCreateWizard.jsx`
+- `frontend/Components/products/wizard/RecipeFormulationStep.jsx`
+- `frontend/Components/products/wizard/CostFinancialStep.jsx`
+- `frontend/Components/jo/JOCreateModal.jsx`
+- `frontend/Components/jo/JobOrders.jsx`
+

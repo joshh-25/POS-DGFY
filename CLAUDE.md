@@ -4,8 +4,8 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Feb 4, 2026
-> **Version:** 2.3.0
+> **Last Updated:** Feb 5, 2026
+> **Version:** 2.4.0
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
@@ -36,7 +36,7 @@
 8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
-11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **36 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence.
+11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **48 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence.
 
 ## 🤖 AI Assistant Features
 The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
@@ -49,12 +49,13 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - Export data to CSV (display or download)
 - Import CSV data with validation preview
 - **Vision & File Processing**: Analyze images, PDFs, and Word docs
+- **User Management (Admin)**: Invite users, update roles/permissions, export/import users CSV
 
 **Key Technical Details:**
 - Write operations require confirmation (5-minute expiry)
 - Conversations retained for 30 days
 - Role-based permissions (Staff: read-only, Manager+: write access)
-- 36 AI tools mapped to existing backend services
+- 41 AI tools mapped to existing backend services
 - **Multi-Tenant Isolation**: Uses `dbStore.get()` for tenant-aware database writes
 - **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
 
@@ -63,7 +64,7 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - `Components/ai/ActionResultCard.jsx` - Structured result display
 - `Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
 
-**Files:** See `docs/AI_GUIDELINES.md` for full documentation.
+**Files**: See `docs/ai/AI_GUIDELINES.md` for full documentation.
 
 # 🏗️ Core Data Entities
 | Entity | Key Fields | Notes |
@@ -115,7 +116,7 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 │   └── src/
 │       ├── lib/            # Utils (formatting, classes)
 │       └── services/       # API wrappers (incl. aiService)
-├── docs/                   # Detailed documentation (incl. AI_GUIDELINES.md)
+├── docs/                   # Detailed documentation (incl. ai/AI_GUIDELINES.md)
 └── CLAUDE.md               # Context file
 ```
 
@@ -128,9 +129,9 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 
 # 🔗 Documentation Links
 - [Detailed API Spec](docs/api/specification.md)
-- [Deployment Guide](docs/ops/DEPLOYMENT_GUIDE.md)
-- [Nested Products Guide](docs/NESTED_PRODUCTS.md)
-- [Quick Reference](docs/QUICK_REFERENCE.md)
+- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
+- [Quick Reference](docs/reference/QUICK_REFERENCE.md)
 # Build for production
 npm run build
 
@@ -252,7 +253,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 - AddSupplierChoiceDialog, QuickAssignSupplierModal
 
 **Users:**
-- UserManagement, UserFormModal
+- UserManagement, UserFormModal, PermissionMatrix (granular permission editor)
 
 ### Backend API Endpoints
 
@@ -308,10 +309,18 @@ SKU-Inventory-Manager/                    # Monorepo root
 ```javascript
 {
   user_id, username, email, password_hash,
-  full_name, role, is_active,
+  full_name, role, permissions, is_master_admin, is_active,
   last_login, created_at, updated_at
 }
 ```
+
+> **User Management Notes**:
+> - `role` is a quick preset: `admin`, `manager`, or `staff`
+> - `permissions` is a JSON array of granular permission strings (e.g., `["items:view", "items:create"]`)
+> - `is_master_admin` grants full system access, bypassing all permission checks
+> - **Role Change Auto-Applies Permissions**: When a user's role is changed, their `permissions` array is automatically reset to that role's default permission set
+> - Custom permission edits made AFTER a role change will persist until the next role change
+> - See `backend/src/config/permissions.js` for `DEFAULT_ROLE_PERMISSIONS` mapping
 
 *See docs/database/schema.md for other entities (PO, JO, StockMovement, Supplier, etc.)*
 

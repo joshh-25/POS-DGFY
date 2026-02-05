@@ -125,9 +125,9 @@ export default function PermissionMatrix({
                                     className="border border-slate-200 rounded-xl overflow-hidden bg-white"
                                 >
                                     {/* Accordion Header */}
-                                    <button
+                                    <div
                                         onClick={() => toggleCategory(groupKey)}
-                                        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                                        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer"
                                     >
                                         <div className="flex items-center gap-2">
                                             {isOpen ? (
@@ -141,6 +141,7 @@ export default function PermissionMatrix({
                                             </span>
                                         </div>
                                         <button
+                                            type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 selectAllInCategory(groupKey);
@@ -152,7 +153,7 @@ export default function PermissionMatrix({
                                         >
                                             {allSelected ? 'Deselect All' : 'Select All'}
                                         </button>
-                                    </button>
+                                    </div>
 
                                     {/* Accordion Content */}
                                     <div

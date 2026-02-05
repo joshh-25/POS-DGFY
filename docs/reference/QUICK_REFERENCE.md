@@ -82,6 +82,24 @@ lsof -ti:5000 | xargs kill -9  # Backend
 | npm run dev fails | Run `npm run install:all` first |
 | Styling not applying | Verify TailwindCSS classes, check `frontend/tailwind.config.js` |
 | FIFO calculations wrong | Review `frontend/Components/utils/fifoCalculations.js` |
+| Sidebar only shows Dashboard after login | Fixed via auth events - see Permission Loading section below |
+
+## Permission Loading (Authentication Flow)
+
+The application uses an event-based system to ensure permissions load correctly after login:
+
+1. **authService** dispatches `auth:login` event after successful login/register
+2. **PermissionContext** listens for this event and reloads user permissions
+3. **Layout.jsx** shows all menu items during loading, then filters based on permissions
+
+**Key files:**
+- `frontend/src/services/authService.js` - Dispatches auth events
+- `frontend/src/store/PermissionContext.jsx` - Listens for auth events, manages permissions
+- `frontend/Layout.jsx` - Uses `loading` state to prevent flash of limited menu
+
+**Events:**
+- `auth:login` - Fired after login/register, triggers permission reload
+- `auth:logout` - Fired after logout, clears permissions
 
 ## Critical Rules (Never Do This)
 

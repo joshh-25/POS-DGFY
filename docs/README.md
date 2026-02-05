@@ -115,26 +115,8 @@ For detailed guidelines on when and how to create documentation, see [Documentat
   - Database setup
   - Redis setup
   - Docker setup
-  - Troubleshooting
-
----
-
-## Getting Started
-
-### For New Developers
-
-1. **Start Here**: Read [Environment Setup](./development/environment-setup.md)
-2. **Understand the System**: Review [System Architecture](./architecture/system-architecture.md)
-3. **Learn the Database**: Study [Database Schema](./database/schema.md)
-4. **API Reference**: Check [API Specification](./api/specification.md)
-5. **Development Process**: Follow [Development Guidelines](./development/guidelines.md)
-
-### For Frontend Developers
-
-1. [Environment Setup](./development/environment-setup.md) - Get your dev environment running
-2. [Integration Guide](./api/integration-guide.md) - Learn how to integrate with the backend
-3. [API Specification](./api/specification.md) - Reference for all API endpoints
-4. [System Architecture](./architecture/system-architecture.md) - Understand the overall system
+- [Development Guidelines](./development/guidelines.md)
+- [Environment Setup](./development/environment-setup.md)
 
 ### For Backend Developers
 

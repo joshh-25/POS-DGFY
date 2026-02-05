@@ -45,6 +45,28 @@ const User = sequelize.define('User', {
   last_login: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  // Invitation system fields
+  invitation_token: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+    unique: true
+  },
+  invitation_expires_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  invited_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
+  },
+  invitation_status: {
+    type: DataTypes.ENUM('pending', 'accepted', 'expired'),
+    allowNull: true
   }
 }, {
   tableName: 'users',

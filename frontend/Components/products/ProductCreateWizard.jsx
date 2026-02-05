@@ -110,6 +110,15 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
         wizard_metadata: product.wizard_metadata || null
       };
 
+      // Denormalize ingredients: User inputs "Per Batch", DB stores "Per Unit"
+      // So when loading, we multiply by batch_size to show "Per Batch" values
+      if (loadedData.ingredients && loadedData.batch_size) {
+        loadedData.ingredients = loadedData.ingredients.map(ing => ({
+          ...ing,
+          quantity: (Number(ing.quantity) || 0) * Number(loadedData.batch_size)
+        }));
+      }
+
       setProductData(loadedData);
       setInitialProductData(loadedData);
 
@@ -246,10 +255,15 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
         })).filter(item => item.item_id && item.quantity > 0);
       }
 
+      // Get batch size for normalization (avoid division by zero)
+      const batchSize = Number(sanitized.batch_size) || 1;
+
       if (sanitized.ingredients) {
         sanitized.ingredients = sanitized.ingredients.map(item => ({
           ...item,
-          quantity: Number(item.quantity) || 0,
+          // Normalize: User inputs "Per Batch", but Backend/DB expects "Per Unit"
+          // So we divide by batch size to get the per-unit requirement
+          quantity: (Number(item.quantity) || 0) / batchSize,
           item_id: Number(item.item_id)
         })).filter(item => item.item_id && item.quantity > 0);
       }

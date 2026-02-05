@@ -112,39 +112,98 @@ export default api;
 
 **File: `src/services/authService.js`**
 
+The authentication service handles login, logout, and registration. It also dispatches custom events that allow other parts of the application (like PermissionContext) to react to authentication state changes.
+
 ```javascript
 import api from './api';
 
-const authService = {
-  register: async (userData) => {
-    const response = await api.post('/auth/register', userData);
-    return response.data.data;
-  },
+export const register = async (userData, companyToken) => {
+  const config = companyToken ? {
+    headers: { 'x-company-token': companyToken }
+  } : {};
 
-  login: async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
-    const { token, refreshToken } = response.data.data;
-    
-    localStorage.setItem('authToken', token);
-    localStorage.setItem('refreshToken', refreshToken);
-    
-    return response.data.data;
-  },
+  const response = await api.post('/auth/register', userData, config);
+  const { token, refreshToken } = response.data.data;
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('refreshToken', refreshToken);
+  if (companyToken) {
+    localStorage.setItem('companyToken', companyToken);
+  }
 
-  logout: async () => {
-    await api.post('/auth/logout');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-  },
+  // Dispatch custom event to notify PermissionContext to reload
+  window.dispatchEvent(new CustomEvent('auth:login'));
 
-  getCurrentUser: async () => {
-    const response = await api.get('/auth/me');
-    return response.data.data;
-  },
+  return response.data.data;
 };
 
-export default authService;
+export const login = async (credentials) => {
+  const config = {
+    headers: { 'x-company-token': credentials.companyToken }
+  };
+
+  const response = await api.post('/auth/login', {
+    email: credentials.email,
+    password: credentials.password
+  }, config);
+
+  const { token, refreshToken } = response.data.data;
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('refreshToken', refreshToken);
+  if (credentials.companyToken) {
+    localStorage.setItem('companyToken', credentials.companyToken);
+  }
+
+  // Dispatch custom event to notify PermissionContext to reload
+  window.dispatchEvent(new CustomEvent('auth:login'));
+
+  return response.data.data;
+};
+
+export const logout = async () => {
+  await api.post('/auth/logout');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('companyToken');
+
+  // Dispatch custom event to notify PermissionContext to clear permissions
+  window.dispatchEvent(new CustomEvent('auth:logout'));
+};
+
+export const getCurrentUser = async () => {
+  const response = await api.get('/users/me');
+  return response.data.data;
+};
 ```
+
+### Authentication Events
+
+The authentication service dispatches custom browser events that other components can listen to:
+
+| Event | When Fired | Purpose |
+|-------|------------|---------|
+| `auth:login` | After successful login or registration | Triggers PermissionContext to reload user permissions |
+| `auth:logout` | After logout completes | Triggers PermissionContext to clear permissions |
+
+**Listening for auth events (example):**
+
+```javascript
+useEffect(() => {
+  const handleAuthChange = () => {
+    // React to authentication state change
+    loadPermissions();
+  };
+
+  window.addEventListener('auth:login', handleAuthChange);
+  window.addEventListener('auth:logout', handleAuthChange);
+
+  return () => {
+    window.removeEventListener('auth:login', handleAuthChange);
+    window.removeEventListener('auth:logout', handleAuthChange);
+  };
+}, []);
+```
+
+This event-based system ensures that the PermissionContext always has up-to-date user permissions after login, preventing race conditions where the sidebar might render before permissions are loaded.
 
 ### Items Service
 

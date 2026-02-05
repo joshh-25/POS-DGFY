@@ -29,6 +29,7 @@ import * as userService from './userService.js';
 import * as auditService from './auditService.js';
 import * as fileManagementService from './fileManagementService.js';
 import * as itemGroupingService from './itemGroupingService.js';
+import { PERMISSIONS } from '../config/permissions.js';
 
 /**
  * Map tool names to audit actions
@@ -62,6 +63,9 @@ const getAuditConfig = (toolName) => {
     // USERS
     'update_user_role': { action: 'UPDATE', entityType: 'User' },
     'toggle_user_status': { action: 'UPDATE', entityType: 'User' },
+    'update_user_permissions': { action: 'UPDATE', entityType: 'User' },
+    'create_user_invitation': { action: 'CREATE', entityType: 'UserInvitation' },
+    'import_users_csv': { action: 'CREATE', entityType: 'BulkUserInvitation' },
 
     // SETTINGS
     'update_system_settings': { action: 'UPDATE', entityType: 'SystemSettings' },
@@ -185,6 +189,26 @@ export const execute = async (toolName, args, user) => {
 
       case 'toggle_user_status':
         result = await toggleUserStatus(args, user);
+        break;
+
+      case 'update_user_permissions':
+        result = await updateUserPermissions(args, user);
+        break;
+
+      case 'create_user_invitation':
+        result = await createUserInvitation(args, user);
+        break;
+
+      case 'export_users_csv':
+        result = await exportUsersCsv(args, user);
+        break;
+
+      case 'import_users_csv':
+        result = await importUsersCsv(args, user);
+        break;
+
+      case 'get_available_permissions':
+        result = await getAvailablePermissions();
         break;
 
       // ============== STRATEGIC REPORTING ==============
@@ -805,6 +829,72 @@ async function updateSystemSettings(args, user) {
 
 // ============== USER MANAGEMENT ==============
 
+/**
+ * Helper to resolve user from ID, Email, or Username
+ * Prevents AI from targeting the wrong user by cross-referencing provided identifiers.
+ */
+async function resolveUser(args) {
+  const { target_user_id, email, username } = args;
+
+  let resolvedUser = null;
+  let method = '';
+
+  // 1. Try resolving by Email
+  if (email) {
+    const userByEmail = await userService.getUserByEmail(email);
+    if (userByEmail) {
+      if (resolvedUser && resolvedUser.user_id !== userByEmail.user_id) {
+        throw new Error(`Conflict: Resolved user by ID/Username (ID: ${resolvedUser.user_id}) does not match provided Email (ID: ${userByEmail.user_id})`);
+      }
+      resolvedUser = userByEmail;
+      method = 'email';
+    } else {
+      // If email provided but not found, this is an error
+      throw new Error(`User with email '${email}' not found`);
+    }
+  }
+
+  // 2. Try resolving by Username
+  if (username) {
+    const userByName = await userService.getUserByUsername(username);
+    if (userByName) {
+      if (resolvedUser && resolvedUser.user_id !== userByName.user_id) {
+        throw new Error(`Conflict: Resolved user (ID: ${resolvedUser.user_id}) does not match provided Username (ID: ${userByName.user_id})`);
+      }
+      resolvedUser = userByName;
+      method = 'username';
+    } else {
+      // If username provided but not found, this is an error
+      throw new Error(`User with username '${username}' not found`);
+    }
+  }
+
+  // 3. Try resolving by ID
+  if (target_user_id) {
+    // We don't fetch full user here just to check ID match if we already have it, 
+    // but we need to ensure consistency if other methods found a user.
+    if (resolvedUser && parseInt(target_user_id) !== resolvedUser.user_id) {
+      throw new Error(`Conflict: Resolved user (ID: ${resolvedUser.user_id}) does not match provided target_user_id (${target_user_id})`);
+    }
+    // If no other method found a user yet, we rely on ID (but this is the risky path we want to avoid if possible)
+    if (!resolvedUser) {
+      // We'll return just the ID and let the service fetch it, OR fetch here to be safe.
+      // Let's rely on the service to fetch by ID if that's all we have.
+      return target_user_id;
+    }
+  }
+
+  if (resolvedUser) {
+    return resolvedUser.user_id;
+  }
+
+  if (target_user_id) {
+    return target_user_id;
+  }
+
+  throw new Error('No valid user identifier provided (target_user_id, email, or username required)');
+}
+
 async function getUsers() {
   const users = await userService.getAllUsers();
   return {
@@ -821,10 +911,13 @@ async function getUsers() {
 }
 
 async function updateUserRole(args, user) {
-  const { target_user_id, new_role } = args;
+  const { target_user_id, new_role, email, username } = args;
+
+  // Resolve target user ID safely
+  const resolvedId = await resolveUser(args);
 
   // The service handles self-modification checks
-  const updatedUser = await userService.updateUserRole(user.user_id, target_user_id, { role: new_role });
+  const updatedUser = await userService.updateUserRole(user.user_id, resolvedId, { role: new_role });
 
   return {
     success: true,
@@ -838,10 +931,13 @@ async function updateUserRole(args, user) {
 }
 
 async function toggleUserStatus(args, user) {
-  const { target_user_id, is_active } = args;
+  const { target_user_id, is_active, email, username } = args;
+
+  // Resolve target user ID safely
+  const resolvedId = await resolveUser(args);
 
   // The service handles self-deactivation checks
-  const updatedUser = await userService.toggleUserStatus(user.user_id, target_user_id, is_active);
+  const updatedUser = await userService.toggleUserStatus(user.user_id, resolvedId, is_active);
 
   return {
     success: true,
@@ -851,6 +947,303 @@ async function toggleUserStatus(args, user) {
       username: updatedUser.username,
       status: updatedUser.is_active ? 'active' : 'inactive'
     }
+  };
+}
+
+async function updateUserPermissions(args, user) {
+  const { target_user_id, permissions, email, username } = args;
+
+  // Resolve target user ID safely
+  const resolvedId = await resolveUser(args);
+
+  // The service handles hierarchy checks and self-modification blocks
+  const updatedUser = await userService.updateUserPermissionsAI(user.user_id, resolvedId, permissions);
+
+  return {
+    success: true,
+    message: `Permissions updated for user ${updatedUser.username}`,
+    details: {
+      "User": updatedUser.username,
+      "Role": updatedUser.role,
+      "Permission Count": String(permissions.length),
+      "Status": "Updated"
+    },
+    related_entity: {
+      type: 'user',
+      id: updatedUser.user_id,
+      label: updatedUser.username
+    },
+    user: {
+      id: updatedUser.user_id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      permissions: permissions
+    }
+  };
+}
+
+async function createUserInvitation(args, user) {
+  const { email, role } = args;
+
+  // The service handles hierarchy checks (regular admin can't invite admin)
+  const result = await userService.createUserInvitation(user.user_id, { email, role });
+
+  // Build response
+  const response = {
+    success: true,
+    message: result.email_sent
+      ? `Invitation email sent to ${email}`
+      : `Invitation created for ${email} (email not configured - see token below)`,
+    details: {
+      "Email": email,
+      "Role": role.charAt(0).toUpperCase() + role.slice(1),
+      "Expires In": "7 days",
+      "Status": result.email_sent ? "Email Sent" : "Pending (Email not configured)"
+    },
+    related_entity: {
+      type: 'user_invitation',
+      id: result.user_id,
+      label: email
+    },
+    invitation: {
+      user_id: result.user_id,
+      email: email,
+      role: role,
+      expires_at: result.expires_at,
+      email_sent: result.email_sent
+    }
+  };
+
+  // If email wasn't sent, include the token so admin can share it manually
+  if (!result.email_sent && result.invitation_token) {
+    response.details["Invitation Token"] = result.invitation_token;
+    response.details["Accept URL"] = `${process.env.APP_URL || 'http://localhost:5173'}/accept-invite?token=${result.invitation_token}`;
+    response.invitation.token = result.invitation_token;
+    response.message += `\n\n**Manual Invitation Link:**\n${process.env.APP_URL || 'http://localhost:5173'}/accept-invite?token=${result.invitation_token}`;
+  }
+
+  return response;
+}
+
+async function exportUsersCsv(args, user) {
+  const { output_preference = 'ask_user' } = args;
+
+  try {
+    // Get users formatted for export
+    const users = await userService.getUsersForExport();
+
+    if (users.length === 0) {
+      return {
+        success: true,
+        message: 'No users found to export.',
+        total_records: 0
+      };
+    }
+
+    const columns = [
+      { key: 'user_id', label: 'User ID' },
+      { key: 'username', label: 'Username' },
+      { key: 'email', label: 'Email' },
+      { key: 'role', label: 'Role' },
+      { key: 'is_active', label: 'Active' },
+      { key: 'permission_count', label: 'Permission Count' },
+      { key: 'is_master_admin', label: 'Master Admin' },
+      { key: 'last_login', label: 'Last Login' }
+    ];
+
+    const filename = `users_export_${new Date().toISOString().split('T')[0]}.csv`;
+
+    // Generate CSV content
+    const csvContent = tempFileService.generateCsv(users, columns);
+
+    // Handle output preference
+    if (output_preference === 'display') {
+      const displayRows = users.slice(0, 10);
+      return {
+        success: true,
+        output_mode: 'display',
+        entity_type: 'users',
+        total_records: users.length,
+        preview: {
+          headers: columns.map(c => c.label),
+          rows: displayRows.map(row => columns.map(c => {
+            const val = row[c.key];
+            if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+            return val || '';
+          })),
+          showing: displayRows.length,
+          total: users.length
+        },
+        message: `Showing first ${displayRows.length} of ${users.length} users.${users.length > 10 ? ' Use download option for full data.' : ''}`
+      };
+    }
+
+    if (output_preference === 'download') {
+      const fileInfo = await tempFileService.storeTemporaryFile(
+        csvContent,
+        filename,
+        user.user_id
+      );
+
+      return {
+        success: true,
+        output_mode: 'download',
+        entity_type: 'users',
+        total_records: users.length,
+        download: {
+          url: fileInfo.downloadUrl,
+          filename: fileInfo.filename,
+          expires_at: fileInfo.expiresAt,
+          expires_in: fileInfo.expiresIn
+        },
+        message: `Export ready! ${users.length} users exported. Download link valid for 1 hour.`
+      };
+    }
+
+    // Default: ask user preference
+    return {
+      success: true,
+      output_mode: 'ask_preference',
+      entity_type: 'users',
+      total_records: users.length,
+      message: `Ready to export ${users.length} users. How would you like to receive the data?`,
+      options: [
+        { value: 'display', label: 'Display in chat (first 10 rows)' },
+        { value: 'download', label: 'Generate download link' }
+      ]
+    };
+
+  } catch (error) {
+    logger.error('Error in exportUsersCsv:', error);
+    return { error: error.message || 'Failed to export users' };
+  }
+}
+
+async function importUsersCsv(args, user) {
+  const { csv_content, _confirmed = false } = args;
+
+  try {
+    if (!csv_content) {
+      return {
+        error: 'No CSV content provided. Please attach a CSV file or paste the CSV data.',
+        success: false
+      };
+    }
+
+    // Parse the CSV content
+    const parsed = tempFileService.parseCsv(csv_content);
+
+    if (parsed.error) {
+      return { error: parsed.error };
+    }
+
+    // Validate structure - email is required, role is optional
+    const validation = tempFileService.validateCsvStructure(parsed, ['email']);
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: 'Validation failed',
+        validation_errors: validation.errors,
+        parse_errors: validation.parseErrors,
+        summary: validation.summary
+      };
+    }
+
+    // Validate roles if provided
+    const validRoles = ['staff', 'manager', 'admin'];
+    const rowsWithInvalidRoles = parsed.rows.filter(row =>
+      row.role && !validRoles.includes(row.role.toLowerCase())
+    );
+
+    if (rowsWithInvalidRoles.length > 0) {
+      return {
+        success: false,
+        error: 'Invalid roles found in CSV',
+        invalid_rows: rowsWithInvalidRoles.slice(0, 5).map(r => ({
+          email: r.email,
+          invalid_role: r.role
+        })),
+        valid_roles: validRoles,
+        message: `Found ${rowsWithInvalidRoles.length} row(s) with invalid roles. Valid roles are: ${validRoles.join(', ')}`
+      };
+    }
+
+    // If confirmed, perform the import
+    if (_confirmed) {
+      const userData = parsed.rows.map(row => ({
+        email: row.email,
+        role: (row.role || 'staff').toLowerCase()
+      }));
+
+      const result = await userService.importUsersFromCSV(userData, user.user_id);
+
+      return {
+        success: true,
+        message: `Import completed: ${result.invited} invitation(s) sent, ${result.skipped} skipped, ${result.errors.length} error(s).`,
+        details: {
+          "Invitations Sent": String(result.invited),
+          "Skipped": String(result.skipped),
+          "Errors": String(result.errors.length)
+        },
+        stats: {
+          invited: result.invited,
+          skipped: result.skipped,
+          errors: result.errors.length
+        },
+        results: result
+      };
+    }
+
+    // Return preview for confirmation
+    const preview = parsed.rows.slice(0, 5).map(row => ({
+      email: row.email,
+      role: (row.role || 'staff').toLowerCase()
+    }));
+
+    return {
+      success: true,
+      requires_confirmation: true,
+      entity_type: 'users',
+      preview: {
+        headers: ['Email', 'Role'],
+        sample_rows: preview,
+        total_rows: parsed.totalRows
+      },
+      summary: {
+        total: parsed.totalRows,
+        with_role: parsed.rows.filter(r => r.role).length,
+        default_role: parsed.rows.filter(r => !r.role).length
+      },
+      message: `Ready to send ${parsed.totalRows} invitation(s). ${parsed.rows.filter(r => !r.role).length} will use default role (staff). Please confirm to proceed.`
+    };
+
+  } catch (error) {
+    logger.error('Error in importUsersCsv:', error);
+    return { error: error.message || 'Failed to import users' };
+  }
+}
+
+async function getAvailablePermissions() {
+  // Format permissions for display
+  const formatted = {};
+
+  for (const [category, perms] of Object.entries(PERMISSIONS)) {
+    formatted[category] = Object.entries(perms).map(([key, value]) => ({
+      key: value,
+      description: key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    }));
+  }
+
+  // Also provide a flat list for easy reference
+  const flatList = Object.values(PERMISSIONS).flatMap(cat => Object.values(cat));
+
+  return {
+    success: true,
+    categories: formatted,
+    all_permissions: flatList,
+    total_count: flatList.length,
+    message: `There are ${flatList.length} available permissions across ${Object.keys(PERMISSIONS).length} categories.`
   };
 }
 
@@ -913,22 +1306,69 @@ async function getJobOrders({ status, product_id, limit = 50 }) {
 }
 
 async function createJobOrder(args, user) {
+  let ingredients = args.ingredients;
+
+  // If ingredients are not provided (typical for AI calls), fetch them from the product recipe
+  if (!ingredients && args.product_id) {
+    try {
+      const product = await itemService.getItemById(args.product_id);
+
+      if (product && product.ingredients && product.ingredients.length > 0) {
+        // Calculate required quantities based on JO quantity
+        const quantityToProduce = parseFloat(args.quantity_to_produce || args.quantity || 1);
+
+        ingredients = product.ingredients.map(ing => ({
+          item_id: ing.item_id,
+          // Calculate total required: (quantity per unit) * (units to produce)
+          quantity_required: parseFloat(ing.quantity) * quantityToProduce,
+          unit_of_measure: ing.unit_of_measure
+        }));
+
+        logger.info(`[createJobOrder] Auto-populated ${ingredients.length} ingredients for Product ${args.product_id}`);
+      } else {
+        logger.warn(`[createJobOrder] Product ${args.product_id} has no ingredients defined.`);
+        // Pass empty ingredients to let the service throw the validation error,
+        // OR better yet, throw a more descriptive error here for the AI.
+        // We will let the next block handle it, or we can throw here.
+        // Let's rely on the service to throw "Product must have a recipe" but the user might need clarity.
+      }
+    } catch (error) {
+      logger.warn(`[createJobOrder] Failed to auto-populate ingredients: ${error.message}`);
+    }
+  }
+
   const joData = {
     product_id: args.product_id,
     quantity_to_produce: args.quantity_to_produce || args.quantity, // Handle potential AI naming mismatch
     notes: args.notes,
-    status: 'in_progress' // AI created orders should be active immediately
+    status: 'in_progress', // AI created orders should be active immediately
+    ingredients: ingredients // Pass the populated or original ingredients
   };
 
   const jo = await jobOrderService.createJobOrder(joData, user.user_id);
+
+  // Fetch product name for better display (and handle undefined quantity display)
+  let productName = `ID: ${args.product_id}`;
+  try {
+    const p = await itemService.getItemById(args.product_id);
+    if (p) productName = p.name;
+  } catch (e) { /* ignore */ }
+
+  const quantityStr = String(args.quantity_to_produce || args.quantity || jo.quantity_to_produce || 0);
+
   return {
     success: true,
     message: `Job Order ${jo.jo_number} created successfully`,
     details: {
       "JO Number": jo.jo_number,
-      "Product": `ID: ${args.product_id}`, // Name would be better if we fetched it, but this is fast
-      "Quantity": String(args.quantity_to_produce),
-      "Status": "Pending"
+      "Product": productName,
+      "Quantity": quantityStr,
+      "Status": "In Progress"
+    },
+    // Impact object for the visual grid
+    impact: {
+      "to_produce": `${quantityStr} units`,
+      "ingredients": "Reserved"
     },
     related_entity: {
       type: 'job_order',

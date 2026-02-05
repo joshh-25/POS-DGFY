@@ -62,3 +62,8 @@ htdocs/.htaccess
 .vite/
 
 nul
+
+# Cleanup Rules (Keep root clean)
+/provision-log*.txt
+/*.txt
+/*.log

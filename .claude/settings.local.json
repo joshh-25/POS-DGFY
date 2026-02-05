@@ -75,7 +75,10 @@
       "Bash(npm run build:*)",
       "Bash(dir \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\frontend\" /B)",
       "Bash(ls -la \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\backend\\\\src\\\\migrations\"\" | grep \"20260114000001 \")",
-      "Bash(NODE_OPTIONS=\"--experimental-vm-modules\" npx jest:*)"
+      "Bash(NODE_OPTIONS=\"--experimental-vm-modules\" npx jest:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 3648 -Force\")",
+      "Bash(powershell -Command \"netstat -ano | Select-String '':5000''\")",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

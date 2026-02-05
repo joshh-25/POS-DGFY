@@ -481,7 +481,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                         {formatNumber(req.isInsufficient ? Math.abs(req.stock_after) : req.stock_after)} {req.unit}
                       </div>
                       <div className="text-xs text-slate-500">
-                        Req: {formatNumber(req.quantity_required)} {req.unit}
+                        Req: {formatNumber(req.quantity_required, req.quantity_required > 0 && req.quantity_required < 0.01 ? 8 : 2)} {req.unit}
                         {req.conversionNote && (
                           <span className="text-blue-500 ml-1">{req.conversionNote}</span>
                         )}

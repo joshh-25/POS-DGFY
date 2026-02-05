@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger from '../config/logger.js';
 import { buildSystemPrompt, getCapabilitiesExplanation, getLimitationsExplanation } from '../config/aiSystemPrompt.js';
 import { getOpenAITools, getToolByName, toolRequiresConfirmation } from '../config/aiTools.js';
-import { buildContext, hasPermission, getPermissionError } from './aiContextService.js';
+import { buildContext, hasPermission, getPermissionError, hasGranularPermission, getGranularPermissionError } from './aiContextService.js';
 import * as toolExecutor from './aiToolExecutor.js';
 
 // Lazy initialize OpenAI client
@@ -195,13 +195,24 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
     const toolArgs = JSON.parse(toolCall.function.arguments);
     const tool = getToolByName(toolName);
 
-    // Check permissions
+    // Check role-based permissions
     if (tool && tool.requiredRole && !hasPermission(user.role, tool.requiredRole)) {
       results.push({
         tool_call_id: toolCall.id,
         type: 'permission_denied',
         toolName,
         message: getPermissionError(toolName.replace(/_/g, ' '), tool.requiredRole)
+      });
+      continue;
+    }
+
+    // Check granular permissions (if tool requires specific permission)
+    if (tool && tool.requiredPermission && !hasGranularPermission(user, tool.requiredPermission)) {
+      results.push({
+        tool_call_id: toolCall.id,
+        type: 'permission_denied',
+        toolName,
+        message: getGranularPermissionError(toolName.replace(/_/g, ' '), tool.requiredPermission)
       });
       continue;
     }
@@ -595,6 +606,35 @@ const generateConfirmation = async (toolName, args, user, conversationId, contex
     case 'toggle_user_status':
       description = `${args.is_active ? 'Reactivate' : 'Deactivate'} user ID ${args.target_user_id}`;
       details = { ...args };
+      break;
+
+    case 'update_user_permissions':
+      description = `Update permissions for user ID ${args.target_user_id}`;
+      details = {
+        target_user_id: args.target_user_id,
+        permission_count: args.permissions?.length || 0,
+        permissions: args.permissions,
+        note: 'This will replace the user\'s current permissions with the new set.'
+      };
+      break;
+
+    case 'create_user_invitation':
+      description = `Send invitation to ${args.email} as ${args.role}`;
+      details = {
+        email: args.email,
+        role: args.role,
+        note: 'An email invitation will be sent with a link to set up their account. The invitation expires in 7 days.'
+      };
+      break;
+
+    case 'import_users_csv':
+      description = `Import users from CSV and send invitations`;
+      details = {
+        csv_content: args.csv_content,
+        total_rows: args._preview?.total || 'multiple',
+        _confirmed: true,
+        note: 'Invitation emails will be sent to each valid email address in the CSV.'
+      };
       break;
 
     // File Management

@@ -61,6 +61,9 @@ export const updateItem = async (req, res, next) => {
     const { item_id } = req.params;
     const itemData = req.validatedData;
     const userId = req.user.user_id;
+
+
+
     const item = await itemService.updateItem(item_id, itemData, userId);
 
     res.status(200).json({

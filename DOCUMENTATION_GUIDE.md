@@ -62,33 +62,27 @@
 PROJECT_ROOT/
 │
 ├── 📄 README.md                  # Project entry point
-├── 📄 CLAUDE.md                  # AI assistant context (optional naming)
 ├── 📄 QUICK_START.md             # 5-minute setup guide
 ├── 📄 SETUP.md                   # Complete setup instructions
 ├── 📄 PREREQUISITES.md           # Environment requirements
 ├── 📄 TROUBLESHOOTING.md         # Common errors & solutions
 ├── 📄 DEVELOPMENT_HISTORY.md     # Changelog & development log
-├── 📄 LICENSE                    # License file
-├── 📄 .gitignore                 # Git ignore rules
 │
 ├── 📁 docs/                      # Technical documentation
 │   ├── README.md                 # Documentation index
-│   ├── QUICK_REFERENCE.md        # Commands cheatsheet
+│   ├── MIGRATION_MAP.md          # File location changes
+│   ├── 📁 ai/                    # AI guidelines & logs
 │   ├── 📁 api/                   # API documentation
-│   ├── 📁 architecture/          # System design
+│   ├── 📁 architecture/          # System design & proposals
 │   ├── 📁 database/              # Data models
-│   └── 📁 development/           # Dev guides
-│
-├── 📁 .claude/ (or .ai/)         # AI assistant config
-│   ├── settings.local.json
-│   ├── project-context.md
-│   └── 📁 hooks/
+│   ├── 📁 development/           # Dev guides
+│   ├── 📁 features/              # Feature specifications
+│   ├── 📁 guides/                # Process guides
+│   ├── 📁 reference/             # Cheatsheets
+│   └── 📁 setup/                 # Component setup
 │
 ├── 📁 .agent/                    # AI workflow definitions
-│   └── 📁 workflows/
-│
 └── 📁 .github/                   # GitHub automation
-    └── 📁 workflows/
 ```
 
 ---

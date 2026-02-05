@@ -168,12 +168,16 @@ The project is organized as a monorepo:
 
 ## 📚 Documentation
 
-- **[PREREQUISITES.md](docs/setup/PREREQUISITES.md)** - Prerequisites for local & hosting server environments
-- **[TROUBLESHOOTING.md](docs/ops/TROUBLESHOOTING.md)** - Common errors and solutions guide
-- **[SETUP.md](docs/setup/SETUP.md)** - Complete local setup instructions
-- **[ADMIN_SETUP.md](docs/setup/ADMIN_SETUP.md)** - Admin user setup
-- **[REDIS_SETUP.md](docs/setup/REDIS_SETUP.md)** - Redis installation and configuration
-- **[spec-kit/](spec-kit/)** - Full technical specifications
+| Document | Description |
+|----------|-------------|
+| [QUICK_START.md](QUICK_START.md) | Fast setup guide |
+| [SETUP.md](SETUP.md) | Detailed setup |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error solutions |
+| [docs/reference/QUICK_REFERENCE.md](docs/reference/QUICK_REFERENCE.md) | Commands cheatsheet |
+| [docs/setup/REDIS_SETUP.md](docs/setup/REDIS_SETUP.md) | Redis configuration |
+| [docs/guides/SCRIPTS_GUIDE.md](docs/guides/SCRIPTS_GUIDE.md) | Helper scripts |
+
+See [docs/README.md](docs/README.md) for the complete documentation index.
 
 ## 🛠️ Available Scripts
 

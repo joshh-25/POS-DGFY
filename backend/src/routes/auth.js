@@ -1,6 +1,6 @@
 import express from 'express';
 import * as authController from '../controllers/authController.js';
-import { validateRegister, validateLogin, validateRefreshToken, validateEmailLookup } from '../validators/authValidator.js';
+import { validateRegister, validateLogin, validateRefreshToken, validateEmailLookup, validateAcceptInvite, validateInviteToken } from '../validators/authValidator.js';
 
 const router = express.Router();
 
@@ -14,6 +14,10 @@ router.post('/lookup', validateEmailLookup, authController.lookupEmail);
 
 // Validate company token (for registration page to show company name)
 router.get('/validate-token/:token', authController.validateToken);
+
+// Invitation acceptance
+router.get('/validate-invite/:token', validateInviteToken, authController.validateInviteToken);
+router.post('/accept-invite', validateAcceptInvite, authController.acceptInvitation);
 
 export default router;
 

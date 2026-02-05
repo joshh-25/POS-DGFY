@@ -13,6 +13,7 @@ import Settings from '../Pages/Settings.jsx'
 import Login from '../Pages/Login.jsx'
 import Register from '../Pages/Register.jsx'
 import RegisterCompany from '../Pages/RegisterCompany.jsx'
+import AcceptInvite from '../Pages/AcceptInvite.jsx'
 import MobileReceive from '../Pages/MobileReceive.jsx'
 import AiChat from '../Pages/AiChat.jsx'
 import FeedbackViewer from '../Pages/FeedbackViewer.jsx'
@@ -41,6 +42,7 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/register-company" element={<RegisterCompany />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
 
       {/* Protected routes - require authentication */}
       <Route path="/" element={

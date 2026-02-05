@@ -251,7 +251,11 @@ export default function JobOrders() {
       setJoToArchive(null);
       refetch();
     } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
+      if (error.response?.status === 403) {
+        toast.error("You do not have permission to archive Job Orders.");
+      } else {
+        toast.error(error.response?.data?.message || error.message);
+      }
       setShowArchiveDialog(false);
       setJoToArchive(null);
     }

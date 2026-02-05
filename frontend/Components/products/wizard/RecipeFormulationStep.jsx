@@ -125,9 +125,9 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
   const totalIngredientCost = useMemo(() => {
     return ingredients.reduce((sum, ing) => {
       const item = allIngredientItems.find(i => i.item_id === ing.item_id);
-      return sum + ((item?.cost_per_unit || 0) * ing.quantity * batchSize);
+      return sum + ((item?.cost_per_unit || 0) * ing.quantity);
     }, 0);
-  }, [ingredients, allIngredientItems, batchSize]);
+  }, [ingredients, allIngredientItems]);
 
   const canProduceUnits = useMemo(() => {
     if (ingredients.length === 0) return 0;
@@ -135,10 +135,10 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
       ...ingredients.map(ing => {
         const item = allIngredientItems.find(i => i.item_id === ing.item_id);
         if (!item || ing.quantity === 0) return 0;
-        return Math.floor(item.current_stock / (ing.quantity * batchSize));
+        return Math.floor(item.current_stock / ing.quantity);
       })
     );
-  }, [ingredients, allIngredientItems, batchSize]);
+  }, [ingredients, allIngredientItems]);
 
   // Per-Batch Cost (for ONE batch unit)
   const perBatchCosts = useMemo(() => {
@@ -162,14 +162,14 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
       return {
         item_name: ing.item_name,
         quantity_per_batch: ing.quantity,
-        total_quantity: ing.quantity * batchSize,
+        total_quantity: ing.quantity,
         unit: item?.unit_of_measure || 'units',
         cost_per_unit: item?.cost_per_unit || 0,
-        total_cost: (item?.cost_per_unit || 0) * ing.quantity * batchSize,
+        total_cost: (item?.cost_per_unit || 0) * ing.quantity,
         is_product: ing.is_product
       };
     });
-  }, [ingredients, allIngredientItems, batchSize]);
+  }, [ingredients, allIngredientItems]);
 
   // Render ingredient item for selection
   const renderIngredientItem = (item, type) => (
@@ -323,7 +323,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
           <div className="space-y-3">
             {ingredients.map((ing, index) => {
               const item = allIngredientItems.find(i => i.item_id === ing.item_id);
-              const totalNeeded = ing.quantity * batchSize;
+              const totalNeeded = ing.quantity;
               const hasEnough = item && item.current_stock >= totalNeeded;
 
               return (
@@ -441,7 +441,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                       <div>
                         <p className="font-medium text-slate-900">{cost.item_name}</p>
                         <p className="text-sm text-slate-600">
-                          {formatNumber(cost.quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
+                          {formatNumber(cost.quantity, cost.quantity > 0 && cost.quantity < 0.01 ? 8 : 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
                         </p>
                       </div>
                     </div>
@@ -463,7 +463,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
             <TabsContent value="per-ingredient" className="space-y-3">
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                 <h4 className="font-medium text-emerald-900 mb-3">
-                  Total Ingredient Costs ({batchSize} batches)
+                  Total Ingredient Costs
                 </h4>
                 {perIngredientCosts.map((cost, idx) => (
                   <div key={idx} className="flex justify-between items-start py-2 border-b border-emerald-100 last:border-0">
@@ -476,10 +476,10 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                       <div>
                         <p className="font-medium text-slate-900">{cost.item_name}</p>
                         <p className="text-sm text-slate-600">
-                          {formatNumber(cost.quantity_per_batch, 2)} {cost.unit}/batch × {batchSize} batches = {formatNumber(cost.total_quantity, 2)} {cost.unit}
+                          {formatNumber(cost.quantity_per_batch, cost.quantity_per_batch > 0 && cost.quantity_per_batch < 0.01 ? 8 : 2)} {cost.unit}
                         </p>
                         <p className="text-sm text-slate-600">
-                          {formatNumber(cost.total_quantity, 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
+                          {formatNumber(cost.total_quantity, cost.total_quantity > 0 && cost.total_quantity < 0.01 ? 8 : 2)} {cost.unit} × ₱{formatNumber(cost.cost_per_unit, 2)}/{cost.unit}
                         </p>
                       </div>
                     </div>

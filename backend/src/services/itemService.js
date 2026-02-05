@@ -203,18 +203,7 @@ export const getItems = async (queryParams) => {
     order
   });
 
-  // DEBUG: Log what Sequelize returns
-  const productSample = rows.find(r => r.category === 'product');
-  if (productSample) {
-    console.log('=== PRODUCT SAMPLE (RAW FROM SEQUELIZE) ===');
-    console.log('Product name:', productSample.name);
-    console.log('Product category:', productSample.category);
-    console.log('Has productCompositions:', !!productSample.productCompositions);
-    console.log('ProductCompositions count:', productSample.productCompositions?.length || 0);
-    if (productSample.productCompositions && productSample.productCompositions.length > 0) {
-      console.log('First composition:', JSON.stringify(productSample.productCompositions[0].toJSON(), null, 2));
-    }
-  }
+
 
   // Transform items to include 'id' field and format ingredients for products
   const transformedItems = rows.map(item => {

@@ -21,7 +21,7 @@ const ProductComposition = sequelize.define('ProductComposition', {
     defaultValue: 'ingredient'
   },
   quantity_required: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   unit_of_measure: {

@@ -19,7 +19,9 @@
     "validate:ai": "cd backend && npm run validate:ai",
     "generate:ai-docs": "cd backend && npm run generate:ai-docs",
     "ai:check": "cd backend && npm run ai:check",
-    "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\""
+    "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\"",
+    "kill:dev": "bash scripts/kill-dev.sh",
+    "deploy": "bash scripts/deploy.sh"
   },
   "keywords": [
     "inventory",

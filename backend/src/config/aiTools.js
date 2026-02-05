@@ -815,6 +815,119 @@ export const AI_TOOLS = [
     requiredRole: "admin"
   },
 
+  // ============== ADVANCED USER MANAGEMENT ==============
+  {
+    type: "function",
+    function: {
+      name: "update_user_permissions",
+      description: "Update granular permissions for a user. Requires users:manage permission. Cannot modify your own permissions. Only Master Admin can edit Admin users.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_user_id: {
+            type: "integer",
+            description: "ID of the user whose permissions to update"
+          },
+          permissions: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array of permission strings to assign (e.g., ['items:view', 'items:create', 'po:view', 'po:create']). Use get_available_permissions to see all valid permissions."
+          }
+        },
+        required: ["target_user_id", "permissions"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin",
+    requiredPermission: "users:manage"
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_user_invitation",
+      description: "Invite a new user by email. Sends an invitation email with a setup link. The invited user will receive an email to set up their account. Requires users:manage permission. Only Master Admin can invite Admin users.",
+      parameters: {
+        type: "object",
+        properties: {
+          email: {
+            type: "string",
+            description: "Email address of the user to invite"
+          },
+          role: {
+            type: "string",
+            enum: ["staff", "manager", "admin"],
+            description: "Role to assign to the invited user. Staff=view only, Manager=full operational access, Admin=everything including user management"
+          }
+        },
+        required: ["email", "role"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin",
+    requiredPermission: "users:manage"
+  },
+  {
+    type: "function",
+    function: {
+      name: "export_users_csv",
+      description: "Export the user list to CSV format. Includes: username, email, role, active status, permission count, master admin flag, last login. Excludes pending invitations.",
+      parameters: {
+        type: "object",
+        properties: {
+          output_preference: {
+            type: "string",
+            enum: ["display", "download"],
+            description: "How to return the data: 'display' shows first 10 rows in chat, 'download' provides a file download link"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false,
+    requiredRole: "admin",
+    requiredPermission: "users:manage"
+  },
+  {
+    type: "function",
+    function: {
+      name: "import_users_csv",
+      description: "Bulk import users from CSV. Creates invitations and sends emails for each valid entry. CSV format: email (required), role (optional, defaults to 'staff'). Skips existing emails. Requires users:manage permission.",
+      parameters: {
+        type: "object",
+        properties: {
+          csv_content: {
+            type: "string",
+            description: "CSV content with columns: email (required), role (optional). Example: 'email,role\\njohn@example.com,manager\\njane@example.com,staff'"
+          }
+        },
+        required: ["csv_content"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "admin",
+    requiredPermission: "users:manage"
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_available_permissions",
+      description: "Get a list of all available permissions in the system, organized by category. Useful when setting up user permissions.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false,
+    requiredRole: "admin",
+    requiredPermission: "users:manage"
+  },
+
   // ============== STRATEGIC REPORTING ==============
   {
     type: "function",

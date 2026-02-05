@@ -1,6 +1,6 @@
-> **Version:** 1.4.0
-> **Last Updated:** February 4, 2026
-> **Tool Count:** 36
+> **Version:** 1.6.0
+> **Last Updated:** February 5, 2026
+> **Tool Count:** 48
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
@@ -43,6 +43,26 @@ The SKUpervisor AI Assistant is powered by OpenAI's GPT-4 model and provides nat
 | **Create JO** | Manager+ | Create production job orders |
 | **Complete JO** | Manager+ | Finish job, update inventory |
 | **Stock Adjustment** | Manager+ | Manual stock corrections |
+
+### User Management (Admin Only)
+
+| Capability | Required Permission | Description |
+|------------|---------------------|-------------|
+| **List Users** | `users:manage` | View all users in the tenant |
+| **Update User Role** | `users:manage` | Change a user's role (staff/manager/admin) |
+| **Toggle User Status** | `users:manage` | Activate/deactivate user accounts |
+| **Update Permissions** | `users:manage` | Modify granular permissions for a user |
+| **Invite User** | `users:manage` | Send email invitation to new user |
+| **Export Users CSV** | `users:manage` | Export user list to CSV |
+| **Import Users CSV** | `users:manage` | Bulk invite users from CSV |
+| **List Permissions** | `users:manage` | View all available permissions |
+
+#### User Management Hierarchy Rules
+
+1. **Master Admin**: Can manage any user including other admins
+2. **Regular Admin**: Can only manage Staff and Managers, not other Admins
+3. **Self-Modification**: No user can modify their own role, permissions, or status
+4. **Soft-Delete Only**: Users are deactivated, not deleted
 
 ### Analysis Features
 
@@ -189,6 +209,96 @@ All write operations follow a strict confirmation workflow to prevent accidental
 | Admin | ✅ | ✅ | ✅ | ✅ |
 
 Staff users can query data and run analyses but cannot make changes.
+
+---
+
+## User Management & Permission System
+
+### Role vs Permissions
+
+The system uses a **two-tier access control** model:
+
+| Concept | Description | Use Case |
+|---------|-------------|----------|
+| **Role** | Quick preset template (`admin`, `manager`, `staff`) | Fast onboarding, bulk assignment |
+| **Permissions** | Granular per-action control (JSON array) | Fine-tuned access, custom configurations |
+| **Master Admin** | Boolean flag that bypasses all permission checks | System owner, emergency access |
+
+### Role Hierarchy
+
+```
+Staff (Level 1) < Manager (Level 2) < Admin (Level 3)
+```
+
+- **Staff**: Read-only access (6 view permissions)
+- **Manager**: Full operational access (35 permissions including create/edit/approve)
+- **Admin**: Everything + user management + system settings
+
+### Permission Categories
+
+| Category | Example Permissions | Description |
+|----------|---------------------|-------------|
+| **Inventory** | `items:view`, `items:create`, `items:edit`, `items:delete` | SKU/item management |
+| **Suppliers** | `suppliers:view`, `suppliers:create`, `suppliers:edit` | Supplier CRUD |
+| **Orders** | `po:view`, `po:create`, `po:approve`, `jo:complete` | PO and JO workflows |
+| **Stock** | `stock:view`, `stock:adjust`, `batches:view` | Stock movements and FIFO batches |
+| **Reports** | `reports:view`, `reports:export` | Analytics access |
+| **AI** | `ai:chat`, `ai:action` | AI chat and action execution |
+| **System** | `settings:view`, `users:manage`, `audit:view` | Admin functions |
+
+### Role Change Behavior
+
+**IMPORTANT**: When a user's role is changed (e.g., Staff → Manager), the system automatically resets their `permissions` array to that role's default permission set.
+
+**Workflow:**
+1. Admin changes user role from "Staff" to "Manager"
+2. Backend fetches `DEFAULT_ROLE_PERMISSIONS['manager']` (35 permissions)
+3. User's `permissions` field is overwritten with the new default set
+4. If role changed FROM admin, `is_master_admin` is reset to `false`
+5. Custom permission edits made AFTER this point will persist until the next role change
+
+**Example:**
+```
+User: John (Staff, 6 permissions)
+    ↓ Role changed to Manager
+User: John (Manager, 35 permissions)  ← Auto-applied defaults
+    ↓ Admin removes "po:approve" permission
+User: John (Manager, 34 permissions)  ← Custom edit persists
+    ↓ Role changed to Staff
+User: John (Staff, 6 permissions)     ← Reset to Staff defaults
+```
+
+### Default Role Permissions
+
+| Role | Permission Count | Includes |
+|------|------------------|----------|
+| **Staff** | 6 | View-only: items, suppliers, POs, JOs, movements, AI chat |
+| **Manager** | 35 | All of Staff + create/edit/approve for orders, stock adjustments, settings |
+| **Admin** | All (38) | Everything including `users:manage`, `settings:edit`, `audit:view` |
+
+### Master Admin
+
+- **Flag**: `is_master_admin: true` on user record
+- **Effect**: Bypasses ALL permission checks (`checkPermission` middleware)
+- **Assignment**: Only another Master Admin can grant this flag
+- **Safety**: Changing role FROM admin resets `is_master_admin` to `false`
+
+### AI Assistant Access
+
+The AI Assistant respects the user's permissions:
+- **Staff with `ai:chat`**: Can query data, run analyses, search docs
+- **Manager+ with `ai:action`**: Can execute confirmed write operations (create items, POs, JOs)
+- **No AI permissions**: AI chat page is hidden/inaccessible
+
+### Files Reference
+
+| File | Purpose |
+|------|---------|
+| `backend/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
+| `backend/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
+| `backend/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
+| `frontend/Components/users/PermissionMatrix.jsx` | UI for editing granular permissions |
+| `frontend/Components/users/UserManagementModal.jsx` | User CRUD, role dropdown, permission editor |
 
 ---
 
@@ -447,3 +557,15 @@ For issues not resolved by the AI:
 - **Deployment Fixes**: Improved `deploy.sh` for Linux servers and fixed `package.json` husky install loops.
 - **Multi-Tenancy Onboarding**: Added `onboard-production-tenant.js` to migrate existing production users to the new tenant architecture.
 - **Migration Fix**: Standardized `user_tenant_mappings` ID as auto-incrementing integer.
+
+### v1.5.0 (February 5, 2026) - Role-Permission Auto-Apply
+- **Role Change Auto-Apply**: Changing a user's role now automatically resets their permissions to the role's default set.
+- **Permission System Documentation**: Added comprehensive documentation for the two-tier access control (Role vs Permissions).
+- **Master Admin Safety**: `is_master_admin` flag is now reset to `false` when demoting from Admin role.
+- **Frontend Fix**: PermissionMatrix now correctly updates after role change without requiring page refresh.
+
+### v1.6.0 (February 5, 2026) - Robust AI User Resolution
+- **Issue**: AI previously relied solely on ID for user targeting, leading to potential errors (e.g., updating User 2 instead of "User 10 named Mama").
+- **Smart Resolution**: AI tools (`update_user_role`, `toggle_user_status`, `update_user_permissions`) now accept `email` and `username` as identifiers.
+- **Conflict Prevention**: If multiple identifiers are provided (e.g. ID + Email), the system strictly cross-validates them. If they don't match the same user, the action is blocked with a descriptive error.
+- **Safety**: Prevents "hallucinated ID" errors by allowing the AI to prefer semantic identifiers (Email/Name) which are less prone to model confusion than numeric IDs.

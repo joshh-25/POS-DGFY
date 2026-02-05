@@ -18,7 +18,7 @@ import {
   UserX,
   Settings2
 } from 'lucide-react';
-import axios from 'axios';
+import api from '../../src/services/api.js';
 
 // Permission templates for bulk operations
 const PERMISSION_TEMPLATES = {
@@ -116,8 +116,29 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   const handleRoleChange = async (userId, newRole) => {
     try {
-      await userService.updateUserRole(userId, newRole);
+      const updatedUser = await userService.updateUserRole(userId, newRole);
       toast.success('User role updated successfully');
+
+      // If the Permission Matrix is open for this user, update selectedUser with new permissions
+      if (selectedUser && selectedUser.user_id === userId) {
+        // Parse permissions if it's a string (backend may return JSON string)
+        let permissions = updatedUser.permissions || [];
+        if (typeof permissions === 'string') {
+          try {
+            permissions = JSON.parse(permissions);
+          } catch (e) {
+            permissions = [];
+          }
+        }
+
+        setSelectedUser(prev => ({
+          ...prev,
+          role: updatedUser.role,
+          permissions: permissions,
+          is_master_admin: updatedUser.is_master_admin
+        }));
+      }
+
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update role');
@@ -135,18 +156,36 @@ export default function UserManagementModal({ open, onOpenChange }) {
   };
 
   const openPermissionMatrix = (user) => {
-    setSelectedUser(user);
+    // Ensure permissions is always an array when opening the matrix
+    // Handle case where permissions might be a JSON string from the backend
+    let permissions = user.permissions || [];
+    if (typeof permissions === 'string') {
+      try {
+        permissions = JSON.parse(permissions);
+      } catch (e) {
+        permissions = [];
+      }
+    }
+    if (!Array.isArray(permissions)) {
+      permissions = [];
+    }
+
+    setSelectedUser({
+      ...user,
+      permissions: permissions
+    });
     setShowPermissionMatrix(true);
   };
 
   const handleUpdatePermissions = async (userId, permissions, isMasterAdmin) => {
     setSavingPermissions(true);
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
-        { permissions, is_master_admin: isMasterAdmin },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Ensure permissions is always an array
+      const permissionsArray = Array.isArray(permissions) ? permissions : [];
+      await api.put(`/users/${userId}/permissions`, {
+        permissions: permissionsArray,
+        is_master_admin: isMasterAdmin
+      });
       toast.success('Permissions updated successfully');
       setShowPermissionMatrix(false);
       fetchUsers();
@@ -194,13 +233,12 @@ export default function UserManagementModal({ open, onOpenChange }) {
     if (!template) return;
 
     try {
-      const token = localStorage.getItem('token');
       await Promise.all(
         selectedUserIds.map(userId =>
-          axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
-            { permissions: template.permissions, is_master_admin: false },
-            { headers: { Authorization: `Bearer ${token}` } }
-          )
+          api.put(`/users/${userId}/permissions`, {
+            permissions: template.permissions,
+            is_master_admin: false
+          })
         )
       );
       toast.success(`Applied "${template.label}" template to ${selectedUserIds.length} users`);
@@ -214,7 +252,6 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   const handleBulkPermissionChange = async (permissionsToChange) => {
     try {
-      const token = localStorage.getItem('token');
       const mode = permissionPickerMode;
 
       await Promise.all(
@@ -235,10 +272,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
             newPermissions = newPermissions.filter(p => !permissionsToChange.includes(p));
           }
 
-          await axios.put(`http://localhost:5000/api/v1/users/${userId}/permissions`,
-            { permissions: newPermissions, is_master_admin: user.is_master_admin },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
+          await api.put(`/users/${userId}/permissions`, {
+            permissions: newPermissions,
+            is_master_admin: user.is_master_admin
+          });
         })
       );
 

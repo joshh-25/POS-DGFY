@@ -1,5 +1,6 @@
 import * as authService from '../services/authService.js';
 import * as landlordService from '../services/landlordService.js';
+import * as userService from '../services/userService.js';
 
 export const register = async (req, res, next) => {
   try {
@@ -160,6 +161,75 @@ export const validateToken = async (req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Validate an invitation token
+ * Used by frontend to check if token is valid before showing the form
+ */
+export const validateInviteToken = async (req, res, next) => {
+  try {
+    const { token } = req.validatedData;
+
+    const result = await userService.validateInvitationToken(token);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: 'Invitation token is valid',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    // Return 400 for invalid/expired tokens instead of 500
+    if (error.message.includes('expired') || error.message.includes('Invalid') || error.message.includes('not found')) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+    next(error);
+  }
+};
+
+/**
+ * Accept an invitation and create user account
+ */
+export const acceptInvitation = async (req, res, next) => {
+  try {
+    const { token, username, password } = req.validatedData;
+
+    const result = await userService.acceptInvitation(token, { username, password });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          user_id: result.user_id,
+          username: result.username,
+          email: result.email,
+          role: result.role
+        },
+        token: result.token,
+        refreshToken: result.refreshToken || null
+      },
+      message: 'Account created successfully. You are now logged in.',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    // Return 400 for validation errors instead of 500
+    if (error.message.includes('expired') || error.message.includes('Invalid') ||
+        error.message.includes('not found') || error.message.includes('already')) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
     next(error);
   }
 };

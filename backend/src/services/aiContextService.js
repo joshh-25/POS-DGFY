@@ -221,11 +221,40 @@ export const getPermissionError = (action, requiredRole) => {
   return `You don't have permission to ${action}. This action requires ${requiredRole} or higher role. Please contact an administrator if you need access.`;
 };
 
+/**
+ * Check if user has a specific granular permission
+ * @param {Object} user - User object with permissions array and is_master_admin flag
+ * @param {string} requiredPermission - Required permission string (e.g., 'users:manage')
+ * @returns {boolean} Whether user has the permission
+ */
+export const hasGranularPermission = (user, requiredPermission) => {
+  // Master admin bypasses all permission checks
+  if (user.is_master_admin) {
+    return true;
+  }
+
+  // Check if user has the specific permission
+  const userPermissions = user.permissions || [];
+  return userPermissions.includes(requiredPermission);
+};
+
+/**
+ * Get granular permission error message
+ * @param {string} action - The action being attempted
+ * @param {string} requiredPermission - Required permission
+ * @returns {string} Error message
+ */
+export const getGranularPermissionError = (action, requiredPermission) => {
+  return `You don't have permission to ${action}. This action requires the "${requiredPermission}" permission. Please contact an administrator if you need access.`;
+};
+
 export default {
   buildContext,
   getUserContext,
   getInventoryStats,
   getQuickSummary,
   hasPermission,
-  getPermissionError
+  getPermissionError,
+  hasGranularPermission,
+  getGranularPermissionError
 };

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Resolve Project Root (one level up from this script)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 # Production Deployment Script
 # ----------------------------
 # This script automates the deployment process on the production server.

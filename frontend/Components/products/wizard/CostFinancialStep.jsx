@@ -25,7 +25,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
       const item = ingredientItems.find(i => i.item_id === Number(ing.item_id));
       const cost = Number(item?.cost_per_unit || 0);
       const qty = Number(ing.quantity || 0);
-      return sum + (cost * qty * batchSize);
+      return sum + (cost * qty);
     }, 0);
   }, [data.ingredients, ingredientItems, batchSize]);
 
@@ -36,7 +36,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
       const item = packagingItemsList.find(i => i.item_id === Number(pkg.item_id));
       const cost = Number(item?.cost_per_unit || 0);
       const qty = Number(pkg.quantity || 0);
-      return sum + (cost * qty * batchSize);
+      return sum + (cost * qty);
     }, 0);
   }, [data.packaging_items, packagingItemsList, batchSize]);
 
@@ -183,22 +183,22 @@ export default function CostFinancialStep({ data, updateData, items }) {
           <div>
             <p className="text-xs text-slate-400">Raw Materials</p>
             <p className="text-lg font-bold">₱{formatNumber(ingredientCost, 2)}</p>
-            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(ingredientCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(ingredientCost / calculation.actualUnits, (ingredientCost / calculation.actualUnits) < 0.01 ? 8 : 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Packaging</p>
             <p className="text-lg font-bold">₱{formatNumber(totalPackagingCost, 2)}</p>
-            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(totalPackagingCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(totalPackagingCost / calculation.actualUnits, (totalPackagingCost / calculation.actualUnits) < 0.01 ? 8 : 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Labor</p>
             <p className="text-lg font-bold">₱{formatNumber(laborCost, 2)}</p>
-            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(laborCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(laborCost / calculation.actualUnits, (laborCost / calculation.actualUnits) < 0.01 ? 8 : 2)}/unit` : 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400">Overhead</p>
             <p className="text-lg font-bold">₱{formatNumber(overheadCost, 2)}</p>
-            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(overheadCost / calculation.actualUnits, 2)}/unit` : 'N/A'}</p>
+            <p className="text-xs text-slate-500 mt-1">{calculation.actualUnits > 0 ? `₱${formatNumber(overheadCost / calculation.actualUnits, (overheadCost / calculation.actualUnits) < 0.01 ? 8 : 2)}/unit` : 'N/A'}</p>
           </div>
           <div className="bg-white/10 rounded-lg p-2 -m-2">
             <p className="text-xs text-slate-300">Total COGS</p>
@@ -212,7 +212,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
           </div>
           <div className="flex justify-between items-center mt-2">
             <span className="text-sm">Cost per Unit (after yield adjustment):</span>
-            <span className="text-xl font-bold text-emerald-400">₱{formatNumber(costPerUnit, 2)}</span>
+            <span className="text-xl font-bold text-emerald-400">₱{formatNumber(costPerUnit, costPerUnit > 0 && costPerUnit < 0.01 ? 8 : 2)}</span>
           </div>
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function CostFinancialStep({ data, updateData, items }) {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-4xl font-bold text-teal-900">₱{formatNumber(suggestedPrice, 2)}</p>
+            <p className="text-4xl font-bold text-teal-900">₱{formatNumber(suggestedPrice, suggestedPrice > 0 && suggestedPrice < 0.01 ? 8 : 2)}</p>
             <p className="text-sm text-teal-600">per unit</p>
           </div>
         </div>
