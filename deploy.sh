@@ -20,12 +20,12 @@ npm install
 
 echo "📦 Installing backend dependencies..."
 cd backend
-NODE_ENV=production npm install
+npm install
 cd ..
 
 echo "📦 Installing frontend dependencies..."
 cd frontend
-NODE_ENV=production npm install
+npm install
 
 # 3. Build Frontend
 echo "🏗️  Building frontend..."
