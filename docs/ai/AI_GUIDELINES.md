@@ -487,6 +487,14 @@ For issues not resolved by the AI:
 2. Review error logs in the backend
 3. Contact system administrator
 
+### Debugging Protocol (MANDATORY)
+
+When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
+
+1. **Consult Documentation**: Read `TROUBLESHOOTING.md` and `DEVELOPMENT_HISTORY.md` *before* proposing fixes.
+2. **Reproduce**: Attempt to replicate the issue with a script or verifiable steps.
+3. **Verify**: Confirm environment context (Dev vs Prod, Multi-Tenant vs Single).
+
 ---
 
 ## Changelog

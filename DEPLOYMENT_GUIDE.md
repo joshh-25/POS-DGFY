@@ -36,11 +36,11 @@ Run this on your server:
 ```bash
 cd /var/www/skupervisor
 
-# First time setup only:
-chmod +x deploy.sh
+# First time setup (if permission denied):
+chmod +x scripts/deploy.sh
 
 # Deploy
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 ---

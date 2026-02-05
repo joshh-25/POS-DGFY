@@ -76,6 +76,18 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 | **Supplier** | `name`, `quality_rating`, `lead_time` | Linked to items via `SupplierItems`. |
 | **StockMovement** | `movement_type`, `quantity`, `reference_id` | Audit trail for ALL stock changes. |
 
+# 🚨 Debugging Protocol (MANDATORY)
+Before attempting ANY bug fix, the following steps MUST be taken:
+1. **Check Documentation First**:
+   - Consult `TROUBLESHOOTING.md` for known issues and solutions.
+   - Check `DEVELOPMENT_HISTORY.md` for similar past bugs.
+2. **Reproduce & Isolate**:
+   - Create a reproduction script (e.g., `backend/scripts/reproduce_issue.js`) if complex.
+   - Verify if the issue is a "known quirk" documented in `CLAUDE.md` or `AI_GUIDELINES.md`.
+3. **Verify Environment**:
+   - Ensure `NODE_ENV` matches the context (dev vs prod).
+   - Check if the issue is related to multi-tenancy context (Tenant ID missing?).
+
 # 🚨 Critical Rules (MUST FOLLOW)
 ### Frontend Rules:
 1.  **Component Structure**: All components in `frontend/Components/` folder, organized by feature (e.g., `items/`, `products/`).

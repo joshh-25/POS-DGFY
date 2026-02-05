@@ -2,6 +2,8 @@
 
 ## Common Issues & Solutions
 
+> **NOTE**: This document is a critical component of the **AI Debugging Protocol**. AI Assistants must consult this guide BEFORE proposing fixes.
+
 ### 1. 500 Internal Server Error on Reports
 **Symptoms**:
 - Failed to load "Snapshot" reports.
@@ -166,3 +168,32 @@ lsof -ti:5000 | xargs kill -9
 - Ensure `DB_HOST`, `DB_USER`, `DB_NAME`, and `JWT_SECRET` are all defined.
 - Restart the service: `pm2 restart sku-backend`.
 - **Verification**: Check logs with `pm2 logs sku-backend` to ensure the "CRITICAL" warning is gone.
+
+### 13. "Permission denied" on Deployment Scripts
+**Symptoms**:
+- Running `./scripts/deploy.sh` fails with `-bash: ./scripts/deploy.sh: Permission denied`.
+
+**Cause**:
+- The script file lost its executable permission bit, often during transfer or git checkout on Windows.
+
+**Solution**:
+- Run the following command to make it executable:
+  ```bash
+  chmod +x scripts/deploy.sh
+  ```
+- Then run it again: `./scripts/deploy.sh`
+
+### 14. 500 Internal Server Error on Login (New Company)
+**Symptoms**:
+- After approving a **new company**, logging in with the correct email/password returns `500 Internal Server Error`.
+- Logs mention `Table 'sku_tenant_....users' doesn't exist` or generic unhandled rejection.
+
+**Cause**:
+- The tenant database was created but **tables were not generated** (empty database). This previously happened because the system relied on empty migration folders.
+
+**Solution**:
+- **Fixed in Code (Phase 24)**: The system now uses `sequelize.sync` to ensure tables are always created.
+- **For Broken Tenants**:
+  1. If you have a tenant stuck in this state, **Delete the tenant** from the Landlord DB (or ignore it).
+  2. Register a new company. The fix ensures new companies are provisioned correctly.
+

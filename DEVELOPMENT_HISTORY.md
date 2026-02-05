@@ -25,6 +25,7 @@
 - [Phase 15: Phase 2 Testing Feedback Fixes](#phase-15-phase-2-testing-feedback-fixes)
 - [Phase 16: Production Deployment Fixes](#phase-16-production-deployment-fixes)
 - [Phase 20: Multi-Tenancy & AI Production Onboarding](#phase-20-multi-tenancy--ai-production-onboarding)
+- [Phase 22: Documentation Standardization](#phase-22-documentation-standardization)
 
 ### Advanced Features (Phases 17+)
 - [Phase 17: Delete Functionality Audit](#phase-17-delete-functionality-audit--bug-fixes)
@@ -4729,4 +4730,29 @@ Resolve critical data integrity issues where ingredient quantities were being tr
 - `frontend/Components/products/wizard/CostFinancialStep.jsx`
 - `frontend/Components/jo/JOCreateModal.jsx`
 - `frontend/Components/jo/JobOrders.jsx`
+
+---
+
+## Phase 24: Tenant Provisioning & Login Stability
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-05
+
+### Issue: 500 Internal Server Error on New Tenant Login
+Newly approved companies were unable to log in, receiving a 500 Internal Server Error.
+- **Root Cause**: The provisioning service relied on `sequelize-cli` to run migrations. However, the `migrations` folder was empty or missing critical table creation scripts, resulting in an empty database for new tenants.
+- **Impact**: New tenants were created but unusable.
+
+### Solution: Direct Schema Synchronization
+Replaced the unreliable migration step with direct Sequelize schema synchronization.
+
+#### 1. Robust Provisioning Logic
+- **`tenantProvisioningService.js`**:
+  - Removed dependency on external `sequelize-cli` command.
+  - Implemented `tenantSequelize.sync({ alter: true })` to correctly generate tables from model definitions.
+  - Consolidated connection management to ensure atomic operations (Create DB -> Sync -> Seed -> Close).
+
+### Verification
+- [x] Verified that new tenants are provisioned with all expected tables (`users`, `items`, etc.).
+- [x] Confirmed successful login for administrators of newly approved companies.
+
 

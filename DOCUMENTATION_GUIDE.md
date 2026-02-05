@@ -148,6 +148,7 @@ PROJECT_ROOT/
 - Keep under 1,000 tokens for optimal AI performance
 - Link to detailed docs instead of embedding content
 - Include critical rules that AI must follow
+- **Mandatory**: Include the "Debugging Protocol" section referencing `TROUBLESHOOTING.md`
 - Update version number with releases
 
 **Template Structure**:

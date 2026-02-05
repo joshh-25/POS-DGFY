@@ -88,24 +88,7 @@ export const provisionTenant = async (options) => {
         logger.info(`[Provisioning] Creating database ${dbName}...`);
         await sequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
 
-        // 2. Run Migrations
-        logger.info(`[Provisioning] Running migrations for ${dbName}...`);
-        try {
-            logger.info(`[Provisioning] Running migrations from: ${backendRoot}`);
-            const env = { ...process.env, DB_NAME: dbName };
-            const { stdout, stderr } = await execPromise('npx -y sequelize-cli db:migrate', {
-                env,
-                cwd: backendRoot
-            });
-            logger.info(`[Provisioning] Migration Output: ${stdout}`);
-        } catch (migError) {
-            logger.error(`[Provisioning] Migration Failed: ${migError.message}`);
-            logger.error(migError.stderr);
-            throw new Error('Migration failed');
-        }
-
-        // 3. Seed Admin User with is_master_admin = true (for their tenant)
-        logger.info(`[Provisioning] Seeding Admin User...`);
+        // 2. Setup Connection for Sync & Seed
         const tenantSequelize = new Sequelize(dbName, process.env.DB_USER || 'root', process.env.DB_PASSWORD || '', {
             host: process.env.DB_HOST || 'localhost',
             dialect: 'mysql',
@@ -113,6 +96,15 @@ export const provisionTenant = async (options) => {
         });
 
         try {
+            // 3. Sync Schema (Create Tables)
+            logger.info(`[Provisioning] Syncing schema for ${dbName}...`);
+            const { getTenantModels } = await import('../utils/tenantModelFactory.js');
+            getTenantModels(tenantSequelize);
+            await tenantSequelize.sync({ alter: true });
+            logger.info(`[Provisioning] Schema synced successfully`);
+
+            // 4. Seed Admin User
+            logger.info(`[Provisioning] Seeding Admin User...`);
             await tenantSequelize.query(
                 `INSERT INTO users (username, email, password_hash, role, is_active, is_master_admin, created_at, updated_at)
                  VALUES (?, ?, ?, 'admin', 1, 1, NOW(), NOW())`,
@@ -120,36 +112,37 @@ export const provisionTenant = async (options) => {
                     replacements: ['Admin', email, passwordHash]
                 }
             );
+
+            // 5. Update tenant status to active
+            const Tenant = dbStore.get('Tenant');
+            await Tenant.update({ status: 'active' }, { where: { id: uuid } });
+
+            // 6. Add email-tenant mapping
+            try {
+                await landlordService.addEmailTenantMapping(email, uuid);
+                logger.info(`[Provisioning] Email-tenant mapping created for ${email}`);
+            } catch (mappingError) {
+                logger.warn(`[Provisioning] Failed to create email-tenant mapping: ${mappingError.message}`);
+            }
+
+            logger.info(`[Provisioning] Tenant provisioned successfully!`);
+            return {
+                id: uuid,
+                name: tenantName,
+                company_token: companyToken,
+                admin_email: email,
+                status: 'active'
+            };
+
         } finally {
             await tenantSequelize.close();
         }
-
-        // 4. Update tenant status to active
-        const Tenant = dbStore.get('Tenant');
-        await Tenant.update({ status: 'active' }, { where: { id: uuid } });
-
-        // 5. Add email-tenant mapping for the admin user
-        try {
-            await landlordService.addEmailTenantMapping(email, uuid);
-            logger.info(`[Provisioning] Email-tenant mapping created for ${email}`);
-        } catch (mappingError) {
-            // Log but don't fail provisioning if mapping fails
-            logger.warn(`[Provisioning] Failed to create email-tenant mapping: ${mappingError.message}`);
-        }
-
-        logger.info(`[Provisioning] Tenant provisioned successfully!`);
-        return {
-            id: uuid,
-            name: tenantName,
-            company_token: companyToken,
-            admin_email: email,
-            status: 'active'
-        };
 
     } catch (error) {
         logger.error(`[Provisioning] Error: ${error.message}`);
         // Mark as failed
         try {
+            // Use default dbStore to update status
             const Tenant = dbStore.get('Tenant');
             await Tenant.update({ status: 'failed' }, { where: { id: uuid } });
         } catch (cleanupError) {
