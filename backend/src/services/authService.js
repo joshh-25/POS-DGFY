@@ -237,9 +237,7 @@ export const refreshUserToken = async (refreshToken) => {
 export const blacklistToken = async (token) => {
   try {
     // Decode token to get expiration time (without verification)
-    const decoded = jwt.decode(token);
-
-    if (!decoded || !decoded.exp) {
+    const decoded = jwt.decode(token);    if (!decoded || !decoded.exp) {
       return false;
     }    // Calculate TTL: time until token expires
     const currentTime = Math.floor(Date.now() / 1000);

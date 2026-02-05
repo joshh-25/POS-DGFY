@@ -43,6 +43,16 @@ if (isProduction || trustProxyRequested) {
   app.set('trust proxy', false);
 }
 
+// Environment validation for Production
+if (isProduction) {
+  const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
+  const missing = requiredEnv.filter(env => !process.env[env]);
+  if (missing.length > 0) {
+    logger.error(`❌ CRITICAL: Missing required production environment variables: ${missing.join(', ')}`);
+    // We don't exit immediately here to allow the server to potentially show a health check failure
+  }
+}
+
 // CORS configuration - must be applied before helmet
 const corsOptions = {
   // Allow requests from localhost and any network IP on port 5173 (development)
@@ -236,7 +246,7 @@ const startServer = async () => {
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`🌐 API Base URL: http://localhost:${PORT}/api/v1`);
+      logger.info(`🌐 API Base URL: ${isProduction ? process.env.FRONTEND_URL || 'production' : 'http://localhost:' + PORT}/api/v1`);
     });
 
     // Graceful shutdown

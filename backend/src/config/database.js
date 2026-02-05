@@ -5,8 +5,8 @@ dotenv.config();
 
 const sequelize = new Sequelize(
   process.env.NODE_ENV === 'test' ? 'sku_inventory_manager_test' : (process.env.DB_NAME || 'sku_inventory_manager'),
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
+  process.env.DB_USER,
+  process.env.DB_PASSWORD,
   {
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 3306,
