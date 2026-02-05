@@ -45,6 +45,11 @@ if [ -d "migrations" ]; then
     echo "🗄️  Running secondary migrations..."
     npx sequelize-cli db:migrate --migrations-path migrations
 fi
+
+# 4b. Run Structural Fixes (Precision Update)
+echo "🔧 Running structural precision fixes (DECIMAL 24,12)..."
+node scripts/deploy_fix_precision.js
+
 cd ..
 
 # 5. Restart Services
