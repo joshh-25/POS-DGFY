@@ -153,3 +153,16 @@ lsof -ti:5000 | xargs kill -9
 - We have added a bypass in `package.json`. If it still fails, run:
 - `npm install --no-scripts`
 - Or explicitly bypass: `STAGED_HINT=none npm install`
+### 12. Backend Won't Start (Missing Production Credentials)
+**Symptoms**:
+- Backend service starts but immediately shows `❌ CRITICAL: Missing required production environment variables` in the logs.
+- Status check shows `Success: false` and database services as `unknown`.
+
+**Cause**:
+- For security reasons, development-style defaults (like user `root` or empty passwords) have been removed. If `NODE_ENV=production` is set, the system requires explicit credentials.
+
+**Solution**:
+- Check your `backend/.env` file.
+- Ensure `DB_HOST`, `DB_USER`, `DB_NAME`, and `JWT_SECRET` are all defined.
+- Restart the service: `pm2 restart sku-backend`.
+- **Verification**: Check logs with `pm2 logs sku-backend` to ensure the "CRITICAL" warning is gone.

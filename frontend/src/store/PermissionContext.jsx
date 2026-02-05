@@ -131,8 +131,21 @@ export const PermissionProvider = ({ children }) => {
         loadPermissions();
     }, []);
 
-    // Reload when user changes (e.g. login/logout) - listening to local storage or event?
-    // For now, simple poll or expose reload function
+    // Listen for custom auth events (login/logout) to reload permissions
+    useEffect(() => {
+        const handleAuthChange = () => {
+            console.log('PermissionContext: Auth change detected, reloading permissions');
+            loadPermissions();
+        };
+
+        window.addEventListener('auth:login', handleAuthChange);
+        window.addEventListener('auth:logout', handleAuthChange);
+
+        return () => {
+            window.removeEventListener('auth:login', handleAuthChange);
+            window.removeEventListener('auth:logout', handleAuthChange);
+        };
+    }, []);
 
     return (
         <PermissionContext.Provider value={{ permissions, isMasterAdmin, userRole, can, loadPermissions, loading }}>

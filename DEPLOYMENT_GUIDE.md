@@ -29,7 +29,7 @@ This will autonomously handle SSH, git pulling, dependency installation, databas
 
 ## Deployment Steps
 ### 1. Auto-Deployment (Recommended)
-We have implemented an automated script `deploy.sh` that handles the entire process safely (pulling code, installing dependencies, building frontend, migrating DB, and restarting services).
+We have implemented an automated script `deploy.sh` that handles the entire process safely (pulling code, installing dependencies, building frontend, migrating DB, and restarting services). This script defaults to `NODE_ENV=production`.
 
 Run this on your server:
 
@@ -106,6 +106,9 @@ TRUST_PROXY=true # Set to true if behind Nginx/Apache
 OPENAI_API_KEY=your_openai_key # Optional: AI features will be disabled if missing
 FRONTEND_URL=https://skupervisor.surebizcorp.com
 ```
+
+> [!IMPORTANT]
+> **Production Safety Checks**: The backend will perform a critical check on startup when `NODE_ENV=production`. If `DB_HOST`, `DB_USER`, `DB_NAME`, or `JWT_SECRET` are missing, a CRITICAL error will be logged. Unlike development mode, there are **no fallbacks** (like `root` or empty passwords) for security reasons.
 
 ### Frontend
 Frontend environment variables are baked into the build. To change them, modify `frontend/.env` and **rebuild the frontend**.

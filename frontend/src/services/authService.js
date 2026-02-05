@@ -16,12 +16,16 @@ export const register = async (userData, companyToken) => {
   if (companyToken) {
     localStorage.setItem('companyToken', companyToken);
   }
+
+  // Dispatch custom event to notify PermissionContext to reload
+  window.dispatchEvent(new CustomEvent('auth:login'));
+
   return response.data.data;
 };
 
 export const login = async (credentials) => {
   // Pass companyToken in header for the login request itself (to route to correct DB)
-  // OR pass it in body? 
+  // OR pass it in body?
   // Backend tenantHandler looks for header 'x-company-token'.
 
   // We need to send it as a header for THIS request first.
@@ -43,6 +47,10 @@ export const login = async (credentials) => {
   if (credentials.companyToken) {
     localStorage.setItem('companyToken', credentials.companyToken);
   }
+
+  // Dispatch custom event to notify PermissionContext to reload
+  window.dispatchEvent(new CustomEvent('auth:login'));
+
   return response.data.data;
 };
 
@@ -51,6 +59,9 @@ export const logout = async () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('companyToken');
+
+  // Dispatch custom event to notify PermissionContext to clear permissions
+  window.dispatchEvent(new CustomEvent('auth:logout'));
 };
 
 export const refreshToken = async () => {

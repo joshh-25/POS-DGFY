@@ -39,10 +39,12 @@ const ALL_NAV_ITEMS = [
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
-  const { can, userRole } = usePermission();
+  const { can, userRole, loading } = usePermission();
 
-  // Filter nav items
+  // Filter nav items - only filter after permissions have loaded
+  // During loading, show all items to prevent flash of limited menu
   const navItems = ALL_NAV_ITEMS.filter(item => {
+    if (loading) return true; // Show all during loading to prevent flash
     if (!item.permission) return true; // Always show if no permission required
     return can(item.permission);
   });

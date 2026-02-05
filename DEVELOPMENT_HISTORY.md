@@ -30,6 +30,7 @@
 - [Phase 17: Delete Functionality Audit](#phase-17-delete-functionality-audit--bug-fixes)
 - [Phase 18: System Stability & Workflow Optimization](#phase-18-system-stability--workflow-optimization)
 - [Phase 19+: Various Enhancements](#phase-19-various-enhancements)
+- [Phase 21: Security Hardening & Deployment Optimization](#phase-21-security-hardening--deployment-optimization)
 
 ---
 
@@ -4627,3 +4628,30 @@ The Nested Products feature had critical bugs in a multi-tenant environment:
 -   **Unit Tests**: Created backend/tests/nestedTenancy.test.js to verify Redis key generation logic.
 -   **E2E Simulation**: Created verify-e2e-tenancy.js to simulate concurrent requests from different tenants against the live server.
 
+---
+
+## Phase 21: Security Hardening & Deployment Optimization
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-05
+
+### Goal
+Remove development-only credentials from the production environment and harden the deployment process against accidental "leaks" of development configurations.
+
+### Security Hardening
+- [x] **Removed Hardcoded Credentials**: Eliminated defaults (`root`, empty password) from `backend/src/config/database.js`. Credentials MUST now be provided via environment variables.
+- [x] **Production Safety Checks**: Implemented critical environment variable validation in `backend/src/server.js`. The server now logs a CRITICAL error and identifies missing variables (`DB_HOST`, `DB_USER`, `DB_NAME`, `JWT_SECRET`) when running in production mode.
+- [x] **Environment Validation**: Added explicit logging of the environment and API Base URL on server startup to ensure visibility into the current configuration.
+
+### Deployment Optimization
+- [x] **Production-First Deployment**: Updated `deploy.sh` to explicitly set `NODE_ENV=production` during the build phase to ensure frontend assets are optimized and use production API URLs.
+- [x] **Dependency Management Fix**: Refined `deploy.sh` to ensure all necessary build tools (like `vite`) are installed even in production-targeted environments by maintaining a standard `npm install` before the build command.
+
+### Verification Results
+- [x] Verified that the backend fails gracefully with clear error messages if required production credentials are missing.
+- [x] Confirmed the production build process completes successfully on the server.
+- [x] Validated that development defaults are no longer present in the tracked codebase.
+
+### Related Files Modified
+- `backend/src/config/database.js` - Removed hardcoded defaults
+- `backend/src/server.js` - Added safety checks and logging
+- `deploy.sh` - Updated build environment and dependency installation

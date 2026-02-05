@@ -57,8 +57,8 @@ Automates the entire deployment process on the production server.
 
 **What it does:**
 1. Pulls latest code from git
-2. Installs dependencies (root, backend, frontend)
-3. Builds the frontend (static assets)
+2. Installs dependencies (ensures build tools are available)
+3. Builds the frontend (uses `NODE_ENV=production` for optimization)
 4. Runs database migrations (idempotent)
 5. Restarts all PM2 services
 6. Fails safely if any step errors out (`set -e`)
