@@ -4756,3 +4756,25 @@ Replaced the unreliable migration step with direct Sequelize schema synchronizat
 - [x] Confirmed successful login for administrators of newly approved companies.
 
 
+
+## Phase 23: Production Deployment Fixes (Tenant Schema & Scripts)
+**Status**: ? COMPLETE
+**Date**: 2026-02-05
+
+### Issue: 500 Error on Production Login
+After pulling the latest code, the production server returned a \500 Internal Server Error\ during login.
+- **Cause**: The \users\ table in the tenant database (\sku_tenant_...\) was missing new columns (\invitation_token\, etc.) because the standard \db:migrate\ only updates the landlord database, not individual tenant databases.
+
+### Fixes Implemented
+1. **Tenant Schema Sync Script**:
+   - Created \ackend/scripts/sync-tenant-schemas.js\ to iterate over all active tenants and run \sequelize.sync({ alter: true })\ on their databases.
+   - This ensures all tenant databases match the latest model definitions automatically.
+
+2. **Updated Deployment Script**:
+   - Modified \scripts/deploy.sh\ to automatically include the tenant schema sync step.
+   - Now, every deployment will auto-fix/update tenant schemas.
+
+3. **Documentation Updated**:
+   - Updated \DEPLOYMENT_GUIDE.md\ to reflect the new scripts.
+   - Updated \	ask.md\ and \walkthrough.md\ for this phase.
+

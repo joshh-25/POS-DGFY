@@ -43,6 +43,9 @@ chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
 
+> [!NOTE]
+> **Multi-Tenancy Updates**: The `deploy.sh` script now automatically runs `backend/scripts/sync-tenant-schemas.js`. This ensures that if you add new columns or tables to the database, **ALL** existing tenant databases will be updated to match the new schema automatically. You do not need to run this manually.
+
 ---
 
 ### 2. Multi-Tenancy Onboarding (One-time)
