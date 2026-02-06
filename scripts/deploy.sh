@@ -51,7 +51,11 @@ echo "🔧 Running structural precision fixes (DECIMAL 24,12)..."
 
 # 4c. Sync Tenant Schemas (Multi-tenancy)
 echo "🔄 Syncing schemas for all active tenants..."
-node scripts/sync-tenant-schemas.js
+if [ -f "$PROJECT_ROOT/backend/scripts/sync-tenant-schemas.js" ]; then
+    node "$PROJECT_ROOT/backend/scripts/sync-tenant-schemas.js"
+else
+    echo "⚠️  Tenant sync script not found, skipping..."
+fi
 
 cd ..
 
