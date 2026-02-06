@@ -112,8 +112,15 @@ cd "$PROJECT_ROOT"
 # 5b. Force Production Env for PM2
 log "Step 6: Restarting PM2 services (Production Mode)..."
 if command -v pm2 >/dev/null 2>&1; then
-    # Update the environment to production and restart
-    pm2 restart all --update-env --env production
+    # Start or Restart using the ecosystem file to ensure env vars are loaded
+    if [ -f "ecosystem.config.js" ]; then
+        echo ">> using ecosystem.config.js..."
+        pm2 startOrRestart ecosystem.config.js --env production --update-env
+    else 
+        # Fallback if no ecosystem file (though we just created it)
+        warn "ecosystem.config.js not found. Restarting existing processes..."
+        pm2 restart all --update-env
+    fi
 else
     warn "PM2 not found in PATH. Skipping service restart."
 fi
