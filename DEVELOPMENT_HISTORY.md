@@ -5036,8 +5036,23 @@ Enable bulk CSV import of up to 1000 items (previously limited to ~100-200 due t
 | `backend/src/services/csvImportService.js` | Batch processing for import confirmation |
 | `docs/guides/csv_import_guide.md` | Added "Import Limits" section |
 | `TROUBLESHOOTING.md` | Added entry #15 for large CSV import issues |
+| `scripts/deploy.sh` | Fixed tenant sync script path (was using wrong relative path) |
 
 ### Performance Impact
 - **Before**: 100 items ~10s, 500+ items timeout
 - **After**: 100 items ~2s, 1000 items ~10s
+
+### Deployment Fix
+During production deployment, discovered `deploy.sh` had a path bug:
+- **Issue**: Script ran `node scripts/sync-tenant-schemas.js` while inside `backend/` directory
+- **Result**: Looking for `backend/backend/scripts/sync-tenant-schemas.js` (double path)
+- **Fix**: Changed to use absolute path `$PROJECT_ROOT/backend/scripts/sync-tenant-schemas.js`
+
+### Deployment Verification
+- [x] Changes pushed to GitHub
+- [x] Git pull on production server
+- [x] Frontend rebuilt successfully
+- [x] Database migrations ran (no changes needed)
+- [x] Tenant schema sync completed for 4 tenants
+- [x] PM2 services restarted
 

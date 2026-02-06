@@ -22,10 +22,10 @@ This script handles git pull, installing dependencies, building frontend, migrat
 
 ```bash
 # First time setup: ensure script is executable (if needed)
-chmod +x deploy.sh
+chmod +x scripts/deploy.sh
 
 # Run deployment
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 ### 3. Manual Deployment (Fallback)
