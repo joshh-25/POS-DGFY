@@ -160,3 +160,24 @@ export const updateUserPermissions = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Remove user from company (soft delete with hierarchical access control)
+ */
+export const removeUserFromCompany = async (req, res, next) => {
+  try {
+    const adminUserId = req.user.user_id;
+    const targetUserId = req.params.user_id;
+
+    const result = await userService.removeUserFromCompany(adminUserId, targetUserId);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: 'User has been removed from the company',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -191,6 +191,10 @@ export const execute = async (toolName, args, user) => {
         result = await toggleUserStatus(args, user);
         break;
 
+      case 'remove_user_from_company':
+        result = await removeUserFromCompany(args, user);
+        break;
+
       case 'update_user_permissions':
         result = await updateUserPermissions(args, user);
         break;
@@ -946,6 +950,38 @@ async function toggleUserStatus(args, user) {
       id: updatedUser.user_id,
       username: updatedUser.username,
       status: updatedUser.is_active ? 'active' : 'inactive'
+    }
+  };
+}
+
+async function removeUserFromCompany(args, user) {
+  const { target_user_id, email, username } = args;
+
+  // Resolve target user ID safely
+  const resolvedId = await resolveUser(args);
+
+  // The service handles all checks:
+  // - Self-removal prevention
+  // - Master Admin protection
+  // - Hierarchical access control (Admin > Manager > Staff)
+  const removedUser = await userService.removeUserFromCompany(user.user_id, resolvedId);
+
+  return {
+    success: true,
+    message: `User "${removedUser.username}" has been removed from the company`,
+    details: {
+      "User": removedUser.username,
+      "Email": removedUser.email,
+      "Role": removedUser.role.charAt(0).toUpperCase() + removedUser.role.slice(1),
+      "Removed At": new Date(removedUser.removed_at).toLocaleString(),
+      "Status": "Removed from Company"
+    },
+    note: "The user can no longer log in. A new invitation would be required if they need to rejoin.",
+    user: {
+      id: removedUser.user_id,
+      username: removedUser.username,
+      email: removedUser.email,
+      role: removedUser.role
     }
   };
 }

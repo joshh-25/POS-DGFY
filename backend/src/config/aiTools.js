@@ -814,6 +814,26 @@ export const AI_TOOLS = [
     requiresConfirmation: true,
     requiredRole: "admin"
   },
+  {
+    type: "function",
+    function: {
+      name: "remove_user_from_company",
+      description: "Permanently remove a user from the company (soft delete). The user will no longer appear in user lists and cannot log in. They can be re-invited later if needed. Uses hierarchical access control: Admin can remove Manager/Staff, Manager can remove Staff only. Master Admin is always protected and cannot be removed. Cannot remove yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_user_id: {
+            type: "integer",
+            description: "ID of the user to remove from the company"
+          }
+        },
+        required: ["target_user_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"  // Manager can remove staff, Admin can remove manager/staff
+  },
 
   // ============== ADVANCED USER MANAGEMENT ==============
   {

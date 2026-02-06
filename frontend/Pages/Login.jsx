@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { login } from '../src/services/authService.js';
 import api from '../src/services/api.js';
@@ -24,6 +24,12 @@ export default function Login() {
   const [availableTenants, setAvailableTenants] = useState([]);
   const [lookupDone, setLookupDone] = useState(false);
   const [lookupError, setLookupError] = useState('');
+
+  // Clear stale company token when landing on login page
+  // This ensures fresh login always uses the looked-up token, not a cached one
+  useEffect(() => {
+    localStorage.removeItem('companyToken');
+  }, []);
 
   // Look up tenant by email when user finishes typing
   const handleEmailBlur = async () => {

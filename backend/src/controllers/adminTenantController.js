@@ -2,6 +2,7 @@ import { provisionTenant } from '../services/tenantProvisioningService.js';
 import dbStore from '../utils/dbStore.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import * as emailService from '../services/emailService.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -137,10 +138,27 @@ export const approveTenant = async (req, res) => {
             adminPasswordHash: tenant.admin_password_hash
         });
 
+        // Send approval notification email
+        let emailSent = false;
+        if (emailService.isEmailConfigured()) {
+            try {
+                await emailService.sendCompanyApprovedEmail({
+                    email: tenant.admin_email,
+                    companyName: tenant.name,
+                    companyToken: tenant.company_token
+                });
+                emailSent = true;
+                console.log(`[TenantApproval] Approval email sent to ${tenant.admin_email}`);
+            } catch (emailError) {
+                console.warn(`[TenantApproval] Failed to send approval email to ${tenant.admin_email}:`, emailError.message);
+                // Don't fail the approval - email is non-critical
+            }
+        }
+
         res.json({
             success: true,
             message: 'Tenant approved and provisioned successfully',
-            data: result
+            data: { ...result, email_sent: emailSent }
         });
 
     } catch (error) {
@@ -181,10 +199,27 @@ export const rejectTenant = async (req, res) => {
             settings: { ...tenant.settings, rejection_reason: reason }
         });
 
+        // Send rejection notification email
+        let emailSent = false;
+        if (emailService.isEmailConfigured()) {
+            try {
+                await emailService.sendCompanyRejectedEmail({
+                    email: tenant.admin_email,
+                    companyName: tenant.name,
+                    rejectionReason: reason
+                });
+                emailSent = true;
+                console.log(`[TenantRejection] Rejection email sent to ${tenant.admin_email}`);
+            } catch (emailError) {
+                console.warn(`[TenantRejection] Failed to send rejection email to ${tenant.admin_email}:`, emailError.message);
+                // Don't fail the rejection - email is non-critical
+            }
+        }
+
         res.json({
             success: true,
             message: 'Tenant registration rejected',
-            data: { id: tenant.id, status: 'rejected' }
+            data: { id: tenant.id, status: 'rejected', email_sent: emailSent }
         });
 
     } catch (error) {

@@ -158,12 +158,16 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
 
 /**
  * Get all users (admin only)
- * @returns {Promise<Array>} List of all users
+ * Excludes users who have been removed from the company (soft-deleted)
+ * @returns {Promise<Array>} List of all active users
  */
 export const getAllUsers = async () => {
   const User = dbStore.get('User');
   const users = await User.findAll({
     attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin'],
+    where: {
+      deleted_at: null  // Exclude removed users
+    },
     order: [['created_at', 'DESC']]
   });
 
@@ -284,6 +288,94 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
     email: targetUser.email,
     role: targetUser.role,
     is_active: targetUser.is_active
+  };
+};
+
+// Role hierarchy for permission checks (higher number = higher rank)
+const ROLE_HIERARCHY = { admin: 3, manager: 2, staff: 1 };
+
+/**
+ * Remove user from company (soft delete with hierarchical access control)
+ * @param {number} adminUserId - ID of admin performing the action
+ * @param {number} targetUserId - ID of user to remove
+ * @returns {Promise<Object>} Removed user data
+ */
+export const removeUserFromCompany = async (adminUserId, targetUserId) => {
+  // Prevent self-removal
+  if (adminUserId === parseInt(targetUserId)) {
+    const error = new Error('Cannot remove yourself from the company');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const User = dbStore.get('User');
+
+  // Get both users
+  const [adminUser, targetUser] = await Promise.all([
+    User.findByPk(adminUserId),
+    User.findByPk(targetUserId)
+  ]);
+
+  if (!adminUser) {
+    const error = new Error('Admin user not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!targetUser) {
+    const error = new Error('Target user not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Check if user is already removed
+  if (targetUser.deleted_at) {
+    const error = new Error('User has already been removed from the company');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Master Admin is always protected
+  if (targetUser.is_master_admin) {
+    const error = new Error('Master Admin cannot be removed from the company');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Hierarchical access control check
+  const adminRank = adminUser.is_master_admin ? 99 : (ROLE_HIERARCHY[adminUser.role] || 0);
+  const targetRank = ROLE_HIERARCHY[targetUser.role] || 0;
+
+  if (adminRank <= targetRank) {
+    const error = new Error(`You don't have permission to remove a ${targetUser.role} user`);
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Perform soft delete
+  await targetUser.update({
+    deleted_at: new Date(),
+    deleted_by: adminUserId,
+    is_active: false
+  });
+
+  // Remove email-tenant mapping
+  const store = dbStore.getStore();
+  const tenantId = store?.tenantId;
+  if (tenantId) {
+    try {
+      await landlordService.removeEmailTenantMapping(targetUser.email, tenantId);
+    } catch (mappingError) {
+      console.warn('Failed to remove email-tenant mapping:', mappingError.message);
+    }
+  }
+
+  return {
+    user_id: targetUser.user_id,
+    username: targetUser.username,
+    email: targetUser.email,
+    role: targetUser.role,
+    removed_at: targetUser.deleted_at
   };
 };
 

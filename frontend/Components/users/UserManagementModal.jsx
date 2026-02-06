@@ -16,9 +16,15 @@ import {
   Users2,
   UserCheck,
   UserX,
-  Settings2
+  Settings2,
+  UserMinus
 } from 'lucide-react';
 import api from '../../src/services/api.js';
+import useStore from '../../src/store/useStore.js';
+import DeleteConfirmDialog from '../ui/DeleteConfirmDialog';
+
+// Role hierarchy for permission checks (higher number = higher rank)
+const ROLE_HIERARCHY = { admin: 3, manager: 2, staff: 1 };
 
 // Permission templates for bulk operations
 const PERMISSION_TEMPLATES = {
@@ -73,6 +79,44 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const [showPermissionPicker, setShowPermissionPicker] = useState(false);
   const [permissionPickerMode, setPermissionPickerMode] = useState('grant');
 
+  // Remove user from company state
+  const [removeConfirmUser, setRemoveConfirmUser] = useState(null);
+  const [removingUser, setRemovingUser] = useState(false);
+
+  // Get current user from store
+  const currentUser = useStore((state) => state.currentUser);
+
+  // Check if current user can remove target user (hierarchical access control)
+  const canRemoveUser = (targetUser) => {
+    if (!currentUser || !targetUser) return false;
+    // Cannot remove yourself
+    if (currentUser.user_id === targetUser.user_id) return false;
+    // Cannot remove Master Admin
+    if (targetUser.is_master_admin) return false;
+    // Master Admin can remove anyone except other Master Admins
+    if (currentUser.is_master_admin) return true;
+    // Check hierarchical permission
+    const currentRank = ROLE_HIERARCHY[currentUser.role] || 0;
+    const targetRank = ROLE_HIERARCHY[targetUser.role] || 0;
+    return currentRank > targetRank;
+  };
+
+  // Handle removing a user from company
+  const handleRemoveUser = async () => {
+    if (!removeConfirmUser) return;
+    setRemovingUser(true);
+    try {
+      await userService.removeUserFromCompany(removeConfirmUser.user_id);
+      toast.success(`${removeConfirmUser.username} has been removed from the company`);
+      setRemoveConfirmUser(null);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to remove user');
+    } finally {
+      setRemovingUser(false);
+    }
+  };
+
   // Fetch all users when modal opens
   useEffect(() => {
     if (open) {
@@ -105,10 +149,19 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
       // Role/status filter
       let matchesFilter = true;
-      if (filter === 'admin') matchesFilter = user.role === 'admin';
-      else if (filter === 'manager') matchesFilter = user.role === 'manager';
-      else if (filter === 'staff') matchesFilter = user.role === 'staff';
-      else if (filter === 'inactive') matchesFilter = !user.is_active;
+      if (filter === 'inactive') {
+        // Inactive tab: show only inactive users
+        matchesFilter = !user.is_active;
+      } else {
+        // All other tabs: only show active users
+        if (!user.is_active) return false;
+
+        // Apply role filter
+        if (filter === 'admin') matchesFilter = user.role === 'admin';
+        else if (filter === 'manager') matchesFilter = user.role === 'manager';
+        else if (filter === 'staff') matchesFilter = user.role === 'staff';
+        // 'all' filter shows all active users (no additional filter needed)
+      }
 
       return matchesSearch && matchesFilter;
     });
@@ -440,6 +493,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                   <span className="w-24">Role</span>
                   <span className="w-24">Access</span>
                   <span className="w-20 text-center">Status</span>
+                  <span className="w-10"></span>
                 </div>
 
                 {/* User Rows */}
@@ -524,6 +578,24 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         </span>
                       </div>
                     </div>
+
+                    {/* Remove User Button */}
+                    <div className="w-10 flex justify-center">
+                      {canRemoveUser(user) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRemoveConfirmUser(user);
+                          }}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 h-8 w-8"
+                          title="Remove from company"
+                        >
+                          <UserMinus className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -591,6 +663,21 @@ export default function UserManagementModal({ open, onOpenChange }) {
         onSelect={handleBulkPermissionChange}
         title={permissionPickerMode === 'grant' ? 'Grant Permission to Selected Users' : 'Revoke Permission from Selected Users'}
         mode={permissionPickerMode}
+      />
+
+      {/* Remove User Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={!!removeConfirmUser}
+        onClose={() => setRemoveConfirmUser(null)}
+        onConfirm={handleRemoveUser}
+        title="Remove User from Company"
+        description={
+          removeConfirmUser
+            ? `Are you sure you want to remove "${removeConfirmUser.username}" (${removeConfirmUser.email}) from the company? This action will:\n\n• Permanently remove their access to this company\n• Prevent them from logging in\n• Require a new invitation if they need to rejoin\n\nThis action cannot be easily undone.`
+            : ''
+        }
+        confirmText="Remove User"
+        loading={removingUser}
       />
     </>
   );

@@ -19,7 +19,9 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (companyToken) {
+    // Only add stored companyToken if request doesn't already have one set
+    // This allows login/register to use a different token than what's stored
+    if (companyToken && !config.headers['x-company-token']) {
       config.headers['x-company-token'] = companyToken;
     }
     return config;

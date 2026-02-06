@@ -330,15 +330,38 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin', 'manager', 'staff') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
+    permissions JSON,                    -- Granular permission array
+    is_master_admin BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMP NULL,
+
+    -- Invitation system fields
+    invitation_token VARCHAR(255) NULL,
+    invitation_expires_at TIMESTAMP NULL,
+    invited_by INT NULL,
+    invitation_status ENUM('pending', 'accepted', 'expired') NULL,
+
+    -- Soft delete fields (Remove from Company)
+    deleted_at TIMESTAMP NULL,           -- When user was removed
+    deleted_by INT NULL,                 -- Who removed the user (FK to user_id)
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_username (username),
     INDEX idx_email (email),
-    INDEX idx_role (role)
+    INDEX idx_role (role),
+
+    CONSTRAINT fk_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(user_id)
 );
 ```
+
+**Soft Delete Notes:**
+- When a user is removed from the company, `deleted_at` is set to the removal timestamp
+- `deleted_by` tracks which admin/manager performed the removal (audit trail)
+- Removed users are excluded from `getAllUsers()` queries
+- Removed users cannot log in (auth service checks `deleted_at`)
+- User data is preserved for audit purposes
+- Removed users can be re-invited (creates a new user record)
 
 ### 2. Items (SKU Master) Table
 

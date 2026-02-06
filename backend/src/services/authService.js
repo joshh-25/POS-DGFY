@@ -158,6 +158,13 @@ export const loginUser = async (email, password) => {
     throw error;
   }
 
+  // Check if user has been removed from company
+  if (user.deleted_at) {
+    const error = new Error('User account has been removed from this company');
+    error.statusCode = 403;
+    throw error;
+  }
+
   // Verify password
   const isPasswordValid = await comparePassword(password, user.password_hash);
 

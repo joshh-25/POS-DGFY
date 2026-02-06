@@ -32,6 +32,8 @@
 - [Phase 18: System Stability & Workflow Optimization](#phase-18-system-stability--workflow-optimization)
 - [Phase 19+: Various Enhancements](#phase-19-various-enhancements)
 - [Phase 21: Security Hardening & Deployment Optimization](#phase-21-security-hardening--deployment-optimization)
+- [Phase 25: User Removal & Management Improvements](#phase-25-user-removal--management-improvements)
+- [Phase 26: SMTP Email Implementation & Login Bug Fix](#phase-26-smtp-email-implementation--login-bug-fix)
 
 ---
 
@@ -4777,4 +4779,227 @@ After pulling the latest code, the production server returned a \500 Internal Se
 3. **Documentation Updated**:
    - Updated \DEPLOYMENT_GUIDE.md\ to reflect the new scripts.
    - Updated \	ask.md\ and \walkthrough.md\ for this phase.
+
+---
+
+## Phase 25: User Removal & Management Improvements
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-06
+
+### Overview
+Implemented a "Remove from Company" feature that allows admins/managers to soft-delete users from the tenant, with hierarchical access control. Also improved User Management UX by separating active and inactive users into different tabs.
+
+### Features Implemented
+
+#### 1. Remove User from Company (Soft Delete)
+- **Backend Model Changes** (`backend/src/models/User.js`):
+  - Added `deleted_at` (DATE) field for soft-delete timestamp
+  - Added `deleted_by` (INTEGER) field for audit trail (references user_id)
+
+- **Backend Service** (`backend/src/services/userService.js`):
+  - Added `ROLE_HIERARCHY` constant: `{ admin: 3, manager: 2, staff: 1 }`
+  - Added `removeUserFromCompany(adminUserId, targetUserId)` function with:
+    - Self-removal prevention
+    - Master Admin protection (cannot be removed)
+    - Hierarchical access control (can only remove users of lower rank)
+    - Soft delete (sets `deleted_at`, `deleted_by`, `is_active: false`)
+    - Email-tenant mapping removal via `landlordService.removeEmailTenantMapping()`
+  - Updated `getAllUsers()` to exclude users with `deleted_at` set
+
+- **Backend Controller** (`backend/src/controllers/userController.js`):
+  - Added `removeUserFromCompany` controller action
+
+- **Backend Route** (`backend/src/routes/users.js`):
+  - Added `DELETE /:user_id` route with `authorize('admin', 'manager')` middleware
+
+- **Auth Service** (`backend/src/services/authService.js`):
+  - Added login check for `deleted_at` - removed users get "User account has been removed from this company" error
+
+- **Frontend Service** (`frontend/src/services/userService.js`):
+  - Added `removeUserFromCompany(userId)` API method
+
+- **Frontend UI** (`frontend/Components/users/UserManagementModal.jsx`):
+  - Added `ROLE_HIERARCHY` constant for permission checks
+  - Added `canRemoveUser(targetUser)` helper function
+  - Added remove button (red UserMinus icon) in user rows
+  - Added `DeleteConfirmDialog` for confirmation before removal
+  - Added `handleRemoveUser()` async function
+
+#### 2. User Management UX Improvements
+- **Inactive Users Separation** (`frontend/Components/users/UserManagementModal.jsx`):
+  - "All", "Admins", "Managers", "Staff" tabs now only show **active** users
+  - "Inactive" tab shows only **inactive** users
+  - Reduces clutter when managing employees
+
+#### 3. Database Index Cleanup
+- **Issue**: Repeated Sequelize syncs created duplicate indexes (username_2 through username_31, etc.), hitting MySQL's 64 key limit
+- **Solution**: Created `backend/scripts/cleanup-duplicate-indexes.js` to remove duplicate indexes
+- Cleaned up 141 duplicate indexes across all tenant databases
+
+### Access Control Matrix
+
+| Actor Role | Can Remove Admin | Can Remove Manager | Can Remove Staff | Can Remove Master Admin |
+|------------|------------------|-------------------|------------------|------------------------|
+| Master Admin | ✓ | ✓ | ✓ | ✗ (protected) |
+| Admin | ✗ | ✓ | ✓ | ✗ |
+| Manager | ✗ | ✗ | ✓ | ✗ |
+| Staff | ✗ | ✗ | ✗ | ✗ |
+
+### Re-Invitation Flow
+- Removed users can be re-invited using the existing invitation system
+- A new user record is created (not reusing the soft-deleted one)
+- The removed user's data remains in the database for audit purposes
+
+### Files Modified
+- `backend/src/models/User.js` - Added soft delete fields
+- `backend/src/services/userService.js` - Added removal logic, updated getAllUsers
+- `backend/src/services/authService.js` - Added deleted_at check on login
+- `backend/src/controllers/userController.js` - Added controller action
+- `backend/src/routes/users.js` - Added DELETE route
+- `frontend/src/services/userService.js` - Added API method
+- `frontend/Components/users/UserManagementModal.jsx` - Added UI and filtering logic
+
+### New Scripts
+- `backend/scripts/cleanup-duplicate-indexes.js` - Removes duplicate database indexes
+
+### Documentation Updated
+- `DEVELOPMENT_HISTORY.md` - This entry
+- `docs/database/schema.md` - User table schema
+- `docs/api/specification.md` - DELETE /users/:user_id endpoint
+- `docs/reference/QUICK_REFERENCE.md` - Troubleshooting entry for duplicate indexes
+
+---
+
+## Phase 26: SMTP Email Implementation & Login Bug Fix
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-06
+
+### Overview
+Implemented Gmail SMTP email functionality for user invitations and company registration notifications. Also fixed a critical login bug where stale company tokens in localStorage caused authentication failures.
+
+### Features Implemented
+
+#### 1. Gmail SMTP Configuration
+- **`.env.example` Updated**:
+  - Added comprehensive Gmail SMTP setup documentation
+  - Includes step-by-step instructions for App Password generation
+  - Default values configured for Gmail (smtp.gmail.com, port 587)
+
+- **Environment Variables**:
+  ```env
+  SMTP_HOST=smtp.gmail.com
+  SMTP_PORT=587
+  SMTP_SECURE=false
+  SMTP_USER=your-email@gmail.com
+  SMTP_PASS=your-16-char-app-password
+  EMAIL_FROM=your-email@gmail.com
+  EMAIL_FROM_NAME=SKU Inventory Manager
+  APP_URL=https://your-domain.com
+  ```
+
+#### 2. Company Approval Email Notifications
+- **Email Template** (`backend/src/templates/emailTemplates.js`):
+  - Added `getCompanyApprovedTemplate()` function
+  - Professional HTML design with teal/cyan gradient branding
+  - Success checkmark icon
+  - Credentials box showing admin email and company token
+  - "Login to Your Account" CTA button
+  - Security notice about keeping token confidential
+
+- **Email Service** (`backend/src/services/emailService.js`):
+  - Added `sendCompanyApprovedEmail({ email, companyName, companyToken })`
+  - Graceful degradation: email failure doesn't block approval operation
+  - Returns email_sent status in response
+
+- **Controller Integration** (`backend/src/controllers/adminTenantController.js`):
+  - Modified `approveTenant()` to send approval email after successful provisioning
+  - Response includes `email_sent: boolean` for frontend feedback
+
+#### 3. Company Rejection Email Notifications
+- **Email Template** (`backend/src/templates/emailTemplates.js`):
+  - Added `getCompanyRejectedTemplate()` function
+  - Alert/notice icon with professional styling
+  - Optional rejection reason box (shown if reason provided)
+  - "Try Again" link to registration page
+
+- **Email Service** (`backend/src/services/emailService.js`):
+  - Added `sendCompanyRejectedEmail({ email, companyName, rejectionReason })`
+  - Same graceful degradation pattern as approval email
+
+- **Controller Integration** (`backend/src/controllers/adminTenantController.js`):
+  - Modified `rejectTenant()` to send rejection email after status update
+  - Response includes `email_sent: boolean` for frontend feedback
+
+#### 4. User Invitation Emails (Pre-existing, Now Configured)
+- The user invitation email system was already implemented
+- Gmail SMTP configuration enables it to function correctly
+- Uses `sendInvitationEmail()` in emailService.js
+
+### Critical Bug Fix: Stale Company Token on Login
+
+#### Problem
+After approving a new company, users could not log in even with correct credentials. The frontend login request failed with 401 Unauthorized.
+
+#### Root Cause Analysis
+1. User was logged into a different company (Company A) before testing
+2. When user tried to log into the newly approved company (Company B), the login page:
+   - Correctly looked up Company B's token based on email
+   - Set `x-company-token` header to Company B's token
+3. However, the Axios interceptor in `api.js` was **overwriting** the header with the stored `companyToken` from localStorage (Company A's token)
+4. Backend received Company A's token, looked in Company A's database, user not found = 401
+
+#### Solution (Two-Layer Fix)
+
+1. **Axios Interceptor Fix** (`frontend/src/services/api.js`):
+   ```javascript
+   // Only add stored companyToken if request doesn't already have one set
+   // This allows login/register to use a different token than what's stored
+   if (companyToken && !config.headers['x-company-token']) {
+     config.headers['x-company-token'] = companyToken;
+   }
+   ```
+   - Interceptor now checks if request already has `x-company-token` set
+   - Only adds stored token if no explicit token is present
+
+2. **Login Page Cleanup** (`frontend/Pages/Login.jsx`):
+   ```javascript
+   // Clear stale company token when landing on login page
+   useEffect(() => {
+     localStorage.removeItem('companyToken');
+   }, []);
+   ```
+   - Proactively clears stale company token on login page mount
+   - Ensures fresh login always uses the looked-up token
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/.env.example` | Added Gmail SMTP configuration documentation |
+| `backend/.env` | Added SMTP credentials (production) |
+| `backend/src/templates/emailTemplates.js` | Added `getCompanyApprovedTemplate()`, `getCompanyRejectedTemplate()` |
+| `backend/src/services/emailService.js` | Added `sendCompanyApprovedEmail()`, `sendCompanyRejectedEmail()`, updated imports/exports |
+| `backend/src/controllers/adminTenantController.js` | Added email import, integrated email sending in `approveTenant()` and `rejectTenant()` |
+| `frontend/src/services/api.js` | Fixed interceptor to not override explicit `x-company-token` headers |
+| `frontend/Pages/Login.jsx` | Added useEffect to clear stale company token on page mount |
+
+### Error Handling Pattern
+- **Graceful Degradation**: Email failures NEVER block the primary operation
+- **Logging**: Warn-level logs for email failures
+- **Response Feedback**: API responses include `email_sent: boolean` so admin knows email status
+
+### Gmail SMTP Notes
+- **App Password Required**: Regular Gmail password won't work (blocked since May 2022)
+- **2FA Prerequisite**: Must enable 2-Factor Authentication before App Passwords become available
+- **Daily Limits**: 500 emails/day (personal), 2000/day (Google Workspace)
+- **Sender Address**: `EMAIL_FROM` should match `SMTP_USER` for Gmail
+
+### Testing Verification
+- [x] SMTP connection verified via test script
+- [x] Company approval email sends successfully with correct content
+- [x] Company rejection email sends with optional reason
+- [x] User invitation emails function correctly
+- [x] Login works correctly for users with prior session tokens
+- [x] Fresh login correctly uses looked-up company token
+- [x] Email failures don't block approval/rejection operations
 

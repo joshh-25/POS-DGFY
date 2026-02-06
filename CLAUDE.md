@@ -4,8 +4,8 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Feb 5, 2026
-> **Version:** 2.4.0
+> **Last Updated:** Feb 6, 2026
+> **Version:** 2.5.0
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
@@ -37,6 +37,7 @@
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
 11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **48 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence.
+12. **Email Notifications (Gmail SMTP)**: Automated emails for user invitations, company approval/rejection notifications. Uses Nodemailer with graceful degradation (failures don't block operations).
 
 ## 🤖 AI Assistant Features
 The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
@@ -133,22 +134,49 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 ```
 
 # 🛠️ Common Commands
-- **Install All**: `npm run install:all`
-- **Dev Mode**: `npm run dev` (Runs both servers)
-- **Backend Only**: `cd backend && npm run dev`
-- **Frontend Only**: `cd frontend && npm run dev`
-- **DB Migrate**: `cd backend && npm run db:migrate`
+
+## Production (PM2 - Recommended)
+The project uses PM2 for process management in production:
+
+```bash
+# Restart all services (backend + frontend)
+pm2 restart all
+
+# View running processes
+pm2 list
+
+# View logs
+pm2 logs
+
+# Full deployment (pulls code, installs deps, builds, migrates, restarts)
+./scripts/deploy.sh
+```
+
+## Development (Local testing only)
+> ⚠️ These commands are for local development only. Use PM2 commands for production.
+
+```bash
+# Install dependencies (one-time setup)
+npm run install:all
+
+# Start dev servers (NOT for production)
+npm run dev
+```
+
+## Database
+```bash
+# Migrations (handled automatically by deploy.sh)
+cd backend && npx sequelize-cli db:migrate
+
+# Sync tenant schemas (handled automatically by deploy.sh)
+node backend/scripts/sync-tenant-schemas.js
+```
 
 # 🔗 Documentation Links
 - [Detailed API Spec](docs/api/specification.md)
 - [Deployment Guide](DEPLOYMENT_GUIDE.md)
 - [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
 - [Quick Reference](docs/reference/QUICK_REFERENCE.md)
-# Build for production
-npm run build
-
-# Run with Docker
-docker-compose up -d
 ```
 
 ---
@@ -322,6 +350,8 @@ SKU-Inventory-Manager/                    # Monorepo root
 {
   user_id, username, email, password_hash,
   full_name, role, permissions, is_master_admin, is_active,
+  invitation_token, invitation_expires_at, invited_by, invitation_status,
+  deleted_at, deleted_by,  // Soft delete fields for "Remove from Company"
   last_login, created_at, updated_at
 }
 ```
@@ -333,6 +363,14 @@ SKU-Inventory-Manager/                    # Monorepo root
 > - **Role Change Auto-Applies Permissions**: When a user's role is changed, their `permissions` array is automatically reset to that role's default permission set
 > - Custom permission edits made AFTER a role change will persist until the next role change
 > - See `backend/src/config/permissions.js` for `DEFAULT_ROLE_PERMISSIONS` mapping
+>
+> **Remove from Company (Soft Delete)**:
+> - `deleted_at` marks when a user was removed from the company
+> - `deleted_by` tracks who performed the removal (audit trail)
+> - Removed users are excluded from user lists and cannot log in
+> - Hierarchical access control: Admin > Manager > Staff (can only remove lower roles)
+> - Master Admin is always protected and cannot be removed
+> - Removed users can be re-invited (creates a new user record)
 
 *See docs/database/schema.md for other entities (PO, JO, StockMovement, Supplier, etc.)*
 

@@ -22,4 +22,7 @@ router.put('/:user_id/status', authenticate, authorize('admin'), validateUpdateU
 router.put('/:user_id/permissions', authenticate, authorize('admin'), userController.updateUserPermissions); // Allow admin (who will be checked for Master status in service) or use explicit permission?
 // Better to strictly require admin here as entry gate, logic inside handles Master check.
 
+// Remove user from company (soft delete with hierarchical access control)
+router.delete('/:user_id', authenticate, authorize('admin', 'manager'), userController.removeUserFromCompany);
+
 export default router;

@@ -66,3 +66,13 @@ export const updateUserStatus = async (userId, isActive) => {
   const response = await api.put(`/users/${userId}/status`, { is_active: isActive });
   return response.data.data;
 };
+
+/**
+ * Remove user from company (soft delete)
+ * @param {number} userId - Target user ID
+ * @returns {Promise<Object>} Removed user data
+ */
+export const removeUserFromCompany = async (userId) => {
+  const response = await api.delete(`/users/${userId}`);
+  return response.data.data;
+};

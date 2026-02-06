@@ -67,6 +67,19 @@ const User = sequelize.define('User', {
   invitation_status: {
     type: DataTypes.ENUM('pending', 'accepted', 'expired'),
     allowNull: true
+  },
+  // Soft delete fields for "Remove from Company" feature
+  deleted_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  deleted_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
   }
 }, {
   tableName: 'users',

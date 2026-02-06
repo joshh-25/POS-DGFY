@@ -1,25 +1,53 @@
 # SKU Inventory Manager - Quick Reference Guide
 
-## Essential Commands (Monorepo)
+## Essential Commands
+
+### Production (PM2 - Primary)
+```bash
+# Restart all services (backend + frontend)
+pm2 restart all
+
+# View running processes
+pm2 list
+
+# View logs (real-time)
+pm2 logs
+
+# View logs for specific service
+pm2 logs backend
+pm2 logs frontend
+
+# Full deployment (git pull, install, build, migrate, restart)
+./scripts/deploy.sh
+```
+
+### Development (Local testing only)
+> ⚠️ **Note**: `npm run dev` is for local development only. Use PM2 commands for production.
 
 ```bash
-# Install all dependencies (root + frontend + backend)
+# Install all dependencies (one-time setup)
 npm run install:all
 
-# Start both frontend and backend concurrently
+# Start dev servers (NOT for production)
 npm run dev
 
-# Or start individually:
-npm run dev:frontend    # Frontend only (http://localhost:5173)
-npm run dev:backend     # Backend only (http://localhost:5000)
+# Or individually:
+npm run dev:frontend    # http://localhost:5173
+npm run dev:backend     # http://localhost:5000
+```
 
-# Build for production
-npm run build
+### Database
+```bash
+# Run migrations (handled automatically by deploy.sh)
+cd backend && npx sequelize-cli db:migrate
 
-# Run with Docker
-docker-compose up -d
+# Sync all tenant schemas (handled automatically by deploy.sh)
+node backend/scripts/sync-tenant-schemas.js
+```
 
-# Kill stuck ports
+### Troubleshooting
+```bash
+# Kill stuck ports (if needed)
 lsof -ti:5173 | xargs kill -9  # Frontend
 lsof -ti:5000 | xargs kill -9  # Backend
 ```
@@ -72,6 +100,8 @@ lsof -ti:5000 | xargs kill -9  # Backend
 
 | Issue | Fix |
 |-------|-----|
+| Services not responding | `pm2 restart all` |
+| Code changes not applied | `pm2 restart all` or run `./scripts/deploy.sh` |
 | Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` |
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
 | Frontend can't reach backend | Check CORS in `backend/src/server.js` |
@@ -79,10 +109,13 @@ lsof -ti:5000 | xargs kill -9  # Backend
 | Backend won't start | Verify `.env` exists in `backend/` folder |
 | Database connection error | Check MySQL is running, verify `.env` credentials |
 | Redis connection error | Ensure Redis is running on port 6379 |
-| npm run dev fails | Run `npm run install:all` first |
+| New DB columns not syncing | Run `node backend/scripts/sync-tenant-schemas.js` |
+| Too many keys (64 limit) error | Run `node backend/scripts/cleanup-duplicate-indexes.js` then sync |
 | Styling not applying | Verify TailwindCSS classes, check `frontend/tailwind.config.js` |
 | FIFO calculations wrong | Review `frontend/Components/utils/fifoCalculations.js` |
 | Sidebar only shows Dashboard after login | Fixed via auth events - see Permission Loading section below |
+| Login fails with 401 after switching companies | Clear localStorage: `localStorage.removeItem('companyToken')` then retry |
+| Approval email not sent | Check SMTP config in `.env`, verify Gmail App Password |
 
 ## Permission Loading (Authentication Flow)
 
@@ -194,7 +227,43 @@ DB_PASSWORD=your_password
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=your_jwt_secret
 CORS_ORIGIN=http://localhost:5173
+
+# Email Configuration (Gmail SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+EMAIL_FROM=your-email@gmail.com
+EMAIL_FROM_NAME=SKU Inventory Manager
+APP_URL=http://localhost:5173
 ```
+
+## Email Configuration (Gmail SMTP)
+
+### Quick Setup
+1. Enable 2-Factor Authentication on your Google account
+2. Go to https://myaccount.google.com/apppasswords
+3. Generate an App Password (16 characters)
+4. Add credentials to `backend/.env`
+
+### Email Types
+| Type | Trigger | Notes |
+|------|---------|-------|
+| User Invitation | AI or admin creates invitation | Sends invite link with token |
+| Company Approved | Admin approves pending registration | Sends login credentials + company token |
+| Company Rejected | Admin rejects registration | Sends reason (optional) + re-register link |
+
+### Troubleshooting Email
+| Issue | Fix |
+|-------|-----|
+| Emails not sending | Verify SMTP credentials in `backend/.env` |
+| App Password not available | Enable 2FA first on Google account |
+| Sender rejected | Ensure `EMAIL_FROM` matches `SMTP_USER` |
+| Email fails silently | Check PM2 logs: `pm2 logs backend` |
+
+### Graceful Degradation
+Email failures **never block** primary operations. API responses include `email_sent: boolean` to indicate success/failure.
 
 ## When to Reference Full Documentation
 

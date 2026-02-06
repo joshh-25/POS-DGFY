@@ -9,7 +9,11 @@
 
 import nodemailer from 'nodemailer';
 import logger from '../config/logger.js';
-import { getInvitationTemplate } from '../templates/emailTemplates.js';
+import {
+  getInvitationTemplate,
+  getCompanyApprovedTemplate,
+  getCompanyRejectedTemplate
+} from '../templates/emailTemplates.js';
 
 // Lazy initialize transporter
 let _transporter = null;
@@ -119,6 +123,58 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
 };
 
 /**
+ * Send company approval notification email
+ * @param {Object} params - Email parameters
+ * @param {string} params.email - Admin's email address
+ * @param {string} params.companyName - Company/tenant name
+ * @param {string} params.companyToken - Company's unique login token
+ * @returns {Promise<Object>} - Nodemailer send result
+ */
+export const sendCompanyApprovedEmail = async ({ email, companyName, companyToken }) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const loginUrl = `${appUrl}/login`;
+
+  const html = getCompanyApprovedTemplate({
+    companyName,
+    adminEmail: email,
+    companyToken,
+    loginUrl
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Your company "${companyName}" has been approved!`,
+    html
+  });
+};
+
+/**
+ * Send company rejection notification email
+ * @param {Object} params - Email parameters
+ * @param {string} params.email - Admin's email address
+ * @param {string} params.companyName - Company/tenant name
+ * @param {string} [params.rejectionReason] - Optional rejection reason
+ * @returns {Promise<Object>} - Nodemailer send result
+ */
+export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionReason }) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const registerUrl = `${appUrl}/register-company`;
+
+  const html = getCompanyRejectedTemplate({
+    companyName,
+    adminEmail: email,
+    rejectionReason,
+    registerUrl
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Update on your "${companyName}" registration request`,
+    html
+  });
+};
+
+/**
  * Verify SMTP connection
  * Useful for health checks and configuration validation
  * @returns {Promise<boolean>} - True if connection is successful
@@ -143,6 +199,8 @@ export const verifyConnection = async () => {
 export default {
   sendEmail,
   sendInvitationEmail,
+  sendCompanyApprovedEmail,
+  sendCompanyRejectedEmail,
   verifyConnection,
   isEmailConfigured
 };
