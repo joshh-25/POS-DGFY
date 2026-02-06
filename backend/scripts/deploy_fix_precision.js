@@ -17,10 +17,10 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_USER = process.env.DB_USER || 'root';
-const DB_PASS = process.env.DB_PASS || '';
+const DB_PASSWORD = process.env.DB_PASSWORD || '';
 
 // 1. Connect to MySQL Server (no specific DB) to list databases
-const rootSequelize = new Sequelize('', DB_USER, DB_PASS, {
+const rootSequelize = new Sequelize('', DB_USER, DB_PASSWORD, {
     host: DB_HOST,
     dialect: 'mysql',
     logging: false
@@ -36,7 +36,7 @@ async function migrateAll() {
         // Filter for our app's databases: 'sku_inventory_manager' and 'tenant_%'
         const targetDBs = dbs
             .map(row => row.Database)
-            .filter(name => name === 'sku_inventory_manager' || name.startsWith('tenant_'));
+            .filter(name => name === 'sku_inventory_manager' || name.startsWith('tenant_') || name.startsWith('sku_tenant_'));
 
         console.log(`📋 Found ${targetDBs.length} databases to update:`, targetDBs.join(', '));
 
@@ -44,7 +44,7 @@ async function migrateAll() {
         for (const dbName of targetDBs) {
             console.log(`\n🔹 Processing database: ${dbName}...`);
 
-            const dbSequelize = new Sequelize(dbName, DB_USER, DB_PASS, {
+            const dbSequelize = new Sequelize(dbName, DB_USER, DB_PASSWORD, {
                 host: DB_HOST,
                 dialect: 'mysql',
                 logging: false

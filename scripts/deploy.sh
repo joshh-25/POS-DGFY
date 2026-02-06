@@ -109,9 +109,11 @@ fi
 cd "$PROJECT_ROOT"
 
 # 6. Restart Services
-log "Step 6: Restarting PM2 services..."
+# 5b. Force Production Env for PM2
+log "Step 6: Restarting PM2 services (Production Mode)..."
 if command -v pm2 >/dev/null 2>&1; then
-    pm2 restart all --update-env
+    # Update the environment to production and restart
+    pm2 restart all --update-env --env production
 else
     warn "PM2 not found in PATH. Skipping service restart."
 fi
@@ -130,14 +132,37 @@ API_TEST_URL="http://localhost:5001/api/v1/items"
 echo ">> Pinging Backend API ($API_TEST_URL)..."
 
 if command -v curl >/dev/null 2>&1; then
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
-    if [[ "$HTTP_CODE" =~ ^2 ]]; then
-        echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
-    elif [[ "$HTTP_CODE" == "401" ]]; then
-        echo "   ✅ Backend is reachable (HTTP 401 Unauthorized is expected for protected routes)"
-    else
-        warn "Backend returned HTTP $HTTP_CODE. Please check logs."
+    # Retry loop: Try 10 times, waiting 3 seconds between checks (Total 30s)
+    MAX_RETRIES=10
+    COUNT=0
+    SUCCESS=0
+
+    while [ $COUNT -lt $MAX_RETRIES ]; do
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
+        
+        if [[ "$HTTP_CODE" =~ ^2 ]]; then
+            echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
+            SUCCESS=1
+            break
+        elif [[ "$HTTP_CODE" == "401" ]]; then
+            echo "   ✅ Backend is reachable (HTTP 401 Unauthorized is expected for protected routes)"
+            SUCCESS=1
+            break
+        else
+            echo "   ... Attempt $((COUNT+1))/$MAX_RETRIES: Received HTTP $HTTP_CODE. Waiting..."
+        fi
+        
+        sleep 3
+        COUNT=$((COUNT+1))
+    done
+
+    if [ $SUCCESS -eq 0 ]; then
+        warn "Backend did not respond with 2xx/401 after 30 seconds."
+        echo "   Last HTTP status: $HTTP_CODE" 
+        # We don't exit 1 here to avoid failing the whole pipeline if it's just slow, 
+        # but we warn significantly.
     fi
+
 else
     echo ">> curl not found, skipping API check."
 fi
