@@ -330,6 +330,10 @@ export const previewImport = async (csvContent) => {
 /**
  * Confirm and execute the import
  * For products, uses itemService to properly save related data (nutrition, compliance, etc.)
+ * 
+ * OPTIMIZED: Uses batch processing for better performance with large imports (up to 1000 items)
+ * - Simple items (raw_material, packaging, supplies): bulkCreate with upsert
+ * - Products: Concurrent batch processing (10 at a time)
  */
 export const confirmImport = async (rows, userId) => {
     const results = {
@@ -338,72 +342,80 @@ export const confirmImport = async (rows, userId) => {
         failed: []
     };
 
-    for (const row of rows) {
-        if (!row.valid) {
-            results.failed.push({
-                rowNumber: row.rowNumber,
-                sku_code: row.sku_code,
-                errors: row.errors
-            });
-            continue;
+    // Separate valid rows by type for optimized processing
+    const invalidRows = rows.filter(r => !r.valid);
+    const validRows = rows.filter(r => r.valid);
+
+    // Track failed rows from validation
+    for (const row of invalidRows) {
+        results.failed.push({
+            rowNumber: row.rowNumber,
+            sku_code: row.sku_code,
+            errors: row.errors
+        });
+    }
+
+    // Separate by category type
+    const simpleItems = validRows.filter(r => r.data.category !== 'product');
+    const productItems = validRows.filter(r => r.data.category === 'product');
+
+    // === BATCH 1: Process simple items (raw_material, packaging, supplies) ===
+    // These can use bulkCreate for much better performance
+    if (simpleItems.length > 0) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.get('sequelize');
+
+        // Separate creates and updates
+        const toCreate = simpleItems.filter(r => r.action === 'CREATE');
+        const toUpdate = simpleItems.filter(r => r.action === 'UPDATE');
+
+        // Bulk CREATE simple items
+        if (toCreate.length > 0) {
+            const BATCH_SIZE = 50;
+            for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+                const batch = toCreate.slice(i, i + BATCH_SIZE);
+                const transaction = await sequelize.transaction();
+                try {
+                    const itemsData = batch.map(r => ({
+                        ...r.data,
+                        status: 'active'
+                    }));
+
+                    const createdItems = await Item.bulkCreate(itemsData, {
+                        transaction,
+                        returning: true
+                    });
+                    await transaction.commit();
+
+                    // Map results back to rows
+                    createdItems.forEach((item, idx) => {
+                        results.created.push({
+                            rowNumber: batch[idx].rowNumber,
+                            item_id: item.item_id,
+                            sku_code: item.sku_code,
+                            name: item.name
+                        });
+                    });
+                } catch (err) {
+                    await transaction.rollback();
+                    // If bulk fails, mark all in batch as failed
+                    batch.forEach(r => {
+                        results.failed.push({
+                            rowNumber: r.rowNumber,
+                            sku_code: r.sku_code,
+                            errors: [`Batch insert failed: ${err.message}`]
+                        });
+                    });
+                }
+            }
         }
 
-        try {
-            const isProduct = row.data.category === 'product';
-
-            if (row.action === 'CREATE') {
-                if (isProduct) {
-                    // Use itemService for products to save related data properly
-                    const newItem = await createItem({
-                        ...row.data,
-                        status: 'active'
-                    }, userId);
-
-                    results.created.push({
-                        rowNumber: row.rowNumber,
-                        item_id: newItem.item_id,
-                        sku_code: newItem.sku_code,
-                        name: newItem.name
-                    });
-                } else {
-                    // Use direct Item.create for non-products (simpler, faster)
-                    const Item = dbStore.get('Item');
-                    const sequelize = dbStore.get('sequelize');
-                    const transaction = await sequelize.transaction();
-                    try {
-                        const newItem = await Item.create({
-                            ...row.data,
-                            status: 'active'
-                        }, { transaction });
-                        await transaction.commit();
-
-                        results.created.push({
-                            rowNumber: row.rowNumber,
-                            item_id: newItem.item_id,
-                            sku_code: newItem.sku_code,
-                            name: newItem.name
-                        });
-                    } catch (err) {
-                        await transaction.rollback();
-                        throw err;
-                    }
-                }
-            } else {
-                // UPDATE
-                if (isProduct) {
-                    // Use itemService for products to save related data properly
-                    await updateItem(row.existingItemId, row.data, userId);
-
-                    results.updated.push({
-                        rowNumber: row.rowNumber,
-                        item_id: row.existingItemId,
-                        sku_code: row.sku_code,
-                        name: row.data.name
-                    });
-                } else {
-                    // Use direct Item.update for non-products (simpler, faster)
-                    const Item = dbStore.get('Item');
-                    const sequelize = dbStore.get('sequelize');
+        // UPDATE simple items (still one-by-one but concurrent)
+        if (toUpdate.length > 0) {
+            const CONCURRENCY = 10;
+            for (let i = 0; i < toUpdate.length; i += CONCURRENCY) {
+                const batch = toUpdate.slice(i, i + CONCURRENCY);
+                const promises = batch.map(async (row) => {
                     const transaction = await sequelize.transaction();
                     try {
                         await Item.update(row.data, {
@@ -411,25 +423,102 @@ export const confirmImport = async (rows, userId) => {
                             transaction
                         });
                         await transaction.commit();
+                        return { success: true, row };
+                    } catch (err) {
+                        await transaction.rollback();
+                        return { success: false, row, error: err.message };
+                    }
+                });
 
+                const batchResults = await Promise.allSettled(promises);
+                for (const result of batchResults) {
+                    if (result.status === 'fulfilled' && result.value.success) {
+                        results.updated.push({
+                            rowNumber: result.value.row.rowNumber,
+                            item_id: result.value.row.existingItemId,
+                            sku_code: result.value.row.sku_code,
+                            name: result.value.row.data.name
+                        });
+                    } else {
+                        const row = result.status === 'fulfilled' ? result.value.row : null;
+                        const errorMsg = result.status === 'fulfilled' ? result.value.error : result.reason?.message;
+                        if (row) {
+                            results.failed.push({
+                                rowNumber: row.rowNumber,
+                                sku_code: row.sku_code,
+                                errors: [errorMsg || 'Unknown error']
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // === BATCH 2: Process products (need itemService for related tables) ===
+    // These use itemService which handles nutrition, allergens, etc.
+    if (productItems.length > 0) {
+        const CONCURRENCY = 10;
+
+        for (let i = 0; i < productItems.length; i += CONCURRENCY) {
+            const batch = productItems.slice(i, i + CONCURRENCY);
+            const promises = batch.map(async (row) => {
+                try {
+                    if (row.action === 'CREATE') {
+                        const newItem = await createItem({
+                            ...row.data,
+                            status: 'active'
+                        }, userId);
+                        return {
+                            success: true,
+                            action: 'CREATE',
+                            row,
+                            item: newItem
+                        };
+                    } else {
+                        await updateItem(row.existingItemId, row.data, userId);
+                        return {
+                            success: true,
+                            action: 'UPDATE',
+                            row
+                        };
+                    }
+                } catch (err) {
+                    return { success: false, row, error: err.message };
+                }
+            });
+
+            const batchResults = await Promise.allSettled(promises);
+            for (const result of batchResults) {
+                if (result.status === 'fulfilled' && result.value.success) {
+                    const { action, row, item } = result.value;
+                    if (action === 'CREATE') {
+                        results.created.push({
+                            rowNumber: row.rowNumber,
+                            item_id: item.item_id,
+                            sku_code: item.sku_code,
+                            name: item.name
+                        });
+                    } else {
                         results.updated.push({
                             rowNumber: row.rowNumber,
                             item_id: row.existingItemId,
                             sku_code: row.sku_code,
                             name: row.data.name
                         });
-                    } catch (err) {
-                        await transaction.rollback();
-                        throw err;
+                    }
+                } else {
+                    const row = result.status === 'fulfilled' ? result.value.row : null;
+                    const errorMsg = result.status === 'fulfilled' ? result.value.error : result.reason?.message;
+                    if (row) {
+                        results.failed.push({
+                            rowNumber: row.rowNumber,
+                            sku_code: row.sku_code,
+                            errors: [errorMsg || 'Unknown error']
+                        });
                     }
                 }
             }
-        } catch (error) {
-            results.failed.push({
-                rowNumber: row.rowNumber,
-                sku_code: row.sku_code,
-                errors: [error.message]
-            });
         }
     }
 

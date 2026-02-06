@@ -197,3 +197,16 @@ lsof -ti:5000 | xargs kill -9
   1. If you have a tenant stuck in this state, **Delete the tenant** from the Landlord DB (or ignore it).
   2. Register a new company. The fix ensures new companies are provisioned correctly.
 
+### 15. CSV Import Fails with Large Files (413 or Timeout)
+**Symptoms**:
+- Importing a CSV with many items (200+) fails with `413 Payload Too Large` or times out.
+- Preview works but "Confirm Import" fails.
+
+**Cause**:
+- Default Express body parser limit was 100KB.
+- Sequential database processing caused timeouts for large imports.
+
+**Solution**:
+- **Fixed in Code (Phase 25)**: Body limit increased to 10MB, import uses batch processing.
+- **Max Supported**: Up to 1,000 items per import.
+- **If still failing**: Split your CSV into multiple files of ~500 items each.

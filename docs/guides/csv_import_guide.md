@@ -4,6 +4,16 @@
 
 This guide explains how to bulk import items (raw materials, packaging, products, supplies) using a CSV file, and how to export existing items to CSV.
 
+## Import Limits
+
+| Parameter | Value |
+|-----------|-------|
+| **Maximum items per import** | 1,000 |
+| **Maximum file size** | 10 MB |
+| **Recommended batch size** | 500 items |
+
+> **Performance Note**: Imports of 500+ items use batch processing. Large imports may take 10-30 seconds.
+
 ## Quick Start - Import
 
 1. Go to **Items** page

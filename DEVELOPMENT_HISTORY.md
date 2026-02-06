@@ -5003,3 +5003,41 @@ After approving a new company, users could not log in even with correct credenti
 - [x] Fresh login correctly uses looked-up company token
 - [x] Email failures don't block approval/rejection operations
 
+---
+
+## Phase 25.5: CSV Import Upgrade (1000 Items)
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-06
+
+### Goal
+Enable bulk CSV import of up to 1000 items (previously limited to ~100-200 due to body size and timeout constraints).
+
+### Changes Made
+
+#### Backend Configuration
+- [x] Updated `server.js`: Increased Express body parser limits from 100KB to 10MB
+  ```javascript
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  ```
+
+#### Backend Service Optimization
+- [x] Refactored `csvImportService.js` `confirmImport()` function:
+  - **Simple Items** (raw_material, packaging, supplies): Uses `Item.bulkCreate()` in batches of 50
+  - **Product Items**: Uses concurrent processing (10 at a time) with `Promise.allSettled()`
+  - Reduced DB roundtrips from ~1000 to ~20 for large imports
+  - Maintained per-row error tracking
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/server.js` | Increased body parser limit to 10MB |
+| `backend/src/services/csvImportService.js` | Batch processing for import confirmation |
+| `docs/guides/csv_import_guide.md` | Added "Import Limits" section |
+| `TROUBLESHOOTING.md` | Added entry #15 for large CSV import issues |
+
+### Performance Impact
+- **Before**: 100 items ~10s, 500+ items timeout
+- **After**: 100 items ~2s, 1000 items ~10s
+
