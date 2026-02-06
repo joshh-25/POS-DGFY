@@ -78,7 +78,12 @@
       "Bash(NODE_OPTIONS=\"--experimental-vm-modules\" npx jest:*)",
       "Bash(powershell -Command \"Stop-Process -Id 3648 -Force\")",
       "Bash(powershell -Command \"netstat -ano | Select-String '':5000''\")",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(c:/xampp/mysql/bin/mysql -u root -e \"SHOW INDEX FROM users;\" sku_inventory_manager)",
+      "Bash(c:/xampp/mysql/bin/mysql:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(find:*)"
     ]
   }
 }
