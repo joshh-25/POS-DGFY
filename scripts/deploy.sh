@@ -51,8 +51,7 @@ echo "🔧 Running structural precision fixes (DECIMAL 24,12)..."
 
 # 4c. Sync Tenant Schemas (Multi-tenancy)
 echo "🔄 Syncing schemas for all active tenants..."
-node backend/scripts/sync-tenant-schemas.js
-
+node scripts/sync-tenant-schemas.js
 
 cd ..
 
