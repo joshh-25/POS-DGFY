@@ -34,6 +34,7 @@
 - [Phase 21: Security Hardening & Deployment Optimization](#phase-21-security-hardening--deployment-optimization)
 - [Phase 25: User Removal & Management Improvements](#phase-25-user-removal--management-improvements)
 - [Phase 26: SMTP Email Implementation & Login Bug Fix](#phase-26-smtp-email-implementation--login-bug-fix)
+- [Phase 27: Production Email Fix (Brevo)](#phase-27-production-email-fix-brevo)
 
 ---
 
@@ -5055,4 +5056,113 @@ During production deployment, discovered `deploy.sh` had a path bug:
 - [x] Database migrations ran (no changes needed)
 - [x] Tenant schema sync completed for 4 tenants
 - [x] PM2 services restarted
+
+---
+
+## Phase 27: Production Email Fix (Brevo)
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-06
+
+### Problem
+Company approval and user invitation emails were not being sent in production. Backend logs showed:
+```
+[TenantApproval] Failed to send approval email to user@example.com: Connection timeout
+```
+
+### Root Cause Analysis
+- Gmail SMTP ports **587** and **465** are **blocked** by the VPS provider
+- This is a common anti-spam measure on cloud providers (DigitalOcean, Vultr, AWS Lightsail, etc.)
+- Diagnosis confirmed via connectivity tests:
+  ```bash
+  timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/587' && echo "OPEN" || echo "BLOCKED"
+  # Result: BLOCKED (both 587 and 465)
+  ```
+
+### Solution
+Switched from Gmail SMTP to **Brevo** (formerly Sendinblue), which uses relay servers that bypass VPS SMTP restrictions.
+
+#### Production `.env` Configuration
+```env
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=skupervisor@gmail.com
+SMTP_PASS=xsmtpsib-...brevo-key...
+EMAIL_FROM=skupervisor@gmail.com
+EMAIL_FROM_NAME="SKU Inventory Manager"
+APP_URL=https://skupervisor.surebizcorp.com
+```
+
+### Implementation Details
+- **No code changes required** - `emailService.js` uses standard nodemailer which works with any SMTP provider
+- Brevo free tier: 300 emails/day (sufficient for company approvals and invitations)
+- SendGrid was initially attempted but phone verification rate-limited the signup
+
+### Documentation Updated
+| File | Changes |
+|------|---------|
+| `TROUBLESHOOTING.md` | Added entry #16 "Emails Not Sending (Connection Timeout)" |
+| `DEPLOYMENT_GUIDE.md` | Added Brevo email configuration to environment section |
+| `backend/.env` (production) | Updated SMTP settings for Brevo |
+
+### Verification
+- [x] Company approval emails sending successfully
+- [x] User invitation emails working
+- [x] Links in emails functioning correctly
+
+### Key Learnings
+1. **VPS SMTP Blocking**: Most cloud providers block ports 587/465 by default
+2. **Always Test Connectivity**: Use `/dev/tcp` tests before assuming credential issues
+3. **Relay Services**: Brevo, SendGrid, and Mailgun bypass these restrictions via their relay infrastructure
+
+---
+
+## Phase 28: Staff Role Permission Fixes & UX Improvements
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-06
+
+### Overview
+Addressed a critical security/permissions bug where users with the 'Staff' role were incorrectly receiving administrative access due to role string case sensitivity mismatches ('Staff' vs 'staff'). Also implemented UX improvements for restricted actions and enhanced the sidebar.
+
+### Critical Fixes
+
+#### 1. Role Permission Normalization
+**Issue**: The backend stored roles as they were sent (e.g., 'Staff'), but the permission system expected lowercase ('staff'). This mismatch caused `DEFAULT_ROLE_PERMISSIONS` to fail, leading to undefined or overly broad permissions effectively persisting from previous states.
+**Fix**:
+- Updated `backend/src/services/userService.js`:
+  - `createUserInvitation`: Forces role to lowercase before creating invitation.
+  - `updateUserRole`: Forces role to lowercase before saving to database.
+- Updated `frontend/src/store/PermissionContext.jsx`:
+  - Added safe navigation and lowercase normalization to `userRole` checks (`userRole?.toLowerCase() === 'staff'`).
+
+#### 2. JSX Syntax Errors
+**Issue**: Several frontend files caused build errors or potential runtime issues due to malformed JSX tags.
+**Fix**:
+- **Suppliers.jsx**: Fixed `< div >` and `</ div >` tags; removed duplicate `getCurrentUser` imports.
+- **JobOrders.jsx**: Fixed malformed `</div >` closing tag.
+
+#### 3. Friendly Error Handling
+**Issue**: When a user tried to perform a restricted action (e.g., create PO), the app showed a generic "Failed" message or a raw 403 error.
+**Fix**:
+- Updated `PurchaseOrders.jsx` to intercept **403 Forbidden** errors.
+- Now displays a specific, friendly toast: "You do not have permission to [action]."
+
+### UX Enhancements
+
+#### Sidebar User Profile
+**Feature**: Added a "Pale Blue" user profile callout in the sidebar above the Logout button.
+**Details**:
+- Displays the current user's **Avatar** (First Initial).
+- Displays **Username** and **Email**.
+- Implemented in `frontend/Layout.jsx`.
+
+### Files Modified
+- `backend/src/services/userService.js`
+- `frontend/src/store/PermissionContext.jsx`
+- `frontend/Pages/Suppliers.jsx`
+- `frontend/Pages/JobOrders.jsx`
+- `frontend/Pages/PurchaseOrders.jsx`
+- `frontend/Layout.jsx`
+
+
 

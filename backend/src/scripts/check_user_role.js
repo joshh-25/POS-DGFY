@@ -1,27 +1,29 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-import { User, sequelize } from '../models/index.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-async function checkUser() {
-    try {
-        await sequelize.authenticate();
-        console.log('Connection has been established successfully.');
+// Load env
+dotenv.config({ path: join(__dirname, '..', '.env') });
 
-        const user = await User.findOne({
-            where: { email: 'mama@gmail.com' },
-            attributes: ['user_id', 'username', 'email', 'role', 'is_active']
-        });
+// Use dynamic import to ensure env is loaded first
+const { User } = await import('../models/index.js');
 
-        if (user) {
-            console.log('User found:', JSON.stringify(user.toJSON(), null, 2));
-        } else {
-            console.log('User mama@gmail.com not found.');
-        } // End if
+const email = 'albertglor.supapo4@gmail.com';
 
-    } catch (error) {
-        console.error('Unable to connect to the database:', error);
-    } finally {
-        await sequelize.close();
-    }
+const user = await User.findOne({ where: { email } });
+
+if (user) {
+    console.log('User found:');
+    console.log('  - Role:', user.role);
+    console.log('  - Permissions:', user.permissions);
+    console.log('  - Is Master Admin:', user.is_master_admin);
+    console.log('  - Is Active:', user.is_active);
+    console.log('  - Invitation Status:', user.invitation_status);
+} else {
+    console.log('User NOT FOUND with email:', email);
 }
 
-checkUser();
+process.exit(0);

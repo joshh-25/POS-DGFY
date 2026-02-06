@@ -209,11 +209,12 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   }
 
   // Get default permissions for the new role
-  const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[roleData.role] || [];
+  const normalizedRole = roleData.role?.toLowerCase();
+  const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[normalizedRole] || [];
 
   // Build update data
   const updateData = {
-    role: roleData.role,
+    role: normalizedRole,
     permissions: defaultPermissions
   };
 
@@ -481,7 +482,8 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
  * @returns {Promise<Object>} Invitation result
  */
 export const createUserInvitation = async (adminUserId, invitationData) => {
-  const { email, role } = invitationData;
+  const { email, role: rawRole } = invitationData;
+  const role = rawRole?.toLowerCase() || 'staff';
 
   const User = dbStore.get('User');
 

@@ -24,6 +24,7 @@ import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDr
 import { useItemSupplierCoverage } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/authService.js';
 import { toast } from 'sonner';
+import { usePermission } from '../src/hooks/usePermission';
 
 export default function Suppliers() {
   const { suppliers, loading, error, refetch } = useSuppliers();
@@ -33,6 +34,7 @@ export default function Suppliers() {
   const { finalizeSupplier } = useFinalizeSupplier();
   const { deleteSupplier, loading: deleting } = useDeleteSupplier();
   const { refetch: refetchCoverage } = useItemSupplierCoverage();
+  const { canCreate, canExport: canExportPermission, canImport: canImportPermission } = usePermission();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -229,26 +231,32 @@ export default function Suppliers() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Suppliers</h1>
           <p className="text-slate-500 mt-1">{filteredSuppliers.length} suppliers</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => setShowImportModal(true)}
-          className="mr-2"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Import
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => setShowExportModal(true)}
-          className="mr-2"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Export
-        </Button>
-        <Button onClick={handleCreate} className="bg-teal-600 hover:bg-teal-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Supplier
-        </Button>
+        <div className="flex gap-2">
+          {canImportPermission('suppliers') && (
+            <Button
+              variant="outline"
+              onClick={() => setShowImportModal(true)}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Import
+            </Button>
+          )}
+          {canExportPermission('suppliers') && (
+            <Button
+              variant="outline"
+              onClick={() => setShowExportModal(true)}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+          )}
+          {canCreate('suppliers') && (
+            <Button onClick={handleCreate} className="bg-teal-600 hover:bg-teal-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Supplier
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Item Coverage Panel */}
@@ -285,25 +293,27 @@ export default function Suppliers() {
       </div>
 
       {/* Suppliers Grid */}
-      {filteredSuppliers.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-          <p className="text-slate-500">No suppliers found matching your search.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredSuppliers.map(supplier => (
-            <SupplierCard
-              key={supplier.supplier_id || supplier.id}
-              supplier={supplier}
-              onView={handleView}
-              onEdit={handleEdit}
-              onCreatePO={handleCreatePO}
-              onDelete={handleDeleteClick}
-              currentUserRole={currentUser?.role}
-            />
-          ))}
-        </div>
-      )}
+      {
+        filteredSuppliers.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+            <p className="text-slate-500">No suppliers found matching your search.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredSuppliers.map(supplier => (
+              <SupplierCard
+                key={supplier.supplier_id || supplier.id}
+                supplier={supplier}
+                onView={handleView}
+                onEdit={handleEdit}
+                onCreatePO={handleCreatePO}
+                onDelete={handleDeleteClick}
+                currentUserRole={currentUser?.role}
+              />
+            ))}
+          </div>
+        )
+      }
 
       {/* Modals */}
       <SupplierDetailsModal

@@ -21,7 +21,7 @@ import {
   Bot
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
-import { logout } from './src/services/authService.js';
+import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
 
 const ALL_NAV_ITEMS = [
@@ -36,10 +36,40 @@ const ALL_NAV_ITEMS = [
   { name: 'Settings', icon: Settings, page: 'Settings', permission: 'settings:view' },
 ];
 
+const UserProfile = ({ user }) => {
+  if (!user) return null;
+  return (
+    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-2">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-sm">
+          {user.username?.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-900 truncate">{user.username}</p>
+          <p className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
   const { can, userRole, loading } = usePermission();
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Failed to load user profile', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
@@ -119,6 +149,9 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="p-4 space-y-3 mt-auto border-t border-slate-100">
+          {/* User Profile Callout */}
+          <UserProfile user={currentUser} />
+
           {/* Logout Button */}
           <button
             onClick={handleLogout}

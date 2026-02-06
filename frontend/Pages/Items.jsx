@@ -34,6 +34,7 @@ import CreateFolderCard from '@/components/items/CreateFolderCard';
 import MoveToFolderModal from '@/components/items/MoveToFolderModal';
 import { useItemSelection } from '@/hooks/useItemSelection';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
+import { usePermission } from '../src/hooks/usePermission';
 
 export default function Items() {
   const { items, loading, error, refetch } = useItems({ limit: 1000 });
@@ -41,6 +42,7 @@ export default function Items() {
   const { updateItem, loading: updating } = useUpdateItem();
   const { deleteItem, loading: deleting } = useDeleteItem();
   const { createItemDraft } = useCreateItemDraft();
+  const { canCreate, canImport: canImportPermission, canExport: canExportPermission } = usePermission();
 
   const { finalizeItem } = useFinalizeItem();
   const { folders: apiFolders, createFolder: createApiFolder, refetch: refetchFolders } = useFolders();
@@ -584,24 +586,28 @@ export default function Items() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowImportExportModal(true)}>
-              <ArrowUpDown className="w-4 h-4 mr-2" />
-              Import / Export
-            </Button>
-            {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && (
+            {(canImportPermission('items') || canExportPermission('items')) && (
+              <Button variant="outline" onClick={() => setShowImportExportModal(true)}>
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                Import / Export
+              </Button>
+            )}
+            {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
               <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
                 <Package className="w-4 h-4 mr-2" />
                 Create Product
               </Button>
             )}
-            <Button
-              onClick={handleCreate}
-              variant={(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') ? 'outline' : 'default'}
-              className={(categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add New Item
-            </Button>
+            {canCreate('items') && (
+              <Button
+                onClick={handleCreate}
+                variant={(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') ? 'outline' : 'default'}
+                className={(categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add New Item
+              </Button>
+            )}
           </div>
         </div>
 

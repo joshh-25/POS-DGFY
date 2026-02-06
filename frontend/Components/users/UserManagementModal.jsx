@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
 import PermissionMatrix from './PermissionMatrix';
 import UserAvatar from './UserAvatar';
+import UserInvitationModal from './UserInvitationModal';
 import PermissionPickerModal from './PermissionPickerModal';
 import {
   Shield,
@@ -17,7 +18,8 @@ import {
   UserCheck,
   UserX,
   Settings2,
-  UserMinus
+  UserMinus,
+  UserPlus
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -67,6 +69,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPermissionMatrix, setShowPermissionMatrix] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
 
@@ -369,10 +372,18 @@ export default function UserManagementModal({ open, onOpenChange }) {
           {/* Sticky Header */}
           <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
             <DialogHeader>
-              <DialogTitle className="text-xl">User Management</DialogTitle>
-              <p className="text-sm text-slate-500">
-                Manage user accounts, roles, and permissions
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <DialogTitle className="text-xl">User Management</DialogTitle>
+                  <p className="text-sm text-slate-500">
+                    Manage user accounts, roles, and permissions
+                  </p>
+                </div>
+                <Button onClick={() => setShowInviteModal(true)} className="bg-teal-600 hover:bg-teal-700">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
+              </div>
             </DialogHeader>
 
             {/* Search and Actions Row */}
@@ -615,6 +626,13 @@ export default function UserManagementModal({ open, onOpenChange }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Invite User Modal */}
+      <UserInvitationModal
+        open={showInviteModal}
+        onOpenChange={setShowInviteModal}
+        onSuccess={fetchUsers}
+      />
 
       {/* Permission Matrix Dialog */}
       {showPermissionMatrix && selectedUser && (

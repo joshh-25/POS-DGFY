@@ -20,6 +20,7 @@ import { formatNumber } from '../../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
 import { getCategoryConfig, getCategoryLabel } from '@/components/utils/categoryHelpers';
+import { usePermission } from '../../src/hooks/usePermission';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -39,6 +40,7 @@ export default function ItemCard({
   isSelected,
   onSelect
 }) {
+  const { canEdit, canDelete } = usePermission();
   const category = getCategoryConfig(item);
   const isDraft = item.status === 'draft';
   const status = isDraft ? 'draft' : getStockStatus(item);
@@ -107,9 +109,11 @@ export default function ItemCard({
             <DropdownMenuItem onClick={() => onView(item)}>
               <Eye className="w-4 h-4 mr-2" /> View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit(item)}>
-              <Edit className="w-4 h-4 mr-2" /> Edit Item
-            </DropdownMenuItem>
+            {canEdit('items') && (
+              <DropdownMenuItem onClick={() => onEdit(item)}>
+                <Edit className="w-4 h-4 mr-2" /> Edit Item
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem asChild>
               <Link to={createPageUrl("StockMovements") + `?item=${item.id}`}>
                 <History className="w-4 h-4 mr-2" /> Movement History
@@ -118,12 +122,14 @@ export default function ItemCard({
             {onMoveToFolder && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onMoveToFolder(item)}>
-                  <Folder className="w-4 h-4 mr-2" /> Move to Folder...
-                </DropdownMenuItem>
+                {canEdit('items') && (
+                  <DropdownMenuItem onClick={() => onMoveToFolder(item)}>
+                    <Folder className="w-4 h-4 mr-2" /> Move to Folder...
+                  </DropdownMenuItem>
+                )}
               </>
             )}
-            {currentUserRole === 'admin' && onDelete && (
+            {canDelete('items') && onDelete && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -211,6 +217,6 @@ export default function ItemCard({
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 }

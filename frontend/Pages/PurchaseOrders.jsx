@@ -29,6 +29,7 @@ import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { formatNumber } from '../src/lib/numberUtils.js';
 import { getCurrentUser } from '../src/services/authService.js';
+import { usePermission } from '../src/hooks/usePermission';
 import QRCodeModal from '@/components/common/QRCodeModal';
 import { generateReceiveToken } from '../src/services/receiveTokenService.js';
 
@@ -61,6 +62,7 @@ export default function PurchaseOrders() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrPO, setQrPO] = useState(null);
+  const { canCreate, canEdit, canDelete, can } = usePermission();
 
   // Fetch current user for role-based access
   useEffect(() => {
@@ -187,7 +189,11 @@ export default function PurchaseOrders() {
       refetch();
       setShowCreateWizard(false);
     } catch (error) {
-      toast.error(error.message || 'Failed to create purchase order');
+      if (error.response?.status === 403) {
+        toast.error("You do not have permission to create Purchase Orders.");
+      } else {
+        toast.error(error.message || 'Failed to create purchase order');
+      }
     }
   };
 
@@ -218,7 +224,11 @@ export default function PurchaseOrders() {
       setShowReceiptModal(false);
       setSelectedPO(null);
     } catch (error) {
-      toast.error(error.message || 'Failed to receive purchase order');
+      if (error.response?.status === 403) {
+        toast.error("You do not have permission to receive Purchase Orders.");
+      } else {
+        toast.error(error.message || 'Failed to receive purchase order');
+      }
     }
   };
 
@@ -253,7 +263,7 @@ export default function PurchaseOrders() {
     }
   };
 
-  const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const canArchive = canDelete('purchase_orders');
 
   const handleGenerateQR = (po) => {
     setQrPO(po);
@@ -291,10 +301,12 @@ export default function PurchaseOrders() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Purchase Orders</h1>
           <p className="text-slate-500 mt-1">{filteredPOs.length} orders</p>
         </div>
-        <Button onClick={() => setShowCreateWizard(true)} className="bg-teal-600 hover:bg-teal-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Purchase Order
-        </Button>
+        {canCreate('purchase_orders') && (
+          <Button onClick={() => setShowCreateWizard(true)} className="bg-teal-600 hover:bg-teal-700">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Purchase Order
+          </Button>
+        )}
       </div>
 
       {/* Archive Toggle */}
@@ -386,7 +398,7 @@ export default function PurchaseOrders() {
                         <Button variant="ghost" size="sm" onClick={() => handleView(po)}>
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {!showArchivedTab && po.status !== 'received' && (
+                        {!showArchivedTab && po.status !== 'received' && can('po:receive') && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -437,22 +449,24 @@ export default function PurchaseOrders() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div >
 
       {/* Modals */}
-      {showCreateWizard && (
-        <POCreateWizard
-          open={showCreateWizard}
-          onClose={() => {
-            setShowCreateWizard(false);
-            setInitialItemId(null);
-          }}
-          onSubmit={handleCreatePO}
-          suppliers={suppliers?.filter(s => s.status === 'active') || []}
-          items={items || []}
-          initialItemId={initialItemId}
-        />
-      )}
+      {
+        showCreateWizard && (
+          <POCreateWizard
+            open={showCreateWizard}
+            onClose={() => {
+              setShowCreateWizard(false);
+              setInitialItemId(null);
+            }}
+            onSubmit={handleCreatePO}
+            suppliers={suppliers?.filter(s => s.status === 'active') || []}
+            items={items || []}
+            initialItemId={initialItemId}
+          />
+        )
+      }
 
       <PODetailsModal
         po={selectedPO}
@@ -460,29 +474,33 @@ export default function PurchaseOrders() {
         onClose={() => setShowDetailsModal(false)}
       />
 
-      {showReceiptModal && selectedPO && (
-        <POReceiptModal
-          po={selectedPO}
-          open={showReceiptModal}
-          onClose={() => setShowReceiptModal(false)}
-          onConfirm={handleReceiptConfirm}
-        />
-      )}
+      {
+        showReceiptModal && selectedPO && (
+          <POReceiptModal
+            po={selectedPO}
+            open={showReceiptModal}
+            onClose={() => setShowReceiptModal(false)}
+            onConfirm={handleReceiptConfirm}
+          />
+        )
+      }
 
       {/* QR Code Modal */}
-      {showQRModal && qrPO && (
-        <QRCodeModal
-          open={showQRModal}
-          onClose={() => {
-            setShowQRModal(false);
-            setQrPO(null);
-          }}
-          orderType="PO"
-          orderId={qrPO.po_id || qrPO.id}
-          orderNumber={qrPO.po_number}
-          onGenerateToken={handleQRTokenGenerate}
-        />
-      )}
+      {
+        showQRModal && qrPO && (
+          <QRCodeModal
+            open={showQRModal}
+            onClose={() => {
+              setShowQRModal(false);
+              setQrPO(null);
+            }}
+            orderType="PO"
+            orderId={qrPO.po_id || qrPO.id}
+            orderNumber={qrPO.po_number}
+            onGenerateToken={handleQRTokenGenerate}
+          />
+        )
+      }
 
       {/* Archive Confirmation Dialog */}
       <DeleteConfirmDialog
@@ -502,6 +520,6 @@ export default function PurchaseOrders() {
         variant="destructive"
         loading={archiving}
       />
-    </div>
+    </div >
   );
 }

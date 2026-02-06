@@ -126,6 +126,24 @@ export const PermissionProvider = ({ children }) => {
         return permissions.includes(permission);
     };
 
+    // Convenience helpers for common permission patterns
+    const canView = (entity) => can(`${entity}:view`);
+    const canCreate = (entity) => can(`${entity}:create`);
+    const canEdit = (entity) => can(`${entity}:edit`);
+    const canDelete = (entity) => can(`${entity}:delete`);
+    const canApprove = (entity) => can(`${entity}:approve`);
+    const canExport = (entity) => can(`${entity}:export`);
+    const canImport = (entity) => can(`${entity}:import`);
+
+    // Role-based checks
+    const isAdmin = (userRole?.toLowerCase() === 'admin') || isMasterAdmin;
+    const isManager = (userRole?.toLowerCase() === 'manager') || isAdmin;
+    const isStaff = (userRole?.toLowerCase() === 'staff');
+
+    // Check if user can manage users (for Settings visibility)
+    const canManageUsers = can('users:manage');
+    const canViewSettings = can('settings:view');
+
     // Initial load
     useEffect(() => {
         loadPermissions();
@@ -148,7 +166,29 @@ export const PermissionProvider = ({ children }) => {
     }, []);
 
     return (
-        <PermissionContext.Provider value={{ permissions, isMasterAdmin, userRole, can, loadPermissions, loading }}>
+        <PermissionContext.Provider value={{
+            // Core state
+            permissions,
+            isMasterAdmin,
+            userRole,
+            loading,
+            loadPermissions,
+            // Permission checks
+            can,
+            canView,
+            canCreate,
+            canEdit,
+            canDelete,
+            canApprove,
+            canExport,
+            canImport,
+            // Role checks
+            isAdmin,
+            isManager,
+            isStaff,
+            canManageUsers,
+            canViewSettings
+        }}>
             {children}
         </PermissionContext.Provider>
     );

@@ -11,8 +11,10 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getQualityColor, getQualityBgColor } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { usePermission } from '../../src/hooks/usePermission';
 
 export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onDelete, currentUserRole }) {
+  const { canEdit, canDelete, canCreate } = usePermission();
   const qualityColor = getQualityColor(supplier.quality_rating);
   const qualityBgColor = getQualityBgColor(supplier.quality_rating);
   const isDraft = supplier.status === 'draft';
@@ -52,13 +54,17 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onD
             <DropdownMenuItem onClick={() => onView(supplier)}>
               <Eye className="w-4 h-4 mr-2" /> View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit(supplier)}>
-              <Edit className="w-4 h-4 mr-2" /> Edit Supplier
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onCreatePO(supplier)}>
-              <FilePlus className="w-4 h-4 mr-2" /> Create PO
-            </DropdownMenuItem>
-            {currentUserRole === 'admin' && onDelete && (
+            {canEdit('suppliers') && (
+              <DropdownMenuItem onClick={() => onEdit(supplier)}>
+                <Edit className="w-4 h-4 mr-2" /> Edit Supplier
+              </DropdownMenuItem>
+            )}
+            {canCreate('purchase_orders') && (
+              <DropdownMenuItem onClick={() => onCreatePO(supplier)}>
+                <FilePlus className="w-4 h-4 mr-2" /> Create PO
+              </DropdownMenuItem>
+            )}
+            {canDelete('suppliers') && onDelete && (
               <DropdownMenuItem
                 onClick={() => onDelete(supplier)}
                 className="text-red-600 focus:text-red-600 focus:bg-red-50"

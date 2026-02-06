@@ -108,7 +108,20 @@ NODE_ENV=production
 TRUST_PROXY=true # Set to true if behind Nginx/Apache
 OPENAI_API_KEY=your_openai_key # Optional: AI features will be disabled if missing
 FRONTEND_URL=https://skupervisor.surebizcorp.com
+
+# Email Configuration (Brevo - required for company/user emails)
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-brevo-account-email
+SMTP_PASS=your-brevo-smtp-key
+EMAIL_FROM=skupervisor@gmail.com
+EMAIL_FROM_NAME="SKU Inventory Manager"
+APP_URL=https://skupervisor.surebizcorp.com
 ```
+
+> [!NOTE]
+> **Gmail SMTP Won't Work**: Most VPS providers block SMTP ports (587/465). Use [Brevo](https://www.brevo.com) (free tier: 300 emails/day) instead. See TROUBLESHOOTING.md for setup guide.
 
 > [!IMPORTANT]
 > **Production Safety Checks**: The backend will perform a critical check on startup when `NODE_ENV=production`. If `DB_HOST`, `DB_USER`, `DB_NAME`, or `JWT_SECRET` are missing, a CRITICAL error will be logged. Unlike development mode, there are **no fallbacks** (like `root` or empty passwords) for security reasons.

@@ -21,6 +21,7 @@ import JODetailsModal from '@/components/jo/JODetailsModal';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { getCurrentUser } from '../src/services/authService.js';
+import { usePermission } from '../src/hooks/usePermission';
 import QRCodeModal from '@/components/common/QRCodeModal';
 import { generateReceiveToken } from '../src/services/receiveTokenService.js';
 
@@ -53,6 +54,7 @@ export default function JobOrders() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrJO, setQrJO] = useState(null);
+  const { canCreate, canEdit, canDelete } = usePermission();
 
   // Fetch current user for role-based access
   useEffect(() => {
@@ -271,7 +273,7 @@ export default function JobOrders() {
     }
   };
 
-  const canArchive = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const canArchive = canDelete('job_orders');
 
   const handleGenerateQR = (jo) => {
     setQrJO(jo);
@@ -309,10 +311,12 @@ export default function JobOrders() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Job Orders</h1>
           <p className="text-slate-500 mt-1">{filteredJOs.length} orders</p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Job Order
-        </Button>
+        {canCreate('job_orders') && (
+          <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Job Order
+          </Button>
+        )}
       </div>
 
       {/* Archive Toggle */}
@@ -426,7 +430,7 @@ export default function JobOrders() {
                         <Button variant="ghost" size="sm" onClick={() => handleView(jo)}>
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {!showArchivedTab && jo.status === 'draft' && (
+                        {(!showArchivedTab && jo.status === 'draft' && canEdit('job_orders')) && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -437,7 +441,7 @@ export default function JobOrders() {
                             Start
                           </Button>
                         )}
-                        {!showArchivedTab && (jo.status === 'in_progress' || jo.status === 'partial') && (
+                        {(!showArchivedTab && (jo.status === 'in_progress' || jo.status === 'partial') && canEdit('job_orders')) && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -495,20 +499,22 @@ export default function JobOrders() {
       </div>
 
       {/* Modals */}
-      {showCreateModal && (
-        <JOCreateModal
-          open={showCreateModal}
-          onClose={() => {
-            setShowCreateModal(false);
-            setInitialProductId(null);
-          }}
-          onSubmit={handleCreateJO}
-          onSaveDraft={handleSaveDraft}
-          products={products}
-          items={items || []}
-          initialProductId={initialProductId}
-        />
-      )}
+      {
+        showCreateModal && (
+          <JOCreateModal
+            open={showCreateModal}
+            onClose={() => {
+              setShowCreateModal(false);
+              setInitialProductId(null);
+            }}
+            onSubmit={handleCreateJO}
+            onSaveDraft={handleSaveDraft}
+            products={products}
+            items={items || []}
+            initialProductId={initialProductId}
+          />
+        )
+      }
 
       <JODetailsModal
         jo={selectedJO}
@@ -518,19 +524,21 @@ export default function JobOrders() {
       />
 
       {/* QR Code Modal */}
-      {showQRModal && qrJO && (
-        <QRCodeModal
-          open={showQRModal}
-          onClose={() => {
-            setShowQRModal(false);
-            setQrJO(null);
-          }}
-          orderType="JO"
-          orderId={qrJO.jo_id || qrJO.id}
-          orderNumber={qrJO.jo_number || `Draft #${qrJO.jo_id}`}
-          onGenerateToken={handleQRTokenGenerate}
-        />
-      )}
+      {
+        showQRModal && qrJO && (
+          <QRCodeModal
+            open={showQRModal}
+            onClose={() => {
+              setShowQRModal(false);
+              setQrJO(null);
+            }}
+            orderType="JO"
+            orderId={qrJO.jo_id || qrJO.id}
+            orderNumber={qrJO.jo_number || `Draft #${qrJO.jo_id}`}
+            onGenerateToken={handleQRTokenGenerate}
+          />
+        )
+      }
 
       {/* Archive Confirmation Dialog */}
       <DeleteConfirmDialog

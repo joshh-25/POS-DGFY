@@ -162,6 +162,34 @@ export const updateUserPermissions = async (req, res, next) => {
 };
 
 /**
+ * Invite a new user (admin only)
+ */
+export const inviteUser = async (req, res, next) => {
+  try {
+    const adminUserId = req.user.user_id;
+    const { email, role } = req.body;
+
+    if (!email || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and role are required'
+      });
+    }
+
+    const result = await userService.createUserInvitation(adminUserId, { email, role });
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      message: 'User invitation created successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Remove user from company (soft delete with hierarchical access control)
  */
 export const removeUserFromCompany = async (req, res, next) => {

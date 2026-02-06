@@ -51,6 +51,7 @@ import {
 } from "../Components/ui/select";
 import { cn } from "../src/lib/utils.js";
 import { useStockMovements, useCreateStockMovement, useMovementStats } from '../src/hooks/useStockMovements.js';
+import { usePermission } from '../src/hooks/usePermission';
 import { getExportUrl, voidMovement, exportStockMovements } from '../src/services/stockMovementService.js';
 import { useItems } from '../src/hooks/useItems.js';
 import MovementCreateModal from '../Components/movements/MovementCreateModal';
@@ -158,6 +159,7 @@ export default function StockMovements() {
   const { items, loading: itemsLoading } = useItems({ limit: 1000 });
   const { createStockMovement, loading: creating } = useCreateStockMovement();
   const { stats, loading: statsLoading } = useMovementStats({ startDate, endDate });
+  const { canCreate, canDelete } = usePermission();
 
   // Check URL params for item pre-selection
   React.useEffect(() => {
@@ -338,10 +340,16 @@ export default function StockMovements() {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
-            <Plus className="w-4 h-4 mr-2" />
-            Record Movement
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="w-4 h-4 mr-2" />
+            Export
           </Button>
+          {canCreate('stock_movements') && (
+            <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Record Movement
+            </Button>
+          )}
         </div>
       </div>
 
@@ -574,7 +582,7 @@ export default function StockMovements() {
                               View Details
                             </DropdownMenuItem>
                             {/* Only allow voiding if not already voided */}
-                            {mov.reference_type !== 'VOID' && !mov.notes?.includes('Voided by') && (
+                            {mov.reference_type !== 'VOID' && !mov.notes?.includes('Voided by') && canDelete('stock_movements') && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem

@@ -1,66 +1,150 @@
 #!/bin/bash
 
-# Resolve Project Root (one level up from this script)
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$PROJECT_ROOT" || exit 1
-
+# ==========================================
 # Production Deployment Script
-# ----------------------------
+# ==========================================
 # This script automates the deployment process on the production server.
-# Usage: ./deploy.sh
+# It handles pulling code, installing dependencies, building assets,
+# running migrations, and restarting services.
+#
+# Usage: ./scripts/deploy.sh
 
-# Exit immediately if a command exits with a non-zero status (Safety Switch)
+# ------------------------------------------
+# Configuration & Setup
+# ------------------------------------------
+
+# Exit immediately if a command exits with a non-zero status
 set -e
 
-echo "🚀 Starting deployment..."
+# Resolve Project Root (assumes script is in <root>/scripts/)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND_DIR="$PROJECT_ROOT/backend"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
-# 1. Pull latest changes
-echo "📥 Pulling latest code..."
+# Logging function with timestamp
+log() {
+    echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')] 🚀 $1"
+}
+
+warn() {
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  $1"
+}
+
+error() {
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1"
+}
+
+# Trap errors to report failure
+trap 'error "Deployment failed! Check logs above for details."' ERR
+
+# ------------------------------------------
+# Main Deployment Flow
+# ------------------------------------------
+
+cd "$PROJECT_ROOT" || { error "Could not cd to project root"; exit 1; }
+
+log "Starting deployment for: $PROJECT_ROOT"
+
+# 1. Pull Latest Changes
+log "Step 1: Pulling latest code from git..."
 git pull origin master
 
 # 2. Install Dependencies
-echo "📦 Installing root dependencies..."
-npm install
+log "Step 2: Installing dependencies..."
 
-echo "📦 Installing backend dependencies..."
-cd backend
-npm install
-cd ..
+echo ">> Root dependencies..."
+npm install --no-audit --no-fund
 
-echo "📦 Installing frontend dependencies..."
-cd frontend
-npm install
+echo ">> Backend dependencies..."
+cd "$BACKEND_DIR"
+npm install --no-audit --no-fund
+cd "$PROJECT_ROOT"
+
+echo ">> Frontend dependencies..."
+cd "$FRONTEND_DIR"
+npm install --no-audit --no-fund
+cd "$PROJECT_ROOT"
 
 # 3. Build Frontend
-echo "🏗️  Building frontend..."
+log "Step 3: Building frontend..."
+cd "$FRONTEND_DIR"
+# Ensure production environment for build
 NODE_ENV=production npm run build
-cd ..
+cd "$PROJECT_ROOT"
 
 # 4. Database Migrations
-echo "🗄️  Running database migrations..."
-cd backend
+log "Step 4: Running database migrations..."
+cd "$BACKEND_DIR"
+
+# Primary Migrations (src/migrations)
+echo ">> Running primary migrations..."
 npx sequelize-cli db:migrate
-# Check for secondary migrations folder if it exists (optional safety check could go here, but keeping it simple as per workflow)
+
+# Secondary Migrations (legacy 'migrations' folder check)
 if [ -d "migrations" ]; then
-    echo "🗄️  Running secondary migrations..."
+    log "Running secondary migrations (if any)..."
     npx sequelize-cli db:migrate --migrations-path migrations
 fi
 
-# 4b. Run Structural Fixes (Precision Update)
-echo "🔧 Running structural precision fixes (DECIMAL 24,12)..."
+# 5. Structural Fixes & Helper Scripts
+log "Step 5: Running maintenance and sync scripts..."
 
-# 4c. Sync Tenant Schemas (Multi-tenancy)
-echo "🔄 Syncing schemas for all active tenants..."
-if [ -f "$PROJECT_ROOT/backend/scripts/sync-tenant-schemas.js" ]; then
-    node "$PROJECT_ROOT/backend/scripts/sync-tenant-schemas.js"
+# Run precision fix script if it exists
+if [ -f "scripts/deploy_fix_precision.js" ]; then
+    echo ">> Running structural precision fixes..."
+    node scripts/deploy_fix_precision.js
 else
-    echo "⚠️  Tenant sync script not found, skipping..."
+    # Keeping the original echo if script is missing, just in case it was a placeholder
+    echo ">> (Skipping precision fixes - script not found)"
 fi
 
-cd ..
+# Sync Tenant Schemas
+echo ">> Syncing schemas for all active tenants..."
+if [ -f "scripts/sync-tenant-schemas.js" ]; then
+    node "scripts/sync-tenant-schemas.js"
+else
+    warn "Tenant sync script not found (backend/scripts/sync-tenant-schemas.js)"
+fi
 
-# 5. Restart Services
-echo "🔄 Restarting PM2 services..."
-pm2 restart all
+cd "$PROJECT_ROOT"
 
-echo "✅ Deployment completed successfully!"
+# 6. Restart Services
+log "Step 6: Restarting PM2 services..."
+if command -v pm2 >/dev/null 2>&1; then
+    pm2 restart all --update-env
+else
+    warn "PM2 not found in PATH. Skipping service restart."
+fi
+
+# 7. Post-Deployment Verification
+log "Step 7: Verifying deployment..."
+
+# Simple Smoke Test
+# Wait a few seconds for server to boot
+sleep 5
+
+API_HEALTH_URL="http://localhost:5001/api/v1/health" # Adjust if there is a specific health endpoint, otherwise check root or items
+# Fallback to items endpoint if health doesn't exist yet (based on previous curl examples)
+API_TEST_URL="http://localhost:5001/api/v1/items"
+
+echo ">> Pinging Backend API ($API_TEST_URL)..."
+
+if command -v curl >/dev/null 2>&1; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
+    if [[ "$HTTP_CODE" =~ ^2 ]]; then
+        echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
+    elif [[ "$HTTP_CODE" == "401" ]]; then
+        echo "   ✅ Backend is reachable (HTTP 401 Unauthorized is expected for protected routes)"
+    else
+        warn "Backend returned HTTP $HTTP_CODE. Please check logs."
+    fi
+else
+    echo ">> curl not found, skipping API check."
+fi
+
+# Check PM2 status
+if command -v pm2 >/dev/null 2>&1; then
+    pm2 status | grep -E "online|errored" || true
+fi
+
+log "✅ Deployment completed successfully!"

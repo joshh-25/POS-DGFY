@@ -210,3 +210,39 @@ lsof -ti:5000 | xargs kill -9
 - **Fixed in Code (Phase 25)**: Body limit increased to 10MB, import uses batch processing.
 - **Max Supported**: Up to 1,000 items per import.
 - **If still failing**: Split your CSV into multiple files of ~500 items each.
+
+### 16. Emails Not Sending (Connection Timeout)
+**Symptoms**:
+- Company approval and user invitation emails never arrive
+- Backend logs show: `[TenantApproval] Failed to send approval email: Connection timeout`
+- `isEmailConfigured()` returns true but emails still fail
+
+**Cause**:
+- VPS providers (DigitalOcean, Vultr, AWS Lightsail, etc.) block outbound SMTP ports **587** and **465** by default to prevent spam abuse
+- Even with correct Gmail App Password, the server cannot connect to `smtp.gmail.com`
+
+**Diagnosis**:
+```bash
+# Test if port 587 is blocked
+timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/587' && echo "OPEN" || echo "BLOCKED"
+# Test if port 465 is blocked
+timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BLOCKED"
+```
+
+**Solution**:
+- **Use Brevo (free tier, 300 emails/day)**:
+  1. Sign up at [brevo.com](https://www.brevo.com/)
+  2. Go to Settings → SMTP & API → Generate SMTP Key
+  3. Update `.env`:
+  ```env
+  SMTP_HOST=smtp-relay.brevo.com
+  SMTP_PORT=587
+  SMTP_SECURE=false
+  SMTP_USER=your-brevo-account-email
+  SMTP_PASS=your-brevo-smtp-key
+  EMAIL_FROM=skupervisor@gmail.com
+  ```
+  4. Restart: `pm2 restart sku-backend`
+
+- **Alternative**: Contact your VPS provider to unblock SMTP ports
+

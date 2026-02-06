@@ -76,3 +76,14 @@ export const removeUserFromCompany = async (userId) => {
   const response = await api.delete(`/users/${userId}`);
   return response.data.data;
 };
+
+/**
+ * Invite a new user
+ * @param {string} email - User email
+ * @param {string} role - User role
+ * @returns {Promise<Object>} Invitation result
+ */
+export const inviteUser = async (email, role) => {
+  const response = await api.post('/users/invite', { email, role });
+  return response.data.data;
+};
