@@ -67,6 +67,7 @@ If the auto-deployment script fails, you can fall back to manual steps:
 #### Step 1: Update Code
 ```bash
 cd /var/www/skupervisor
+# Note: Requires Personal Access Token (PAT) or SSH Key if password auth fails.
 git pull origin master
 ```
 

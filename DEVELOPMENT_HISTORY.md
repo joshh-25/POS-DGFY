@@ -5166,3 +5166,32 @@ Addressed a critical security/permissions bug where users with the 'Staff' role 
 
 
 
+
+---
+
+## Phase 30: Production Deployment Refinement
+**Status**: ? COMPLETE  
+**Date**: 2026-02-06
+
+### Deployment Automation Upgrades
+Revised the deployment pipeline to be more robust, reliable, and strictly environment-aware.
+
+#### 1. Server-Side Deployment Script (`deploy.sh`)
+- [x] **Verification Retry Loop**: Added a 30-second retry mechanism for the backend health check to prevent false deployment failures during server booting.
+- [x] **Credential Handling**: Fixed critical bug in `deploy_fix_precision.js` where `DB_PASSWORD` was incorrectly referenced as `DB_PASS`, causing database connection failures during migration.
+- [x] **Strict Environment Control**: Integrated `ecosystem.config.js` to enforce `NODE_ENV=production` during PM2 restarts, preventing the server from accidentally starting in development mode.
+- [x] **Enhanced Logging**: Added timestamped logs to every step for better traceability.
+
+#### 2. Local Trigger (`deploy-remote.sh`)
+- [x] Created a local script to trigger remote deployments via SSH.
+- [x] Automates `git push` + `ssh root@hostname` + `deploy.sh` execution.
+- [x] Note: Requires SSH keys/config (passwordless auth) for seamless one-click usage. Fallback manual execution documented.
+
+#### 3. PM2 Configuration
+- [x] Created `ecosystem.config.js` in root (previously missing or misconfigured for env flags).
+- [x] Explicitly defines `env_production` variables (`PORT=5001`, `NODE_ENV=production`).
+
+#### 4. Git Authentication
+- [x] Updated documentation to reflect GitHub`s deprecation of password authentication.
+- [x] Deployment now requires Personal Access Token (PAT) or SSH Keys for `git pull` on the server.
+
