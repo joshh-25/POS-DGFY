@@ -574,10 +574,23 @@ export const getConversations = async (req, res, next) => {
         (new Date(conv.expires_at) - new Date()) / (1000 * 60 * 60 * 24)
       );
 
+      // Defensive parsing for messages (Sequelize JSON sometimes returns string)
+      let messages = conv.messages || [];
+      if (typeof messages === 'string') {
+        try {
+          messages = JSON.parse(messages);
+        } catch (e) {
+          messages = [];
+        }
+      }
+      if (!Array.isArray(messages)) {
+        messages = [];
+      }
+
       return {
         id: conv.conversation_id,
-        title: conv.title || generateConversationTitle(conv.messages || []),
-        message_count: (conv.messages || []).length,
+        title: conv.title || generateConversationTitle(messages),
+        message_count: messages.length,
         created_at: conv.created_at,
         last_message_at: conv.last_message_at,
         expires_at: conv.expires_at,
@@ -778,7 +791,19 @@ function generateConversationTitle(messages) {
     return 'New Conversation';
   }
 
-  const content = firstUserMessage.content;
+  // Handle case where content is an array (when images are included)
+  // The array format is: [{ type: "text", text: "..." }, { type: "image_url", ... }]
+  let content = firstUserMessage.content;
+  if (Array.isArray(content)) {
+    const textPart = content.find(part => part.type === 'text');
+    content = textPart?.text || 'Image conversation';
+  }
+
+  // Ensure content is a string
+  if (typeof content !== 'string') {
+    return 'New Conversation';
+  }
+
   if (content.length <= 50) {
     return content;
   }

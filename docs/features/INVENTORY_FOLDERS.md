@@ -22,24 +22,51 @@ The Inventory Folder system allows you to organize items into logical groups. Th
 - Click on a folder card to "enter" it and see only the items inside.
 - Use the **Breadcrumbs** at the top (`Items / Folder Name`) to navigate back to the main list.
 
+### Deleting a Folder
+1. On the **Items** tab, find the folder card you want to delete.
+2. Click the **three-dot menu** (⋮) in the top-right corner of the folder card.
+3. Select **"Delete Folder"**.
+4. Confirm in the dialog. Any items inside the folder will be **automatically unassigned** (moved out to uncategorized).
+5. The folder is permanently removed.
+
+> **Note:** Only users with the `DELETE_ITEMS` permission can see and use the delete option.
+
 ## Managing Folders via AI Chat
 
 You can perform all folder operations using natural language in the chat.
 
 ### Commands
-- **Create**: "Create an inventory folder named 'Seasonal Products'"
+- **Create (single)**: "Create an inventory folder named 'Seasonal Products'"
+- **Create (bulk)**: "Create 5 folders: Raw Materials, Packaging, Finished Goods, Supplies, Beverages"
+- **Delete (single)**: "Delete the 'Seasonal Products' folder"
+- **Delete (bulk)**: "Delete folders A, B, C, D, E"
 - **Move**: "Move the Christmas wrapper to Seasonal Products" or "Put all Red items in the Color folder"
 - **List**: "Show me all my inventory folders"
 - **Query**: "What is inside the 'Packaging' folder?"
+
+### Bulk Folder Creation
+When you ask the AI to create multiple folders, it uses a single bulk operation with **one confirmation dialog** for all folders. This is much faster than creating folders individually.
+
+Example: *"Create folders for each department: Kitchen, Bar, Storage, and Office"* — The AI will show a confirmation listing all 4 folders, and create them all after you confirm.
+
+### Bulk Folder Deletion
+Similarly, when you ask the AI to delete multiple folders, it uses a single bulk operation. Items inside deleted folders are automatically unassigned (moved to uncategorized).
+
+Example: *"Delete folders A, B, C, D, E"* — The AI will show a confirmation listing all 5 folders, and delete them all after you confirm.
 
 ## Technical Details (For Developers)
 
 - **Database**: Folders are stored in the `item_folders` table.
 - **Relationships**: Items are linked via `folder_id`.
 - **Legacy Sync**: For compatibility, the system automatically syncs the new `folder_id` with the legacy `product_folder` string column. This ensures that older parts of the application that rely on the string field still work correctly.
+- **API Endpoints**:
+    - `GET /api/v1/items/folders` — List all folders with item counts
+    - `POST /api/v1/items/folders` — Create a folder
+    - `DELETE /api/v1/items/folders/:folder_id` — Delete a folder (auto-unassigns items)
 - **Services**:
     - Backend: `itemGroupingService.js`
     - Frontend: `useItems.js` (specifically `useFolders` hook)
+- **AI Tools**: `create_inventory_folder`, `bulk_create_inventory_folders`, `delete_inventory_folder`, `bulk_delete_inventory_folders`, `move_items_to_inventory_folder`, `get_inventory_folders`, `get_items_in_inventory_folder`
 
 ## Troubleshooting
 

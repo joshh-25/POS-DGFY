@@ -499,15 +499,19 @@ const generateConfirmation = async (toolName, args, user, conversationId, contex
       };
       break;
 
-    case 'create_purchase_order':
-      description = `Create Purchase Order for supplier ID ${args.supplier_id}`;
+    case 'create_purchase_order': {
+      const totalCalc = args.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unit_price || 0)), 0);
+      description = `Create Purchase Order for ${args.supplier_name || `supplier ID ${args.supplier_id}`}`;
       details = {
         supplier_id: args.supplier_id,
+        supplier_name: args.supplier_name,
         items: args.items,
         item_count: args.items.length,
+        total_amount: totalCalc,
         expected_delivery: args.expected_delivery_date
       };
       break;
+    }
 
     case 'receive_purchase_order':
       description = `Receive Purchase Order #${args.po_id}`;
@@ -655,6 +659,54 @@ const generateConfirmation = async (toolName, args, user, conversationId, contex
       };
       break;
 
+    // Inventory Grouping
+    case 'create_inventory_folder':
+      description = `Create inventory folder "${args.name}"`;
+      details = {
+        name: args.name,
+        description: args.description || '(none)',
+        note: 'This creates a logical folder to organize inventory items.'
+      };
+      break;
+
+    case 'move_items_to_inventory_folder':
+      description = `Move ${args.item_ids?.length || 0} item(s) to folder "${args.folder_name}"`;
+      details = {
+        folder_name: args.folder_name,
+        item_count: args.item_ids?.length || 0,
+        item_ids: args.item_ids
+      };
+      break;
+
+    case 'bulk_create_inventory_folders':
+      description = `Create ${args.folders.length} inventory folders`;
+      details = {
+        folder_count: args.folders.length,
+        folders: args.folders.map(f => ({
+          name: f.name,
+          description: f.description || '(none)'
+        })),
+        note: 'All folders will be created in a single operation.'
+      };
+      break;
+
+    case 'delete_inventory_folder':
+      description = `Delete inventory folder "${args.folder_name}"`;
+      details = {
+        folder_name: args.folder_name,
+        note: 'Items inside this folder will be automatically unassigned (moved to uncategorized).'
+      };
+      break;
+
+    case 'bulk_delete_inventory_folders':
+      description = `Delete ${args.folder_names.length} inventory folders`;
+      details = {
+        folder_count: args.folder_names.length,
+        folder_names: args.folder_names,
+        note: 'All items inside these folders will be automatically unassigned. This action cannot be undone.'
+      };
+      break;
+
     default:
       description = `Execute ${toolName.replace(/_/g, ' ')}`;
       details = args;
@@ -763,9 +815,9 @@ const formatResultForUI = (toolName, args, result) => {
       // --- PURCHASE ORDERS ---
       case 'create_purchase_order':
         uiResult.summary = `Purchase Order #${result.po_number} Created`;
-        const totalAmount = typeof result.total_amount === 'number'
+        const totalAmount = typeof result.total_amount === 'number' && !isNaN(result.total_amount)
           ? `$${result.total_amount.toFixed(2)}`
-          : result.total_amount || '$0.00';
+          : '$0.00';
 
         uiResult.impact = {
           "Total Cost": totalAmount,
@@ -851,6 +903,70 @@ const formatResultForUI = (toolName, args, result) => {
           "Records Processed": result.details?.success_count || "All",
           "Errors": result.details?.error_count || "0"
         };
+        break;
+
+      // --- INVENTORY GROUPING ---
+      case 'create_inventory_folder':
+        uiResult.summary = `Folder "${args.name}" Created`;
+        uiResult.impact = {
+          "Folder Name": args.name,
+          "Status": "Active"
+        };
+        if (args.description) {
+          uiResult.details = { "Description": args.description };
+        }
+        break;
+
+      case 'bulk_create_inventory_folders':
+        uiResult.summary = result.message || `${result.created_count} Folders Created`;
+        uiResult.impact = {
+          "Created": String(result.created_count),
+          "Failed": String(result.failed_count),
+          "Total Requested": String(result.total_requested)
+        };
+        if (result.created && result.created.length > 0) {
+          uiResult.details = {
+            "Folders": result.created.map(f => f.name).join(', ')
+          };
+        }
+        if (result.failed_count > 0) {
+          uiResult.success = false;
+          uiResult.details = {
+            ...uiResult.details,
+            "Failed": result.failed.map(f => `${f.name}: ${f.error}`).join('; ')
+          };
+        }
+        break;
+
+      case 'delete_inventory_folder':
+        uiResult.summary = `Folder "${result.folder_name || args.folder_name}" Deleted`;
+        uiResult.impact = {
+          "Folder Name": result.folder_name || args.folder_name,
+          "Items Unassigned": String(result.unassigned_count || 0),
+          "Status": "Deleted"
+        };
+        break;
+
+      case 'bulk_delete_inventory_folders':
+        uiResult.summary = result.message || `${result.deleted_count} Folders Deleted`;
+        uiResult.impact = {
+          "Deleted": String(result.deleted_count),
+          "Failed": String(result.failed_count),
+          "Total Requested": String(result.total_requested)
+        };
+        if (result.deleted && result.deleted.length > 0) {
+          uiResult.details = {
+            "Folders": result.deleted.map(f => f.name).join(', '),
+            "Total Items Unassigned": String(result.deleted.reduce((sum, f) => sum + (f.unassigned_count || 0), 0))
+          };
+        }
+        if (result.failed_count > 0) {
+          uiResult.success = false;
+          uiResult.details = {
+            ...uiResult.details,
+            "Failed": result.failed.map(f => `${f.name}: ${f.error}`).join('; ')
+          };
+        }
         break;
 
       default:

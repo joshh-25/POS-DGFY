@@ -35,6 +35,9 @@
 - [Phase 25: User Removal & Management Improvements](#phase-25-user-removal--management-improvements)
 - [Phase 26: SMTP Email Implementation & Login Bug Fix](#phase-26-smtp-email-implementation--login-bug-fix)
 - [Phase 27: Production Email Fix (Brevo)](#phase-27-production-email-fix-brevo)
+- [Phase 32: PO Receiving & Creation Bug Fixes](#phase-32-po-receiving--creation-bug-fixes)
+- [Phase 33: AI Image Upload Bug Fix](#phase-33-ai-image-upload-bug-fix)
+
 
 ---
 
@@ -5194,4 +5197,123 @@ Revised the deployment pipeline to be more robust, reliable, and strictly enviro
 #### 4. Git Authentication
 - [x] Updated documentation to reflect GitHub`s deprecation of password authentication.
 - [x] Deployment now requires Personal Access Token (PAT) or SSH Keys for `git pull` on the server.
+
+---
+
+## Phase 31: Inventory Folder Management Enhancements
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-07
+
+### Folder Deletion (UI)
+- [x] Added `DELETE /api/v1/items/folders/:folder_id` backend endpoint
+- [x] Added `deleteFolder()` to `itemGroupingService.js` — auto-unassigns items, then hard-deletes folder
+- [x] Added controller handler and route with `DELETE_ITEMS` permission check
+- [x] Updated `FolderCard.jsx` with three-dot dropdown menu and "Delete Folder" option (permission-gated)
+- [x] Added `DeleteConfirmDialog` for folder deletion in `Items.jsx`
+- [x] Handles both API folders (by ID) and legacy folders (by product_folder string)
+- [x] If user is inside the deleted folder, navigates back to root view
+
+### Bulk Folder Creation (AI Assistant)
+- [x] Added `bulk_create_inventory_folders` AI tool definition in `aiTools.js`
+- [x] Added execution case in `aiToolExecutor.js` — loops through folders with per-folder error handling
+- [x] Added `generateConfirmation` cases for `create_inventory_folder`, `move_items_to_inventory_folder`, and `bulk_create_inventory_folders`
+- [x] Added `formatResultForUI` cases for single and bulk folder creation result cards
+- [x] Added system prompt guidance in `aiSystemPrompt.js` directing AI to use bulk tool for 2+ folders
+- [x] Updated `ConfirmActionDialog.jsx` with icon/color mappings and custom render for folder tools
+- [x] Updated `ActionResultCard.jsx` with `inventory_folder` entity mappings
+
+### Bug Fixes
+- [x] Fixed `Infinity%` stock percentage display when `max_capacity` is 0 or null (`ItemCard.jsx`)
+- [x] Fixed textarea null value warning in `BasicInfoStep.jsx` for product description field
+
+### Files Modified
+- `backend/src/services/itemGroupingService.js`
+- `backend/src/controllers/itemController.js`
+- `backend/src/routes/items.js`
+- `backend/src/config/aiTools.js`
+- `backend/src/config/aiSystemPrompt.js`
+- `backend/src/services/aiToolExecutor.js`
+- `backend/src/services/aiService.js`
+- `frontend/src/services/itemService.js`
+- `frontend/Components/items/FolderCard.jsx`
+- `frontend/Components/items/ItemCard.jsx`
+- `frontend/Components/products/wizard/BasicInfoStep.jsx`
+- `frontend/Components/ai/ConfirmActionDialog.jsx`
+- `frontend/Components/ai/ActionResultCard.jsx`
+- `frontend/Pages/Items.jsx`
+
+
+---
+
+## Phase 32: PO Receiving & Creation Bug Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-07
+
+### Critical Bug Fixes
+
+#### 1. PO Receiving: Decimal Quantity Handling
+**Issue**: Items with decimal quantities (e.g., 0.50) were showing as 0.00 in the "Ordered" badge and were being set to 0 when clicking "Mark All Received".
+**Cause**: The frontend was using `parseInt()` on quantity strings, which truncated values less than 1 to 0.
+**Fix**:
+- Updated `POReceiptModal.jsx` to use `parseFloat()` throughout the component.
+- Added `step="0.01"` to the quantity input fields to support precise decimal entry.
+- Fixed status comparison logic to correctly identify "Received" vs "Partial" status for decimal quantities.
+
+#### 2. PO Creation: Supplier ID Key Mismatch
+**Issue**: Newly created Purchase Orders were appearing in the system with 0 line items, even after items were correctly selected in the wizard.
+**Cause**: A critical key mismatch in `POCreateWizard.jsx`. The `supplierItemMapping` state was keyed using `supplier.supplier_id || supplier.id`, but the submission loop for each supplier was only looking up the mapping using `supplier.id`. This caused the item list to be empty if the supplier's primary ID differed from its `supplier_id`.
+**Fix**:
+- Standardized the supplier ID lookup across all steps of the wizard to use `const supplierId = supplier.supplier_id || supplier.id`.
+- Applied consistency to `handleSaveDraft()`, `handleSubmit()`, and the Step 3 Review section.
+
+### Files Modified
+- `frontend/Components/po/POReceiptModal.jsx`
+- `frontend/Components/po/POCreateWizard.jsx`
+
+### Verification
+- [x] Verified that "Mark All Received" correctly handles items with decimal quantities.
+- [x] Verified that newly created POs now correctly include all selected items and their quantities.
+- [x] Confirmed the issue was specific to new POs created during the period the bug was active (existing bad data manually verified).
+
+---
+
+## Phase 33: AI Image Upload Bug Fix
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-07
+
+### Critical Bug Fix
+
+#### AI Chat Image Upload 500 Error
+**Issue**: Uploading an image to the AI Chat caused a 500 Internal Server Error with message: `string violation: title cannot be an array or an object`.
+
+**Root Cause**: 
+When a user uploads an image, the message content is stored as an **array** in the database:
+```javascript
+[
+  { type: "text", text: "User's message" },
+  { type: "image_url", image_url: { url: "data:image/jpeg;base64,..." } }
+]
+```
+
+The `generateConversationTitle()` function in `aiController.js` assumed message content was always a string. When it tried to set the conversation `title` field with this array, Sequelize threw a validation error because the database column expects a string.
+
+**Fixes Applied**:
+
+1. **`generateConversationTitle()` function** (lines 775-799):
+   - Added check for array content format
+   - Extracts text portion from array using `content.find(part => part.type === 'text')`
+   - Falls back to "Image conversation" if no text part found
+   - Added type safety check to ensure content is a string before processing
+
+2. **`getConversations()` endpoint** (lines 572-600):
+   - Added defensive JSON parsing for `conv.messages` (Sequelize sometimes returns JSON as string)
+   - Ensures messages array is properly parsed before passing to `generateConversationTitle()`
+
+### Files Modified
+- `backend/src/controllers/aiController.js`
+
+### Verification
+- [x] Image upload no longer causes 500 error
+- [x] Conversation list loads correctly even with image-containing conversations
+- [x] Conversation titles are properly extracted from text portions of messages
 

@@ -21,6 +21,7 @@ import ImportExportModal from '@/components/items/ImportExportModal';
 import CSVExportModal from '@/components/items/CSVExportModal';
 import { getStockStatus } from '@/components/data/dummyData';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCreateItemDraft, useFinalizeItem, useFolders } from '@/hooks/useItems.js';
+import { deleteFolder as deleteFolderApi } from '../src/services/itemService.js';
 import { getCurrentUser } from '../src/services/userService.js';
 import { toast } from 'sonner';
 import { cn } from "../src/lib/utils.js";
@@ -42,7 +43,7 @@ export default function Items() {
   const { updateItem, loading: updating } = useUpdateItem();
   const { deleteItem, loading: deleting } = useDeleteItem();
   const { createItemDraft } = useCreateItemDraft();
-  const { canCreate, canImport: canImportPermission, canExport: canExportPermission } = usePermission();
+  const { canCreate, canDelete: canDeletePermission, canImport: canImportPermission, canExport: canExportPermission } = usePermission();
 
   const { finalizeItem } = useFinalizeItem();
   const { folders: apiFolders, createFolder: createApiFolder, refetch: refetchFolders } = useFolders();
@@ -99,6 +100,9 @@ export default function Items() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [currentFolder, setCurrentFolder] = useState(() => getInitialState('currentFolder', null));
+  const [folderToDelete, setFolderToDelete] = useState(null);
+  const [showFolderDeleteDialog, setShowFolderDeleteDialog] = useState(false);
+  const [deletingFolder, setDeletingFolder] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [itemToMove, setItemToMove] = useState(null);
   const [activeDragItem, setActiveDragItem] = useState(null);
@@ -438,6 +442,56 @@ export default function Items() {
     setCurrentFolder(null);
   };
 
+  const handleDeleteFolderClick = (folderName) => {
+    // Look up the full folder object from apiFolders
+    const apiFolder = apiFolders?.find(f => f.name === folderName);
+    // Build folder object — use API data if available, otherwise construct from name
+    const folder = apiFolder || { name: folderName, item_count: folderCounts[folderName] || 0 };
+    setFolderToDelete(folder);
+    setShowFolderDeleteDialog(true);
+  };
+
+  const handleConfirmDeleteFolder = async () => {
+    if (!folderToDelete) return;
+    setDeletingFolder(true);
+    try {
+      if (folderToDelete.folder_id) {
+        // API folder — delete via backend
+        await deleteFolderApi(folderToDelete.folder_id);
+      } else {
+        // Legacy folder (derived from item product_folder field) — clear product_folder on all items
+        const itemsInFolder = items.filter(item => item.product_folder === folderToDelete.name);
+        for (const item of itemsInFolder) {
+          await updateItem(item.item_id, { product_folder: null, folder_id: null });
+        }
+        // Remove from transient folders if present
+        setTransientFolders(prev => {
+          const next = new Set(prev);
+          next.delete(folderToDelete.name);
+          return next;
+        });
+      }
+      toast.success(`Folder "${folderToDelete.name}" deleted successfully`);
+      // If we're inside the deleted folder, navigate out
+      if (currentFolder === folderToDelete.name) {
+        setCurrentFolder(null);
+      }
+      setShowFolderDeleteDialog(false);
+      setFolderToDelete(null);
+      refetchFolders();
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to delete folder');
+    } finally {
+      setDeletingFolder(false);
+    }
+  };
+
+  const handleCancelDeleteFolder = () => {
+    setShowFolderDeleteDialog(false);
+    setFolderToDelete(null);
+  };
+
   const openMoveModal = (item) => {
     setItemToMove(item);
     setShowMoveModal(true);
@@ -733,6 +787,8 @@ export default function Items() {
                   name={folderName}
                   itemCount={folderCounts[folderName] || 0}
                   onClick={() => handleEnterFolder(folderName)}
+                  onDelete={() => handleDeleteFolderClick(folderName)}
+                  canDelete={canDeletePermission('items')}
                 />
               ))}
 
@@ -925,6 +981,23 @@ export default function Items() {
           variant="destructive"
           loading={deleting}
           errors={deleteErrors}
+        />
+        <DeleteConfirmDialog
+          open={showFolderDeleteDialog}
+          onClose={handleCancelDeleteFolder}
+          onConfirm={handleConfirmDeleteFolder}
+          title="Delete Folder"
+          description={
+            <>
+              Are you sure you want to delete the folder <strong>{folderToDelete?.name}</strong>?
+              {folderToDelete?.item_count > 0 && (
+                <> This folder contains {folderToDelete.item_count} item(s) that will be moved out of the folder.</>
+              )}
+            </>
+          }
+          confirmText="Delete Folder"
+          variant="destructive"
+          loading={deletingFolder}
         />
         <CSVImportModal
           open={showImportModal}

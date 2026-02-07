@@ -56,7 +56,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
       quantity_received: item.quantity_received === '' ? 0 : item.quantity_received,
       expiry_date: item.expiry_date || null // Include expiry date
     }));
-    const allReceived = cleanedItems.every(item => item.quantity_received === item.quantity);
+    const allReceived = cleanedItems.every(item => parseFloat(item.quantity_received) === parseFloat(item.quantity));
     const anyReceived = cleanedItems.some(item => item.quantity_received > 0);
 
     onConfirm({
@@ -70,7 +70,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
   const markAllReceived = () => {
     setItems(prev => prev.map(item => ({
       ...item,
-      quantity_received: item.quantity,
+      quantity_received: parseFloat(item.quantity) || 0,
       quality_check: 'pass'
     })));
   };
@@ -107,9 +107,10 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                     <Input
                       type="number"
                       min={0}
-                      max={item.quantity}
+                      max={parseFloat(item.quantity) || 0}
+                      step="0.01"
                       value={item.quantity_received}
-                      onChange={(e) => updateItem(idx, 'quantity_received', e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
+                      onChange={(e) => updateItem(idx, 'quantity_received', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     />
                   </div>
                   <div className="space-y-2">

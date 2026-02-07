@@ -28,6 +28,7 @@ router.get('/supplier-coverage', itemController.getItemSupplierCoverage);
 // Folder management - must be before :item_id
 router.get('/folders', itemController.getFolders);
 router.post('/folders', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), itemController.createFolder);
+router.delete('/folders/:folder_id', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), itemController.deleteFolder);
 
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);

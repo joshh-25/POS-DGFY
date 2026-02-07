@@ -47,6 +47,12 @@ const ACTION_ICONS = {
   // User Management
   update_user_role: UserCog,
   toggle_user_status: UserX,
+  // Inventory Grouping
+  create_inventory_folder: Plus,
+  bulk_create_inventory_folders: Plus,
+  move_items_to_inventory_folder: Package,
+  delete_inventory_folder: Trash2,
+  bulk_delete_inventory_folders: Trash2,
   default: AlertTriangle
 };
 
@@ -70,6 +76,12 @@ const ACTION_COLORS = {
   // User Management
   update_user_role: 'text-fuchsia-600 bg-fuchsia-100',
   toggle_user_status: 'text-rose-600 bg-rose-100',
+  // Inventory Grouping
+  create_inventory_folder: 'text-teal-600 bg-teal-100',
+  bulk_create_inventory_folders: 'text-teal-600 bg-teal-100',
+  move_items_to_inventory_folder: 'text-teal-600 bg-teal-100',
+  delete_inventory_folder: 'text-red-600 bg-red-100',
+  bulk_delete_inventory_folders: 'text-red-600 bg-red-100',
   default: 'text-slate-600 bg-slate-100'
 };
 
@@ -187,6 +199,88 @@ export default function ConfirmActionDialog({
             <div className="text-slate-600">
               <span className="font-medium">Category:</span> {details.category}
             </div>
+          )}
+        </div>
+      );
+    }
+
+    // Bulk Inventory Folder creation
+    if (action.action_type === 'bulk_create_inventory_folders' && details.folders) {
+      return (
+        <div className="mt-4 space-y-3">
+          <div className="text-sm text-slate-600">
+            <span className="font-medium">Folders to create:</span> {details.folder_count}
+          </div>
+          <div className="bg-slate-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+            <div className="text-xs font-medium text-slate-500 uppercase mb-2">Folders</div>
+            <div className="space-y-2">
+              {details.folders.map((folder, idx) => (
+                <div key={idx} className="flex justify-between text-sm">
+                  <span className="text-slate-700 font-medium">{folder.name}</span>
+                  {folder.description && folder.description !== '(none)' && (
+                    <span className="text-slate-500 text-xs">{folder.description}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          {details.note && (
+            <div className="text-xs text-slate-500 italic">{details.note}</div>
+          )}
+        </div>
+      );
+    }
+
+    // Single Inventory Folder creation
+    if (action.action_type === 'create_inventory_folder') {
+      return (
+        <div className="mt-4 space-y-2 text-sm">
+          <div className="text-slate-600">
+            <span className="font-medium">Folder Name:</span> {details.name}
+          </div>
+          {details.description && details.description !== '(none)' && (
+            <div className="text-slate-600">
+              <span className="font-medium">Description:</span> {details.description}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Single Inventory Folder deletion
+    if (action.action_type === 'delete_inventory_folder') {
+      return (
+        <div className="mt-4 space-y-2 text-sm">
+          <div className="text-slate-600">
+            <span className="font-medium">Folder Name:</span> {details.folder_name}
+          </div>
+          {details.note && (
+            <div className="text-xs text-amber-600 italic mt-1">{details.note}</div>
+          )}
+        </div>
+      );
+    }
+
+    // Bulk Inventory Folder deletion
+    if (action.action_type === 'bulk_delete_inventory_folders' && details.folder_names) {
+      return (
+        <div className="mt-4 space-y-3">
+          <div className="text-sm text-slate-600">
+            <span className="font-medium">Folders to delete:</span> {details.folder_count}
+          </div>
+          <div className="bg-red-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+            <div className="text-xs font-medium text-red-500 uppercase mb-2">Folders</div>
+            <div className="space-y-2">
+              {details.folder_names.map((name, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-sm">
+                  <Trash2 className="w-3 h-3 text-red-400" />
+                  <span className="text-slate-700 font-medium">{name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {details.note && (
+            <div className="text-xs text-amber-600 italic">{details.note}</div>
           )}
         </div>
       );

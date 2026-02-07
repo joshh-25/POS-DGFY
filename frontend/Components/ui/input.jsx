@@ -1,7 +1,17 @@
 import React from 'react'
 import { cn } from '../../src/lib/utils.js'
 
-const Input = React.forwardRef(({ className, type, ...props }, ref) => {
+const Input = React.forwardRef(({ className, type, onWheel, ...props }, ref) => {
+  // Prevent scroll event from bubbling up when scrolling on a number input
+  // This stops the modal/page from scrolling while the value changes
+  const handleWheel = (e) => {
+    if (type === 'number') {
+      e.stopPropagation();
+    }
+    // Call any user-provided onWheel handler
+    onWheel?.(e);
+  };
+
   return (
     <input
       type={type}
@@ -10,6 +20,7 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
         className
       )}
       ref={ref}
+      onWheel={handleWheel}
       {...props}
     />
   )

@@ -46,7 +46,7 @@ export default function ItemCard({
   const status = isDraft ? 'draft' : getStockStatus(item);
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
-  const percentage = isDraft ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
+  const percentage = isDraft || !item.max_capacity ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
 
   // DnD Hook
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({

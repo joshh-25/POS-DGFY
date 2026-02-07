@@ -246,3 +246,42 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
 
 - **Alternative**: Contact your VPS provider to unblock SMTP ports
 
+
+### 17. Purchase Order "Mark All Received" sets quantity to 0
+**Symptoms**:
+- Clicking "Mark All Received" for items with decimal quantities (e.g., 0.50) sets them to 0.00.
+- "Ordered" badge shows 0.00 even though a quantity was ordered.
+
+**Cause**:
+- The frontend was using `parseInt()` to parse quantity values from strings. `parseInt("0.50")` returns `0`, truncating decimal values.
+
+**Solution**:
+- **Fixed in Code (Phase 32)**: Replaced `parseInt()` with `parseFloat()` in `POReceiptModal.jsx`. 
+- **Verification**: Refresh the page and try again. The ordered quantity should now display correctly (e.g., 0.50), and "Mark All Received" will work as expected.
+
+### 18. New Purchase Orders show "Ordered: 0.00" or have no items
+**Symptoms**:
+- After successfully creating a PO in the wizard, the PO appears in the list but shows "0 items" or clicking "View" shows items with 0.00 quantity.
+
+**Cause**:
+- A key mismatch in the `POCreateWizard.jsx`. Selected items were being mapped to a supplier using a key that combined `supplier_id` and `id`, but the submission logic was only checking against `id`. This caused the item list to be empty during the actual API call.
+
+**Solution**:
+- **Fixed in Code (Phase 32)**: Standardized the supplier lookup key throughout the wizard. 
+- **For Broken POs**: Existing POs with 0 quantity cannot be "fixed" via the UI. You should archive them and create a new PO, which will now be created correctly with the fix.
+
+### 19. AI Chat Image Upload Returns 500 Error
+**Symptoms**:
+- Uploading an image to the AI Chat fails with 500 Internal Server Error
+- Error message: `string violation: title cannot be an array or an object`
+- Loading the AI Chat page after a failed image upload also returns 500 errors
+
+**Cause**:
+- When images are uploaded, message content is stored as an array (with text and image_url parts)
+- The `generateConversationTitle()` function assumed content was always a string
+- Trying to set the conversation title with an array caused a Sequelize validation error
+
+**Solution**:
+- **Fixed in Code (Phase 33)**: Updated `aiController.js` to handle array message content
+- The fix extracts the text portion from array content and handles edge cases
+- **If still seeing errors**: Restart the backend to pick up the code changes

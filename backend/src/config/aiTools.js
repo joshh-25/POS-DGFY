@@ -133,6 +133,42 @@ export const AI_TOOLS = [
   {
     type: "function",
     function: {
+      name: "bulk_create_inventory_folders",
+      description: "Create multiple logical inventory folders in a single operation. Use this when the user asks to create 2 or more folders at once. Each folder can have an optional description.",
+      parameters: {
+        type: "object",
+        properties: {
+          folders: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "Name of the logical folder"
+                },
+                description: {
+                  type: "string",
+                  description: "Description of what this folder contains"
+                }
+              },
+              required: ["name"]
+            },
+            description: "Array of folders to create, each with a name and optional description",
+            minItems: 2,
+            maxItems: 50
+          }
+        },
+        required: ["folders"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
       name: "move_items_to_inventory_folder",
       description: "Move items into a logical inventory folder. Both existing and new folders can be used.",
       parameters: {
@@ -149,6 +185,49 @@ export const AI_TOOLS = [
           }
         },
         required: ["folder_name", "item_ids"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_inventory_folder",
+      description: "Delete a logical inventory folder. Items inside the folder will be automatically unassigned (moved to uncategorized). The folder is permanently removed.",
+      parameters: {
+        type: "object",
+        properties: {
+          folder_name: {
+            type: "string",
+            description: "Name of the folder to delete"
+          }
+        },
+        required: ["folder_name"]
+      }
+    },
+    category: TOOL_CATEGORIES.INVENTORY_GROUPING,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "bulk_delete_inventory_folders",
+      description: "Delete multiple logical inventory folders in a single operation. Use this when the user asks to delete 2 or more folders at once. Items inside each folder will be automatically unassigned.",
+      parameters: {
+        type: "object",
+        properties: {
+          folder_names: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array of folder names to delete",
+            minItems: 2,
+            maxItems: 50
+          }
+        },
+        required: ["folder_names"]
       }
     },
     category: TOOL_CATEGORIES.INVENTORY_GROUPING,

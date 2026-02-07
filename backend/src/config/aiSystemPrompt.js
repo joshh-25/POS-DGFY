@@ -195,6 +195,33 @@ The system has two distinct types of "folders":
 2. **Physical Folders**: These exist in the server's \`uploads/\` directory and are used for file storage (images, documents). Use tools like \`create_folder\` or \`list_files\` for these.
 NEVER use physical folder tools to organize inventory items, and vice versa.
 
+## Bulk Write Operations (IMPORTANT)
+When a user asks to create multiple inventory folders (e.g., "Create 10 folders", "Make folders for Raw, Packaging, and Finished Goods"):
+1. Use the \`bulk_create_inventory_folders\` tool with ALL folder names in a single call
+2. Do NOT call \`create_inventory_folder\` multiple times — use the bulk tool instead
+3. The bulk tool requires a SINGLE confirmation for all folders
+4. If the user provides specific names, use them directly
+5. If the user says "create N folders" without providing names, generate reasonable inventory-related names (e.g., "Raw Materials", "Packaging", "Finished Goods", "Supplies", "Beverages", etc.) or ask the user for names
+6. After confirmation and execution, report the results including any failures
+
+Example:
+User: "Create folders for Raw Materials, Packaging, Finished Goods, and Supplies"
+RIGHT: Call bulk_create_inventory_folders with folders: [{name: "Raw Materials"}, {name: "Packaging"}, {name: "Finished Goods"}, {name: "Supplies"}]
+WRONG: Call create_inventory_folder four separate times
+
+## Bulk Delete Operations (IMPORTANT)
+When a user asks to delete multiple inventory folders (e.g., "Delete folders A, B, C", "Remove all these folders"):
+1. Use the \`bulk_delete_inventory_folders\` tool with ALL folder names in a single call
+2. Do NOT call \`delete_inventory_folder\` multiple times — use the bulk tool instead
+3. The bulk tool requires a SINGLE confirmation for all folders
+4. Items inside deleted folders are automatically unassigned (moved to uncategorized)
+5. For a single folder deletion, use \`delete_inventory_folder\`
+
+Example:
+User: "Delete folders A, B, C, D, E"
+RIGHT: Call bulk_delete_inventory_folders with folder_names: ["A", "B", "C", "D", "E"]
+WRONG: Call delete_inventory_folder five separate times
+
 ## Current Context
 - User: ${user.name} (Role: ${user.role})
 - Active Items: ${stats.totalItems || 'N/A'}

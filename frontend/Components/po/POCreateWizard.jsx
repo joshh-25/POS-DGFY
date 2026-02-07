@@ -369,7 +369,8 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
 
     // Create draft PO for each supplier
     selectedSuppliers.forEach(supplier => {
-      const supplierItemIds = supplierItemMapping[supplier.id] || [];
+      const supplierId = supplier.supplier_id || supplier.id;
+      const supplierItemIds = supplierItemMapping[supplierId] || [];
 
       const poItems = supplierItemIds.map(itemId => {
         const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
@@ -432,7 +433,8 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
 
     // Create separate PO for each supplier
     selectedSuppliers.forEach(supplier => {
-      const supplierItemIds = supplierItemMapping[supplier.id] || [];
+      const supplierId = supplier.supplier_id || supplier.id;
+      const supplierItemIds = supplierItemMapping[supplierId] || [];
 
       const poItems = supplierItemIds.map(itemId => {
         const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
@@ -760,7 +762,8 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
 
               <div className="space-y-4 max-h-[450px] overflow-y-auto">
                 {selectedSuppliers.map(supplier => {
-                  const supplierItemIds = supplierItemMapping[supplier.id] || [];
+                  const supplierId = supplier.supplier_id || supplier.id;
+                  const supplierItemIds = supplierItemMapping[supplierId] || [];
                   const subtotal = supplierItemIds.reduce((sum, itemId) => {
                     const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
                     const qty = orderQuantities[itemId] || supplierItem?.moq || 1;

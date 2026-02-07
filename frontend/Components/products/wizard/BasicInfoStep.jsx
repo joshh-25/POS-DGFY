@@ -65,7 +65,7 @@ export default function BasicInfoStep({ data, updateData }) {
         <Label>Description</Label>
         <Textarea
           placeholder="Describe your product, its features, and intended use..."
-          value={data.description}
+          value={data.description ?? ''}
           onChange={(e) => updateData({ description: e.target.value })}
           className="h-24"
         />

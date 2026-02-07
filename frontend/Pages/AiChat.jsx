@@ -227,11 +227,22 @@ export default function AiChat() {
     const handleSendMessage = async () => {
         if (!inputValue.trim() || isTyping) return;
 
+        // Build file metadata for display in chat bubble
+        const fileMetadata = attachments.length > 0
+            ? attachments.map(file => ({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+            }))
+            : undefined;
+
         const userMessage = {
             id: `user-${Date.now()}`,
             role: 'user',
             content: inputValue,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            attachments: fileMetadata
         };
 
         setMessages(prev => [...prev, userMessage]);
@@ -403,6 +414,14 @@ export default function AiChat() {
         }
     }, []);
 
+    // Auto-resize textarea height
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+            inputRef.current.style.height = `${inputRef.current.scrollHeight}px`;
+        }
+    }, [inputValue]);
+
     return (
         <div
             className="flex h-[calc(100vh-6rem)] bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative"
@@ -543,7 +562,41 @@ export default function AiChat() {
                                                 : "bg-white border border-slate-200 text-slate-800 rounded-tl-none"
                                 )}>
                                     {msg.role === 'user' ? (
-                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                        <div>
+                                            {/* Render file attachments from current session */}
+                                            {msg.attachments && msg.attachments.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mb-2">
+                                                    {msg.attachments.map((file, idx) => (
+                                                        <div key={idx} className="rounded-lg overflow-hidden">
+                                                            {file.preview ? (
+                                                                <img src={file.preview} alt={file.name}
+                                                                    className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
+                                                                    <FileText className="w-4 h-4 text-slate-300" />
+                                                                    <span className="text-sm text-slate-300 truncate max-w-[150px]">{file.name}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {/* Render images from stored conversation history (base64 in content array) */}
+                                            {!msg.attachments && Array.isArray(msg.content) && (
+                                                <div className="flex flex-wrap gap-2 mb-2">
+                                                    {msg.content.filter(part => part.type === 'image_url').map((part, idx) => (
+                                                        <img key={idx} src={part.image_url?.url} alt={`Attachment ${idx + 1}`}
+                                                            className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {/* Render text content */}
+                                            <div className="whitespace-pre-wrap">
+                                                {Array.isArray(msg.content)
+                                                    ? msg.content.find(part => part.type === 'text')?.text || ''
+                                                    : msg.content}
+                                            </div>
+                                        </div>
                                     ) : (
                                         <MarkdownRenderer content={msg.content} />
                                     )}

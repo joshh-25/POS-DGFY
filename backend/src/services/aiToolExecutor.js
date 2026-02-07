@@ -79,6 +79,9 @@ const getAuditConfig = (toolName) => {
 
     // INVENTORY GROUPING
     'create_inventory_folder': { action: 'CREATE', entityType: 'ItemFolder' },
+    'bulk_create_inventory_folders': { action: 'CREATE', entityType: 'BulkItemFolder' },
+    'delete_inventory_folder': { action: 'DELETE', entityType: 'ItemFolder' },
+    'bulk_delete_inventory_folders': { action: 'DELETE', entityType: 'BulkItemFolder' },
     'move_items_to_inventory_folder': { action: 'UPDATE', entityType: 'Item' }
   };
 
@@ -332,6 +335,31 @@ export const execute = async (toolName, args, user) => {
         result = await itemGroupingService.createFolder(args.name, args.description);
         break;
 
+      case 'bulk_create_inventory_folders': {
+        const created = [];
+        const failed = [];
+        for (const folder of args.folders) {
+          try {
+            const folderResult = await itemGroupingService.createFolder(folder.name, folder.description || '');
+            created.push({ name: folder.name, folder_id: folderResult.folder_id, success: true });
+          } catch (error) {
+            failed.push({ name: folder.name, success: false, error: error.message });
+          }
+        }
+        result = {
+          success: failed.length === 0,
+          total_requested: args.folders.length,
+          created_count: created.length,
+          failed_count: failed.length,
+          created,
+          failed,
+          message: failed.length === 0
+            ? `Successfully created ${created.length} inventory folder(s)`
+            : `Created ${created.length} of ${args.folders.length} folders. ${failed.length} failed.`
+        };
+        break;
+      }
+
       case 'move_items_to_inventory_folder':
         result = await itemGroupingService.assignItemsToFolder(args.folder_name, args.item_ids);
         break;
@@ -339,6 +367,49 @@ export const execute = async (toolName, args, user) => {
       case 'get_items_in_inventory_folder':
         result = await itemGroupingService.getFolderDetails(args.folder_name);
         break;
+
+      case 'delete_inventory_folder': {
+        // Look up folder by name to get the ID
+        const allFolders = await itemGroupingService.listFolders();
+        const targetFolder = allFolders.find(f => f.name.toLowerCase() === args.folder_name.toLowerCase());
+        if (!targetFolder) {
+          throw new Error(`Folder "${args.folder_name}" not found`);
+        }
+        result = await itemGroupingService.deleteFolder(targetFolder.folder_id);
+        result.folder_name = args.folder_name;
+        break;
+      }
+
+      case 'bulk_delete_inventory_folders': {
+        const folders = await itemGroupingService.listFolders();
+        const deleted = [];
+        const failedDeletes = [];
+        for (const folderName of args.folder_names) {
+          try {
+            const match = folders.find(f => f.name.toLowerCase() === folderName.toLowerCase());
+            if (!match) {
+              failedDeletes.push({ name: folderName, success: false, error: `Folder "${folderName}" not found` });
+              continue;
+            }
+            const deleteResult = await itemGroupingService.deleteFolder(match.folder_id);
+            deleted.push({ name: folderName, folder_id: match.folder_id, unassigned_count: deleteResult.unassigned_count, success: true });
+          } catch (error) {
+            failedDeletes.push({ name: folderName, success: false, error: error.message });
+          }
+        }
+        result = {
+          success: failedDeletes.length === 0,
+          total_requested: args.folder_names.length,
+          deleted_count: deleted.length,
+          failed_count: failedDeletes.length,
+          deleted,
+          failed: failedDeletes,
+          message: failedDeletes.length === 0
+            ? `Successfully deleted ${deleted.length} inventory folder(s)`
+            : `Deleted ${deleted.length} of ${args.folder_names.length} folders. ${failedDeletes.length} failed.`
+        };
+        break;
+      }
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -748,7 +819,7 @@ async function createPurchaseOrder(args, user) {
     notes: args.notes,
     line_items: args.items.map(item => ({
       item_id: item.item_id,
-      quantity: item.quantity,
+      quantity_ordered: item.quantity,
       unit_price: item.unit_price
     }))
   };

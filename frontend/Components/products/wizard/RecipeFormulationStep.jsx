@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Beaker, Package, Info, Search, Calculator } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
 import { formatNumber } from '../../../src/lib/numberUtils.js';
@@ -250,69 +251,77 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
         </div>
       </div>
 
-      {/* Ingredient Selection Tabs */}
-      <div className="space-y-3">
-        <Label>Select Ingredients *</Label>
-        <Tabs defaultValue="raw-ingredients" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="raw-ingredients" className="flex items-center gap-2">
-              <Beaker className="w-4 h-4" />
-              Raw Ingredients ({availableIngredients.length})
-            </TabsTrigger>
-            <TabsTrigger value="product-components" className="flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Product Components ({productComponentItems.length})
-            </TabsTrigger>
-          </TabsList>
+      {/* Ingredient Selection Accordion */}
+      <Accordion type="single" collapsible defaultValue="ingredient-selection" className="w-full">
+        <AccordionItem value="ingredient-selection" className="border border-slate-200 rounded-lg px-4 data-[state=closed]:bg-slate-50/50 transition-colors">
+          <AccordionTrigger className="hover:no-underline py-3">
+            <Label className="cursor-pointer text-base font-semibold text-slate-700">Select Ingredients *</Label>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-3 pt-1">
+              <Tabs defaultValue="raw-ingredients" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="raw-ingredients" className="flex items-center gap-2">
+                    <Beaker className="w-4 h-4" />
+                    Raw Ingredients ({availableIngredients.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="product-components" className="flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Product Components ({productComponentItems.length})
+                  </TabsTrigger>
+                </TabsList>
 
-          <TabsContent value="raw-ingredients" className="space-y-3 mt-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                type="search"
-                placeholder="Search raw ingredients..."
-                className="pl-10"
-                value={rawIngredientSearch}
-                onChange={(e) => setRawIngredientSearch(e.target.value)}
-              />
-            </div>
-            <div className="max-h-64 overflow-y-auto space-y-2">
-              {filteredRawIngredients.length === 0 ? (
-                <p className="text-center text-slate-500 py-4">No raw ingredients found</p>
-              ) : (
-                filteredRawIngredients.map(item => renderIngredientItem(item, 'raw'))
-              )}
-            </div>
-          </TabsContent>
+                <TabsContent value="raw-ingredients" className="space-y-3 mt-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      type="search"
+                      placeholder="Search raw ingredients..."
+                      className="pl-10"
+                      value={rawIngredientSearch}
+                      onChange={(e) => setRawIngredientSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {filteredRawIngredients.length === 0 ? (
+                      <p className="text-center text-slate-500 py-4">No raw ingredients found</p>
+                    ) : (
+                      filteredRawIngredients.map(item => renderIngredientItem(item, 'raw'))
+                    )}
+                  </div>
+                </TabsContent>
 
-          <TabsContent value="product-components" className="space-y-3 mt-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-800">
-                <p className="font-medium">Nested Products</p>
-                <p>You can use other products as ingredients. Maximum nesting depth is 3 levels. Circular dependencies are automatically prevented.</p>
-              </div>
+                <TabsContent value="product-components" className="space-y-3 mt-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium">Nested Products</p>
+                      <p>You can use other products as ingredients. Maximum nesting depth is 3 levels. Circular dependencies are automatically prevented.</p>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      type="search"
+                      placeholder="Search product components..."
+                      className="pl-10"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {filteredProductComponents.length === 0 ? (
+                      <p className="text-center text-slate-500 py-4">No product components found</p>
+                    ) : (
+                      filteredProductComponents.map(item => renderIngredientItem(item, 'product'))
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                type="search"
-                placeholder="Search product components..."
-                className="pl-10"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-              />
-            </div>
-            <div className="max-h-64 overflow-y-auto space-y-2">
-              {filteredProductComponents.length === 0 ? (
-                <p className="text-center text-slate-500 py-4">No product components found</p>
-              ) : (
-                filteredProductComponents.map(item => renderIngredientItem(item, 'product'))
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       {/* Selected Ingredients List */}
       {ingredients.length > 0 && (

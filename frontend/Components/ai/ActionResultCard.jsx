@@ -52,7 +52,8 @@ const ENTITY_ICONS = {
   supplier: Users,
   job_order: Clipboard,
   stock_movement: FileText,
-  settings: Settings
+  settings: Settings,
+  inventory_folder: Package
 };
 
 const ENTITY_PATHS = {
@@ -61,7 +62,8 @@ const ENTITY_PATHS = {
   supplier: '/suppliers',
   job_order: '/job-orders',
   stock_movement: '/stock-movements',
-  settings: '/settings'
+  settings: '/settings',
+  inventory_folder: '/items'
 };
 
 export default function ActionResultCard({ result, onViewDetails }) {

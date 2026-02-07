@@ -1,6 +1,6 @@
-> **Version:** 1.6.0
-> **Last Updated:** February 5, 2026
-> **Tool Count:** 48
+> **Version:** 1.7.0
+> **Last Updated:** February 7, 2026
+> **Tool Count:** 49
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
@@ -43,6 +43,10 @@ The SKUpervisor AI Assistant is powered by OpenAI's GPT-4 model and provides nat
 | **Create JO** | Manager+ | Create production job orders |
 | **Complete JO** | Manager+ | Finish job, update inventory |
 | **Stock Adjustment** | Manager+ | Manual stock corrections |
+| **Create Folder** | Manager+ | Create inventory folder |
+| **Bulk Create Folders** | Manager+ | Create multiple folders in one operation |
+| **Delete Folder** | Manager+ | Delete an inventory folder (auto-unassigns items) |
+| **Bulk Delete Folders** | Manager+ | Delete multiple folders in one operation |
 
 ### User Management (Admin Only)
 
@@ -577,3 +581,16 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Smart Resolution**: AI tools (`update_user_role`, `toggle_user_status`, `update_user_permissions`) now accept `email` and `username` as identifiers.
 - **Conflict Prevention**: If multiple identifiers are provided (e.g. ID + Email), the system strictly cross-validates them. If they don't match the same user, the action is blocked with a descriptive error.
 - **Safety**: Prevents "hallucinated ID" errors by allowing the AI to prefer semantic identifiers (Email/Name) which are less prone to model confusion than numeric IDs.
+
+### v1.7.0 (February 7, 2026) - Bulk Folder Creation & Folder Deletion
+- **Tool Count**: Increased from 48 to **51 tools**
+- **New Tools**:
+  - `bulk_create_inventory_folders` — Create multiple inventory folders in a single operation with one confirmation dialog
+  - `delete_inventory_folder` — Delete a single inventory folder via AI chat (looks up by name, auto-unassigns items)
+  - `bulk_delete_inventory_folders` — Delete multiple inventory folders in a single operation with one confirmation dialog
+- **Folder Deletion**: New `DELETE /api/v1/items/folders/:folder_id` endpoint. Items in deleted folders are auto-unassigned (hard delete).
+- **Confirmation Fix**: `create_inventory_folder` and `move_items_to_inventory_folder` now have proper confirmation dialogs instead of falling through to generic JSON display.
+- **UI Result Cards**: Folder creation/deletion (single and bulk) now show formatted success cards with impact stats.
+- **System Prompt**: Added "Bulk Write Operations" and "Bulk Delete Operations" guidance instructing the AI to use bulk tools for 2+ folders.
+- **Frontend**: FolderCard now has a dropdown menu with "Delete Folder" option (permission-gated).
+- **ConfirmActionDialog**: Delete folder confirmations show red-themed icons and warnings about item unassignment.

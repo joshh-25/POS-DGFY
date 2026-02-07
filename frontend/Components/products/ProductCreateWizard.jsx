@@ -199,8 +199,11 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
     // Check if we should show confirmation for unsaved changes
     const hasName = productData.name && productData.name.trim().length > 0;
     const hasSku = productData.sku_code && productData.sku_code.trim().length > 0;
-    const hasAnyData = hasName || hasSku || isDirty || step > 1;
-    const shouldShowConfirmation = !product && hasAnyData;
+
+    // Allow closing if just viewing (no dirtiness check needed if not editable, but here we assume editable)
+    // For new products: check if any data entered
+    // For existing products: check isDirty
+    const shouldShowConfirmation = product ? isDirty : (hasName || hasSku || isDirty || step > 1);
 
     if (shouldShowConfirmation) {
       setShowConfirmation(true);
@@ -269,12 +272,19 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
       }
 
       // Ensure other numeric fields are not NaN
-      const numericFields = ['batch_size', 'yield_percentage', 'processing_loss', 'current_stock', 'max_capacity', 'min_threshold', 'purchase_allowance'];
+      // batch_size must be positive or null, not 0
+      const numericFields = ['yield_percentage', 'processing_loss', 'current_stock', 'max_capacity', 'min_threshold', 'purchase_allowance'];
       numericFields.forEach(field => {
         if (field in sanitized) {
           sanitized[field] = Number(sanitized[field]) || 0;
         }
       });
+
+      // batch_size requires special handling: must be positive or null (not 0)
+      if ('batch_size' in sanitized) {
+        const batchSizeValue = Number(sanitized.batch_size);
+        sanitized.batch_size = batchSizeValue > 0 ? batchSizeValue : null;
+      }
 
       // Ensure packaging_info is an object
       if (!sanitized.packaging_info || typeof sanitized.packaging_info !== 'object') {
@@ -411,10 +421,19 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
       <ConfirmationDialog
         open={showConfirmation}
         onOpenChange={setShowConfirmation}
-        title="Save Draft?"
-        message="You have unsaved changes. Would you like to save them as a draft?"
-        onSaveDraft={handleSaveDraft}
+        title={product && product.status !== 'draft' ? "Unsaved Changes" : "Save Draft?"}
+        message={
+          product && product.status !== 'draft'
+            ? "You have unsaved changes to this product. What would you like to do?"
+            : "You have unsaved changes. Would you like to save them as a draft?"
+        }
+        saveDraftLabel={product && product.status !== 'draft' ? "Save Changes" : "Save as Draft"}
+        discardLabel="Discard Changes"
+        continueEditingLabel="Continue Editing"
+        onSaveDraft={product && product.status !== 'draft' ? handleSubmit : handleSaveDraft}
         onDiscard={() => {
+          // If discarding changes on an existing product, we just close and reset
+          // effectively reverting to the original state (since we reload from props on open)
           setIsDirty(false);
           resetWizard();
           onClose();

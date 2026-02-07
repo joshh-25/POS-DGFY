@@ -36,7 +36,7 @@
 8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
-11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **48 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence.
+11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **51 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence. Supports bulk folder creation/deletion via single confirmation.
 12. **Email Notifications (Gmail SMTP)**: Automated emails for user invitations, company approval/rejection notifications. Uses Nodemailer with graceful degradation (failures don't block operations).
 
 ## 🤖 AI Assistant Features
@@ -56,7 +56,7 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - Write operations require confirmation (5-minute expiry)
 - Conversations retained for 30 days
 - Role-based permissions (Staff: read-only, Manager+: write access)
-- 41 AI tools mapped to existing backend services
+- 49 AI tools mapped to existing backend services (includes bulk folder creation)
 - **Multi-Tenant Isolation**: Uses `dbStore.get()` for tenant-aware database writes
 - **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
 

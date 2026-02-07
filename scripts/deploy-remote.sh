@@ -10,7 +10,8 @@
 # Usage: ./scripts/deploy-remote.sh
 
 # Configuration
-REMOTE_HOST="hermes-cloud"
+REMOTE_HOST="192.53.116.33"
+REMOTE_PORT="64428"
 REMOTE_USER="root"
 REMOTE_DIR="/var/www/skupervisor"
 DEPLOY_SCRIPT="scripts/deploy.sh"
@@ -37,7 +38,7 @@ fi
 # 3. Trigger Remote Deployment
 echo -e "\n📡 \033[1;33mConnecting to server to start deployment...\033[0m"
 
-ssh -t "$REMOTE_USER@$REMOTE_HOST" "
+ssh -t -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" "
     echo '>> Connected to remote server.'
     cd $REMOTE_DIR || exit 1
     

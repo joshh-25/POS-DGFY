@@ -150,9 +150,39 @@ export const getFolderDetails = async (folderName) => {
     }
 };
 
+/**
+ * Delete an inventory folder and unassign all items inside it
+ */
+export const deleteFolder = async (folderId) => {
+    const ItemFolder = dbStore.get('ItemFolder');
+    const Item = dbStore.get('Item');
+
+    const folder = await ItemFolder.findByPk(folderId);
+    if (!folder) {
+        const error = new Error('Folder not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    // Unassign all items in this folder
+    const [unassignedCount] = await Item.update(
+        { folder_id: null, product_folder: null },
+        { where: { folder_id: folderId } }
+    );
+
+    await folder.destroy();
+
+    return {
+        success: true,
+        unassigned_count: unassignedCount,
+        message: `Folder "${folder.name}" deleted successfully. ${unassignedCount} item(s) unassigned.`
+    };
+};
+
 export default {
     listFolders,
     createFolder,
     assignItemsToFolder,
-    getFolderDetails
+    getFolderDetails,
+    deleteFolder
 };

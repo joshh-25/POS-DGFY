@@ -232,3 +232,18 @@ export const createFolder = async (req, res, next) => {
   }
 };
 
+export const deleteFolder = async (req, res, next) => {
+  try {
+    const { folder_id } = req.params;
+    const result = await itemGroupingService.deleteFolder(folder_id);
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.message,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
