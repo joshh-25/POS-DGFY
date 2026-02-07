@@ -37,6 +37,7 @@
 - [Phase 27: Production Email Fix (Brevo)](#phase-27-production-email-fix-brevo)
 - [Phase 32: PO Receiving & Creation Bug Fixes](#phase-32-po-receiving--creation-bug-fixes)
 - [Phase 33: AI Image Upload Bug Fix](#phase-33-ai-image-upload-bug-fix)
+- [Phase 34: AI PO Fix, Folder Deletion Tools & Chat File Display](#phase-34-ai-po-fix-folder-deletion-tools--chat-file-display)
 
 
 ---
@@ -5274,6 +5275,71 @@ Revised the deployment pipeline to be more robust, reliable, and strictly enviro
 - [x] Verified that "Mark All Received" correctly handles items with decimal quantities.
 - [x] Verified that newly created POs now correctly include all selected items and their quantities.
 - [x] Confirmed the issue was specific to new POs created during the period the bug was active (existing bad data manually verified).
+
+---
+
+## Phase 34: AI PO Fix, Folder Deletion Tools & Chat File Display
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-07
+
+### Bug Fixes
+
+#### 1. Purchase Order $NaN Total Cost
+- **Issue**: POs created via AI showed `$NaN` for total cost in the result card
+- **Root Cause**: `aiToolExecutor.js` sent `quantity` but `purchaseOrderService.createPurchaseOrder()` expected `quantity_ordered`. `parseFloat(undefined)` → `NaN`.
+- **Fix**: Changed field name in `aiToolExecutor.js` line 822: `quantity` → `quantity_ordered`
+- **Defense**: Added `!isNaN()` guard in `aiService.js` `formatResultForUI`
+- **Bonus**: Improved PO confirmation to show supplier name and pre-calculated total
+
+#### 2. Infinity% Stock Display
+- **Issue**: ItemCard showed `Infinity%` when `max_capacity` was 0 or null
+- **Fix**: Added `!item.max_capacity` guard before division in `ItemCard.jsx`
+
+#### 3. Textarea Null Value Warning
+- **Issue**: Console warning for null value in BasicInfoStep.jsx textarea
+- **Fix**: Added `?? ''` nullish coalescing for `data.description`
+
+### New Features
+
+#### AI Folder Deletion Tools (2 new tools → 51 total)
+- `delete_inventory_folder` — Delete a single folder by name via AI chat
+- `bulk_delete_inventory_folders` — Delete multiple folders in one operation
+- Full pipeline: tool definitions, execution (name→ID lookup), confirmation dialogs (red-themed), result cards, system prompt guidance
+- Files: `aiTools.js`, `aiToolExecutor.js`, `aiService.js`, `aiSystemPrompt.js`, `ConfirmActionDialog.jsx`
+
+#### AI Bulk Folder Creation Tool
+- `bulk_create_inventory_folders` — Create 2-50 folders in a single operation
+- Fixes issue where "Create 10 folders" only created 1 (single-tool-per-confirmation limitation)
+- System prompt instructs AI to use bulk tool for 2+ folders
+
+#### Chat File/Image Display
+- Uploaded images now display as thumbnails in user message bubbles
+- Non-image files show as name badges with file icon
+- Works for both current session (blob URLs) and loaded history (base64 from stored content array)
+- File: `frontend/Pages/AiChat.jsx`
+
+#### UI Folder Deletion
+- FolderCard dropdown menu with "Delete Folder" option (permission-gated)
+- Confirmation dialog with item unassignment warning
+- Handles both API folders (by ID) and legacy folders (by name)
+- Files: `FolderCard.jsx`, `Items.jsx`, `itemService.js`, `itemGroupingService.js`, `itemController.js`, `items.js` route
+
+### Files Modified
+- `backend/src/config/aiTools.js` — 3 new tool definitions
+- `backend/src/services/aiToolExecutor.js` — Execution cases + PO field fix
+- `backend/src/services/aiService.js` — Confirmation + result formatting cases + NaN guard
+- `backend/src/config/aiSystemPrompt.js` — Bulk operations guidance
+- `backend/src/services/itemGroupingService.js` — `deleteFolder()` function
+- `backend/src/controllers/itemController.js` — `deleteFolder` handler
+- `backend/src/routes/items.js` — DELETE folder route
+- `frontend/Pages/AiChat.jsx` — File display in message bubbles
+- `frontend/Pages/Items.jsx` — Folder deletion UI + Infinity% fix
+- `frontend/Components/items/FolderCard.jsx` — Dropdown menu with delete
+- `frontend/Components/items/ItemCard.jsx` — Infinity% guard
+- `frontend/Components/products/wizard/BasicInfoStep.jsx` — Null textarea fix
+- `frontend/Components/ai/ConfirmActionDialog.jsx` — Folder delete icons/colors/renders
+- `frontend/Components/ai/ActionResultCard.jsx` — Entity mappings
+- `frontend/src/services/itemService.js` — `deleteFolder()` API call
 
 ---
 

@@ -83,7 +83,8 @@
       "Bash(c:/xampp/mysql/bin/mysql -u root -e \"SHOW INDEX FROM users;\" sku_inventory_manager)",
       "Bash(c:/xampp/mysql/bin/mysql:*)",
       "Bash(pm2 restart:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git -C \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\" log --oneline -1)"
     ]
   }
 }

@@ -56,7 +56,7 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - Write operations require confirmation (5-minute expiry)
 - Conversations retained for 30 days
 - Role-based permissions (Staff: read-only, Manager+: write access)
-- 49 AI tools mapped to existing backend services (includes bulk folder creation)
+- 51 AI tools mapped to existing backend services (includes bulk folder creation/deletion)
 - **Multi-Tenant Isolation**: Uses `dbStore.get()` for tenant-aware database writes
 - **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
 

@@ -330,7 +330,22 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
   ```
 - **Verification**: Run `git pull origin master` - it should work without prompting
 
-### 22. PM2 "--env production" Fails Without ecosystem.config.js
+### 22. AI-Created Purchase Orders Show $NaN Total Cost
+**Symptoms**:
+- Creating a Purchase Order via AI chat results in `$NaN` for "Total Cost" in the result card
+- The PO is created in the database but with `NaN` for `total_amount`
+
+**Cause**:
+- Field name mismatch between `aiToolExecutor.js` and `purchaseOrderService.js`
+- The AI executor sent `quantity` but the PO service expected `quantity_ordered`
+- `parseFloat(undefined)` → `NaN`, which propagated through all calculations
+
+**Solution**:
+- Fixed in `aiToolExecutor.js` line 822: changed `quantity: item.quantity` to `quantity_ordered: item.quantity`
+- Added `!isNaN()` guard in `aiService.js` `formatResultForUI` as defensive fallback
+- **Verification**: Create a PO via AI → result card should show correct dollar amount
+
+### 23. PM2 "--env production" Fails Without ecosystem.config.js
 **Symptoms**:
 - `pm2 restart all --env production` fails with:
   `[PM2][ERROR] Using --env [env] without passing the ecosystem.config.js does not work`

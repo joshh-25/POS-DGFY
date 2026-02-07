@@ -582,6 +582,13 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Conflict Prevention**: If multiple identifiers are provided (e.g. ID + Email), the system strictly cross-validates them. If they don't match the same user, the action is blocked with a descriptive error.
 - **Safety**: Prevents "hallucinated ID" errors by allowing the AI to prefer semantic identifiers (Email/Name) which are less prone to model confusion than numeric IDs.
 
+### v1.7.1 (February 7, 2026) - PO NaN Fix & Chat File Display
+- **Bug Fix**: Purchase Orders created via AI showed `$NaN` for total cost. Root cause: field name mismatch — `aiToolExecutor.js` sent `quantity` but `purchaseOrderService` expected `quantity_ordered`. Fixed in `aiToolExecutor.js` line 822.
+- **NaN Guard**: Added `!isNaN()` check in `aiService.js` `formatResultForUI` to prevent NaN values from displaying in result cards.
+- **PO Confirmation Improvement**: `generateConfirmation` for `create_purchase_order` now shows supplier name (not just ID) and pre-calculates total amount.
+- **Chat File Display**: Uploaded images and files now display inline in user message bubbles in AI chat (`AiChat.jsx`). Images show as thumbnails, non-image files show as name badges with file icon.
+- **Conversation History**: Images from loaded conversations (stored as base64 in the `content` array) are rendered correctly when reopening past conversations.
+
 ### v1.7.0 (February 7, 2026) - Bulk Folder Creation & Folder Deletion
 - **Tool Count**: Increased from 48 to **51 tools**
 - **New Tools**:
