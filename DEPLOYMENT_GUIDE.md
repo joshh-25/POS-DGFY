@@ -149,3 +149,42 @@ Check your `.env` credentials and ensure MySQL is running:
 ```bash
 systemctl status mysql
 ```
+
+
+---
+
+## Quick One-Liner Deployment (From Local Machine)
+
+After committing your changes locally, you can deploy with a single command:
+
+```bash
+git push origin master; ssh -p 64428 root@192.53.116.33 "cd /var/www/skupervisor && ./scripts/deploy.sh"
+```
+
+> [!NOTE]
+> You will be prompted for the SSH password. The `git pull` on the server uses a stored GitHub PAT, so no password is needed there.
+
+---
+
+## Server Details
+
+| Property | Value |
+|----------|-------|
+| IP Address | 192.53.116.33 |
+| SSH Port | 64428 |
+| User | root |
+| Deploy Path | /var/www/skupervisor |
+| Frontend URL | https://skupervisor.surebizcorp.com |
+
+---
+
+## ecosystem.config.js
+
+The project includes a PM2 ecosystem configuration file in the root directory. This file:
+- Defines `sku-backend` and `sku-frontend` processes
+- Sets `env_production` variables (`NODE_ENV=production`, `PORT=5001`)
+- Allows using `pm2 startOrRestart ecosystem.config.js --env production`
+
+> [!IMPORTANT]
+> If you use `pm2 restart all --env production` without the ecosystem file, it will fail. Always use `pm2 startOrRestart ecosystem.config.js --env production` for strict environment control.
+

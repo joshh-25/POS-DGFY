@@ -285,3 +285,61 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
 - **Fixed in Code (Phase 33)**: Updated `aiController.js` to handle array message content
 - The fix extracts the text portion from array content and handles edge cases
 - **If still seeing errors**: Restart the backend to pick up the code changes
+
+
+### 20. SSH Connection Timeout During Remote Deployment
+**Symptoms**:
+- Running `./scripts/deploy-remote.sh` fails with `ssh: connect to host ... port 22: Connection timed out`
+- Cannot SSH into server from local machine
+
+**Cause**:
+- SSH alias (e.g., `hermes-cloud`) is not configured in `~/.ssh/config`
+- Server uses a non-standard SSH port (not 22)
+- Firewall or network restrictions
+
+**Solution**:
+- **Option 1**: Add SSH config to `~/.ssh/config`:
+  ```
+  Host hermes-cloud
+      HostName 192.53.116.33
+      Port 64428
+      User root
+  ```
+- **Option 2**: Use explicit port in command: `ssh -p 64428 root@192.53.116.33`
+- **Fallback**: Push to GitHub, then manually SSH and run `./scripts/deploy.sh`
+
+### 21. Git Pull Fails with "Password Authentication Not Supported"
+**Symptoms**:
+- Running `git pull` on server prompts for password
+- Error: `remote: Invalid username or token. Password authentication is not supported for Git operations.`
+
+**Cause**:
+- GitHub deprecated password authentication in 2021
+- The server is using HTTPS remote with no stored credentials
+
+**Solution**:
+- **Configure Git Credential Helper with PAT**:
+  ```bash
+  # On the server
+  git config --global credential.helper store
+  echo "https://YOUR_USERNAME:YOUR_GITHUB_PAT@github.com" > ~/.git-credentials
+  ```
+- **Alternative**: Switch to SSH remote:
+  ```bash
+  git remote set-url origin git@github.com:USERNAME/REPO.git
+  ```
+- **Verification**: Run `git pull origin master` - it should work without prompting
+
+### 22. PM2 "--env production" Fails Without ecosystem.config.js
+**Symptoms**:
+- `pm2 restart all --env production` fails with:
+  `[PM2][ERROR] Using --env [env] without passing the ecosystem.config.js does not work`
+
+**Cause**:
+- The `--env` flag requires an ecosystem config file that defines environment-specific variables
+
+**Solution**:
+- Use the ecosystem file: `pm2 startOrRestart ecosystem.config.js --env production`
+- Or restart without env flag: `pm2 restart all --update-env`
+- **Verification**: Check `ecosystem.config.js` exists in project root with `env_production` block
+

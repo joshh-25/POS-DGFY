@@ -5317,3 +5317,46 @@ The `generateConversationTitle()` function in `aiController.js` assumed message 
 - [x] Conversation list loads correctly even with image-containing conversations
 - [x] Conversation titles are properly extracted from text portions of messages
 
+
+
+---
+
+## Phase 31: Local-to-Production Deployment Automation
+**Status**: ? COMPLETE  
+**Date**: 2026-02-07
+
+### Server Credential Configuration
+- [x] Configured `deploy-remote.sh` with production server details:
+    - IP: `192.53.116.33`
+    - Port: `64428`
+    - User: `root`
+- [x] Updated SSH command to use `-p` flag for custom port
+
+### Git Credential Helper (Server-Side)
+- [x] SSHed into production server
+- [x] Configured Git credential helper: `git config --global credential.helper store`
+- [x] Stored GitHub Personal Access Token (PAT) in `~/.git-credentials`
+- [x] Verified `git pull` works without password prompts
+
+### Successful Deployment Execution
+- [x] Committed 28 files locally (1041 insertions, 153 deletions)
+- [x] Pushed to GitHub (`68aa120..c919e72`)
+- [x] Executed remote deployment via SSH
+- [x] Server successfully:
+    - Pulled latest code
+    - Installed dependencies
+    - Built frontend with Vite
+    - Ran database migrations
+    - Restarted PM2 services
+- [x] Deployment exit code: **0** (success)
+
+### Documentation Updates
+- [x] Updated `TROUBLESHOOTING.md` with:
+    - SSH connection timeout troubleshooting (#20)
+    - Git PAT authentication setup (#21)
+    - PM2 ecosystem config error (#22)
+- [x] Updated `DEPLOYMENT_GUIDE.md` with:
+    - Quick one-liner deployment command
+    - Server connection details table
+    - `ecosystem.config.js` explanation
+
