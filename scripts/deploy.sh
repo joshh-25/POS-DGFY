@@ -22,7 +22,7 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
 # ------------------------------------------
-# Environment Validation
+# Environment Validation Helper
 # ------------------------------------------
 
 REQUIRED_VARS=("PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "PAYPAL_MODE" "PAYPAL_WEBHOOK_ID")
@@ -44,9 +44,6 @@ check_env() {
     log "PayPal configuration validated."
 }
 
-# Run validation before proceeding
-check_env
-
 # Logging function with timestamp
 log() {
     echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')] 🚀 $1"
@@ -59,6 +56,9 @@ warn() {
 error() {
     echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1"
 }
+
+# Run validation before proceeding
+check_env
 
 # Trap errors to report failure
 trap 'error "Deployment failed! Check logs above for details."' ERR
