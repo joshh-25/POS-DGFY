@@ -51,7 +51,6 @@ export default function Settings() {
     defaultMinThreshold: 40,
     defaultPurchaseAllowance: 20,
     lowStockAlertEnabled: true,
-    lowStockAlertEnabled: true,
     surplusAlertEnabled: true,
     procurementReminderDay: 1,
     qualityThreshold: 3.5,
