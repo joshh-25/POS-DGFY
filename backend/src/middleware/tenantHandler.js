@@ -23,6 +23,7 @@ export const tenantHandler = async (req, res, next) => {
             // Allow proceed with DEFAULT context (no isolation yet)
             // This is crucial for Phase 2 compatibility.
             // Wrap in dbStore.run with EMPTY context so dbStore.get() falls back to global models.
+            logger.warn('[TenantHandler] ⚠️ No company token provided in request headers');
             return dbStore.run({
                 tenantId: 'default',
                 tenantName: 'SKU-Inventory-Manager (Default)'
@@ -72,9 +73,12 @@ export const tenantHandler = async (req, res, next) => {
             sequelize: sequelizeInstance,
             tenantId: tenant.id,
             tenantName: tenant.name,
+            tenantPlan: tenant.plan,
             ...tenantModels
         };
 
+        // Attach tenant to request for downstream middleware/controllers
+        req.tenant = tenant;
 
         // 5. Run Request in Context
         dbStore.run(context, next);

@@ -4,7 +4,9 @@ import {
     listTenants,
     approveTenant,
     rejectTenant,
-    provisionNewTenant
+    provisionNewTenant,
+    getPricingSettings,
+    updatePricingSettings
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 
@@ -15,6 +17,10 @@ router.post('/register', registerCompanyRequest);
 
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
+
+// ADMIN: Pricing Settings
+router.get('/pricing', authenticateAdmin, getPricingSettings);
+router.put('/pricing', authenticateAdmin, updatePricingSettings);
 
 // ADMIN: Approve a pending tenant (triggers provisioning)
 router.post('/:id/approve', authenticateAdmin, approveTenant);

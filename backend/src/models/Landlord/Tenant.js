@@ -59,13 +59,38 @@ export default (sequelize) => {
             type: DataTypes.STRING,
             allowNull: true
         },
-        plan: {
-            type: DataTypes.STRING, // e.g., 'free', 'pro'
-            defaultValue: 'free'
-        },
         settings: {
             type: DataTypes.JSON,
             defaultValue: {}
+        },
+        // Subscription & Payment Fields
+        plan: {
+            type: DataTypes.ENUM('standard', 'premium'),
+            defaultValue: 'standard'
+        },
+        subscription_status: {
+            type: DataTypes.ENUM('active', 'inactive', 'past_due', 'cancelled', 'pending'),
+            defaultValue: 'inactive'
+        },
+        paypal_subscription_id: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        current_period_end: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        trial_ends_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        grace_period_end: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        cancelled_at: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     }, {
         sequelize,

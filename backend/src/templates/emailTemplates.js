@@ -397,9 +397,181 @@ ${reasonSection}
   `.trim();
 };
 
+export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, upgradeUrl }) => {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Premium Subscription is Expiring Soon</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+          <tr>
+            <td style="background: #0f172a; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px;">Your Premium Access is Expiring</h2>
+              <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
+                Your Premium subscription for <strong>${companyName}</strong> is scheduled to end on <strong>${expiryDate}</strong>.
+              </p>
+              <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
+                To ensure uninterrupted access to AI features and premium tools, please ensure your payment method is up to date or renew your subscription.
+              </p>
+              <div style="text-align: center; margin-bottom: 24px;">
+                <a href="${upgradeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                  Manage Subscription
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+};
+
+export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate }) => {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscription Cancelled</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+          <tr>
+            <td style="background: #334155; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px;">Premium Subscription Cancelled</h2>
+              <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
+                The Premium subscription for <strong>${companyName}</strong> has been cancelled. 
+              </p>
+              <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
+                You will continue to have access to Premium features until <strong>${downgradeDate}</strong>, after which your account will be transitioned to the Standard plan.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+};
+
+export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Failed</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+          <tr>
+            <td style="background: #991b1b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="margin: 0 0 16px; color: #b91c1c; font-size: 22px;">Important: Payment Failed</h2>
+              <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
+                We were unable to process the latest payment for your <strong>${companyName}</strong> subscription.
+              </p>
+              <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
+                PayPal will automatically retry the payment on <strong>${retryDate}</strong>. Please ensure your payment method has sufficient funds to avoid service interruption.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+};
+
+export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd }) => {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Failed - Grace Period Active</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+          <tr>
+            <td style="background: #f59e0b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px;">Attention: Payment Failed</h2>
+              <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
+                We were unable to process the latest payment for <strong>${companyName}</strong>.
+              </p>
+              <div style="background-color: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0; color: #854d0e; font-size: 14px;">
+                  <strong>Grace Period Active:</strong> You still have full access to your Premium features until <strong>${gracePeriodEnd}</strong>.
+                </p>
+              </div>
+              <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
+                Please update your payment method in your PayPal account to ensure uninterrupted service. If payment is not received by the end of the grace period, your account will be automatically downgraded to the Standard plan.
+              </p>
+              <div style="text-align: center;">
+                <a href="https://www.paypal.com" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                  Go to PayPal
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+};
+
 export default {
   getInvitationTemplate,
   getWelcomeTemplate,
   getCompanyApprovedTemplate,
-  getCompanyRejectedTemplate
+  getCompanyRejectedTemplate,
+  getSubscriptionExpiringTemplate,
+  getSubscriptionCancelledTemplate,
+  getPaymentFailedTemplate,
+  getPaymentFailedGracePeriodTemplate
 };
+

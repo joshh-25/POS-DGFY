@@ -19,7 +19,8 @@ import {
     Clock,
     X,
     FileText,
-    Upload
+    Upload,
+    Lock
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ import { toast } from 'sonner';
 
 export default function AiChat() {
     const navigate = useNavigate();
-    const { can } = usePermission();
+    const { can, tenantPlan } = usePermission();
 
     // State management
     const [messages, setMessages] = useState([]);
@@ -793,6 +794,59 @@ export default function AiChat() {
                         <div className="text-center">
                             <h3 className="text-lg font-bold text-slate-900">Drop files here</h3>
                             <p className="text-slate-500">to add them to the chat</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Premium Lock Overlay */}
+            {tenantPlan !== 'premium' && (
+                <div className="absolute inset-0 z-[60] backdrop-blur-sm bg-white/60 flex items-center justify-center">
+                    <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl shadow-2xl border border-slate-200 text-center space-y-6">
+                        <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20 transform rotate-3">
+                            <Lock className="w-10 h-10 text-white" />
+                        </div>
+
+                        <div className="space-y-2">
+                            <h2 className="text-2xl font-bold text-slate-900">Premium Feature</h2>
+                            <p className="text-slate-600">
+                                The AI Assistant is available exclusively for Premium plan subscribers. Upgrade your workspace to unlock intelligent inventory management.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <Button
+                                onClick={() => navigate('/settings/billing')}
+                                className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/20 h-11 text-base font-medium"
+                            >
+                                Upgrade to Premium
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                onClick={() => navigate('/dashboard')}
+                                className="text-slate-500 hover:text-slate-700"
+                            >
+                                Return to Dashboard
+                            </Button>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-xs text-slate-500 text-left">
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                Smart Insights
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                Automated Actions
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                24/7 Availability
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                Data Privacy
+                            </div>
                         </div>
                     </div>
                 </div>

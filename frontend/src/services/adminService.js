@@ -179,3 +179,30 @@ export const rejectTenant = async (tenantId, reason = '') => {
     return response.data;
 };
 
+/**
+ * Get pricing settings
+ */
+export const getPricing = async () => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get('/admin/tenants/pricing', {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+/**
+ * Update pricing settings
+ */
+export const updatePricing = async (settings) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.put('/admin/tenants/pricing', settings, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+

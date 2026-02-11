@@ -33,7 +33,10 @@ export default function Login() {
 
   // Look up tenant by email when user finishes typing
   const handleEmailBlur = async () => {
-    if (!formData.email || !formData.email.includes('@')) {
+    // Strict email regex matching backend/Joi: something@something.something
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!formData.email || !emailRegex.test(formData.email)) {
       return;
     }
 

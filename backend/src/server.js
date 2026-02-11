@@ -10,10 +10,13 @@ const __dirname = dirname(__filename);
 // Load .env from the backend directory (parent of src)
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
-import express from 'express';
+import paymentRoutes from './routes/payments.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import express from 'express'; // Added missing express import if it was implicit before? No, it's used at line 35.
+// Let's just fix the order.
+
 import { testConnection } from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
@@ -21,6 +24,7 @@ import logger from './config/logger.js';
 import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
+import { initBillingScheduler } from './schedulers/billingScheduler.js';
 import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
 import { tenantHandler } from './middleware/tenantHandler.js';
@@ -202,11 +206,10 @@ app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 // Mount specific admin routes first to avoid catching issues
-console.log('Mounting admin tenant routes');
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
 
-console.log('Mounting admin auth routes');
 app.use('/api/v1/admin', adminAuthRoutes);
 
 // Error handling middleware (must be last)
@@ -248,6 +251,9 @@ const startServer = async () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🌐 API Base URL: ${isProduction ? process.env.FRONTEND_URL || 'production' : 'http://localhost:' + PORT}/api/v1`);
+
+      // Start Billing Scheduler
+      initBillingScheduler();
     });
 
     // Graceful shutdown

@@ -31,10 +31,18 @@ import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
+import PaymentFactory from './Landlord/Payment.js';
+import WebhookLogFactory from './Landlord/WebhookLog.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
+const Payment = PaymentFactory(sequelize);
+const WebhookLog = WebhookLogFactory(sequelize);
 
 // Define associations
+// Tenant & Payment associations
+Tenant.hasMany(Payment, { foreignKey: 'tenant_id', as: 'payments' });
+Payment.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
 User.hasMany(PurchaseOrder, { foreignKey: 'created_by', as: 'createdPurchaseOrders' });
@@ -201,7 +209,9 @@ const db = {
   ItemEmbedding,
   ItemFolder,
   Tenant,
-  UserTenantMapping
+  UserTenantMapping,
+  Payment,
+  WebhookLog
 };
 
 export default db;
@@ -238,7 +248,9 @@ export {
   ItemEmbedding,
   ItemFolder,
   Tenant,
-  UserTenantMapping
+  UserTenantMapping,
+  Payment,
+  WebhookLog
 };
 
 

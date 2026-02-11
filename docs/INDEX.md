@@ -21,6 +21,7 @@ Welcome to the SKU Inventory Manager documentation hub.
 - **[Deployment Guide](ops/DEPLOYMENT_GUIDE.md)**: Production deployment instructions.
 - **[Troubleshooting](ops/TROUBLESHOOTING.md)**: Solutions for common issues.
 
-## 🧩 Technical Specifications
-- **[API Spec](api/specification.md)**: Endpoints and payloads.
-- **[AI Guidelines](AI_GUIDELINES.md)**: Capability matrix for the "SKUpervisor" AI.
+## 🤖 AI & Intelligence (`docs/ai/`)
+- **[AI Guidelines](ai/AI_GUIDELINES.md)**: Capability matrix for the "SKUpervisor" AI.
+- **[Conversion Logic](ai/conversion_logic.md)**: How the AI handles batches, yield, and base unit conversions.
+- **[AI Capabilities](ai/AI_CAPABILITIES.md)**: Auto-generated tool reference.

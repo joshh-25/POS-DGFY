@@ -225,3 +225,29 @@ export const requireMasterAdmin = (req, res, next) => {
 
   next();
 };
+
+/**
+ * Require Premium Plan
+ * Must be used after tenantHandler
+ */
+export const requirePremium = (req, res, next) => {
+  // If no tenant context (e.g. during specific admin ops), fail safe
+  if (!req.tenant) {
+    // If user is Master Admin, maybe allow? 
+    // For now, fail safe.
+    return res.status(403).json({
+      success: false,
+      message: 'Premium subscription context missing.'
+    });
+  }
+
+  if (req.tenant.plan === 'premium') {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'This feature requires a Premium subscription.',
+    requiresUpgrade: true
+  });
+};

@@ -6,7 +6,23 @@ import * as userService from '../services/userService.js';
 export const getCurrentUser = async (req, res, next) => {
   try {
     const userId = req.user.user_id;
-    const user = await userService.getCurrentUser(userId);
+    let user = await userService.getCurrentUser(userId);
+
+    // If user is a Sequelize instance, convert to JSON
+    if (user && typeof user.toJSON === 'function') {
+      user = user.toJSON();
+    }
+
+    // Add company/tenant info from request context (set by tenantHandler)
+    if (req.tenant) {
+      user.company = {
+        id: req.tenant.id,
+        name: req.tenant.name,
+        plan: req.tenant.plan,
+        subscription_status: req.tenant.subscription_status,
+        current_period_end: req.tenant.current_period_end
+      };
+    }
 
     res.status(200).json({
       success: true,

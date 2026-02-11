@@ -35,9 +35,9 @@ export default function StatsCard({ title, value, subtitle, icon: Icon, trend, t
   return (
     <div className={cn("bg-white rounded-2xl border border-slate-200 p-6", colors.bg)}>
       <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{value}</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-500 truncate" title={title}>{title}</p>
+          <p className="text-2xl font-bold text-slate-900 mt-1 truncate" title={String(value)}>{value}</p>
           {subtitle && (
             <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
           )}

@@ -1,10 +1,18 @@
 import { Sequelize } from 'sequelize';
 import dotenv from 'dotenv';
 
-dotenv.config();
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config({ path: join(__dirname, '..', '..', '.env') });
+
+const dbName = process.env.DB_NAME || (process.env.NODE_ENV === 'test' ? 'sku_inventory_manager_test' : 'sku_inventory_manager');
 
 const sequelize = new Sequelize(
-  process.env.NODE_ENV === 'test' ? 'sku_inventory_manager_test' : (process.env.DB_NAME || 'sku_inventory_manager'),
+  dbName,
   process.env.DB_USER,
   process.env.DB_PASSWORD,
   {

@@ -41,21 +41,39 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem('refreshToken');
+        const companyToken = localStorage.getItem('companyToken');
 
         if (refreshToken) {
+          console.debug('🔄 [Auth] Refreshing token...', { companyToken });
+
+          const refreshConfig = {
+            headers: {}
+          };
+
+          if (companyToken) {
+            refreshConfig.headers['x-company-token'] = companyToken;
+          }
+
           const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
             refreshToken
-          });
+          }, refreshConfig);
 
           const { token } = response.data.data;
           localStorage.setItem('authToken', token);
           originalRequest.headers.Authorization = `Bearer ${token}`;
 
+          // Ensure retry also has company token if needed
+          if (companyToken && !originalRequest.headers['x-company-token']) {
+            originalRequest.headers['x-company-token'] = companyToken;
+          }
+
           return api(originalRequest);
         }
       } catch (refreshError) {
+        console.error('❌ [Auth] Token refresh failed:', refreshError);
         // Refresh failed, logout user
         localStorage.removeItem('authToken');
+
         localStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);

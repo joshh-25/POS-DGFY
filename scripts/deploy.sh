@@ -21,6 +21,32 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
+# ------------------------------------------
+# Environment Validation
+# ------------------------------------------
+
+REQUIRED_VARS=("PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "PAYPAL_MODE" "PAYPAL_WEBHOOK_ID")
+
+check_env() {
+    local env_file="$BACKEND_DIR/.env"
+    if [ ! -f "$env_file" ]; then
+        error "Backend .env file missing at $env_file"
+        exit 1
+    fi
+
+    log "Validating PayPal configuration..."
+    for var in "${REQUIRED_VARS[@]}"; do
+        if ! grep -q "^$var=" "$env_file" || grep -q "^$var=$" "$env_file"; then
+            error "Missing or empty required environment variable: $var in $env_file"
+            exit 1
+        fi
+    done
+    log "PayPal configuration validated."
+}
+
+# Run validation before proceeding
+check_env
+
 # Logging function with timestamp
 log() {
     echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')] 🚀 $1"
@@ -178,5 +204,16 @@ fi
 if command -v pm2 >/dev/null 2>&1; then
     pm2 status | grep -E "online|errored" || true
 fi
+
+# 8. Production Billing Verification
+log "Step 8: Verifying production billing logic..."
+cd "$BACKEND_DIR"
+if [ -f "scripts/verify_production_billing.js" ]; then
+    echo ">> Running billing logic integration tests..."
+    node scripts/verify_production_billing.js
+else
+    warn "Billing verification script not found: backend/scripts/verify_production_billing.js"
+fi
+cd "$PROJECT_ROOT"
 
 log "✅ Deployment completed successfully!"

@@ -60,6 +60,12 @@ export default function Layout({ children, currentPageName }) {
   const { can, userRole, loading } = usePermission();
 
   React.useEffect(() => {
+    if (!loading) {
+      console.log('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
+    }
+  }, [loading, can, userRole]);
+
+  React.useEffect(() => {
     const fetchUser = async () => {
       try {
         const user = await getCurrentUser();

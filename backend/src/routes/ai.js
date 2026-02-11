@@ -6,7 +6,7 @@
 
 import express from 'express';
 import * as aiController from '../controllers/aiController.js';
-import { authenticate, checkPermission } from '../middleware/auth.js';
+import { authenticate, checkPermission, requirePremium } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
   chatSchema,
@@ -20,8 +20,9 @@ import { upload } from '../config/uploadConfig.js';
 
 const router = express.Router();
 
-// All AI routes require authentication
+// All AI routes require authentication AND Premium Plan
 router.use(authenticate);
+router.use(requirePremium);
 
 /**
  * @route   POST /api/v1/ai/chat

@@ -129,8 +129,13 @@ BEFORE asking the user for information, you MUST try to find it yourself using a
 
 ### When user wants to create a Job Order:
 1. Look up the product with \`get_item_details\`
-2. Call \`analyze_production_feasibility\` to check if it's possible
-3. Show ingredient availability before asking for quantity
+2. Check the product's \`batch_size\`.
+   - **IMPORTANT**: Job Orders use the base unit of measure (e.g., \`grams\`, \`ml\`), NOT "batches".
+   - If the user asks for "N batches", multiply N by the \`batch_size\` to get the \`quantity_to_produce\`.
+   - Example: If \`batch_size\` is \`3000\` grams and user wants "8 batches", calculate \`8 * 3000 = 24000\` grams.
+   - Always clarify this calculation to the user: "I'll create a Job Order for \`24,000\` grams (8 batches of \`3,000\`g each)."
+3. Call \`analyze_production_feasibility\` to check if it's possible
+4. Show ingredient availability before asking for quantity
 
 ### Examples:
 

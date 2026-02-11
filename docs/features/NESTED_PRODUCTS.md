@@ -19,6 +19,9 @@ This feature enables products to be used as ingredients for other products (e.g.
 | 1 | Uses Level 0 products | Chocolate Cake (uses Chocolate Ganache + Flour, Sugar) |
 | 2 | Uses Level 1 products | Birthday Cake Box (uses Chocolate Cake + Candles, Box) |
 | 3 | Uses Level 2 products | Premium Gift Basket (uses Birthday Cake Box + Gift Items) - MAX |
+ 
+> [!IMPORTANT]
+> **Batch Conversions**: When using nested products as ingredients, ensure the Job Order is created using the **base unit quantity** (e.g., grams, ml) for both the parent and child products. The AI is now trained to automatically handle these conversions based on the `batch_size` defined in each product's details.
 
 ## User Guide
 

@@ -20,7 +20,8 @@
     "logs:view": "tail -f logs/combined.log",
     "validate:ai": "node scripts/validate-ai-tools.js",
     "generate:ai-docs": "node scripts/generate-ai-docs.js",
-    "ai:check": "npm run validate:ai && npm run generate:ai-docs"
+    "ai:check": "npm run validate:ai && npm run generate:ai-docs",
+    "lint": "eslint src"
   },
   "keywords": [
     "inventory",
@@ -58,13 +59,16 @@
   "devDependencies": {
     "@babel/core": "^7.23.7",
     "@babel/preset-env": "^7.23.7",
+    "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.2.0",
     "babel-jest": "^29.7.0",
     "babel-plugin-transform-import-meta": "^2.3.3",
+    "eslint": "^10.0.0",
+    "globals": "^17.3.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",
     "sequelize-cli": "^6.6.2",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.4"
   },
   "engines": {
     "node": ">=18.0.0"

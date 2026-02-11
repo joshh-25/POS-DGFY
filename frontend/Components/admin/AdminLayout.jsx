@@ -8,7 +8,8 @@ import {
     ChevronLeft,
     ChevronRight,
     RefreshCw,
-    AlertCircle
+    AlertCircle,
+    DollarSign
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import * as adminService from '@/services/adminService';
 const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
     { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
+    { path: '/admin/pricing', label: 'Plan Pricing', icon: DollarSign },
 ];
 
 export default function AdminLayout() {

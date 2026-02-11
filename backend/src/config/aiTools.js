@@ -1087,7 +1087,7 @@ export const AI_TOOLS = [
           },
           quantity_to_produce: {
             type: "number",
-            description: "Quantity to produce"
+            description: "Total quantity to produce in the base unit of measure (e.g., grams, ml). NOT in number of batches."
           },
           notes: {
             type: "string",
@@ -1115,7 +1115,7 @@ export const AI_TOOLS = [
           },
           quantity_produced: {
             type: "number",
-            description: "Actual quantity produced"
+            description: "Actual total quantity produced in the base unit of measure (e.g., grams, ml). NOT in number of batches."
           },
           expiry_date: {
             type: "string",

@@ -356,5 +356,23 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
 **Solution**:
 - Use the ecosystem file: `pm2 startOrRestart ecosystem.config.js --env production`
 - Or restart without env flag: `pm2 restart all --update-env`
+- Or restart without env flag: `pm2 restart all --update-env`
 - **Verification**: Check `ecosystem.config.js` exists in project root with `env_production` block
 
+### 24. Recurring 401 Unauthorized on First Login
+**Symptoms**:
+- Admin logs in successfully, but immediate subsequent requests (e.g., dashboard, user profile) fail with `401 Unauthorized`.
+- Reloading the page sometimes temporarily fixes it, but the issue returns on the next login.
+- Console logs show multiple 401 errors for `/api/v1/users/me` or `/api/v1/dashboard/*`.
+
+**Cause**:
+- The **Refresh Token** mechanism in the frontend (`api.js`) was attempting to refresh the session but failed to send the **Company Token** (`x-company-token`) header.
+- In a multi-tenant system, the backend requires the Company Token to know which database to check the refresh token against. Without it, the refresh request fails, leading to a loop of 401s.
+
+**Solution**:
+- **Fixed in Code (Phase 34)**: Updated `frontend/src/services/api.js` to explicitly attach `x-company-token` from `localStorage` during the refresh flow.
+- **Verification**:
+  1. Open Console.
+  2. Log in as Admin.
+  3. Observe logs: `🔄 [Auth] Refreshing token... { companyToken: '...' }`.
+  4. Ensure no red 401 errors appear in the network tab.

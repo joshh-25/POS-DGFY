@@ -12,7 +12,11 @@ import logger from '../config/logger.js';
 import {
   getInvitationTemplate,
   getCompanyApprovedTemplate,
-  getCompanyRejectedTemplate
+  getCompanyRejectedTemplate,
+  getSubscriptionExpiringTemplate,
+  getSubscriptionCancelledTemplate,
+  getPaymentFailedTemplate,
+  getPaymentFailedGracePeriodTemplate
 } from '../templates/emailTemplates.js';
 
 // Lazy initialize transporter
@@ -196,11 +200,84 @@ export const verifyConnection = async () => {
   }
 };
 
+/**
+ * Send subscription expiring notification
+ */
+export const sendSubscriptionExpiringEmail = async ({ email, companyName, expiryDate }) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const upgradeUrl = `${appUrl}/settings?tab=subscription`;
+
+  const html = getSubscriptionExpiringTemplate({
+    companyName,
+    expiryDate: new Date(expiryDate).toLocaleDateString(),
+    upgradeUrl
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Your Premium subscription for ${companyName} is expiring soon`,
+    html
+  });
+};
+
+/**
+ * Send subscription cancelled notification
+ */
+export const sendSubscriptionCancelledEmail = async ({ email, companyName, downgradeDate }) => {
+  const html = getSubscriptionCancelledTemplate({
+    companyName,
+    downgradeDate: new Date(downgradeDate).toLocaleDateString()
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Subscription Cancelled: ${companyName}`,
+    html
+  });
+};
+
+/**
+ * Send payment failed notification
+ */
+export const sendPaymentFailedEmail = async ({ email, companyName, retryDate }) => {
+  const html = getPaymentFailedTemplate({
+    companyName,
+    retryDate: retryDate ? new Date(retryDate).toLocaleDateString() : 'soon'
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Action Required: Payment Failed for ${companyName}`,
+    html
+  });
+};
+
+/**
+ * Send payment failed grace period notification
+ */
+export const sendPaymentFailedGracePeriodEmail = async ({ email, companyName, gracePeriodEnd }) => {
+  const html = getPaymentFailedGracePeriodTemplate({
+    companyName,
+    gracePeriodEnd: new Date(gracePeriodEnd).toLocaleDateString()
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Important: Action Required for Your ${companyName} Subscription`,
+    html
+  });
+};
+
 export default {
   sendEmail,
   sendInvitationEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
+  sendSubscriptionExpiringEmail,
+  sendSubscriptionCancelledEmail,
+  sendPaymentFailedEmail,
+  sendPaymentFailedGracePeriodEmail,
   verifyConnection,
   isEmailConfigured
 };
+

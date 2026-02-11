@@ -3,6 +3,7 @@ import dbStore from '../utils/dbStore.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import * as emailService from '../services/emailService.js';
+import { paypalService } from '../services/paypalService.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -10,7 +11,7 @@ import * as emailService from '../services/emailService.js';
  */
 export const registerCompanyRequest = async (req, res) => {
     try {
-        const { name, adminEmail, adminPassword } = req.body;
+        const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId } = req.body;
 
         if (!name || !adminEmail || !adminPassword) {
             return res.status(400).json({
@@ -32,7 +33,40 @@ export const registerCompanyRequest = async (req, res) => {
             });
         }
 
-        // Prepare tenant data (but don't create DB yet)
+        // Validate Plan & Payment
+        let initialStatus = 'pending';
+        let subscriptionStatus = 'inactive';
+        let validatedSubscriptionId = null;
+
+        if (plan === 'premium') {
+            if (!subscriptionId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Premium plan requires a valid PayPal subscription ID'
+                });
+            }
+
+            try {
+                const subDetails = await paypalService.verifySubscription(subscriptionId);
+                if (subDetails && (subDetails.status === 'ACTIVE' || subDetails.status === 'APPROVAL_PENDING')) {
+                    initialStatus = 'active'; // Auto-approve
+                    subscriptionStatus = 'active';
+                    validatedSubscriptionId = subscriptionId;
+                } else {
+                    throw new Error('Subscription verification failed. Status: ' + (subDetails?.status || 'Unknown'));
+                }
+            } catch (err) {
+                console.error('PayPal Verification Failed:', err);
+                // Fallback: If verification fails but we have an ID, maybe manual review?
+                // For now, fail hard to prevent free access.
+                return res.status(400).json({
+                    success: false,
+                    message: 'Payment verification failed: ' + err.message
+                });
+            }
+        }
+
+        // Prepare tenant data
         const uuid = uuidv4();
         const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
         const dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
@@ -40,25 +74,66 @@ export const registerCompanyRequest = async (req, res) => {
         const companyToken = `token-${safeName}-${uuid.split('-')[0]}`;
         const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-        // Create pending request
+        // Create Tenant Record
         const tenant = await Tenant.create({
             id: uuid,
             name,
             domain: subdomain,
             db_name: dbName,
             company_token: companyToken,
-            status: 'pending',
+            status: initialStatus,
             admin_email: adminEmail,
-            admin_password_hash: passwordHash
+            admin_password_hash: passwordHash,
+            plan: plan,
+            subscription_status: subscriptionStatus,
+            paypal_subscription_id: validatedSubscriptionId,
+            current_period_end: plan === 'premium' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null // Temp 30 days
         });
 
+        // If Auto-Approved (Premium), Provision Immediately
+        if (initialStatus === 'active') {
+            console.log(`Auto-provisioning Premium Tenant: ${name}`);
+            await provisionTenant({
+                tenantId: tenant.id,
+                name: tenant.name,
+                dbName: tenant.db_name,
+                companyToken: tenant.company_token,
+                adminEmail: tenant.admin_email,
+                adminPasswordHash: tenant.admin_password_hash
+            });
+
+            // Send Welcome Email (TODO: Create specific template)
+            if (emailService.isEmailConfigured()) {
+                await emailService.sendCompanyApprovedEmail({
+                    email: tenant.admin_email,
+                    companyName: tenant.name,
+                    companyToken: tenant.company_token
+                });
+            }
+
+            return res.status(201).json({
+                success: true,
+                message: 'Company registered and activated successfully! Welcome to Premium.',
+                data: {
+                    id: tenant.id,
+                    name: tenant.name,
+                    status: 'active',
+                    plan: 'premium',
+                    company_token: tenant.company_token
+                }
+            });
+        }
+
+        // Default: Pending Review (Standard)
         res.status(201).json({
             success: true,
             message: 'Your company registration has been submitted for review. You will be notified once approved.',
             data: {
                 id: tenant.id,
                 name: tenant.name,
-                status: 'pending'
+                status: 'pending',
+                plan: 'standard',
+                company_token: tenant.company_token
             }
         });
 
@@ -262,3 +337,70 @@ export const provisionNewTenant = async (req, res) => {
         });
     }
 };
+
+/**
+ * ADMIN: Get pricing settings from system_settings
+ */
+export const getPricingSettings = async (req, res) => {
+    try {
+        const SystemSetting = dbStore.get('SystemSetting');
+        const settings = await SystemSetting.findAll({
+            where: {
+                setting_key: ['premium_plan_price', 'standard_plan_price', 'paypal_product_id']
+            }
+        });
+
+        const data = {};
+        settings.forEach(s => {
+            data[s.setting_key] = s.setting_value;
+        });
+
+        res.json({
+            success: true,
+            data
+        });
+    } catch (error) {
+        console.error('Get pricing settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * ADMIN: Update pricing settings
+ */
+export const updatePricingSettings = async (req, res) => {
+    try {
+        const { premium_plan_price, standard_plan_price, paypal_product_id } = req.body;
+        const SystemSetting = dbStore.get('SystemSetting');
+
+        const updates = [
+            { key: 'premium_plan_price', value: premium_plan_price },
+            { key: 'standard_plan_price', value: standard_plan_price },
+            { key: 'paypal_product_id', value: paypal_product_id }
+        ];
+
+        for (const update of updates) {
+            if (update.value !== undefined) {
+                await SystemSetting.update(
+                    { setting_value: String(update.value) },
+                    { where: { setting_key: update.key } }
+                );
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'Pricing settings updated successfully'
+        });
+    } catch (error) {
+        console.error('Update pricing settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+

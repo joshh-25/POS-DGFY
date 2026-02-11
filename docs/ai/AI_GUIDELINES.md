@@ -582,6 +582,14 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Conflict Prevention**: If multiple identifiers are provided (e.g. ID + Email), the system strictly cross-validates them. If they don't match the same user, the action is blocked with a descriptive error.
 - **Safety**: Prevents "hallucinated ID" errors by allowing the AI to prefer semantic identifiers (Email/Name) which are less prone to model confusion than numeric IDs.
 
+### v1.8.0 (February 11, 2026) - AI Accuracy Improvements
+- **Batch Awareness**: AI now sees `batch_size`, `yield_percentage`, and `processing_loss` for all items.
+- **Improved Conversions**: System prompt updated with explicit instructions to convert "batches" to base units using the `batch_size` field.
+- **Tool Descriptions**: `create_job_order` and `complete_job_order` updated to clarify that quantities must be in base units (grams, ml), not batches.
+- **Conversion Documentation**: Added `docs/ai/conversion_logic.md` for RAG reference.
+
+---
+
 ### v1.7.1 (February 7, 2026) - PO NaN Fix & Chat File Display
 - **Bug Fix**: Purchase Orders created via AI showed `$NaN` for total cost. Root cause: field name mismatch — `aiToolExecutor.js` sent `quantity` but `purchaseOrderService` expected `quantity_ordered`. Fixed in `aiToolExecutor.js` line 822.
 - **NaN Guard**: Added `!isNaN()` check in `aiService.js` `formatResultForUI` to prevent NaN values from displaying in result cards.

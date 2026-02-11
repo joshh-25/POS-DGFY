@@ -20,6 +20,7 @@ import FeedbackViewer from '../Pages/FeedbackViewer.jsx'
 import AdminLayout from '../Components/admin/AdminLayout.jsx'
 import FeedbackDashboard from '../Pages/admin/FeedbackDashboard.jsx'
 import TenantManager from '../Pages/admin/TenantManager.jsx'
+import AdminPricing from '../Pages/admin/AdminPricing.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
@@ -121,6 +122,7 @@ function App() {
         <Route index element={<Navigate to="/admin/tenants" replace />} />
         <Route path="feedback" element={<FeedbackDashboard />} />
         <Route path="tenants" element={<TenantManager />} />
+        <Route path="pricing" element={<AdminPricing />} />
       </Route>
 
       {/* Legacy route - redirect to new admin portal */}

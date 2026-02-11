@@ -73,6 +73,16 @@ export const refreshToken = async () => {
 };
 
 export const getCurrentUser = async () => {
-  const response = await api.get('/users/me');
-  return response.data.data;
+  const token = localStorage.getItem('authToken');
+  if (!token) return null;
+
+  try {
+    const response = await api.get('/users/me');
+    return response.data.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      return null;
+    }
+    throw error;
+  }
 };
