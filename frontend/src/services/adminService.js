@@ -119,6 +119,26 @@ export const getStats = async () => {
 };
 
 /**
+ * Create a new tenant (Manual Provisioning)
+ */
+export const createTenant = async (tenantData) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    // Using the legacy direct provisioning endpoint
+    const response = await adminApi.post('/admin/tenants/provision', tenantData, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+/**
  * Get all tenants with optional status filter
  */
 export const getTenants = async (status = 'all') => {
