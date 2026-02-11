@@ -171,7 +171,21 @@ After setting up credentials:
 
 ---
 
-**Last Updated:** 2024-01-01  
-**Environment:** Development  
+## PayPal Configuration
+
+### Sandbox (Development)
+- **Client ID:** `AV1K__XikgoDs-rYeE2TomU2FNLycOiSzwN0qhanYUor7UoPUji7gVxFMxtK-ExmJB--cy7T5gjD797M`
+- **Secret:** `EO0uYnokWoxwqMyg5FkZfh9atG0xkpx08UYMmeYZ8MszcrL7AKBe_x5UDxwm3HoQsbb-lEy9KNDueqdB`
+- **Use for:** Local testing, `PAYPAL_MODE=sandbox`
+
+### Live (Production)
+- **Client ID:** `AffijeC8ynhSJJt9kcGM5fuz4EB6njyZzhxXYBsiN3WbcxCnoF9-wgoNK9NsxU4_MfkZ0-Xia49MzXPP`
+- **Secret:** `EEcSA9eJDJLkKKXqW092zJF96cw2k7M8z2Z7MFKU9u7uV4ERpeKCUyQjlZEbpMCYCc7jKQLaFOKxWZZJ`
+- **Use for:** Real payments, `PAYPAL_MODE=live`
+
+---
+
+**Last Updated:** 2026-02-11  
+**Environment:** Development & Production  
 **Status:** Active
 

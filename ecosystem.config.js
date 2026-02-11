@@ -2,7 +2,7 @@ module.exports = {
     apps: [
         {
             name: 'sku-backend',
-            script: 'backend/src/app.js', // Adjust if your entry point is different
+            script: 'backend/src/server.js', // Main entry point confirmed as server.js
             instances: 1,
             autorestart: true,
             watch: false,
