@@ -27,15 +27,26 @@ module.exports = {
             });
         }
 
-        // 2. Create 'webhook_logs' table with safety check
+        // 2. Create 'webhook_logs' table with safety check and type correction
         const tables = await queryInterface.showAllTables();
-        if (!tables.includes('webhook_logs')) {
+        let shouldCreateWebhookLogs = !tables.includes('webhook_logs');
+
+        if (!shouldCreateWebhookLogs) {
+            const tableDesc = await queryInterface.describeTable('webhook_logs');
+            if (tableDesc.id && tableDesc.id.type.includes('INT')) {
+                console.log('⚠️  Fixing incorrect id type in webhook_logs...');
+                await queryInterface.dropTable('webhook_logs');
+                shouldCreateWebhookLogs = true;
+            }
+        }
+
+        if (shouldCreateWebhookLogs) {
             await queryInterface.createTable('webhook_logs', {
                 id: {
                     allowNull: false,
-                    autoIncrement: true,
                     primaryKey: true,
-                    type: Sequelize.INTEGER
+                    type: Sequelize.UUID,
+                    defaultValue: Sequelize.UUIDV4
                 },
                 webhook_id: {
                     type: Sequelize.STRING,

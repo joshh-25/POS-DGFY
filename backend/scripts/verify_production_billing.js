@@ -5,7 +5,7 @@ import db from '../src/models/index.js';
 
 dotenv.config();
 
-const API_BASE = 'http://localhost:5000/api/v1'; // Adjust as needed
+const API_BASE = 'http://localhost:5001/api/v1'; // Adjusted to match deploy.sh
 const { Tenant, WebhookLog, Payment } = db;
 
 async function runVerification() {
