@@ -15,7 +15,10 @@ async function runVerification() {
         // 1. Verify Signature Rejection
         console.log('Step 1: Verifying Signature Rejection...');
         try {
-            await axios.post(`${API_BASE}/payments/webhook`, { event_type: 'FAKE' }, {
+            await axios.post(`${API_BASE}/payments/webhook`, {
+                event_type: 'FAKE',
+                resource: { id: 'fake_resource' }
+            }, {
                 headers: { 'paypal-transmission-id': 'fake_tx' }
             });
             console.log('❌ Error: Webhook accepted without valid signature!');

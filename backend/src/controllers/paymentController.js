@@ -13,10 +13,10 @@ export const handleWebhook = async (req, res) => {
         const body = req.body;
         const headers = req.headers;
         const eventType = body.event_type;
-        const resource = body.resource;
+        const resource = body.resource || {};
         const webhookId = headers['paypal-transmission-id'];
 
-        logger.info(`Received PayPal Webhook: ${eventType}`, { webhookId, resourceId: resource.id });
+        logger.info(`Received PayPal Webhook: ${eventType}`, { webhookId, resourceId: resource?.id });
 
         // 1. Verify Webhook Signature
         const isValid = await paypalService.verifyWebhookSignature(headers, body);

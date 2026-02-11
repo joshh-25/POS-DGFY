@@ -119,6 +119,9 @@ log "Step 5: Running maintenance and sync scripts..."
 if [ -f "scripts/deploy_fix_precision.js" ]; then
     echo ">> Running structural precision fixes..."
     node scripts/deploy_fix_precision.js
+    
+    echo ">> Running surgical schema fixes (Webhooks & Index Pruning)..."
+    node scripts/surgical_migrate.js
 else
     # Keeping the original echo if script is missing, just in case it was a placeholder
     echo ">> (Skipping precision fixes - script not found)"
