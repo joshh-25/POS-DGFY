@@ -32,6 +32,17 @@ export default function TenantManager() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [actionLoading, setActionLoading] = useState(null); // tenant id being processed
 
+    // Add Tenant Modal State
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [addLoading, setAddLoading] = useState(false);
+    const [addForm, setAddForm] = useState({
+        name: '',
+        adminEmail: '',
+        adminPassword: '',
+        plan: 'standard',
+        subscriptionId: ''
+    });
+
     useEffect(() => {
         loadTenants();
     }, [statusFilter]);
@@ -80,6 +91,28 @@ export default function TenantManager() {
         }
     };
 
+    const handleAddTenant = async (e) => {
+        e.preventDefault();
+        setAddLoading(true);
+        try {
+            await adminService.createTenant(addForm);
+            setShowAddModal(false);
+            setAddForm({
+                name: '',
+                adminEmail: '',
+                adminPassword: '',
+                plan: 'standard',
+                subscriptionId: ''
+            });
+            loadTenants();
+            alert('Tenant created successfully!');
+        } catch (err) {
+            alert('Failed to create tenant: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setAddLoading(false);
+        }
+    };
+
     const formatDate = (timestamp) => {
         return new Date(timestamp).toLocaleDateString('en-US', {
             year: 'numeric',
@@ -106,10 +139,15 @@ export default function TenantManager() {
                             Manage company registrations and tenant databases
                         </p>
                     </div>
-                    <Button onClick={loadTenants} variant="outline" disabled={loading}>
-                        <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
-                        Refresh
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button onClick={() => setShowAddModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+                            + Add Tenant
+                        </Button>
+                        <Button onClick={loadTenants} variant="outline" disabled={loading}>
+                            <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
+                            Refresh
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -262,6 +300,102 @@ export default function TenantManager() {
                     })
                 )}
             </div>
+
+            {/* Add Tenant Modal */}
+            {showAddModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                            <h3 className="font-semibold text-lg text-slate-900">Add New Tenant</h3>
+                            <Button variant="ghost" size="icon" onClick={() => setShowAddModal(false)}>
+                                <X className="w-5 h-5 text-slate-400" />
+                            </Button>
+                        </div>
+
+                        <form onSubmit={handleAddTenant} className="p-6 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Company Name</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                    value={addForm.name}
+                                    onChange={e => setAddForm({ ...addForm, name: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Admin Email</label>
+                                <input
+                                    type="email"
+                                    required
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                    value={addForm.adminEmail}
+                                    onChange={e => setAddForm({ ...addForm, adminEmail: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Admin Password</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                    value={addForm.adminPassword}
+                                    onChange={e => setAddForm({ ...addForm, adminPassword: e.target.value })}
+                                    placeholder="Temporary password"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Plan</label>
+                                    <select
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                        value={addForm.plan}
+                                        onChange={e => setAddForm({ ...addForm, plan: e.target.value })}
+                                    >
+                                        <option value="standard">Standard</option>
+                                        <option value="premium">Premium</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {addForm.plan === 'premium' && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">PayPal Subscription ID</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                        value={addForm.subscriptionId}
+                                        onChange={e => setAddForm({ ...addForm, subscriptionId: e.target.value })}
+                                        placeholder="Optional (if paid)"
+                                    />
+                                    <p className="text-xs text-slate-500">Leave empty if not yet paid/linked.</p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-4">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => setShowAddModal(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
+                                    disabled={addLoading}
+                                >
+                                    {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Create Tenant'}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

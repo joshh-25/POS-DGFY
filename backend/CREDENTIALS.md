@@ -185,7 +185,30 @@ After setting up credentials:
 
 ---
 
+
 **Last Updated:** 2026-02-11  
 **Environment:** Development & Production  
 **Status:** Active
+
+---
+
+## 🚀 Production Server Deployment (Critical)
+
+**IMPORTANT:** `.env` files are **NOT** tracked by Git (for security). When deploying to production, you must manually update the `.env` files on the server to reflect the Live credentials.
+
+### How to Update Production Secrets:
+1.  **SSH into the server:** `ssh root@hermes-cloud`
+2.  **Navigate to the project:** `cd /var/www/skupervisor`
+3.  **Edit Frontend Secrets:** 
+    ```bash
+    nano frontend/.env
+    # Update VITE_PAYPAL_CLIENT_ID and VITE_PAYPAL_PLAN_ID with Live values
+    ```
+4.  **Edit Backend Secrets:**
+    ```bash
+    nano backend/.env
+    # Update PAYPAL_MODE=live, PAYPAL_CLIENT_ID, and PAYPAL_CLIENT_SECRET
+    ```
+5.  **Re-deploy:** `bash scripts/deploy.sh` (This rebuilds the frontend with the new IDs)
+
 

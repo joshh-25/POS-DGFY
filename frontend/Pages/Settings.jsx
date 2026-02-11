@@ -590,6 +590,13 @@ export default function Settings() {
                             onApprove={(data, actions) => {
                               handleUpgradeSuccess(data.subscriptionID);
                             }}
+                            onCancel={() => {
+                              toast.info("Subscription cancelled.");
+                            }}
+                            onError={(err) => {
+                              console.error("PayPal Error:", err);
+                              toast.error(`Payment failed: ${err.message || "Unknown error"}`);
+                            }}
                           />
                         </div>
                       </PayPalScriptProvider>

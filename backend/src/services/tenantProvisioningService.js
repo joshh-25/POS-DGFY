@@ -23,10 +23,12 @@ const execPromise = util.promisify(exec);
  */
 export const provisionTenant = async (options) => {
     const {
-        // Option 1: Direct provisioning (legacy)
+        // Option 1: Direct provisioning (legacy/manual)
         name,
         adminEmail,
         adminPassword,
+        plan = 'standard',        // Default to standard if not provided
+        subscriptionId = null,    // Optional subscription ID for manual entry
         // Option 2: Approval provisioning (new workflow)
         tenantId,
         dbName: providedDbName,
@@ -38,6 +40,8 @@ export const provisionTenant = async (options) => {
     const isApproval = !!tenantId;
 
     let uuid, dbName, companyToken, passwordHash, tenantName, email;
+    let subscriptionStatus = 'inactive';
+    let currentPeriodEnd = null;
 
     if (isApproval) {
         // Approval flow - use existing tenant data
@@ -50,7 +54,7 @@ export const provisionTenant = async (options) => {
 
         logger.info(`[Provisioning] Approving existing tenant: ${tenantId} (DB: ${dbName})`);
     } else {
-        // Legacy direct provisioning flow
+        // Legacy/Manual provisioning flow
         uuid = uuidv4();
         const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
         dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
@@ -59,6 +63,15 @@ export const provisionTenant = async (options) => {
         passwordHash = await bcrypt.hash(adminPassword, 10);
         tenantName = name;
         email = adminEmail;
+
+        // Set initial subscription status based on plan for manual entries
+        if (plan === 'premium') {
+            subscriptionStatus = 'active'; // Assume active if manually creating premium
+            currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        } else if (plan === 'standard') {
+            // Standard usually pending, but if manually provisioning, assume approval given
+            subscriptionStatus = 'inactive'; // Standard doesn't have "subscription" per se
+        }
 
         logger.info(`[Provisioning] Starting new provision for: ${name} (DB: ${dbName})`);
 
@@ -72,9 +85,13 @@ export const provisionTenant = async (options) => {
                 domain: subdomain,
                 db_name: dbName,
                 company_token: companyToken,
-                status: 'inactive',
+                status: 'inactive', // Will be updated to active upon success
                 admin_email: email,
-                admin_password_hash: passwordHash
+                admin_password_hash: passwordHash,
+                plan: plan,
+                subscription_status: subscriptionStatus,
+                paypal_subscription_id: subscriptionId,
+                current_period_end: currentPeriodEnd
             }, { transaction });
             await transaction.commit();
         } catch (error) {

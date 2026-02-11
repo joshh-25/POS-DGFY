@@ -35,12 +35,13 @@ export default function RegisterCompany() {
     const isPasswordValid = Object.values(passwordValidations).every(v => v);
     const passwordsMatch = formData.adminPassword === formData.confirmPassword;
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e, directSubscriptionId = null) => {
         if (e) e.preventDefault();
         setError('');
         setSuccess(null);
 
-        if (!passwordsMatch) {
+        // Verify password match again (sanity check)
+        if (formData.adminPassword !== formData.confirmPassword) {
             setError('Passwords do not match');
             return;
         }
@@ -50,7 +51,11 @@ export default function RegisterCompany() {
             return;
         }
 
-        if (selectedPlan === 'premium' && !paypalSubscriptionId) {
+        // Use direct ID if provided (from onApprove), otherwise fall back to state
+        // This fixes the race condition where state hasn't updated yet
+        const activeSubscriptionId = directSubscriptionId || paypalSubscriptionId;
+
+        if (selectedPlan === 'premium' && !activeSubscriptionId) {
             setError('Please complete the PayPal subscription for Premium plan');
             return;
         }
@@ -63,10 +68,27 @@ export default function RegisterCompany() {
                 adminEmail: formData.adminEmail,
                 adminPassword: formData.adminPassword,
                 plan: selectedPlan,
-                subscriptionId: paypalSubscriptionId
+                subscriptionId: activeSubscriptionId
             });
 
             if (response.data.success) {
+                // Check for auto-login tokens
+                if (response.data.data.token && response.data.data.refreshToken) {
+                    // Auto-login logic
+                    localStorage.setItem('authToken', response.data.data.token);
+                    localStorage.setItem('refreshToken', response.data.data.refreshToken);
+                    localStorage.setItem('companyToken', response.data.data.company_token);
+
+                    // Dispatch login event
+                    window.dispatchEvent(new CustomEvent('auth:login'));
+
+                    // Redirect to dashboard
+                    // navigate('/') logic is usually synchronous but state updates might be slow
+                    // Let's delay slightly or just navigate
+                    navigate('/');
+                    return; // Skip success state
+                }
+
                 setSuccess({
                     status: response.data.data.status,
                     message: response.data.message,
@@ -270,8 +292,16 @@ export default function RegisterCompany() {
                                                 });
                                             }}
                                             onApprove={(data, actions) => {
+                                                // Fix: Pass subscriptionID directly to handler to avoid race condition
                                                 setPaypalSubscriptionId(data.subscriptionID);
-                                                handleSubmit(null);
+                                                handleSubmit(null, data.subscriptionID);
+                                            }}
+                                            onCancel={() => {
+                                                setError("Subscription cancelled. You need to subscribe to create a Premium account.");
+                                            }}
+                                            onError={(err) => {
+                                                console.error("PayPal Error:", err);
+                                                setError(`Payment failed: ${err.message || "Unknown error"}. Please try again or contact support.`);
                                             }}
                                         />
                                     </div>

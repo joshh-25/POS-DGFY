@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import * as emailService from '../services/emailService.js';
 import { paypalService } from '../services/paypalService.js';
+import * as authService from '../services/authService.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -103,6 +104,7 @@ export const registerCompanyRequest = async (req, res) => {
             });
 
             // Send Welcome Email (TODO: Create specific template)
+            // Send Welcome Email (TODO: Create specific template)
             if (emailService.isEmailConfigured()) {
                 await emailService.sendCompanyApprovedEmail({
                     email: tenant.admin_email,
@@ -110,6 +112,18 @@ export const registerCompanyRequest = async (req, res) => {
                     companyToken: tenant.company_token
                 });
             }
+
+            // Generate Auth Tokens for Auto-Login
+            // Since provisionTenant seeds the first user in a fresh DB, the ID is guaranteed to be 1.
+            const adminUserForToken = {
+                user_id: 1,
+                username: 'Admin', // Default username from provisionTenant
+                email: tenant.admin_email,
+                role: 'admin'
+            };
+
+            const token = authService.generateToken(adminUserForToken);
+            const refreshToken = authService.generateRefreshToken(adminUserForToken);
 
             return res.status(201).json({
                 success: true,
@@ -119,7 +133,9 @@ export const registerCompanyRequest = async (req, res) => {
                     name: tenant.name,
                     status: 'active',
                     plan: 'premium',
-                    company_token: tenant.company_token
+                    company_token: tenant.company_token,
+                    token,
+                    refreshToken
                 }
             });
         }
@@ -312,7 +328,7 @@ export const rejectTenant = async (req, res) => {
  */
 export const provisionNewTenant = async (req, res) => {
     try {
-        const { name, adminEmail, adminPassword } = req.body;
+        const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId } = req.body;
 
         if (!name || !adminEmail || !adminPassword) {
             return res.status(400).json({
@@ -321,7 +337,13 @@ export const provisionNewTenant = async (req, res) => {
             });
         }
 
-        const result = await provisionTenant({ name, adminEmail, adminPassword });
+        const result = await provisionTenant({
+            name,
+            adminEmail,
+            adminPassword,
+            plan,
+            subscriptionId
+        });
 
         res.status(201).json({
             success: true,
