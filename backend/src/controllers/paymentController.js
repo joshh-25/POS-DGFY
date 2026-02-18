@@ -104,28 +104,56 @@ async function handlePaymentCompleted(resource) {
         return;
     }
 
-    // Record Payment
-    await Payment.create({
-        tenant_id: tenant.id,
-        transaction_id: transactionId,
-        amount: amount,
-        currency: currency,
-        status: 'completed',
-        payment_method: 'paypal',
-        metadata: resource
+    // Use a transaction to ensure atomicity (Audit 3.3)
+    await db.sequelize.transaction(async (t) => {
+        // 1. Record Payment
+        await Payment.create({
+            tenant_id: tenant.id,
+            transaction_id: transactionId,
+            amount: amount,
+            currency: currency,
+            status: 'completed',
+            payment_method: 'paypal',
+            metadata: resource
+        }, { transaction: t });
+
+        // 2. Update Tenant Status
+        // Extend from PayPal's next_billing_time if available, otherwise fallback
+        // to a snap-back calendar-aware month extension from the later of (current_period_end, now).
+        let nextBillingDate;
+        if (resource.next_billing_date) {
+            nextBillingDate = new Date(resource.next_billing_date);
+        } else if (resource.billing_info && resource.billing_info.next_billing_time) {
+            nextBillingDate = new Date(resource.billing_info.next_billing_time);
+        } else {
+            const now = new Date();
+            const base = tenant.current_period_end && tenant.current_period_end > now
+                ? tenant.current_period_end
+                : now;
+
+            nextBillingDate = new Date(base);
+            const targetMonth = (nextBillingDate.getMonth() + 1) % 12;
+
+            // Move to next month
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+            // Apply snap-back to billing_cycle_anchor
+            const anchor = tenant.billing_cycle_anchor || new Date(base).getDate();
+            nextBillingDate.setDate(anchor);
+
+            // If we overflowed to next month, set to last day of target month
+            if (nextBillingDate.getMonth() !== targetMonth) {
+                nextBillingDate.setDate(0);
+            }
+        }
+
+        tenant.plan = 'premium'; // Ensure plan is set to premium (Gap 2)
+        tenant.subscription_status = 'active';
+        tenant.current_period_end = nextBillingDate;
+        await tenant.save({ transaction: t });
+
+        logger.info(`Payment verified for tenant ${tenant.name}. Subscription extended to ${nextBillingDate}.`);
     });
-
-    // Update Tenant Status
-    // Extend current_period_end by 1 month (simplified logic)
-    // Precise logic should use 'next_billing_date' from PayPal if available, or just add 30 days
-    const newPeriodEnd = new Date();
-    newPeriodEnd.setDate(newPeriodEnd.getDate() + 30);
-
-    tenant.subscription_status = 'active';
-    tenant.current_period_end = newPeriodEnd;
-    await tenant.save();
-
-    logger.info(`Payment verified for tenant ${tenant.name}. Subscription extended.`);
 }
 
 /**
@@ -140,7 +168,14 @@ async function handleSubscriptionActivated(resource) {
         return; // Logic might be handled in registration callback
     }
 
+    // Set plan to premium — without this, requirePremium middleware blocks
+    // the tenant even though their subscription is active.
+    tenant.plan = 'premium';
     tenant.subscription_status = 'active';
+    // Capture billing anchor if not set
+    if (!tenant.billing_cycle_anchor) {
+        tenant.billing_cycle_anchor = new Date().getDate();
+    }
     await tenant.save();
     logger.info(`Subscription activated for tenant ${tenant.name}`);
 }
@@ -158,8 +193,9 @@ async function handleSubscriptionCancelled(resource) {
     }
 
     tenant.subscription_status = 'cancelled';
-    // We don't immediately revoke access; we wait for current_period_end.
-    // But for now, let's just mark status.
+    tenant.cancelled_at = new Date();
+    // Access is not immediately revoked — billingScheduler will downgrade
+    // plan to 'standard' after current_period_end passes the grace window.
     await tenant.save();
     logger.info(`Subscription cancelled for tenant ${tenant.name}`);
 }
@@ -255,10 +291,26 @@ export const syncWithPayPal = async (req, res) => {
         else if (details.status === 'CANCELLED') localStatus = 'cancelled';
         else if (details.status === 'SUSPENDED') localStatus = 'past_due';
 
-        await tenant.update({
+        // Build update payload — plan is only upgraded here (ACTIVE → premium).
+        // Downgrades are intentionally left to billingScheduler.js so the 3-day
+        // grace period is respected and not bypassed on a manual sync.
+        const updatePayload = {
             subscription_status: localStatus,
-            current_period_end: details.billing_info?.next_billing_time ? new Date(details.billing_info.next_billing_time) : tenant.current_period_end
-        });
+            current_period_end: details.billing_info?.next_billing_time
+                ? new Date(details.billing_info.next_billing_time)
+                : tenant.current_period_end,
+            billing_cycle_anchor: tenant.billing_cycle_anchor ||
+                (details.billing_info?.next_billing_time
+                    ? new Date(details.billing_info.next_billing_time).getDate()
+                    : null)
+        };
+
+        // Only upgrade plan on confirmed ACTIVE status; never downgrade here.
+        if (details.status === 'ACTIVE') {
+            updatePayload.plan = 'premium';
+        }
+
+        await tenant.update(updatePayload);
 
         res.json({
             success: true,
@@ -287,12 +339,13 @@ export const upgradeToPremium = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Subscription ID is required' });
         }
 
-        // Verify with PayPal
+        // Verify with PayPal — only ACTIVE subscriptions are permitted.
+        // APPROVAL_PENDING means the user started checkout but has not paid yet.
         const subDetails = await paypalService.verifySubscription(subscriptionId);
-        if (!subDetails || (subDetails.status !== 'ACTIVE' && subDetails.status !== 'APPROVAL_PENDING')) {
+        if (!subDetails || subDetails.status !== 'ACTIVE') {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid subscription status: ' + (subDetails?.status || 'Unknown')
+                message: 'Subscription is not active. Current status: ' + (subDetails?.status || 'Unknown')
             });
         }
 
@@ -302,17 +355,32 @@ export const upgradeToPremium = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Tenant not found' });
         }
 
-        const newPeriodEnd = new Date();
-        newPeriodEnd.setDate(newPeriodEnd.getDate() + 30);
+        // Determine next billing date authoritatively from PayPal
+        let nextBillingDate;
+        if (subDetails.billing_info && subDetails.billing_info.next_billing_time) {
+            nextBillingDate = new Date(subDetails.billing_info.next_billing_time);
+        } else {
+            // Fallback: 1 month calendar-aware extension with anchor
+            nextBillingDate = new Date();
+            const targetMonth = (nextBillingDate.getMonth() + 1) % 12;
+            const anchor = new Date().getDate();
+
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+            nextBillingDate.setDate(anchor);
+            if (nextBillingDate.getMonth() !== targetMonth) {
+                nextBillingDate.setDate(0);
+            }
+        }
 
         await tenant.update({
             plan: 'premium',
             subscription_status: 'active',
             paypal_subscription_id: subscriptionId,
-            current_period_end: newPeriodEnd
+            current_period_end: nextBillingDate,
+            billing_cycle_anchor: tenant.billing_cycle_anchor || new Date().getDate()
         });
 
-        logger.info(`Tenant ${tenant.name} upgraded to Premium via real-time request.`);
+        logger.info(`Tenant ${tenant.name} upgraded to Premium. Expiry set to ${nextBillingDate}.`);
 
         res.json({
             success: true,
@@ -320,7 +388,7 @@ export const upgradeToPremium = async (req, res) => {
             data: {
                 plan: 'premium',
                 subscription_status: 'active',
-                current_period_end: newPeriodEnd
+                current_period_end: nextBillingDate
             }
         });
 

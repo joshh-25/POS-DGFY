@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 
 export default function AiChat() {
     const navigate = useNavigate();
-    const { can, tenantPlan } = usePermission();
+    const { can, tenantPlan, loading } = usePermission();
 
     // State management
     const [messages, setMessages] = useState([]);
@@ -66,10 +66,12 @@ export default function AiChat() {
         timestamp: new Date().toISOString()
     };
 
-    // Load conversations on mount
+    // Load conversations when permission checks pass
     useEffect(() => {
-        loadConversations();
-    }, []);
+        if (!loading && tenantPlan === 'premium') {
+            loadConversations();
+        }
+    }, [loading, tenantPlan]);
 
     // Scroll to bottom when messages change
     useEffect(() => {

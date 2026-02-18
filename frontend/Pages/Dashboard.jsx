@@ -18,10 +18,12 @@ import AnomalyAlertBanner from '@/components/dashboard/AnomalyAlertBanner';
 import RecentMovements from '@/components/dashboard/RecentMovements';
 import LowStockList from '@/components/dashboard/LowStockList';
 import ExpiringBatchesList from '@/components/dashboard/ExpiringBatchesList';
+import ForecastWidget from '../src/components/dashboard/ForecastWidget';
 import { useDashboardStats, useLowStockItems, useRecentMovements } from '@/hooks/useDashboard.js';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useExpiryAlerts } from '@/hooks/useAlerts.js';
+import { usePermission } from '../src/hooks/usePermission';
 
 export default function Dashboard() {
   const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
@@ -30,6 +32,7 @@ export default function Dashboard() {
   const { purchaseOrders, loading: poLoading } = usePurchaseOrders();
   const { suppliers, loading: suppliersLoading } = useSuppliers();
   const { alerts: expiryAlerts, loading: alertsLoading } = useExpiryAlerts();
+  const { tenantPlan } = usePermission();
 
   const pendingPOs = purchaseOrders?.filter(po => po.status === 'pending').length || 0;
   const activeSuppliers = suppliers?.length || 0;
@@ -219,15 +222,31 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <LowStockList items={lowStockItems || []} />
         <ExpiringBatchesList alerts={expiryAlerts || []} />
+        {tenantPlan === 'premium' ? (
+          <ForecastWidget />
+        ) : (
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-xl p-6 text-white flex flex-col justify-center items-center text-center h-full min-h-[300px]">
+            <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mb-4">
+              <TrendingUp className="w-6 h-6 text-teal-400" />
+            </div>
+            <h3 className="font-bold text-lg mb-2">AI Demand Forecasting</h3>
+            <p className="text-slate-300 text-sm mb-6 max-w-xs">
+              Upgrade to Premium to unlock AI-powered demand prediction and stock optimization.
+            </p>
+            <Link to="/settings?tab=subscription" className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white rounded-lg text-sm font-medium transition-colors">
+              Upgrade Now
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Recent Movements - Full Width */}
       <div>
         <RecentMovements movements={recentMovements || []} />
       </div>
-    </div>
+    </div >
   );
 }

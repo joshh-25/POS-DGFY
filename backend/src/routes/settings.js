@@ -1,6 +1,7 @@
 import express from 'express';
 import * as settingsController from '../controllers/settingsController.js';
-import { authenticate, authorize, requireMasterAdmin } from '../middleware/auth.js';
+import { authenticate, checkPermission, requireMasterAdmin } from '../middleware/auth.js';
+import { PERMISSIONS } from '../config/permissions.js';
 import { validateUpdateSettings, validateUpdateSingleSetting } from '../validators/settingsValidator.js';
 
 const router = express.Router();
@@ -34,7 +35,7 @@ router.get('/:key', authenticate, settingsController.getSettingByKey);
 router.put(
   '/',
   authenticate,
-  authorize('manager', 'admin'),
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   validateUpdateSettings,
   settingsController.updateSettings
 );
@@ -47,7 +48,7 @@ router.put(
 router.put(
   '/:key',
   authenticate,
-  authorize('manager', 'admin'),
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   validateUpdateSingleSetting,
   settingsController.updateSettingByKey
 );
@@ -60,7 +61,7 @@ router.put(
 router.post(
   '/reset',
   authenticate,
-  authorize('admin'),
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   settingsController.resetSettingsToDefault
 );
 

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as emailService from '../services/emailService.js';
 import { paypalService } from '../services/paypalService.js';
 import * as authService from '../services/authService.js';
+import { deleteTenantDatabase } from '../services/tenantProvisioningService.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -49,7 +50,7 @@ export const registerCompanyRequest = async (req, res) => {
 
             try {
                 const subDetails = await paypalService.verifySubscription(subscriptionId);
-                if (subDetails && (subDetails.status === 'ACTIVE' || subDetails.status === 'APPROVAL_PENDING')) {
+                if (subDetails && subDetails.status === 'ACTIVE') {
                     initialStatus = 'active'; // Auto-approve
                     subscriptionStatus = 'active';
                     validatedSubscriptionId = subscriptionId;
@@ -113,18 +114,6 @@ export const registerCompanyRequest = async (req, res) => {
                 });
             }
 
-            // Generate Auth Tokens for Auto-Login
-            // Since provisionTenant seeds the first user in a fresh DB, the ID is guaranteed to be 1.
-            const adminUserForToken = {
-                user_id: 1,
-                username: 'Admin', // Default username from provisionTenant
-                email: tenant.admin_email,
-                role: 'admin'
-            };
-
-            const token = authService.generateToken(adminUserForToken);
-            const refreshToken = authService.generateRefreshToken(adminUserForToken);
-
             return res.status(201).json({
                 success: true,
                 message: 'Company registered and activated successfully! Welcome to Premium.',
@@ -133,9 +122,7 @@ export const registerCompanyRequest = async (req, res) => {
                     name: tenant.name,
                     status: 'active',
                     plan: 'premium',
-                    company_token: tenant.company_token,
-                    token,
-                    refreshToken
+                    company_token: tenant.company_token
                 }
             });
         }
@@ -167,8 +154,16 @@ export const registerCompanyRequest = async (req, res) => {
  */
 export const listTenants = async (req, res) => {
     try {
+        console.log('[DEBUG] ListTenants called');
         const { status } = req.query;
+        console.log('[DEBUG] Status filter:', status);
+
         const Tenant = dbStore.get('Tenant');
+        if (!Tenant) {
+            console.error('[DEBUG] CRITICAL: Tenant model not found in dbStore');
+            throw new Error('Tenant model not initialized');
+        }
+
 
         const where = {};
         if (status && status !== 'all') {
@@ -419,6 +414,92 @@ export const updatePricingSettings = async (req, res) => {
         });
     } catch (error) {
         console.error('Update pricing settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * ADMIN: Update tenant details (status, plan)
+ */
+export const updateTenant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, plan } = req.body;
+        const Tenant = dbStore.get('Tenant');
+
+        const tenant = await Tenant.findByPk(id);
+        if (!tenant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Tenant not found'
+            });
+        }
+
+        const updates = {};
+        if (status) updates.status = status;
+        if (plan) updates.plan = plan;
+
+        await tenant.update(updates);
+
+        res.json({
+            success: true,
+            message: 'Tenant updated successfully',
+            data: tenant
+        });
+
+    } catch (error) {
+        console.error('Update tenant error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * ADMIN: Permanently delete a tenant and their database
+ */
+
+
+export const deleteTenant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const Tenant = dbStore.get('Tenant');
+
+        const tenant = await Tenant.findByPk(id);
+        if (!tenant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Tenant not found'
+            });
+        }
+
+        // 1. Delete the database
+        if (tenant.db_name) {
+            try {
+                await deleteTenantDatabase(tenant.db_name);
+            } catch (dbError) {
+                console.error(`Failed to delete database for tenant ${tenant.id}:`, dbError);
+                return res.status(500).json({
+                    success: false,
+                    message: `Failed to delete database: ${dbError.message}`
+                });
+            }
+        }
+
+        // 2. Delete the record
+        await tenant.destroy();
+
+        res.json({
+            success: true,
+            message: 'Tenant and database permanently deleted'
+        });
+
+    } catch (error) {
+        console.error('Delete tenant error:', error);
         res.status(500).json({
             success: false,
             message: error.message

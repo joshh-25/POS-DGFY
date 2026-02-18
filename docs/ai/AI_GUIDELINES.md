@@ -1,6 +1,6 @@
-> **Version:** 1.7.0
-> **Last Updated:** February 7, 2026
-> **Tool Count:** 49
+> **Version:** 1.9.0
+> **Last Updated:** February 14, 2026
+> **Tool Count:** 52
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
@@ -52,14 +52,15 @@ The SKUpervisor AI Assistant is powered by OpenAI's GPT-4 model and provides nat
 
 | Capability | Required Permission | Description |
 |------------|---------------------|-------------|
-| **List Users** | `users:manage` | View all users in the tenant |
-| **Update User Role** | `users:manage` | Change a user's role (staff/manager/admin) |
-| **Toggle User Status** | `users:manage` | Activate/deactivate user accounts |
-| **Update Permissions** | `users:manage` | Modify granular permissions for a user |
-| **Invite User** | `users:manage` | Send email invitation to new user |
-| **Export Users CSV** | `users:manage` | Export user list to CSV |
-| **Import Users CSV** | `users:manage` | Bulk invite users from CSV |
-| **List Permissions** | `users:manage` | View all available permissions |
+| **List Users** | `users:manage` | View all users in the tenant | `get_users` |
+| **Update User Role** | `users:manage` | Change a user's role (staff/manager/admin) | `update_user_role` |
+| **Toggle User Status** | `users:manage` | Activate/deactivate user accounts | `toggle_user_status` |
+| **Update Permissions** | `users:manage` | Modify granular permissions for a user | `update_user_permissions` |
+| **Invite User** | `users:manage` | Send email invitation to new user | `create_user_invitation` |
+| **Export Users CSV** | `users:manage` | Export user list to CSV | `export_users_csv` |
+| **Import Users CSV** | `users:manage` | Bulk invite users from CSV | `import_users_csv` |
+| **Remove User** | `users:manage` | Remove a user from the company | `remove_user_from_company` |
+| **List Permissions** | `users:manage` | View all available permissions | `get_available_permissions` |
 
 #### User Management Hierarchy Rules
 
@@ -70,17 +71,17 @@ The SKUpervisor AI Assistant is powered by OpenAI's GPT-4 model and provides nat
 
 ### Analysis Features
 
-| Feature | Tool | Description |
-|---------|------|-------------|
-| **Production Feasibility** | `analyze_production_feasibility` | Analyze what can be produced with current stock |
-| **Nested Product Chains** | `analyze_production_feasibility` | Show full ingredient trees for complex products |
-| **Raw Material Requirements** | `analyze_production_feasibility` | Calculate total raw materials for production |
-| **Bottleneck Detection** | `analyze_production_feasibility` | Identify limiting ingredients |
-| **Reorder Recommendations** | `analyze_reorder_needs` | Dynamic reorder points based on burn rate & lead times |
-| **Anomaly Detection** | `detect_anomalies` | Identify suspicious losses, unusual spikes, frequent adjustments |
-| **Supplier Performance** | `get_advanced_analytics` | Supplier scorecards (on-time rate, quality) |
-| **Cost Analysis** | `get_advanced_analytics` | COGS calculation and waste value tracking |
-| **Executive Summary** | `generate_executive_summary` | High-level business overview for daily briefings |
+| Feature | Description | Tool |
+|---------|-------------|------|
+| **Production Feasibility** | Analyze what can be produced with current stock | `analyze_production_feasibility` |
+| **Nested Product Chains** | Show full ingredient trees for complex products | `analyze_production_feasibility` |
+| **Raw Material Requirements** | Calculate total raw materials for production | `analyze_production_feasibility` |
+| **Bottleneck Detection** | Identify limiting ingredients | `analyze_production_feasibility` |
+| **Reorder Recommendations** | Dynamic reorder points based on burn rate & lead times | `analyze_reorder_needs` |
+| **Anomaly Detection** | Identify suspicious losses, unusual spikes, frequent adjustments | `detect_anomalies` |
+| **Supplier Performance** | Supplier scorecards (on-time rate, quality) | `get_advanced_analytics` |
+| **Cost Analysis** | COGS calculation and waste value tracking | `get_advanced_analytics` |
+| **Executive Summary** | High-level business overview for daily briefings | `generate_executive_summary` |
 
 ### Documentation Search (RAG)
 
@@ -94,15 +95,15 @@ The assistant can search project documentation (`search_documentation`) to answe
 
 ### CSV Import/Export
 
-| Feature | Tool | Description |
-|---------|------|-------------|
-| **Import Items** | `import_csv_data` | Bulk import items from CSV (requires confirmation) |
-| **Import Suppliers** | `import_csv_data` | Bulk import suppliers from CSV (requires confirmation) |
-| **Export Items** | `export_to_csv` | Export items to CSV (display or download) |
-| **Export Suppliers** | `export_to_csv` | Export suppliers to CSV |
-| **Export POs** | `export_to_csv` | Export purchase orders to CSV |
-| **Export JOs** | `export_to_csv` | Export job orders to CSV |
-| **Export Movements** | `export_to_csv` | Export stock movements to CSV |
+| Feature | Description | Tool |
+|---------|-------------|------|
+| **Import Items** | Bulk import items from CSV (requires confirmation) | `import_csv_data` |
+| **Import Suppliers** | Bulk import suppliers from CSV (requires confirmation) | `import_csv_data` |
+| **Export Items** | Export items to CSV (display or download) | `export_to_csv` |
+| **Export Suppliers** | Export suppliers to CSV | `export_to_csv` |
+| **Export POs** | Export purchase orders to CSV | `export_to_csv` |
+| **Export JOs** | Export job orders to CSV | `export_to_csv` |
+| **Export Movements** | Export stock movements to CSV | `export_to_csv` |
 
 ---
 
@@ -590,6 +591,16 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 
 ---
 
+### v1.8.1 (February 13, 2026) - CSV Import Fix & Documentation Refresh
+- **Tool Count**: Updated from 49 to **52 tools**
+- **Critical Bug Fix**: CSV imports via AI Chat returned "0 items imported" despite confirmation succeeding. Root cause: `parseCsv` in `tempFileService.js` only split on real `\n` characters — AI model JSON payloads and DB round-trips often produce literal escaped `\n`, causing the parser to see the entire CSV as one header line with 0 data rows. Fixed by adding newline normalization.
+- **ActionResultCard Fix**: `formatResultForUI` in `aiService.js` was referencing non-existent fields (`result.details?.success_count`) instead of `result.stats.imported`. Fixed to use correct field paths.
+- **Import Navigation**: `importCsvData` in `aiToolExecutor.js` now returns `related_entity` and `details` fields, enabling the "View Items" button and detail chips on the ActionResultCard.
+- **Cleanup**: Removed debug `useEffect` block from `AiChat.jsx`, deleted temporary script `verify_invite_debug.js`.
+- **Documentation**: Updated tool count, added exact tool names to all capability matrices, regenerated `AI_CAPABILITIES.md`.
+
+---
+
 ### v1.7.1 (February 7, 2026) - PO NaN Fix & Chat File Display
 - **Bug Fix**: Purchase Orders created via AI showed `$NaN` for total cost. Root cause: field name mismatch — `aiToolExecutor.js` sent `quantity` but `purchaseOrderService` expected `quantity_ordered`. Fixed in `aiToolExecutor.js` line 822.
 - **NaN Guard**: Added `!isNaN()` check in `aiService.js` `formatResultForUI` to prevent NaN values from displaying in result cards.
@@ -609,3 +620,9 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **System Prompt**: Added "Bulk Write Operations" and "Bulk Delete Operations" guidance instructing the AI to use bulk tools for 2+ folders.
 - **Frontend**: FolderCard now has a dropdown menu with "Delete Folder" option (permission-gated).
 - **ConfirmActionDialog**: Delete folder confirmations show red-themed icons and warnings about item unassignment.
+### v1.9.0 (February 14, 2026) - PayPal E2E & Premium Auto-Provisioning
+- **PayPal E2E Verification**: Successfully verified the end-to-end Premium registration flow using a mocked environment.
+- **Auto-Provisioning**: Verified that Premium registrations bypass "Pending" status and trigger immediate database creation.
+- **Auto-Login**: Confirmed seamless redirection to Dashboard after successful payment.
+- **Dev Mode Bypass**: Documented the `[DEV ONLY] Mock Premium Payment` button for future testing.
+- **Cleanup**: Bulk removed 9 stale test tenants to maintain system performance.

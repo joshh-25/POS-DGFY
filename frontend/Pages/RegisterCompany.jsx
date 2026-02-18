@@ -72,22 +72,7 @@ export default function RegisterCompany() {
             });
 
             if (response.data.success) {
-                // Check for auto-login tokens
-                if (response.data.data.token && response.data.data.refreshToken) {
-                    // Auto-login logic
-                    localStorage.setItem('authToken', response.data.data.token);
-                    localStorage.setItem('refreshToken', response.data.data.refreshToken);
-                    localStorage.setItem('companyToken', response.data.data.company_token);
 
-                    // Dispatch login event
-                    window.dispatchEvent(new CustomEvent('auth:login'));
-
-                    // Redirect to dashboard
-                    // navigate('/') logic is usually synchronous but state updates might be slow
-                    // Let's delay slightly or just navigate
-                    navigate('/');
-                    return; // Skip success state
-                }
 
                 setSuccess({
                     status: response.data.data.status,

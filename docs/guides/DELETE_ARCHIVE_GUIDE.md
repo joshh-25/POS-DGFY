@@ -5,6 +5,7 @@
 The SKU Inventory Manager implements two distinct patterns for removing records:
 1. **Soft Delete** - For Items and Suppliers
 2. **Archive Pattern** - For Purchase Orders and Job Orders
+3. **Permanent Database Deletion** - For Tenants (Admin only)
 
 ---
 

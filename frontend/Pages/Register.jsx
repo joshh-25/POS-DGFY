@@ -114,11 +114,8 @@ export default function Register() {
         password: formData.password
       }, formData.companyToken);
 
-      // Get redirect path or default to dashboard
-      const redirectPath = localStorage.getItem('redirectAfterLogin') || '/';
-      localStorage.removeItem('redirectAfterLogin');
-
-      navigate(redirectPath);
+      // Redirect to login page
+      navigate('/login?registered=true');
     } catch (err) {
       const errorMessage = err.response?.data?.message ||
         err.response?.data?.errors?.[0]?.message ||

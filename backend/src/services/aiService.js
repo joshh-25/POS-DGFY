@@ -896,13 +896,16 @@ const formatResultForUI = (toolName, args, result) => {
         };
         break;
 
-      // --- FILE MANAGEMENT ---
+      // --- CSV IMPORT ---
       case 'import_csv_data':
-        uiResult.summary = `Data Import Completed`;
+        uiResult.summary = result.message || `Data Import Completed`;
         uiResult.impact = {
-          "Records Processed": result.details?.success_count || "All",
-          "Errors": result.details?.error_count || "0"
+          "Imported": String(result.stats?.imported ?? 0),
+          "Skipped": String(result.stats?.skipped ?? 0),
+          "Errors": String(result.stats?.errors ?? 0)
         };
+        uiResult.details = result.details || {};
+        uiResult.related_entity = result.related_entity || null;
         break;
 
       // --- INVENTORY GROUPING ---

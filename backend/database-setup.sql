@@ -12,23 +12,3 @@ COLLATE utf8mb4_unicode_ci;
 -- Verify database creation
 SHOW DATABASES LIKE 'sku_inventory_manager';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

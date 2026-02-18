@@ -15,6 +15,7 @@ import * as cacheService from './cacheService.js';
 import * as landlordService from './landlordService.js';
 import fs from 'fs';
 import path from 'path';
+import logger from '../config/logger.js';
 
 
 
@@ -108,7 +109,8 @@ export const registerUser = async (userData) => {
   // Add email-to-tenant mapping for future token-less login
   const store = dbStore.getStore();
   const tenantId = store?.tenantId;
-  if (tenantId) {
+  // Guard: Only map if we have a real tenant context (not 'default' fallback)
+  if (tenantId && tenantId !== 'default') {
     try {
       await landlordService.addEmailTenantMapping(email, tenantId);
     } catch (mappingError) {
@@ -117,33 +119,19 @@ export const registerUser = async (userData) => {
     }
   }
 
-  // Generate tokens
-  const token = generateToken(user);
-  const refreshToken = generateRefreshToken(user);
-
-  // Update last login
-  await user.update({ last_login: new Date() });
-
   return {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
     role: user.role,
     permissions: user.permissions || [],
-    is_master_admin: user.is_master_admin || false,
-    token,
-    refreshToken
+    is_master_admin: user.is_master_admin || false
   };
 };
 
 export const loginUser = async (email, password) => {
   // Find user by email
   const User = dbStore.get('User');
-  if (User.sequelize) {
-    console.log(`[AuthDebug] User Model DB: ${User.sequelize.config.database}`);
-  } else {
-    console.log('[AuthDebug] User Model has no sequelize instance');
-  }
   const user = await User.findOne({ where: { email } });
 
   if (!user) {
@@ -199,7 +187,18 @@ export const loginUser = async (email, password) => {
 
 export const refreshUserToken = async (refreshToken) => {
   try {
-    // Verify refresh token
+    // 1. Check if token is blacklisted (Reuse Detection)
+    const isBlacklisted = await isTokenBlacklisted(refreshToken);
+    if (isBlacklisted) {
+      // CRITICAL: Refresh token reuse detected!
+      // In a real-world production system, we might want to invalidate ALL tokens
+      // for this user "family" here. For now, we block the request.
+      const error = new Error('Refresh token reused or revoked - security alert');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    // 2. Verify refresh token
     const decoded = verifyRefreshToken(refreshToken);
 
     if (decoded.type !== 'refresh') {
@@ -208,7 +207,7 @@ export const refreshUserToken = async (refreshToken) => {
       throw error;
     }
 
-    // Find user
+    // 3. Find user
     const User = dbStore.get('User');
     const user = await User.findByPk(decoded.user_id);
 
@@ -218,12 +217,17 @@ export const refreshUserToken = async (refreshToken) => {
       throw error;
     }
 
-    // Generate new access token
+    // 4. Generate NEW access token and NEW refresh token
     const token = generateToken(user);
+    const newRefreshToken = generateRefreshToken(user);
     const expiresIn = 24 * 60 * 60; // 24 hours in seconds
+
+    // 5. Blacklist the OLD refresh token immediately
+    await blacklistToken(refreshToken);
 
     return {
       token,
+      refreshToken: newRefreshToken,
       expiresIn
     };
   } catch (error) {
@@ -244,7 +248,7 @@ export const refreshUserToken = async (refreshToken) => {
 export const blacklistToken = async (token) => {
   try {
     // Decode token to get expiration time (without verification)
-    const decoded = jwt.decode(token);    if (!decoded || !decoded.exp) {
+    const decoded = jwt.decode(token); if (!decoded || !decoded.exp) {
       return false;
     }    // Calculate TTL: time until token expires
     const currentTime = Math.floor(Date.now() / 1000);
@@ -266,13 +270,15 @@ export const blacklistToken = async (token) => {
  * @returns {Promise<boolean>} - True if blacklisted
  */
 export const isTokenBlacklisted = async (token) => {
-  try {
-    const blacklistKey = `blacklist:token:${token}`;
-    const result = await cacheService.get(blacklistKey);
-    return result === 'true';
-  } catch (error) {
-    // If Redis is unavailable, assume token is not blacklisted
-    // Better to allow access than block legitimate users
-    return false;
+  if (!process.env.REDIS_URL) {
+    logger.warn('Skipping token blacklist check: REDIS_URL not configured');
+    return false; // Fail Open if Redis is not configured
   }
+  if (!cacheService.isAvailable()) {
+    logger.warn('Skipping token blacklist check: Redis is not connected');
+    return false; // Fail Open if Redis is configured but currently disconnected
+  }
+  const blacklistKey = `blacklist:token:${token}`;
+  const result = await cacheService.getCritical(blacklistKey);
+  return result === 'true';
 };

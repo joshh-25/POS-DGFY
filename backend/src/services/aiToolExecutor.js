@@ -1848,10 +1848,21 @@ async function importCsvData({ entity_type, csv_content, options = {}, _confirme
       return {
         success: true,
         message: `Import completed: ${results.imported} ${entity_type} imported, ${results.skipped} skipped, ${results.errors.length} errors.`,
+        details: {
+          "Entity Type": entity_type.charAt(0).toUpperCase() + entity_type.slice(1),
+          "Imported": String(results.imported),
+          "Skipped": String(results.skipped),
+          "Errors": String(results.errors.length)
+        },
         stats: {
           "imported": results.imported,
           "skipped": results.skipped,
           "errors": results.errors.length
+        },
+        related_entity: {
+          type: entity_type === 'items' ? 'item' : 'supplier',
+          id: null,
+          label: `All ${entity_type.charAt(0).toUpperCase() + entity_type.slice(1)}`
         },
         results
       };

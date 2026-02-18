@@ -58,8 +58,11 @@ api.interceptors.response.use(
             refreshToken
           }, refreshConfig);
 
-          const { token } = response.data.data;
+          const { token, refreshToken: newRefreshToken } = response.data.data;
           localStorage.setItem('authToken', token);
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
           originalRequest.headers.Authorization = `Bearer ${token}`;
 
           // Ensure retry also has company token if needed
@@ -75,9 +78,19 @@ api.interceptors.response.use(
         localStorage.removeItem('authToken');
 
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('companyToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
+    }
+
+    // NEW: Handle stale tenant context (Tenant no longer exists or user removed)
+    if (error.response?.status === 404 &&
+      (error.response?.data?.message?.includes('Tenant') || error.response?.data?.message?.includes('company token'))) {
+      console.warn('⚠️ [Auth] Stale company token detected, clearing...');
+      localStorage.removeItem('companyToken');
+      // Don't necessarily redirect to login here, just clear the token
+      // Most protected routes will redirect if they need a tenant
     }
 
     // Log detailed validation errors for 422 responses

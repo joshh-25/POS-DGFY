@@ -32,6 +32,30 @@ export const get = async (key) => {
 };
 
 /**
+ * Get cached value by key, throwing error if unavailable (Critical / Fail-Closed)
+ * @param {string} key - Cache key
+ * @returns {Promise<string|null>} - Cached value or throws error
+ */
+export const getCritical = async (key) => {
+  if (!isRedisConnected()) {
+    throw new Error('Redis is not connected (Fail-Closed)');
+  }
+
+  try {
+    const client = getRedisClient();
+    if (!client) {
+      throw new Error('Redis client is not available (Fail-Closed)');
+    }
+
+    const value = await client.get(key);
+    return value;
+  } catch (error) {
+    logger.error('Cache getCritical error:', { key, error: error.message });
+    throw error;
+  }
+};
+
+/**
  * Set cached value with optional TTL
  * @param {string} key - Cache key
  * @param {string} value - Value to cache

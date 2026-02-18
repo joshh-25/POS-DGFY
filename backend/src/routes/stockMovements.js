@@ -1,6 +1,7 @@
 import express from 'express';
 import * as stockMovementController from '../controllers/stockMovementController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkPermission } from '../middleware/auth.js';
+import { PERMISSIONS } from '../config/permissions.js';
 import {
   validateCreateStockMovement,
   validateVoidMovement,
@@ -17,8 +18,8 @@ router.get('/', stockMovementController.getStockMovements);
 router.get('/:id', stockMovementController.getMovementById);
 
 // Create operations - managers and admins only
-router.post('/', authorize('admin', 'manager'), validateCreateStockMovement, stockMovementController.createStockMovement);
-router.post('/bulk', authorize('admin', 'manager'), validateBulkCreate, stockMovementController.createBulkMovements); // Bulk create
-router.post('/:id/void', authorize('admin', 'manager'), validateVoidMovement, stockMovementController.voidMovement); // Void movement
+router.post('/', checkPermission(PERMISSIONS.STOCK.actions.CREATE_ADJUSTMENT), validateCreateStockMovement, stockMovementController.createStockMovement);
+router.post('/bulk', checkPermission(PERMISSIONS.STOCK.actions.CREATE_ADJUSTMENT), validateBulkCreate, stockMovementController.createBulkMovements); // Bulk create
+router.post('/:id/void', checkPermission(PERMISSIONS.STOCK.actions.CREATE_ADJUSTMENT), validateVoidMovement, stockMovementController.voidMovement); // Void movement
 
 export default router;

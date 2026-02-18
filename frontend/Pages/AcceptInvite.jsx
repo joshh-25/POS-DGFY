@@ -98,13 +98,8 @@ export default function AcceptInvite() {
         password: formData.password
       });
 
-      // Store tokens and redirect
-      const { token, refreshToken } = response.data.data;
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('refreshToken', refreshToken);
-
-      // Redirect to dashboard
-      navigate('/');
+      // Redirect to login
+      navigate('/login?setup=true');
     } catch (err) {
       const errorMessage = err.response?.data?.message ||
         err.response?.data?.errors?.[0]?.message ||

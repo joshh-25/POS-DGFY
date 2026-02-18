@@ -6,14 +6,17 @@ import {
     rejectTenant,
     provisionNewTenant,
     getPricingSettings,
-    updatePricingSettings
+    updatePricingSettings,
+    updateTenant,
+    deleteTenant
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
+import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 // PUBLIC: Submit company registration request (no auth required)
-router.post('/register', registerCompanyRequest);
+router.post('/register', tenantRegistrationLimiter, registerCompanyRequest);
 
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
@@ -26,7 +29,14 @@ router.put('/pricing', authenticateAdmin, updatePricingSettings);
 router.post('/:id/approve', authenticateAdmin, approveTenant);
 
 // ADMIN: Reject a pending tenant
+// ADMIN: Reject a pending tenant
 router.post('/:id/reject', authenticateAdmin, rejectTenant);
+
+// ADMIN: Update tenant details (status, plan)
+router.put('/:id', authenticateAdmin, updateTenant);
+
+// ADMIN: Permanently delete tenant
+router.delete('/:id', authenticateAdmin, deleteTenant);
 
 // ADMIN: Direct provisioning (legacy, kept for backward compatibility)
 router.post('/provision', authenticateAdmin, provisionNewTenant);

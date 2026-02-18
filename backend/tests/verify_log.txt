@@ -1,0 +1,19 @@
+1. Logging in as Admin...
+Admin logged in. Token obtained.
+
+2. Registering dummy tenant...
+Tenant registered: TestCorp_1770866874260 (ID: 0ef0ac63-91db-40a9-86af-7525b95b15aa)
+
+3. Approving tenant...
+Tenant approved and provisioned.
+
+4. Testing Update (Soft Delete)...
+Tenant updated successfully (Inactive / Premium).
+
+5. Testing Permanent Delete...
+Tenant deleted.
+
+6. Verifying Deletion...
+Success: Tenant not found (404) as expected.
+
+✅ ALL TESTS PASSED

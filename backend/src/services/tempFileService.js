@@ -151,7 +151,19 @@ export const cleanupExpiredFiles = () => {
  * @returns {Object} Parsed data with headers and rows
  */
 export const parseCsv = (csvContent) => {
-  const lines = csvContent.trim().split('\n');
+  // Normalize escaped newlines: AI models and JSON round-trips may produce
+  // literal backslash-n (\\n) instead of actual newline characters.
+  // Also handle Windows-style \r\n
+  let normalized = csvContent;
+  // Replace literal two-char sequences \\r\\n or \\n with real newlines
+  // (but only if there are no real newlines in the content already)
+  if (!normalized.includes('\n')) {
+    normalized = normalized.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+  }
+  // Also clean up \r from Windows line endings
+  normalized = normalized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  const lines = normalized.trim().split('\n');
 
   if (lines.length === 0) {
     return { headers: [], rows: [], error: 'Empty CSV content' };

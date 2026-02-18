@@ -200,6 +200,44 @@ export const rejectTenant = async (tenantId, reason = '') => {
 };
 
 /**
+ * Update tenant details
+ */
+export const updateTenant = async (tenantId, updates) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.put(`/admin/tenants/${tenantId}`, updates, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+/**
+ * Permanently delete tenant
+ */
+export const deleteTenant = async (tenantId) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.delete(`/admin/tenants/${tenantId}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+/**
  * Get pricing settings
  */
 export const getPricing = async () => {

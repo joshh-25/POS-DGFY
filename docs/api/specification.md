@@ -1719,6 +1719,56 @@ Reject a pending tenant registration.
 **Response Fields**:
 - `email_sent`: Boolean indicating whether rejection notification email was sent successfully
 
+### PUT /admin/tenants/:id
+Update tenant status or subscription plan.
+
+**Request**
+```json
+{
+  "status": "inactive",
+  "plan": "premium"
+}
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Tenant updated successfully",
+  "data": {
+    "id": 1,
+    "name": "ACME Corp",
+    "status": "inactive",
+    "plan": "premium",
+    "updated_at": "2026-02-12T..."
+  }
+}
+```
+
+**Notes**:
+- `status` values: "active", "inactive" (soft delete), "pending", "rejected"
+- `plan` values: "standard", "premium"
+- Changing status to "inactive" prevents all users of that tenant from logging in.
+
+### DELETE /admin/tenants/:id
+Permanently delete a tenant and their isolated database. **IRREVERSIBLE**.
+
+**Request**
+No body required.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Tenant and database permanently deleted"
+}
+```
+
+**Side Effects**:
+- **DROPS** the tenant's isolated database (`sku_tenant_...`)
+- Removes the tenant record from the `Tenants` table
+- This action cannot be undone. All data is lost.
+
 ---
 
 ## Email Configuration

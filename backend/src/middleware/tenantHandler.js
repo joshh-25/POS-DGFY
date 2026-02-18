@@ -36,11 +36,13 @@ export const tenantHandler = async (req, res, next) => {
         const tenant = await findTenantByToken(companyToken);
 
         if (!tenant) {
-            logger.warn(`Invalid Company Token provided: ${companyToken}`);
-            return res.status(404).json({
-                success: false,
-                message: 'Invalid Company Token. Tenant not found.'
-            });
+            logger.warn(`Invalid Company Token provided: ${companyToken}. Falling back to default context.`);
+            // Instead of blocking with 404, we fall back to default context.
+            // This allows endpoints like /logout or /health to still work even with a stale token.
+            return dbStore.run({
+                tenantId: 'default',
+                tenantName: 'SKU-Inventory-Manager (Default)'
+            }, next);
         }
 
         logger.info(`[TenantHandler] Found tenant: ${tenant.name} (${tenant.id})`);

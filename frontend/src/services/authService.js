@@ -9,16 +9,11 @@ export const register = async (userData, companyToken) => {
   } : {};
 
   const response = await api.post('/auth/register', userData, config);
-  const { token, refreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('refreshToken', refreshToken);
+
   // Store company token for future requests
   if (companyToken) {
     localStorage.setItem('companyToken', companyToken);
   }
-
-  // Dispatch custom event to notify PermissionContext to reload
-  window.dispatchEvent(new CustomEvent('auth:login'));
 
   return response.data.data;
 };
@@ -67,8 +62,11 @@ export const logout = async () => {
 export const refreshToken = async () => {
   const refreshToken = localStorage.getItem('refreshToken');
   const response = await api.post('/auth/refresh-token', { refreshToken });
-  const { token } = response.data.data;
+  const { token, refreshToken: newRefreshToken } = response.data.data;
   localStorage.setItem('authToken', token);
+  if (newRefreshToken) {
+    localStorage.setItem('refreshToken', newRefreshToken);
+  }
   return token;
 };
 

@@ -28,6 +28,7 @@ import { initBillingScheduler } from './schedulers/billingScheduler.js';
 import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
 import { tenantHandler } from './middleware/tenantHandler.js';
+import tenantConnector from './utils/TenantConnector.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -73,6 +74,8 @@ const corsOptions = {
     if (!origin ||
       /^http:\/\/localhost:517[0-9]$/.test(origin) ||
       /^http:\/\/127\.0\.0\.1:517[0-9]$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1:5000$/.test(origin) ||
+      /^http:\/\/localhost:5000$/.test(origin) ||
       /^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:517[0-9]$/.test(origin)) {
       callback(null, true);
     } else {
@@ -165,6 +168,23 @@ app.get('/health', async (req, res) => {
     };
   }
 
+  // Tenant connection pool stats
+  try {
+    const poolStats = tenantConnector.getPoolStats();
+    health.services.tenantPool = {
+      status: poolStats.utilizationPercent > 90 ? 'warning' : 'healthy',
+      active: poolStats.total,
+      pending: poolStats.pending,
+      capacity: poolStats.capacity,
+      utilization: `${poolStats.utilizationPercent}%`
+    };
+  } catch (error) {
+    health.services.tenantPool = {
+      status: 'error',
+      message: error.message
+    };
+  }
+
   const statusCode = health.success ? 200 : 503;
   res.status(statusCode).json(health);
 });
@@ -219,6 +239,23 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
+    // ── Production environment guard ──────────────────────────────────────────
+    // If any required PayPal variable is missing in production the server must
+    // refuse to start. This is the only reliable way to catch a misconfigured
+    // deployment before it silently breaks the payment or webhook flow.
+    if (process.env.NODE_ENV === 'production') {
+      const requiredPaypalEnvVars = [
+        'PAYPAL_CLIENT_ID',
+        'PAYPAL_CLIENT_SECRET',
+        'PAYPAL_WEBHOOK_ID',
+      ];
+      const missing = requiredPaypalEnvVars.filter(k => !process.env[k]);
+      if (missing.length > 0) {
+        logger.error(`CRITICAL: Missing required PayPal environment variables: ${missing.join(', ')}. Server will not start.`);
+        process.exit(1);
+      }
+    }
+
     // Initialize cleanup job
     initCleanupJob();
 
@@ -245,6 +282,8 @@ const startServer = async () => {
       initializeRedis().catch((error) => {
         logger.warn('Redis initialization failed, continuing without cache:', error.message);
       });
+    } else {
+      logger.info('No REDIS_URL found, skipping Redis initialization.');
     }
 
     const server = app.listen(PORT, '0.0.0.0', () => {
@@ -254,6 +293,9 @@ const startServer = async () => {
 
       // Start Billing Scheduler
       initBillingScheduler();
+
+      // Start periodic tenant connection pool cleanup
+      tenantConnector.startPeriodicCleanup();
     });
 
     // Graceful shutdown
@@ -262,6 +304,14 @@ const startServer = async () => {
 
       // Close Redis connection
       await closeRedis();
+
+      // Close all tenant DB connections
+      try {
+        await tenantConnector.closeAll();
+        logger.info('All tenant database connections closed.');
+      } catch (err) {
+        logger.error('Error closing tenant connections during shutdown:', err);
+      }
 
       server.close(() => {
         logger.info('HTTP server closed.');

@@ -98,14 +98,24 @@ export default function ActionResultCard({ result, onViewDetails }) {
     }
   }
 
+  // State for pagination/truncation
+  const [showAllImpact, setShowAllImpact] = React.useState(false);
+  const [showAllDetails, setShowAllDetails] = React.useState(false);
+  const ITEMS_TO_SHOW = 8; // Number of items to show initially
+
   // 2. Resolve Key Details (Chips)
-  // Use 'details' object if available
   const details = result.details || {};
+  const detailsEntries = Object.entries(details);
+  const hasDetails = detailsEntries.length > 0;
+  const visibleDetails = showAllDetails ? detailsEntries : detailsEntries.slice(0, ITEMS_TO_SHOW);
+  const hiddenDetailsCount = detailsEntries.length - ITEMS_TO_SHOW;
 
   // 3. Resolve Impact/Stats (Grid)
-  // Consolidate 'impact' (new) and 'stats' (legacy)
   const impactStats = result.impact || result.stats || {};
-  const hasImpact = Object.keys(impactStats).length > 0;
+  const impactEntries = Object.entries(impactStats);
+  const hasImpact = impactEntries.length > 0;
+  const visibleImpact = showAllImpact ? impactEntries : impactEntries.slice(0, ITEMS_TO_SHOW);
+  const hiddenImpactCount = impactEntries.length - ITEMS_TO_SHOW;
 
   return (
     <div className={`rounded-xl border ${style.borderColor} ${style.bgColor} p-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
@@ -121,32 +131,52 @@ export default function ActionResultCard({ result, onViewDetails }) {
 
           {/* Impact / Stats Grid (The "Visual Success Card" Core) */}
           {hasImpact && (
-            <div className="mt-3 grid grid-cols-2 gap-3 bg-white/60 rounded-lg p-3 border border-black/5">
-              {Object.entries(impactStats).map(([key, value]) => (
-                <div key={key} className="flex flex-col">
-                  <span className="text-[11px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
-                    {key.replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-sm font-bold text-slate-800 break-words leading-tight">
-                    {String(value)}
-                  </span>
-                </div>
-              ))}
+            <div className="mt-3">
+              <div className={`grid grid-cols-2 gap-3 bg-white/60 rounded-lg p-3 border border-black/5 ${showAllImpact ? 'max-h-[300px] overflow-y-auto pr-1' : ''}`}>
+                {visibleImpact.map(([key, value]) => (
+                  <div key={key} className="flex flex-col">
+                    <span className="text-[11px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+                      {key.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-sm font-bold text-slate-800 break-words leading-tight">
+                      {String(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {hiddenImpactCount > 0 && (
+                <button
+                  onClick={() => setShowAllImpact(!showAllImpact)}
+                  className="mt-2 text-xs font-medium text-slate-500 hover:text-slate-700 underline decoration-slate-300 underline-offset-2"
+                >
+                  {showAllImpact ? 'Show Less' : `Show ${hiddenImpactCount} more updates...`}
+                </button>
+              )}
             </div>
           )}
 
           {/* Details Chips (Secondary Info) */}
-          {Object.keys(details).length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {Object.entries(details).map(([key, value]) => (
-                <span
-                  key={key}
-                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-white/40 border border-black/5 text-slate-600"
+          {hasDetails && (
+            <div className="mt-3">
+              <div className={`flex flex-wrap gap-2 ${showAllDetails ? 'max-h-[200px] overflow-y-auto pr-1' : ''}`}>
+                {visibleDetails.map(([key, value]) => (
+                  <span
+                    key={key}
+                    className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-white/40 border border-black/5 text-slate-600"
+                  >
+                    <span className="opacity-70 mr-1.5">{key}:</span>
+                    <span className="font-semibold">{String(value)}</span>
+                  </span>
+                ))}
+              </div>
+              {hiddenDetailsCount > 0 && (
+                <button
+                  onClick={() => setShowAllDetails(!showAllDetails)}
+                  className="mt-2 text-xs font-medium text-slate-500 hover:text-slate-700 underline decoration-slate-300 underline-offset-2"
                 >
-                  <span className="opacity-70 mr-1.5">{key}:</span>
-                  <span className="font-semibold">{String(value)}</span>
-                </span>
-              ))}
+                  {showAllDetails ? 'Show Less' : `Show ${hiddenDetailsCount} more details...`}
+                </button>
+              )}
             </div>
           )}
 

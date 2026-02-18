@@ -1,4 +1,165 @@
 
+## Audit 3.4: Billing Date Logic Drift — Billing Cycle Anchor (2026-02-17)
+
+### High-Level Summary
+Implemented a resilient "snap-back" billing logic to prevent date drift caused by months of varying lengths (e.g., February). This was achieved by introducing a permanent `billing_cycle_anchor` to the Tenant model, ensuring users who sign up on the 31st always return to the 31st after passing through shorter months.
+
+### Problems Fixed
+1. **Billing Anniversary Drift**: Fixed 30-day increments caused billing dates to slowly shift away from the original signup day (e.g., Jan 31 -> March 2).
+2. **Permanent Day Loss**: Users previously lost billing days permanently after shorter months because the system "forgot" the original anchor day once it was capped (e.g., to Feb 28).
+
+### Core Implementation
+1. **Database Persistence**: Added `billing_cycle_anchor` (INTEGER) to the `tenants` table via migration.
+2. **Snap-back Logic**: Refactored `handlePaymentCompleted` and `upgradeToPremium` to use a hierarchical date calculation:
+    - Prioritizes PayPal's authoritative `next_billing_time`.
+    - Fallback: Moves to next calendar month + attempts to set the day to the `billing_cycle_anchor`.
+    - Overflow Handling: If the anchor day is invalid for the target month (e.g., April 31), it caps at the month's last day (April 30).
+3. **Existing Data Migration**: Migration automatically populates the anchor for existing tenants based on their current `current_period_end` or `created_at` date.
+
+### Verification
+- **Leap Year/Non-Leap Year Simulation**: Ran `tests/reproduce_billing_drift.js` simulating multi-month extensions for a Jan 31 signup.
+- **Results**: Verified Jan 31 -> Feb 28/29 -> March 31 -> April 30 -> May 31 progression.
+- **Autoritative Check**: Confirmed that if PayPal provides a date, that date is used, maintaining synchronization with the payment processor.
+
+### Files Modified
+- `backend/src/models/Landlord/Tenant.js`
+- `backend/src/controllers/paymentController.js`
+- `backend/migrations/20260217000000-add-billing-anchor.cjs`
+
+---
+
+## Audit 2.6: `tenantModelFactory` — Safe Hook Cloning & Dynamic Associations (2026-02-17)
+
+### High-Level Summary
+Refactored `tenantModelFactory.js` to fix two structural risks and one silent failure mode in the core multi-tenant model binding utility.
+
+### Problems Fixed
+1. **Blind option copying** (`...originalModel.options`): Hooks were copied into tenant models implicitly. Any future hook importing `db from '../models/index.js'` would silently query the Landlord DB instead of the tenant DB (scope contamination).
+2. **Hardcoded associations** (~160 lines): Every `hasMany`/`belongsTo`/etc. was manually duplicated from `models/index.js`. Any association change in the source required a matching copy-paste here or tenant models would silently diverge.
+3. **Silent model miss**: If a name in `modelNames` had no `defaultModels` entry, it was silently skipped with no log output.
+
+### Core Implementation
+1. **Safe Hook Cloning**: `hooks` is destructured out of `originalModel.options` before the spread. Hooks are re-applied via `model.addHook()` using canonical keys only — Sequelize expands proxy hooks at define-time (`beforeSave` → `beforeCreate` + `beforeUpdate`), so iterating the expanded `options.hooks` directly causes double registration. Only non-proxy-target hook names are re-registered; `addHook` handles the fan-out.
+2. **Dynamic Association Mapper**: Replaced ~160 lines of hardcoded associations with a loop over `Object.keys(defaultModels)` that reads each source model's live `.associations` metadata and recreates them on tenant clones via `assoc.associationType` switch.
+3. **Missing Model Warning**: `logger.warn()` fires when a `modelNames` entry has no `defaultModels` match.
+
+### Verification (Real MySQL)
+- Connected to `sku_tenant_carlocorp_d61ea193` and `sku_inventory_manager` via fresh Sequelize instances.
+- 30/30 models cloned correctly.
+- `FIFOBatch` hook registration count matches source (1× each for `beforeSave`, `beforeCreate`, `beforeUpdate`). `beforeSave` fires and nullifies invalid expiry dates.
+- All associations present: `Item→FIFOBatch`, `ItemFolder` self-refs, PO double alias (`lineItems`+`items`), `FIFOBatch→BatchLineage` (`asParent`/`asChild`).
+- Real nested include queries passed: `PO→Supplier→LineItem→Item`, `JO→Ingredients→Item`.
+- `_tenantModelsInitialized` guard confirmed: second call returns same model references without re-running associations.
+
+### Files Modified
+- `backend/src/utils/tenantModelFactory.js`
+
+---
+
+## Audit 2.4: Tenant Registration Rate Limiting (2026-02-17)
+
+### High-Level Summary
+Added a dedicated `tenantRegistrationLimiter` to the public `POST /admin/tenants/register` endpoint. The endpoint previously only inherited the global `generalLimiter` (100 req/15 min), which was insufficient to prevent scripted abuse — an attacker could trigger bcrypt hashing, DB uniqueness checks, PayPal API calls, and full database provisioning at will.
+
+### Core Implementation
+1. **New limiter** — `tenantRegistrationLimiter` added to `src/middleware/rateLimiter.js` as a named export: 5 req/IP/hour in production, 50 in development. Skipped in test env. Logs violations via Winston.
+2. **Route wired** — `src/routes/adminTenants.js` imports and applies the limiter as middleware on `POST /register`.
+3. **Pattern consistency** — Extended existing `rateLimiter.js` rather than creating a new file, keeping all limiter definitions co-located.
+
+### Verification
+- Existing test suite unaffected (limiter skips in `test` env).
+- Manual: 6 rapid POST requests to `/api/v1/admin/tenants/register` → first 5 process normally, 6th returns 429 with `RateLimit-*` headers.
+
+### Files Modified
+- `src/middleware/rateLimiter.js` — Added `tenantRegistrationLimiter` export
+- `src/routes/adminTenants.js` — Applied limiter to `POST /register`
+
+---
+
+## Connection Pool Eviction Fix — Audit 2.2 (2026-02-16)
+
+### High-Level Summary
+Comprehensive fix for `TenantConnector` connection pool eviction under high concurrent load. The original implementation had a race condition allowing pool overflow, only evicted one connection at a time, and never cleaned up idle connections despite defining a timeout constant.
+
+### Core Implementation
+1. **Concurrency Guard**: Added `pendingConnections` Set — concurrent requests for the same tenant wait instead of creating duplicates; size checks count both active and pending connections.
+2. **Batch Eviction**: `evictConnections(count)` sorts by LRU and evicts multiple connections in parallel.
+3. **Periodic Cleanup**: `startPeriodicCleanup()` runs every 60s, closing connections idle >10 minutes. Uses `.unref()` to not block process exit.
+4. **Pool Tuning**: Sequelize `idle` reduced from 10s to 5s, added `evict: 1000` for aggressive internal cleanup.
+5. **Observability**: `getPoolStats()` exposed on `/health` endpoint with utilization warnings at >90%.
+6. **Server Integration**: Added missing `tenantConnector` import in `server.js` (latent shutdown bug), started periodic cleanup on boot.
+
+### Verification
+- 13/13 tests passed against 18 real tenant databases via `scripts/verify-pool-eviction.js`.
+
+### Files Modified
+- `src/utils/TenantConnector.js` — Full rewrite
+- `src/server.js` — Import, startup, health endpoint
+- `scripts/verify-pool-eviction.js` — New verification script
+
+---
+
+## Phase 32: Invite User Validation Fix (2026-02-16)
+
+### High-Level Summary
+Implemented strict input validation for the `inviteUser` endpoint to prevent the use of malformed emails and unauthorized roles. This addresses a vulnerability where invalid data could be injected into the invitation system.
+
+### Core Implementation
+1.  **Strict Validator Schema**:
+    -   Added `inviteUserSchema` in `userValidator.js` using Joi.
+    -   Enforced email format validation and role restricted to `['admin', 'manager', 'staff']`.
+2.  **Middleware Integration**:
+    -   Applied `validateInviteUser` middleware to the `POST /users/invite` route.
+    -   Requests with invalid data now trigger an automatic `422 Unprocessable Entity` response.
+3.  **Controller Optimization**:
+    -   Refactored the `inviteUser` controller to remove manual validation and consume `req.validatedData` for better consistency and security.
+
+### Outcomes
+- Verified that invalid emails and roles are rejected at the gate.
+- Successful real-world verification against the live API with clear error feedback.
+- Security Audit issue [1.9] marked as Resolved.
+
+## Phase 31: Frontend Stale `companyToken` Fix (2026-02-16)
+
+### High-Level Summary
+Implemented a critical fix for the frontend to ensure that `companyToken` is properly cleared from `localStorage` when it becomes invalid. This prevents users from being stuck in a stale tenant context or seeing 403/404 errors after they have been removed from a company or their session has expired.
+
+### Core Implementation
+1.  **Response Interceptor Guard**:
+    -   Updated `api.js` to explicitly remove `companyToken` if the token refresh logic fails.
+    -   Added a specific 404 handler for "Tenant" errors to proactively clear the token and prevent further invalid requests.
+2.  **Startup Validation**:
+    -   Implemented a `useEffect` hook in `main.jsx` that validates the `companyToken` on application mount.
+    -   If the token is found to be invalid or expired via the `/auth/validate-token` endpoint, it is immediately cleared from storage.
+
+### Outcomes
+- Verified that tampering with the `companyToken` now triggers automatic cleanup on page refresh.
+- Improved UX by ensuring users are redirected to login/select company instead of seeing persistent 404/403 errors.
+- Security Audit issue [1.7] marked as Resolved.
+
+## Phase 30: Refresh Token Rotation (RTR) (2026-02-16)
+
+### High-Level Summary
+Implemented Refresh Token Rotation (RTR) to enhance authentication security. This ensures that refresh tokens are single-use and rotated every time a new access token is requested, mitigating the risk of stolen refresh tokens and replay attacks.
+
+### Core Implementation
+1.  **Backend Rotation Logic**:
+    -   Updated `authService.refreshUserToken()` to check if a refresh token is blacklisted before use.
+    -   Implemented automatic generation of a NEW refresh token alongside the new access token.
+    -   Implemented immediate blacklisting of the old refresh token in Redis upon successful refresh.
+2.  **Frontend Synchronization**:
+    -   Updated axios response interceptor in `api.js` to automatically capture and store the newly rotated refresh token.
+    -   Updated `authService.refreshToken()` to persist the new token to `localStorage`.
+3.  **Security Measures**:
+    -   **Reuse Detection**: If an old refresh token is reused (indicating a potential replay attack), the system blocks the request and log/throws a security alert error.
+    -   **Redis Integration**: Leveraged Redis for high-performance token blacklisting.
+
+### Outcomes
+- Successfully verified single-use property of refresh tokens.
+- Replay attacks using old refresh tokens are now blocked with 401 Unauthorized.
+- User session continuity remains uninterrupted for legitimate users.
+- Security Audit issue [1.6] marked as Resolved.
+
 ## Phase 28: UOM Conversion System (2026-02-04)
 
 ### High-Level Summary

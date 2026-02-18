@@ -11,6 +11,7 @@ export default function ProtectedRoute({ children }) {
   const refreshToken = localStorage.getItem('refreshToken');
 
   // If no tokens exist, redirect to login
+  // If no tokens exist, redirect to login
   if (!authToken && !refreshToken) {
     // Store the attempted URL to redirect back after login
     const currentPath = window.location.pathname + window.location.search;

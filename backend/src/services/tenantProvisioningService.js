@@ -16,6 +16,10 @@ const backendRoot = path.resolve(__dirname, '../../');
 
 const execPromise = util.promisify(exec);
 
+// Strict allowlist pattern for all tenant database names.
+// Guards every DDL path against invalid or maliciously crafted identifiers.
+const DB_NAME_PATTERN = /^sku_tenant_[a-z0-9]+_[a-z0-9]+$/;
+
 /**
  * Provision a tenant - supports both:
  * 1. Full provisioning (new request with name, adminEmail, adminPassword)
@@ -47,6 +51,9 @@ export const provisionTenant = async (options) => {
         // Approval flow - use existing tenant data
         uuid = tenantId;
         dbName = providedDbName;
+        if (!DB_NAME_PATTERN.test(dbName)) {
+            throw new Error(`Security: Invalid database name in approval flow: ${dbName}`);
+        }
         companyToken = providedCompanyToken;
         passwordHash = providedPasswordHash;
         tenantName = name;
@@ -58,6 +65,9 @@ export const provisionTenant = async (options) => {
         uuid = uuidv4();
         const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
         dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
+        if (!DB_NAME_PATTERN.test(dbName)) {
+            throw new Error(`Security: Invalid database name generated: ${dbName}`);
+        }
         const subdomain = `${safeName}-${uuid.split('-')[0]}`;
         companyToken = `token-${safeName}-${uuid.split('-')[0]}`;
         passwordHash = await bcrypt.hash(adminPassword, 10);
@@ -103,7 +113,8 @@ export const provisionTenant = async (options) => {
     try {
         // 1. Create Database
         logger.info(`[Provisioning] Creating database ${dbName}...`);
-        await sequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+        const safeCreateIdentifier = sequelize.getQueryInterface().quoteIdentifier(dbName);
+        await sequelize.query(`CREATE DATABASE IF NOT EXISTS ${safeCreateIdentifier}`);
 
         // 2. Setup Connection for Sync & Seed
         const tenantSequelize = new Sequelize(dbName, process.env.DB_USER || 'root', process.env.DB_PASSWORD || '', {
@@ -157,14 +168,48 @@ export const provisionTenant = async (options) => {
 
     } catch (error) {
         logger.error(`[Provisioning] Error: ${error.message}`);
-        // Mark as failed
+
+        // 1. Mark tenant record as failed
         try {
-            // Use default dbStore to update status
             const Tenant = dbStore.get('Tenant');
             await Tenant.update({ status: 'failed' }, { where: { id: uuid } });
         } catch (cleanupError) {
-            // ignore
+            logger.warn(`[Provisioning] Failed to mark tenant as failed: ${cleanupError.message}`);
         }
+
+        // 2. Drop the zombie database (compensating transaction)
+        // The DB_NAME_PATTERN guard inside deleteTenantDatabase makes this safe.
+        if (dbName && DB_NAME_PATTERN.test(dbName)) {
+            try {
+                await deleteTenantDatabase(dbName);
+                logger.info(`[Provisioning] Zombie database ${dbName} dropped during cleanup`);
+            } catch (dropError) {
+                logger.error(`[Provisioning] CRITICAL: Failed to drop zombie database ${dbName}: ${dropError.message}`);
+            }
+        }
+
+        throw error;
+    }
+};
+
+/**
+ * Safely drop a tenant database
+ * CAUTION: This is a destructive operation!
+ */
+export const deleteTenantDatabase = async (dbName) => {
+    if (!dbName || !DB_NAME_PATTERN.test(dbName)) {
+        throw new Error('Invalid database name for deletion (must match sku_tenant_<name>_<uuid>)');
+    }
+
+    logger.warn(`[Provisioning] PERMANENTLY DELETING database: ${dbName}`);
+
+    try {
+        const safeDropIdentifier = sequelize.getQueryInterface().quoteIdentifier(dbName);
+        await sequelize.query(`DROP DATABASE IF EXISTS ${safeDropIdentifier}`);
+        logger.info(`[Provisioning] Database ${dbName} deleted successfully`);
+        return true;
+    } catch (error) {
+        logger.error(`[Provisioning] Failed to delete database ${dbName}: ${error.message}`);
         throw error;
     }
 };

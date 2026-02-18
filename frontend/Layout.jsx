@@ -23,6 +23,7 @@ import {
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
+import useStore from './src/store/useStore.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -58,6 +59,7 @@ export default function Layout({ children, currentPageName }) {
   const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
   const { can, userRole, loading } = usePermission();
+  const { setCurrentUser: setGlobalCurrentUser } = useStore();
 
   React.useEffect(() => {
     if (!loading) {
@@ -70,6 +72,8 @@ export default function Layout({ children, currentPageName }) {
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
+        // Also sync to global Zustand store so other pages can access user data
+        setGlobalCurrentUser(user);
       } catch (error) {
         console.error('Failed to load user profile', error);
       }

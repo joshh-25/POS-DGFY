@@ -15,6 +15,13 @@ export default [
             "no-unused-vars": "warn",
             "no-console": "off",
             "no-undef": "error",
+            "no-restricted-syntax": [
+                "error",
+                {
+                    "selector": "CallExpression[callee.name='authorize']",
+                    "message": "The 'authorize' middleware is deprecated. Use 'checkPermission' instead."
+                }
+            ]
         },
     },
 ];

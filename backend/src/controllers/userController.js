@@ -154,15 +154,7 @@ export const updateUserPermissions = async (req, res, next) => {
   try {
     const adminUserId = req.user.user_id;
     const targetUserId = req.params.user_id;
-    const { permissions, is_master_admin } = req.body;
-
-    // permissions should be an array of strings
-    if (permissions && !Array.isArray(permissions)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Permissions must be an array of strings'
-      });
-    }
+    const { permissions, is_master_admin } = req.validatedData;
 
     const result = await userService.updateUserPermissions(adminUserId, targetUserId, permissions, is_master_admin);
 
@@ -183,14 +175,7 @@ export const updateUserPermissions = async (req, res, next) => {
 export const inviteUser = async (req, res, next) => {
   try {
     const adminUserId = req.user.user_id;
-    const { email, role } = req.body;
-
-    if (!email || !role) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and role are required'
-      });
-    }
+    const { email, role } = req.validatedData;
 
     const result = await userService.createUserInvitation(adminUserId, { email, role });
 

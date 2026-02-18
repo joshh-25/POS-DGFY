@@ -391,10 +391,16 @@ export default function Settings() {
           {currentUser?.is_master_admin && companyInfo ? (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-teal-600" />
-                  Company Details
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-teal-600" />
+                    Company Details
+                  </CardTitle>
+                  <Button variant="outline" size="sm" onClick={() => setShowUserManagement(true)}>
+                    <Users className="w-4 h-4 mr-2" />
+                    Manage Users
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-3 bg-slate-50 rounded-lg">
@@ -416,9 +422,19 @@ export default function Settings() {
               </CardContent>
             </Card>
           ) : (
-            <div className="p-12 text-center text-slate-500">
-              Only Master Admins can view company details.
-            </div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center text-slate-500 mb-4">
+                  View company details and manage team members.
+                </div>
+                {currentUser?.role === 'admin' && (
+                  <Button onClick={() => setShowUserManagement(true)} className="w-full sm:w-auto">
+                    <Users className="w-4 h-4 mr-2" />
+                    Manage Users
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
@@ -625,7 +641,107 @@ export default function Settings() {
                 </div>
                 <Switch checked={settings.autoCalculateThresholds} onCheckedChange={(v) => handleChange('autoCalculateThresholds', v)} />
               </div>
-              {/* ... other settings ... */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Low Stock Alerts</Label>
+                  <p className="text-xs text-slate-500">Get notified when items fall below threshold</p>
+                </div>
+                <Switch
+                  checked={settings.lowStockAlertEnabled}
+                  onCheckedChange={(v) => handleChange('lowStockAlertEnabled', v)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Surplus & Expiry Alerts</Label>
+                  <p className="text-xs text-slate-500">Warnings for overstock and expiring items</p>
+                </div>
+                <Switch
+                  checked={settings.surplusAlertEnabled}
+                  onCheckedChange={(v) => handleChange('surplusAlertEnabled', v)}
+                />
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-slate-900">Inventory Thresholds</h3>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label>Minimum Stock Level ({settings.defaultMinThreshold}%)</Label>
+                    <span className="text-xs text-slate-500">Triggers reorder suggestions</span>
+                  </div>
+                  <div className="flex gap-4 items-center">
+                    <Slider
+                      value={[settings.defaultMinThreshold]}
+                      min={5}
+                      max={90}
+                      step={5}
+                      onValueChange={([v]) => handleChange('defaultMinThreshold', v)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      value={settings.defaultMinThreshold}
+                      onChange={(e) => handleChange('defaultMinThreshold', parseInt(e.target.value) || 0)}
+                      className="w-16 h-8 text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label>Purchase Allowance ({settings.defaultPurchaseAllowance}%)</Label>
+                    <span className="text-xs text-slate-500">Extra stock to order above min</span>
+                  </div>
+                  <div className="flex gap-4 items-center">
+                    <Slider
+                      value={[settings.defaultPurchaseAllowance]}
+                      min={0}
+                      max={100}
+                      step={5}
+                      onValueChange={([v]) => handleChange('defaultPurchaseAllowance', v)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      value={settings.defaultPurchaseAllowance}
+                      onChange={(e) => handleChange('defaultPurchaseAllowance', parseInt(e.target.value) || 0)}
+                      className="w-16 h-8 text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Procurement Reminder (Hours)</Label>
+                  <p className="text-xs text-slate-500 mb-2">How often to check for reorders</p>
+                  <Input
+                    type="number"
+                    value={settings.procurementReminderDay}
+                    onChange={(e) => handleChange('procurementReminderDay', parseInt(e.target.value) || 24)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Supplier Quality Standard ({settings.qualityThreshold})</Label>
+                  <p className="text-xs text-slate-500 mb-2">Minimum rating for auto-approval</p>
+                  <div className="pt-2">
+                    <Slider
+                      value={[settings.qualityThreshold]}
+                      min={1}
+                      max={5}
+                      step={0.1}
+                      onValueChange={([v]) => handleChange('qualityThreshold', v)}
+                    />
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

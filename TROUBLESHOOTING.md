@@ -80,21 +80,20 @@ FROM items WHERE item_id = <affected_item_id>;
 ```
 - **Verification**: Check that the item has batches: `SELECT * FROM fifo_batches WHERE item_id = <id>`
 
-### 7. Job Order Over-Production Previously Blocked
-**Symptoms** (historical — now resolved):
+### 7. Job Order Completion Fails with Quantity Validation Error
+**Symptoms**:
 - Error: `Cannot produce X. Only Y remaining.`
-- Real-world yields slightly exceed the target (e.g., target 24000g, actual 24200g)
+- Happens when trying to complete more than the remaining quantity
 
-**Cause** (resolved in Phase 32):
-- The backend previously enforced a hard upper limit equal to `quantity_to_produce`
-- Over-production is a valid real-world scenario (batch yields are not always exact)
+**Cause**:
+- The Job Order was partially completed before
+- `quantity_produced` already has a value, reducing remaining quantity
+- User is trying to produce the original `quantity_to_produce` instead of the remaining amount
 
 **Solution**:
-- **Fixed in Code (Phase 32)**: The upper-bound check has been removed. Any positive quantity is now accepted.
-- The "Target" button (formerly "Max") in the completion dialog sets the input to the remaining target as a convenience — users may type any higher value to record over-production.
-- The JO will be marked `completed` when total produced meets or exceeds the target.
-- Ingredients are consumed proportionally (ratio > 1.0 for over-production).
-- **If you still see this error**: Ensure the backend has been restarted to pick up the Phase 32 changes (`pm2 restart sku-backend`).
+- Check the "Produced So Far" value shown in the completion dialog
+- Only enter the remaining quantity (Total - Already Produced)
+- Use the "Max" button to auto-fill the correct remaining quantity
 
 ### 8. Port Already in Use (EADDRINUSE)
 **Symptoms**:
@@ -378,37 +377,163 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
   3. Observe logs: `🔄 [Auth] Refreshing token... { companyToken: '...' }`.
   4. Ensure no red 401 errors appear in the network tab.
 
-### 25. Product Ingredient Quantity Shows 0.9999999999 Instead of 1
+### 25. Recovering a Lost Tenant (Manual Provisioning)
 **Symptoms**:
-- After saving a product and reopening the Edit Product wizard, ingredient quantities like `1` appear as `0.9999999999` or similar floating-point values.
-- The issue gets worse with each save-and-reload cycle.
-
-**Cause**:
-- The wizard stores ingredient quantities "per batch" in the UI but normalizes to "per unit" for DB storage by dividing by `batch_size` on save and multiplying back on load.
-- Example: `1 / 300 = 0.003333...` (repeating float) → `0.003333... × 300 = 0.9999...` (float drift)
-- No rounding was applied at any stage, so `DECIMAL(24,12)` faithfully preserved the imprecise value.
+- A user paid successfully (e.g., via PayPal) but their tenant account was not created due to a race condition or server error.
+- The user's email is not mapped to any company.
 
 **Solution**:
-- **Fixed in Code (Phase 32)**:
-  - `RecipeFormulationStep.jsx`: Input rounded to 6 decimal places on every change.
-  - `ProductCreateWizard.jsx`: Rounded to 6dp on load (denormalization) and 10dp on save (normalization), eliminating drift.
-- **Verification**: Create a product with `batch_size=300`, set an ingredient quantity to `1`, save, re-open — should display exactly `1`. Repeat 5 times; value must remain stable.
-- **Note**: Existing products with stored imprecise values will self-correct on the next save through the wizard.
+- **Fixed in Code (Phase 35)**: The "Add Tenant" button in the Admin Portal is now fully functional and connected to the backend provisioning service.
+- **Diagnosis**:
+  To verify if a tenant is truly missing from the database, you can run:
+  ```bash
+  node backend/scripts/check_tenant.js
+  ```
+- **Manual Recovery Steps**:
+  1. Log in to the **Admin Portal** (`/admin`).
+  2. Click **"+ Add Tenant"**.
+  3. Fill in the details:
+     - **Company Name**: Use a safe name (e.g., from their PayPal transaction).
+     - **Admin Email**: The user's email address.
+     - **Admin Password**: Set a temporary password (share this with the user).
+     - **Plan**: Select "Premium" (if they paid).
+     - **Subscription ID**: Enter the PayPal Subscription ID if available (optional but recommended for linking).
+  4. Click **"Create Tenant"**.
+- The system will provision the database, seed the initial user, and link the email. The user can then log in immediately.
 
-### 26. Inventory Value / Cost Per Unit Is Inflated (Shows 2×–5× the Correct Value)
+### 26. Sidebar Navigation Only Shows "Dashboard" (Permission Parsing)
 **Symptoms**:
-- A product's "Inventory Value" card and `@ ₱X/unit` rate are significantly higher than expected.
-- Example: Calamansi Pasteurized shows `₱0.27/g` when the correct cost is `₱0.13/g`.
-- The inflation appears to be roughly 2× the true cost.
+- User has Admin role with full permissions but sidebar only shows "Dashboard".
+- Navigating directly to `/items` or `/suppliers` via URL works correctly.
+- Console may show `PermissionContext: Setting empty permissions` despite user having permissions.
 
 **Cause**:
-- `calculateTotalProductCost()` in `frontend/Components/items/details/helpers.js` was summing:
-  `cost_per_unit + labor_cost + overhead_cost + additional_packaging_cost + recipe_cost`
-- However, `cost_per_unit` (saved during the product wizard's Cost step) already contains ALL of those components: it is calculated as `(ingredients + packaging + labor + overhead) / (batch_size × yield%)`.
-- Adding the sub-components again caused 2×–5× inflation depending on how many extra cost fields were set.
+- MariaDB returns JSON columns as **strings** (`"[\"items:view\",...]"`) instead of parsed arrays.
+- `PermissionContext.jsx` checked `Array.isArray(user.permissions)` which returned `false` for string values.
+- This resulted in an empty permission set, hiding all permission-gated navigation items.
 
 **Solution**:
-- **Fixed in Code (Phase 32)**: `calculateTotalProductCost()` now returns only `parseFloat(item.cost_per_unit)`.
-- This fixes all 4 display surfaces simultaneously: Inventory Value card, `@ ₱X/unit` label, Cost column in item list, and the modal header total.
-- **Verification**: Open any product's details. The `@ ₱X/unit` rate should now match the `cost_per_unit` value visible in the product's Cost step in the wizard.
-- **Note**: `labor_cost`, `overhead_cost`, and `additional_packaging_cost` remain stored separately in `ItemCostBreakdown` and are still shown correctly in the cost breakdown panel — they are just no longer added to the inventory value total.
+- **Fixed in Code (Phase 32)**: Added `typeof` check and `JSON.parse()` in `PermissionContext.jsx` before the array check.
+- **Verification**: Log in and check the sidebar — all permitted nav items should be visible.
+
+### 27. Dashboard Forecast Widget Shows "Upgrade" for Premium Users
+**Symptoms**:
+- User has a **Premium** plan but the Dashboard "AI Demand Forecasting" widget shows "Upgrade to Premium".
+- The AI Chat page correctly recognizes the user as Premium (no gating).
+- Refreshing the page doesn't fix the issue.
+
+**Cause**:
+- `Dashboard.jsx` read `currentUser?.company?.plan` from the global Zustand store.
+- `Layout.jsx` fetched user data but stored it only in local React state, never syncing to the global store.
+- The global `currentUser` remained `null`, causing the plan check to always fail.
+
+**Solution**:
+- **Fixed in Code (Phase 32)**: `Dashboard.jsx` now uses `tenantPlan` from `usePermission()` hook instead of the global store. `Layout.jsx` also syncs user data to the global store for consistency.
+- **Verification**: Log in as Premium user → Dashboard should show the forecast chart, not the upgrade prompt.
+
+### 28. PayPal Registration Redirect Fails (Timeout)
+**Symptoms**:
+- After completing PayPal payment (or clicking Mock Button), the screen stays on the registration form with a loading spinner for a long time.
+- Redirection to Dashboard takes more than 15-20 seconds.
+
+**Cause**:
+- **Database Provisioning Latency**: Creating a new tenant involves creating a physical MySQL database, running all migrations (~40 tables), and seeding initial data. This is a heavy operation.
+- **Concurrent DB Locks**: If the server is low on resources or handling multiple provisioning requests, MySQL may lock during `CREATE DATABASE`.
+
+**Solution**:
+- **Patience**: Redirection is designed to happen ONLY after the database is 100% ready. It typically takes 10-15 seconds in dev.
+- **Check Backend Logs**:
+  ```bash
+  # Check for migration or provisioning errors
+  tail -f backend/logs/app.log 
+  ```
+- **Force Check**: If stuck more than 60 seconds, check the **Admin Portal** to see if the tenant exists and is "Active". If active, you can manually log in via the Login page.
+- **Dev Speedup**: Avoid running heavy migrations or DB scans while registering new tenants.
+
+### 30. Zombie Database Left After Failed Provisioning
+**Symptoms**:
+- A `sku_tenant_*` database exists in MySQL but the tenant's status is `'failed'` in the landlord DB.
+- Re-registering the same company name fails with a unique constraint error on `db_name`.
+- Storage grows over time with orphaned databases from transient provisioning failures.
+
+**Cause**:
+- `provisionTenant` creates the database with `CREATE DATABASE` (a non-transactional DDL) before the steps that can fail: schema sync, admin seeding, and status update.
+- Prior to Phase 35, the catch block only set `status: 'failed'` — it never dropped the partially-created database.
+
+**Solution**:
+- **Fixed in Phase 35**: The catch block in `tenantProvisioningService.js` now calls `deleteTenantDatabase(dbName)` as a compensating step immediately after marking the tenant as failed.
+- The fix is protected by a `dbName.startsWith('sku_tenant_')` guard before calling, plus `deleteTenantDatabase`'s own prefix validation — production databases cannot be accidentally dropped.
+
+**If zombie DBs already exist** (before the fix was deployed):
+```sql
+-- List candidate zombie databases
+SHOW DATABASES LIKE 'sku_tenant_%';
+
+-- Cross-reference against landlord tenants table to find orphans
+SELECT db_name FROM tenants WHERE status = 'failed';
+
+-- Drop confirmed orphans (verify name matches a failed tenant first)
+DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
+```
+
+### 29. Tenant Connection Pool Overflow Under Load
+**Symptoms**:
+- Under high concurrent traffic with many different tenants, database connections grow beyond `MAX_CACHED_CONNECTIONS` (20).
+- MySQL shows excessive open connections or `Too many connections` errors.
+- Idle tenant connections are never cleaned up.
+
+**Cause**:
+- The original `TenantConnector.evictOldestConnection()` only removed one connection at a time.
+- Concurrent async calls to `getConnection()` could all pass the size check before any eviction completed (race condition).
+- `IDLE_TIMEOUT_MS` was defined but never used — no periodic cleanup existed.
+
+**Solution**:
+- **Fixed in Phase 34**: `TenantConnector.js` was rewritten with:
+  - `pendingConnections` Set to guard against race conditions
+  - `evictConnections(count)` for batch eviction
+  - Periodic idle cleanup every 60s (connections idle >10min are closed)
+  - Sequelize pool `idle` reduced to 5s, `evict: 1000` added
+- **Monitoring**: Check `/health` endpoint — `tenantPool` section shows active connections, capacity, and utilization percentage.
+- **Verification**: Run `node --experimental-vm-modules backend/scripts/verify-pool-eviction.js` to stress-test the pool.
+
+### 31. All API Requests Return 500 — `SequelizeAssociationError: alias used in two separate associations`
+**Symptoms**:
+- Every authenticated API call returns 500 immediately after the first request succeeds.
+- Backend logs show: `SequelizeAssociationError: You have used the alias auditLogs in two separate associations. Aliased associations must have unique aliases.`
+- Stack trace points to `getTenantModels` in `tenantModelFactory.js` called from `tenantHandler.js`.
+
+**Cause**:
+- `getTenantModels()` guarded model *class* re-definition (`if (sequelize.models[name])`) but ran the **associations block unconditionally** on every call.
+- Since `TenantConnector` caches Sequelize instances per tenant, the same instance is reused across requests. Sequelize associations are class-level metadata — registering them a second time on the same model class throws.
+- The `_tenantModelsInitialized` flag was set at the *bottom* of the function but never *checked* at the top of the associations section.
+
+**Solution**:
+- **Fixed in Phase 37**: Added `if (sequelize._tenantModelsInitialized) { return models; }` at the start of the associations block in `backend/src/utils/tenantModelFactory.js`.
+- Associations are now defined exactly once per cached Sequelize instance and skipped on all subsequent requests for the same tenant connection.
+
+### 32. All Authenticated Requests Return 500 When Redis Is Configured But Down
+**Symptoms**:
+- Every request requiring authentication returns 500.
+- Backend error log shows: `Error: Redis is not connected (Fail-Closed)` from `cacheService.getCritical` → `isTokenBlacklisted` → `authenticate`.
+- Redis is configured in `.env` (`REDIS_URL` is set) but the Redis process is not running.
+
+**Cause**:
+- `isTokenBlacklisted()` in `authService.js` had a fail-open guard for `REDIS_URL` **not configured** (returns `false`), but called `cacheService.getCritical()` when `REDIS_URL` was set — even if Redis was currently unreachable.
+- `getCritical()` intentionally throws when the Redis connection is down (fail-closed by design for sensitive cache reads). Using it for token blacklist checking was incorrect since a disconnected Redis should not lock all users out.
+
+**Solution**:
+- **Fixed in Phase 37**: Added `if (!cacheService.isAvailable()) { return false; }` check in `isTokenBlacklisted()` before calling `getCritical`. When Redis is configured but currently unreachable, the blacklist check is skipped (fail-open) rather than throwing a 500.
+- **Workaround if fix not yet deployed**: Start Redis (`redis-server` or via the service manager). The app will resume normal operation once Redis reconnects.
+
+### 33. FIFOBatch Hook Fires Twice — Expiry Date Nulled on Valid Dates (Audit 2.6 footgun)
+**Symptoms**:
+- After any change to `tenantModelFactory.js` hook cloning logic, `FIFOBatch` records are unexpectedly nullified on valid expiry dates, or the `beforeSave` console warning appears for valid dates.
+- Duplicate log entries: `[FIFOBatch] Invalid expiry_date detected` printed twice per save.
+
+**Cause**:
+- Sequelize expands proxy hooks at define-time. `{ beforeSave: fn }` in `FIFOBatch.js` becomes `options.hooks = { beforeSave: [fn], beforeCreate: [fn], beforeUpdate: [fn] }` after the initial `sequelize.define()`.
+- If tenant model cloning iterates all three keys and calls `addHook` for each, `addHook('beforeSave', fn)` fans out internally to `beforeCreate` + `beforeUpdate` again — resulting in 2 registrations on those two hook points. The hook fires twice on every create/update.
+
+**Solution**:
+- **Fixed in Audit 2.6**: The hook re-application loop filters to canonical hook names only, skipping proxy targets (`beforeCreate`, `beforeUpdate`, `afterCreate`, `afterUpdate`). Only `beforeSave` (or equivalent canonical name) is passed to `addHook`; Sequelize handles the fan-out exactly once.
+- If this regression surfaces again, inspect `m.FIFOBatch.options.hooks.beforeCreate.length` on a fresh tenant instance — it should be `1`, matching the source model.

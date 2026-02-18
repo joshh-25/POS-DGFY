@@ -212,9 +212,7 @@ export const acceptInvitation = async (req, res, next) => {
           username: result.username,
           email: result.email,
           role: result.role
-        },
-        token: result.token,
-        refreshToken: result.refreshToken || null
+        }
       },
       message: 'Account created successfully. You are now logged in.',
       timestamp: new Date().toISOString()
@@ -222,7 +220,7 @@ export const acceptInvitation = async (req, res, next) => {
   } catch (error) {
     // Return 400 for validation errors instead of 500
     if (error.message.includes('expired') || error.message.includes('Invalid') ||
-        error.message.includes('not found') || error.message.includes('already')) {
+      error.message.includes('not found') || error.message.includes('already')) {
       return res.status(400).json({
         success: false,
         data: null,

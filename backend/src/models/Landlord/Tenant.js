@@ -68,6 +68,14 @@ export default (sequelize) => {
             type: DataTypes.ENUM('standard', 'premium'),
             defaultValue: 'standard'
         },
+        billing_cycle_anchor: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            validate: {
+                min: 1,
+                max: 31
+            }
+        },
         subscription_status: {
             type: DataTypes.ENUM('active', 'inactive', 'past_due', 'cancelled', 'pending'),
             defaultValue: 'inactive'
@@ -91,13 +99,24 @@ export default (sequelize) => {
         cancelled_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        last_expiry_notified_at: {
+            type: DataTypes.DATE,
+            allowNull: true,
+            field: 'last_expiry_notified_at'
+        },
+        last_expiry_notification_type: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            field: 'last_expiry_notification_type'
         }
     }, {
         sequelize,
         modelName: 'Tenant',
         tableName: 'tenants',
-        underscored: true,
-        timestamps: true
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
     });
 
     return Tenant;

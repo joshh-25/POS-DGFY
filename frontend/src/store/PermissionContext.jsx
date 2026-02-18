@@ -19,13 +19,25 @@ export const PermissionProvider = ({ children }) => {
             const user = await getCurrentUser();
 
             if (user) {
-                // Extract permissions - handle both array and legacy object formats
+                // Extract permissions - handle array, JSON string, and legacy object formats
                 let perms = [];
-                if (Array.isArray(user.permissions)) {
-                    perms = user.permissions;
-                } else if (user.permissions && typeof user.permissions === 'object') {
+                let rawPerms = user.permissions;
+
+                // MariaDB may return JSON columns as strings — parse them first
+                if (typeof rawPerms === 'string') {
+                    try {
+                        rawPerms = JSON.parse(rawPerms);
+                    } catch (e) {
+                        console.warn('PermissionContext: Failed to parse permissions string', e);
+                        rawPerms = [];
+                    }
+                }
+
+                if (Array.isArray(rawPerms)) {
+                    perms = rawPerms;
+                } else if (rawPerms && typeof rawPerms === 'object') {
                     // Convert legacy object format { items: { view: true } } to ['items:view']
-                    Object.entries(user.permissions).forEach(([entity, actions]) => {
+                    Object.entries(rawPerms).forEach(([entity, actions]) => {
                         if (actions && typeof actions === 'object') {
                             Object.entries(actions).forEach(([action, allowed]) => {
                                 if (allowed) perms.push(`${entity}:${action}`);

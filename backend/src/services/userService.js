@@ -628,19 +628,13 @@ export const acceptInvitation = async (token, userData) => {
     }
   }
 
-  // Generate JWT tokens
-  const jwtToken = generateToken(user);
-  const refreshToken = generateRefreshToken(user);
-
   return {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
     role: user.role,
     permissions: user.permissions,
-    is_master_admin: user.is_master_admin,
-    token: jwtToken,
-    refreshToken: refreshToken
+    is_master_admin: user.is_master_admin
   };
 };
 

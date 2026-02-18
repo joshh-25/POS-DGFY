@@ -179,12 +179,22 @@ class PayPalService {
      * Verify Webhook Signature
      */
     async verifyWebhookSignature(headers, eventBody) {
+        // MOCK BACKDOOR FOR TESTING
+        if (process.env.MOCK_PAYPAL === 'true' && process.env.NODE_ENV !== 'production') {
+            logger.info('[MOCK] Skipping Webhook Signature Verification');
+            return true;
+        }
+
         const token = await this.getAccessToken();
         const webhookId = process.env.PAYPAL_WEBHOOK_ID;
 
         if (!webhookId) {
-            logger.warn('PAYPAL_WEBHOOK_ID not found. Skipping signature verification.');
-            return true; // Fallback for dev if not set, but production should fail
+            if (process.env.NODE_ENV === 'production') {
+                logger.error('CRITICAL: PAYPAL_WEBHOOK_ID is not configured. Rejecting webhook to prevent spoofing.');
+                return false; // Fail Closed in production
+            }
+            logger.warn('PAYPAL_WEBHOOK_ID not found. Skipping signature verification (DEV/TEST ONLY).');
+            return true; // Fail Open only outside production
         }
 
         try {

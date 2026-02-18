@@ -81,6 +81,8 @@ export const PERMISSIONS = {
             VIEW_SETTINGS: "settings:view",  // View system settings
             EDIT_SETTINGS: "settings:edit",  // Change system settings
             MANAGE_USERS: "users:manage",    // Manage other users (Master Admin/Admin)
+            VIEW_USERS: "users:view",        // View other users (Admin/Manager)
+            DELETE_USERS: "users:delete",    // Remove/Deactivate users (Admin/Manager)
             VIEW_AUDIT: "audit:view",        // View audit logs
         }
     }
@@ -110,6 +112,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.AI.actions.AI_CHAT_ACTION,
         PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
         PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS,
+        PERMISSIONS.SYSTEM.actions.VIEW_USERS,
+        PERMISSIONS.SYSTEM.actions.DELETE_USERS,
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT
     ],
     staff: [

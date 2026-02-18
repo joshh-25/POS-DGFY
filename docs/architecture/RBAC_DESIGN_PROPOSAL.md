@@ -130,3 +130,11 @@ navItems.filter(item => can(item.permission)).map(...)
 ## 7. Analysis of "Consistency"
 - The current `role` enum is rigid. Moving to JSON permissions is the robust way to handle "checklists".
 - We must ensure **Server-Side Validation** mirrors the UI. Hiding a button isn't enough; the API endpoint must check the permission.
+
+## 8. Known Caveats
+
+### MariaDB JSON Column Parsing
+MariaDB may return `permissions` JSON columns as **strings** rather than parsed arrays, depending on the driver version. Frontend code must check `typeof permissions === 'string'` and call `JSON.parse()` before using `Array.isArray()`. This was resolved in Phase 32 of the development history — see `PermissionContext.jsx`.
+
+### State Synchronization
+When user data (including permissions and plan) is fetched in a wrapper component like `Layout.jsx`, it must be synced to the global state store (Zustand) so child components (e.g., `Dashboard.jsx`) can reliably access `currentUser` and `tenantPlan`.

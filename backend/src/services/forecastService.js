@@ -6,7 +6,7 @@ export const forecastStockLevels = async (daysAhead = 30) => {
   const StockMovement = dbStore.get('StockMovement');
 
   const items = await Item.findAll({
-    where: { is_active: true }
+    where: { status: 'active' }
   });
 
   const forecasts = [];

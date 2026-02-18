@@ -36,9 +36,11 @@
 - [Phase 26: SMTP Email Implementation & Login Bug Fix](#phase-26-smtp-email-implementation--login-bug-fix)
 - [Phase 27: Production Email Fix (Brevo)](#phase-27-production-email-fix-brevo)
 - [Phase 28: Staff Role Permission Fixes & UX Improvements](#phase-28-staff-role-permission-fixes--ux-improvements)
-- [Phase 30: Production Deployment Refinement](#phase-30-production-deployment-refinement)
 - [Phase 31: Inventory Folder Management Enhancements](#phase-31-inventory-folder-management-enhancements)
-- [Phase 32: Production Bug Fixes — Quantity Precision, JO Over-Production, Inventory Value](#phase-32-production-bug-fixes--quantity-precision-jo-over-production-inventory-value)
+- [Phase 32: Permission Parsing & Dashboard Gating Bug Fixes](#phase-32-permission-parsing--dashboard-gating-bug-fixes)
+- [Phase 35: Provisioning Atomic Cleanup (Audit 2.3)](#phase-35-provisioning-atomic-cleanup-audit-23)
+- [Phase 36: Tenant Registration Rate Limiting (Audit 2.4)](#phase-36-tenant-registration-rate-limiting-audit-24)
+- [Phase 37: DDL Identifier Escaping + Runtime Stability Fixes (Audit 2.5)](#phase-37-ddl-identifier-escaping--runtime-stability-fixes-audit-25)
 
 ---
 
@@ -5245,124 +5247,195 @@ Revised the deployment pipeline to be more robust, reliable, and strictly enviro
 
 ---
 
-## Phase 32: Production Bug Fixes — Quantity Precision, JO Over-Production, Inventory Value
-**Status**: ✅ COMPLETE
-**Date**: 2026-02-18
+## Phase 32: Permission Parsing & Dashboard Gating Bug Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-13
 
 ### Overview
-Fixed three production bugs reported from skupervisor.surebizcorp.com affecting the product recipe wizard, job order completion, and inventory value display across all product items.
+E2E testing across Standard and Premium accounts revealed two critical frontend bugs related to feature gating and permission rendering. Both were caused by state management issues rather than backend logic errors.
 
----
+### Bugs Fixed
 
-### Bug 1: Ingredient Quantity Floating-Point Drift (0.9999999999)
+#### 1. Sidebar Navigation Hidden for Standard Admins
+**Symptom**: Sidebar only showed "Dashboard" even when the user had full admin permissions.  
+**Root Cause**: MariaDB returns JSON columns as **strings** (e.g., `"[\"items:view\",\"items:create\"]"`). `PermissionContext.jsx` checked `Array.isArray(user.permissions)` which returned `false` for strings, resulting in an empty permission set.  
+**Fix**: Added `JSON.parse()` pre-processing in `PermissionContext.jsx` to detect and parse string-format permissions before the array check.
 
-#### Problem
-Entering `1` kg as an ingredient quantity in the product wizard would save and reload as `0.9999999999`. The issue compounded with each save-reload cycle.
-
-#### Root Cause
-The wizard stores quantities "per batch" in the UI but normalizes to "per unit" for DB storage:
-- **On save**: `quantity / batch_size` → e.g., `1 / 300 = 0.003333...` (repeating float)
-- **On load**: `quantity_from_db × batch_size` → e.g., `0.003333... × 300 = 0.9999...`
-
-No rounding was applied. `DECIMAL(24,12)` faithfully stored the imprecise value, creating a self-reinforcing cycle.
-
-#### Fix
-Applied `parseFloat(...toFixed(N))` rounding at three points in the round-trip:
-
-| Point | File | Rounding |
-|-------|------|----------|
-| On input (keypress) | `RecipeFormulationStep.jsx:394` | `toFixed(6)` |
-| On load (edit mode denormalization) | `ProductCreateWizard.jsx:118` | `toFixed(6)` |
-| On save (normalization before API) | `ProductCreateWizard.jsx:269` | `toFixed(10)` |
-
----
-
-### Bug 2: Job Order Hard Upper Output Cap Removed
-
-#### Problem
-Completing a Job Order with a quantity higher than the target threw:
-`Cannot produce X. Only Y remaining (Total: Y, Already Produced: 0).`
-
-Real-world production yields sometimes exceed targets by a small margin (e.g., target 24000g, actual 24200g), making it impossible to accurately record these completions.
-
-#### Root Cause (three related issues)
-1. **Hard cap**: `jobOrderService.js` threw a 400 error if `qtyToProcess > remainingQuantity + 0.001`.
-2. **`isFinalCompletion` never true for over-production**: Computed as `Math.abs(qty - remaining) < 0.001`, which is always `false` when qty > remaining — so the JO could never reach `completed` status.
-3. **Ingredient consumption under-counted**: The "final completion" branch consumed only the remaining required amount (`convertedTotalRequired - previouslyConsumed`) even during over-production, leaving ingredients under-consumed relative to actual output.
-
-#### Fix
-
-| Change | File | Lines |
-|--------|------|-------|
-| Removed upper-bound error block | `jobOrderService.js` | 379–385 (deleted) |
-| Rewrote `isFinalCompletion`: `true` when `currentProduced + thisQty >= target - 0.001` | `jobOrderService.js` | 387–383 |
-| Fixed ingredient consumption branch: uses ratio (>1.0) for over-production | `jobOrderService.js` | 421–431 |
-| Renamed "Max" → "Target" button in completion dialog | `JODetailsModal.jsx` | 332 |
-| Added "Over-production allowed" hint text | `JODetailsModal.jsx` | 336–339 |
-
-**Behavior after fix:**
-
-| Scenario | Status |
-|---|---|
-| Produce exactly target | ✅ JO → `completed` |
-| Produce less than target | ✅ JO → `partial` |
-| Produce more than target | ✅ JO → `completed`, extra stock added, ingredients consumed proportionally |
-
-**Inventory impact**: Extra stock from over-production is automatically valued at `product.cost_per_unit` per unit via the existing `production_output` stock movement — no additional code changes needed.
-
----
-
-### Bug 3: Inventory Value / Cost Per Unit Inflated (Double-Counted)
-
-#### Problem
-Product inventory values were inflated by 2–5×. Example: Calamansi Pasteurized (`batch_size=300g`, ingredient cost ₱40/batch) showed `₱0.27/g` instead of the correct `₱0.13/g`.
-
-The inflation affected:
-- Inventory Value card (`@ ₱X/unit` rate)
-- Item list Cost column
-- Modal header Total Value
-- Cost breakdown section total
-
-#### Root Cause
-`calculateTotalProductCost()` in `helpers.js` summed:
-```
-cost_per_unit + labor_cost + overhead_cost + additional_packaging_cost + recipe_cost
-```
-
-However, `cost_per_unit` (stored in the DB after the wizard's Cost step) is already computed as:
-```
-cost_per_unit = (ingredients + packaging + labor + overhead + additional_packaging) / (batch_size × yield%)
-```
-Adding all sub-components on top of the already-inclusive `cost_per_unit` caused systematic double-counting.
-
-`recipe_cost` is a dynamically recomputed raw ingredient sum (per batch, not per output unit) returned by the backend on every item fetch — also already baked into `cost_per_unit`.
-
-#### Fix
-**File**: `frontend/Components/items/details/helpers.js` — lines 113–122
-
-```js
-// Before: summed 5 fields, all of which overlap with cost_per_unit
-// After: cost_per_unit is the single authoritative COGS per output unit
-export const calculateTotalProductCost = (item) => {
-  if (!item) return 0;
-  return parseFloat(item.cost_per_unit) || 0;
-};
-```
-
-One function change fixes all 4 display surfaces simultaneously. No backend changes, no data mutations.
-
----
+#### 2. Dashboard Forecast Widget Locked for Premium Users
+**Symptom**: Premium users saw an "Upgrade to Premium" prompt on the Dashboard forecasting widget.  
+**Root Cause**: `Dashboard.jsx` checked `currentUser?.company?.plan` from the global Zustand store. However, `Layout.jsx` only stored the fetched user in local state and never synced it to the global store, leaving `currentUser` as `null`.  
+**Fix**:
+- Updated `Dashboard.jsx` to use `tenantPlan` from `usePermission()` hook (the reliable, already-populated source).
+- Updated `Layout.jsx` to sync the fetched user to the global Zustand store via `setCurrentUser()` for consistency.
 
 ### Files Modified
 
-| File | Change |
-|------|--------|
-| `frontend/Components/items/details/helpers.js` | Fix `calculateTotalProductCost` — remove double-count |
-| `frontend/Components/products/ProductCreateWizard.jsx` | Round on load (6dp) and on save (10dp) |
-| `frontend/Components/products/wizard/RecipeFormulationStep.jsx` | Round on input (6dp) |
-| `backend/src/services/jobOrderService.js` | Remove cap, fix `isFinalCompletion`, fix ingredient consumption |
-| `frontend/Components/jo/JODetailsModal.jsx` | "Target" button, hint text update |
+| File | Changes |
+|------|---------|
+| `frontend/src/store/PermissionContext.jsx` | Added JSON string parsing for permissions |
+| `frontend/Pages/Dashboard.jsx` | Switched from global store to `usePermission()` for plan check |
+| `frontend/Layout.jsx` | Added global store sync for `currentUser` |
 
-### Documentation Updated
-- `TROUBLESHOOTING.md` — Updated issue #7, added issues #25 and #26
-- `DEVELOPMENT_HISTORY.md` — This entry; TOC updated for phases 28–32
+### E2E Verification Results
+- [x] **Standard Admin**: All sidebar nav items visible (Items, Suppliers, POs, JOs, Stock, Reports, AI Chat, Settings)
+- [x] **Standard Admin**: AI Chat and Forecast widget correctly show upgrade prompts
+- [x] **Premium Admin**: Forecast widget shows "Stable Outlook" chart (no upgrade prompt)
+- [x] **Premium Admin**: AI Chat accessible without gating
+- [x] **Admin Portal**: 12 tenants visible, filter/edit/delete working, VonVV=Premium, Sigma Corp 2=Standard
+- [x] **Registration Flow**: Form validation and submission verified
+
+### Technical Notes
+- **MariaDB JSON Columns**: Always check `typeof` before `Array.isArray()` when reading JSON columns — MariaDB may return them as strings depending on driver version.
+- **State Sync Pattern**: When user data is fetched in a component that wraps the app (like `Layout`), always sync to the global store so child components have consistent access.
+
+
+---
+
+## Phase 33: PayPal E2E Integration & Tenant Lifecycle Cleanup
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-14
+
+### Overview
+This phase focused on finalizing the PayPal subscription flow for Premium accounts and cleaning up the development environment from stale test data. A key achievement was implementing a robust E2E verification method using a development-only mock bypass.
+
+### Tenant Lifecycle & Cleanup
+- [x] **Bulk Cleanup**: Identified and removed 9 stale test/seed tenants and their associated databases.
+- [x] **Deletion Safety**: Discovered and documented a backend safety check that requires tenant databases to start with `sku_tenant_` for deletion via UI.
+- [x] **Manual Intervention**: Used custom Node.js scripts (`manual_tenant_cleanup.cjs`) to clear legacy tenants with non-standard naming conventions (`tenant_standard`, `tenant_premium`).
+- [x] **Registry Maintenance**: Verified that only 4 production/legacy accounts remain, ensuring a clean system state.
+
+### PayPal Integration & E2E Verification
+- [x] **Mock Bypass**: Added a temporary `[DEV ONLY] Mock Premium Payment` button to `RegisterCompany.jsx` (visible only in `import.meta.env.DEV`). This allows headless browser agents to bypass the complex PayPal iframe while still triggering the full Premium provisioning logic.
+- [x] **Instant Provisioning**: Verified that Premium registrations via PayPal bypass the "Pending" state and immediately trigger database creation and auto-login.
+- [x] **Backend Backdoor**: Leveraged `MOCK_PAYPAL=true` in `paypalService.js` to simulate active subscription status without real API calls.
+- [x] **Feature Verification**: Successfully auto-provisioned a new tenant and verified that **AI Chat** and **AI Demand Forecasting** were unlocked without manual intervention.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/paypalService.js` | Verified mock backdoor for local testing |
+| `frontend/Pages/RegisterCompany.jsx` | Added/Removed temporary mock payment button for E2E testing |
+| `docs/features/TENANT_MANAGEMENT.md` | Updated with PayPal flow and deletion safety rules |
+| `backend/CREDENTIALS.md` | Added MOCK_PAYPAL and dev bypass documentation |
+
+### Technical Notes
+- **E2E Strategy**: Interactive iframes (like PayPal's) are notoriously difficult for automated browser agents. Implementing a development-only bypass button that calls the success handler directly is a more reliable way to test the *application's response* to a successful payment.
+- **Provisioning Latency**: Database creation and migration during registration takes ~10-15 seconds; automated tests must include sufficient wait times for the success redirection.
+
+---
+
+## Phase 34: Security Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-16
+
+### Logout Vulnerability Fix
+- [x] **Issue**: The `/api/v1/auth/logout` endpoint was missing authentication middleware, allowing invalid tokens to be submitted relative to the blacklist.
+- [x] **Fix**: Added `authenticate` middleware to the route to ensure only valid, signed tokens can function.
+- [x] **Verification**: Created reproduction script to confirm 401 response for invalid tokens.
+
+### Memory Leak Mitigation (Tenant Handler)
+- [x] **Issue**: Critical memory leak identified in `tenantHandler` where models were re-defined on every request.
+- [x] **Fix - Model Caching**: Implemented idempotency guard in `tenantModelFactory.js` using a `_tenantModelsInitialized` flag on the `Sequelize` instance.
+- [x] **Fix - Connection Management**: Increased `MAX_CACHED_CONNECTIONS` to 20 in `TenantConnector.js` and improved LRU eviction logging.
+- [x] **Fix - Graceful Shutdown**: Added `tenantConnector.closeAll()` to `server.js` graceful shutdown logic to prevent zombie DB connections.
+- [x] **Verification**: Verified using a mock reproduction script that models are now defined exactly once per tenant instance.
+
+### Files Modified
+- `backend/src/utils/tenantModelFactory.js`
+- `backend/src/utils/TenantConnector.js`
+- `backend/src/server.js`
+- `System_Audit/2.1-Memory_leak_tenant_handler.md`
+
+### Connection Pool Eviction Fix (Audit 2.2)
+- [x] **Issue**: `evictOldestConnection()` only removed one connection when the limit was reached. Concurrent requests for different tenants could bypass the `MAX_CACHED_CONNECTIONS` check due to async race conditions. `IDLE_TIMEOUT_MS` was defined but never used.
+- [x] **Fix - Race Condition**: Added `pendingConnections` Set to track in-flight connection creations. Size check now counts both active and pending connections.
+- [x] **Fix - Batch Eviction**: New `evictConnections(count)` method sorts by LRU and evicts multiple connections in parallel via `Promise.allSettled()`.
+- [x] **Fix - Periodic Cleanup**: `startPeriodicCleanup()` runs every 60s, closing connections idle for >10 minutes. Started on server boot, stopped on graceful shutdown.
+- [x] **Fix - Pool Tuning**: Reduced Sequelize `idle` from 10s to 5s, added `evict: 1000` for aggressive internal pool cleanup.
+- [x] **Fix - Observability**: `getPoolStats()` method added; `/health` endpoint now reports tenant pool utilization with warning at >90%.
+- [x] **Fix - Missing Import**: `tenantConnector` was used in `server.js` shutdown but never imported (latent bug).
+- [x] **Verification**: 13/13 tests passed against 18 real tenant databases via `backend/scripts/verify-pool-eviction.js`.
+
+### Files Modified
+- `backend/src/utils/TenantConnector.js`
+- `backend/src/server.js`
+- `backend/scripts/verify-pool-eviction.js` (new)
+- `System_Audit/2.2-Connection_pool_eviction_insufficient.md`
+
+---
+
+## Phase 35: Provisioning Atomic Cleanup (Audit 2.3)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-17
+
+### Zombie Database on Provisioning Failure
+- [x] **Issue**: `provisionTenant` created the MySQL database at step 1 (`CREATE DATABASE`) before the steps that can fail — schema sync, admin seeding, and status update. If any of those steps threw, the catch block marked the tenant `status: 'failed'` but left the partially-created `sku_tenant_*` database behind ("zombie DB"), consuming storage and blocking re-provisioning with the same name.
+- [x] **Fix — Compensating Cleanup**: Extended the catch block in `tenantProvisioningService.js` with a two-step compensating transaction:
+  1. Mark tenant `status: 'failed'` (existing behaviour, cleanup error now logged via `logger.warn` instead of silently ignored).
+  2. Call `deleteTenantDatabase(dbName)` to DROP the zombie database. Guarded by `dbName.startsWith('sku_tenant_')` (belt-and-suspenders on top of `deleteTenantDatabase`'s own prefix check). Drop error logged at CRITICAL level but not re-thrown — original provisioning error always propagates.
+- [x] **Coverage**: Fix applies to all three call paths (premium auto-provision on registration, admin manual approval, legacy direct provision). In all paths the database is created at line 106 before the failable steps, so the catch block always has a database to clean up.
+- [x] **Tests**: New test file `backend/tests/tenantProvisioning.test.js` with 2 Jest tests exercising the real MySQL connection:
+  - *Sync failure* — mocks `Sequelize.prototype.sync` to throw; asserts error propagates, tenant marked failed, `DROP DATABASE` issued.
+  - *Double-fault* — sync fails AND status-update also throws; asserts original error propagates and DROP still runs.
+- [x] **Verification**: Tests run against real MySQL instance — actual `CREATE DATABASE` and `DROP DATABASE IF EXISTS` queries executed and confirmed in logs.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/tenantProvisioningService.js` | Extended catch block with `deleteTenantDatabase` call |
+| `backend/tests/tenantProvisioning.test.js` | New — 2 automated tests for atomic cleanup |
+| `System_Audit/2.3-Provisioning_missing_atomic_cleanup.md` | Marked resolved |
+
+---
+
+## Phase 36: Tenant Registration Rate Limiting (Audit 2.4)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-17
+
+### DoS Protection for Auto-Provisioning Endpoint
+- [x] **Issue**: `POST /api/v1/admin/tenants/register` is a public endpoint with no dedicated rate limiter. On every request it runs bcrypt hashing, a DB uniqueness check, and for Premium plan: a PayPal API call + full database provisioning (CREATE DATABASE + migrations + seeding). Only the global `generalLimiter` (100 req/15 min) applied — trivially bypassed by a botnet.
+- [x] **Fix**: Added `tenantRegistrationLimiter` to `backend/src/middleware/rateLimiter.js` as a fourth named export, following the same pattern as `authLimiter` and `lookupLimiter`. Applied as middleware on `POST /register` in `adminTenants.js`.
+- [x] **Limits**: 5 requests/IP/hour in production (50 in development). Test environment skipped. Violations logged via Winston.
+- [x] **Design**: Extended `rateLimiter.js` rather than creating a new file — keeps all limiter definitions co-located, consistent with existing project structure.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/middleware/rateLimiter.js` | Added `tenantRegistrationLimiter` named export and default export entry |
+| `backend/src/routes/adminTenants.js` | Import and apply `tenantRegistrationLimiter` on `POST /register` |
+| `System_Audit/2.4-Auto_provisioning_rate_limit.md` | Marked resolved |
+
+---
+
+## Phase 37: DDL Identifier Escaping + Runtime Stability Fixes (Audit 2.5)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-17
+
+### DDL Identifier Escaping (Audit 2.5)
+- [x] **Issue**: `tenantProvisioningService.js` used hand-rolled backtick string interpolation for `CREATE DATABASE` and `DROP DATABASE` DDL. The legacy provisioning flow sanitised `dbName` with a regex, but (a) the approval flow used `providedDbName` from the caller with **no validation at all**, and (b) `deleteTenantDatabase` only checked `startsWith('sku_tenant_')` — a weak guard that admitted many malformed values.
+- [x] **Fix — `DB_NAME_PATTERN`**: Added module-level constant `const DB_NAME_PATTERN = /^sku_tenant_[a-z0-9]+_[a-z0-9]+$/;` as the single allowlist for all tenant DB names.
+- [x] **Fix — pattern validation in both flows**: Both the legacy flow (after construction) and the approval flow (on the caller-supplied `providedDbName`) now assert against `DB_NAME_PATTERN` before any Sequelize call. Throws `Security: Invalid database name` on mismatch.
+- [x] **Fix — `quoteIdentifier()`**: Replaced `` `\`${dbName}\`` `` in both `CREATE DATABASE` and `DROP DATABASE` with `sequelize.getQueryInterface().quoteIdentifier(dbName)` — ORM-mediated escaping instead of manual backtick embedding.
+- [x] **Fix — upgraded `deleteTenantDatabase` guard**: `startsWith` check replaced with `DB_NAME_PATTERN.test()`. Inline pre-call guard in the provisioning catch block similarly upgraded.
+- [x] **Tests**: Extended `backend/tests/tenantProvisioning.test.js` with 14 new tests in a `describe('Provisioning — DDL identifier escaping (2.5)')` block covering: 7 injection/malformed-name rejections in the approval flow, CREATE DATABASE quoting assertion, 5 invalid-name rejections in `deleteTenantDatabase`, DROP DATABASE quoting assertion. Pre-existing 2.3 test fixture names updated to conform to `DB_NAME_PATTERN`. All 16 tests pass.
+
+### Runtime Stability Fix — `SequelizeAssociationError` on Cached Connections
+- [x] **Issue**: `getTenantModels()` in `tenantModelFactory.js` guarded model *class* re-definition (`if (sequelize.models[name])`) but ran the associations block unconditionally on every call. Since `TenantConnector` caches Sequelize instances per tenant, the same instance was reused across requests — Sequelize threw `SequelizeAssociationError: alias auditLogs used in two separate associations` on every request after the first, causing blanket 500s.
+- [x] **Fix**: Added `if (sequelize._tenantModelsInitialized) { return models; }` at the top of the associations block. The `_tenantModelsInitialized` flag was already being *set* at the bottom of the function; it is now also *checked* before registering associations, so they are defined exactly once per cached instance.
+
+### Runtime Stability Fix — Redis Fail-Closed on Auth
+- [x] **Issue**: `isTokenBlacklisted()` in `authService.js` had a fail-open guard for `REDIS_URL` not configured, but then called `cacheService.getCritical()` (which **throws** when Redis is disconnected) when `REDIS_URL` was set but Redis was currently down. This caused every authenticated request to return 500 whenever Redis was unavailable.
+- [x] **Fix**: Added `if (!cacheService.isAvailable()) { return false; }` check after the `REDIS_URL` guard — consistent with the existing "not configured" fail-open pattern. Token blacklist check is now skipped (fail-open) when Redis is configured but currently unreachable.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/src/services/tenantProvisioningService.js` | `DB_NAME_PATTERN`; validation in legacy + approval flows; `quoteIdentifier()` for CREATE/DROP; upgraded guards |
+| `backend/src/utils/tenantModelFactory.js` | Early-return guard on `_tenantModelsInitialized` before associations block |
+| `backend/src/services/authService.js` | `isAvailable()` check in `isTokenBlacklisted` to fail-open when Redis is down |
+| `backend/tests/tenantProvisioning.test.js` | 14 new 2.5 tests; 2.3 fixture names updated to conform to `DB_NAME_PATTERN` |
+| `System_Audit/2.5-DDL_string_interpolation.md` | Marked resolved with full implementation details |

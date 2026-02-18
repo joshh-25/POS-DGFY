@@ -144,3 +144,77 @@ export const validateUpdateUserStatus = (req, res, next) => {
   req.validatedData = value;
   next();
 };
+
+// Schema for updating user permissions (Master Admin only)
+export const updateUserPermissionsSchema = Joi.object({
+  permissions: Joi.array().items(Joi.string()).required().messages({
+    'array.base': 'Permissions must be an array',
+    'any.required': 'Permissions array is required',
+    'string.base': 'Permission items must be strings'
+  }),
+  is_master_admin: Joi.boolean().strict().optional().messages({
+    'boolean.base': 'is_master_admin must be a boolean'
+  })
+});
+
+/**
+ * Middleware to validate user permission update request (Master Admin only)
+ */
+export const validateUpdateUserPermissions = (req, res, next) => {
+  const { error, value } = updateUserPermissionsSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+// Schema for inviting a user (admin only)
+export const inviteUserSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    'string.email': 'Please provide a valid email address',
+    'any.required': 'Email is required'
+  }),
+  role: Joi.string().valid('admin', 'manager', 'staff').required().messages({
+    'any.only': 'Role must be one of: admin, manager, staff',
+    'any.required': 'Role is required'
+  })
+});
+
+/**
+ * Middleware to validate user invitation request (admin only)
+ */
+export const validateInviteUser = (req, res, next) => {
+  const { error, value } = inviteUserSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};

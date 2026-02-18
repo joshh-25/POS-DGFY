@@ -46,31 +46,75 @@ export const generalLimiter = rateLimit({
 });
 
 // Stricter rate limiter for authentication endpoints
-export const authLimiter = (req, res, next) => next();
-// export const authLimiter = rateLimit({
-//   windowMs: authWindowMs,
-//   max: authMaxRequests,
-//   message: createRateLimitError('Too many authentication attempts, please try again later.'),
-//   standardHeaders: true,
-//   legacyHeaders: false,
-//   // Disable validation warnings when running behind reverse proxy
-//   validate: { trustProxy: false, xForwardedForHeader: false },
-//   handler: (req, res) => {
-//     logger.warn('Auth rate limit exceeded', {
-//       ip: req.ip || req.connection.remoteAddress,
-//       path: req.path,
-//       method: req.method,
-//     });
-//     res.status(429).json(createRateLimitError('Too many authentication attempts, please try again later.'));
-//   },
-//   skip: (req) => {
-//     if (process.env.NODE_ENV === 'test') return true;
-//     return false;
-//   },
-// });
+export const authLimiter = rateLimit({
+  windowMs: authWindowMs,
+  max: authMaxRequests,
+  message: createRateLimitError('Too many authentication attempts, please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+  handler: (req, res) => {
+    logger.warn('Auth rate limit exceeded', {
+      ip: req.ip || req.connection.remoteAddress,
+      path: req.path,
+      method: req.method,
+    });
+    res.status(429).json(createRateLimitError('Too many authentication attempts, please try again later.'));
+  },
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test') return true;
+    return false;
+  },
+});
+
+// Strictest rate limiter for email lookup to prevent enumeration
+export const lookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per window
+  message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+  handler: (req, res) => {
+    logger.warn('Email lookup rate limit exceeded', {
+      ip: req.ip || req.connection.remoteAddress,
+      path: req.path,
+      method: req.method,
+    });
+    res.status(429).json(createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'));
+  },
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test') return true;
+    return false;
+  },
+});
+
+// Strict rate limiter for tenant registration (prevents DoS via auto-provisioning)
+export const tenantRegistrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: isDevelopment ? 50 : 5, // 5 per hour in prod, 50 in dev
+  message: createRateLimitError('Too many registration requests from this IP, please try again after an hour.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+  handler: (req, res) => {
+    logger.warn('Tenant registration rate limit exceeded', {
+      ip: req.ip || req.connection.remoteAddress,
+      path: req.path,
+      method: req.method,
+    });
+    res.status(429).json(createRateLimitError('Too many registration requests from this IP, please try again after an hour.'));
+  },
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test') return true;
+    return false;
+  },
+});
 
 export default {
   general: generalLimiter,
   auth: authLimiter,
+  lookup: lookupLimiter,
+  registration: tenantRegistrationLimiter,
 };
 

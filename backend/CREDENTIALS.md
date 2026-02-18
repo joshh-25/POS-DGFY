@@ -123,6 +123,7 @@ All configuration is stored in `backend/.env` file. The following variables are 
 | `REFRESH_TOKEN_EXPIRY` | `7d` | JWT refresh token expiry |
 | `CORS_ORIGIN` | `http://localhost:5173` | Allowed CORS origin |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL (optional) |
+| `MOCK_PAYPAL` | `true` | Allows local E2E testing without real PayPal API calls |
 
 ---
 
@@ -182,6 +183,12 @@ After setting up credentials:
 - **Client ID:** `AffijeC8ynhSJJt9kcGM5fuz4EB6njyZzhxXYBsiN3WbcxCnoF9-wgoNK9NsxU4_MfkZ0-Xia49MzXPP`
 - **Secret:** `EEcSA9eJDJLkKKXqW092zJF96cw2k7M8z2Z7MFKU9u7uV4ERpeKCUyQjlZEbpMCYCc7jKQLaFOKxWZZJ`
 - **Use for:** Real payments, `PAYPAL_MODE=live`
+
+### Development Mocking
+When `MOCK_PAYPAL=true` is set in the backend `.env`:
+- **Registration**: The frontend (in DEV mode) shows a **[DEV ONLY] Mock Premium Payment** button.
+- **Verification**: The backend bypasses the PayPal API and treats all subscription IDs as `ACTIVE`.
+- **Purpose**: Fast E2E testing of the Premium lifecycle (provisioning, auto-login, feature unlocking).
 
 ---
 

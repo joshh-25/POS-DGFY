@@ -24,6 +24,7 @@ import AdminPricing from '../Pages/admin/AdminPricing.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
+import api from './services/api.js'
 import './index.css'
 
 function App() {
@@ -36,6 +37,27 @@ function App() {
    * Authentication is handled by ProtectedRoute components. 
    * Global auth check can be added here if needed in future.
    */
+  useEffect(() => {
+    const validateCompanyToken = async () => {
+      const companyToken = localStorage.getItem('companyToken');
+      if (companyToken) {
+        try {
+          // Check if token is still valid. 
+          // Endpoint returns 404 if invalid/expired
+          await api.get(`/auth/validate-token/${companyToken}`);
+        } catch (error) {
+          if (error.response?.status === 404 || error.response?.status === 400) {
+            console.warn('⚠️ [Auth] Stored company token is invalid, clearing storage.');
+            localStorage.removeItem('companyToken');
+            // If they are on a protected route that relies on this, 
+            // the interceptor or protected route logic will handle the redirect.
+          }
+        }
+      }
+    };
+
+    validateCompanyToken();
+  }, []);
 
   return (
     <Routes>
