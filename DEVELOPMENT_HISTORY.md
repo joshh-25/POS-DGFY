@@ -35,6 +35,10 @@
 - [Phase 25: User Removal & Management Improvements](#phase-25-user-removal--management-improvements)
 - [Phase 26: SMTP Email Implementation & Login Bug Fix](#phase-26-smtp-email-implementation--login-bug-fix)
 - [Phase 27: Production Email Fix (Brevo)](#phase-27-production-email-fix-brevo)
+- [Phase 28: Staff Role Permission Fixes & UX Improvements](#phase-28-staff-role-permission-fixes--ux-improvements)
+- [Phase 30: Production Deployment Refinement](#phase-30-production-deployment-refinement)
+- [Phase 31: Inventory Folder Management Enhancements](#phase-31-inventory-folder-management-enhancements)
+- [Phase 32: Production Bug Fixes — Quantity Precision, JO Over-Production, Inventory Value](#phase-32-production-bug-fixes--quantity-precision-jo-over-production-inventory-value)
 
 ---
 
@@ -5239,3 +5243,126 @@ Revised the deployment pipeline to be more robust, reliable, and strictly enviro
 - `frontend/Components/ai/ActionResultCard.jsx`
 - `frontend/Pages/Items.jsx`
 
+---
+
+## Phase 32: Production Bug Fixes — Quantity Precision, JO Over-Production, Inventory Value
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-18
+
+### Overview
+Fixed three production bugs reported from skupervisor.surebizcorp.com affecting the product recipe wizard, job order completion, and inventory value display across all product items.
+
+---
+
+### Bug 1: Ingredient Quantity Floating-Point Drift (0.9999999999)
+
+#### Problem
+Entering `1` kg as an ingredient quantity in the product wizard would save and reload as `0.9999999999`. The issue compounded with each save-reload cycle.
+
+#### Root Cause
+The wizard stores quantities "per batch" in the UI but normalizes to "per unit" for DB storage:
+- **On save**: `quantity / batch_size` → e.g., `1 / 300 = 0.003333...` (repeating float)
+- **On load**: `quantity_from_db × batch_size` → e.g., `0.003333... × 300 = 0.9999...`
+
+No rounding was applied. `DECIMAL(24,12)` faithfully stored the imprecise value, creating a self-reinforcing cycle.
+
+#### Fix
+Applied `parseFloat(...toFixed(N))` rounding at three points in the round-trip:
+
+| Point | File | Rounding |
+|-------|------|----------|
+| On input (keypress) | `RecipeFormulationStep.jsx:394` | `toFixed(6)` |
+| On load (edit mode denormalization) | `ProductCreateWizard.jsx:118` | `toFixed(6)` |
+| On save (normalization before API) | `ProductCreateWizard.jsx:269` | `toFixed(10)` |
+
+---
+
+### Bug 2: Job Order Hard Upper Output Cap Removed
+
+#### Problem
+Completing a Job Order with a quantity higher than the target threw:
+`Cannot produce X. Only Y remaining (Total: Y, Already Produced: 0).`
+
+Real-world production yields sometimes exceed targets by a small margin (e.g., target 24000g, actual 24200g), making it impossible to accurately record these completions.
+
+#### Root Cause (three related issues)
+1. **Hard cap**: `jobOrderService.js` threw a 400 error if `qtyToProcess > remainingQuantity + 0.001`.
+2. **`isFinalCompletion` never true for over-production**: Computed as `Math.abs(qty - remaining) < 0.001`, which is always `false` when qty > remaining — so the JO could never reach `completed` status.
+3. **Ingredient consumption under-counted**: The "final completion" branch consumed only the remaining required amount (`convertedTotalRequired - previouslyConsumed`) even during over-production, leaving ingredients under-consumed relative to actual output.
+
+#### Fix
+
+| Change | File | Lines |
+|--------|------|-------|
+| Removed upper-bound error block | `jobOrderService.js` | 379–385 (deleted) |
+| Rewrote `isFinalCompletion`: `true` when `currentProduced + thisQty >= target - 0.001` | `jobOrderService.js` | 387–383 |
+| Fixed ingredient consumption branch: uses ratio (>1.0) for over-production | `jobOrderService.js` | 421–431 |
+| Renamed "Max" → "Target" button in completion dialog | `JODetailsModal.jsx` | 332 |
+| Added "Over-production allowed" hint text | `JODetailsModal.jsx` | 336–339 |
+
+**Behavior after fix:**
+
+| Scenario | Status |
+|---|---|
+| Produce exactly target | ✅ JO → `completed` |
+| Produce less than target | ✅ JO → `partial` |
+| Produce more than target | ✅ JO → `completed`, extra stock added, ingredients consumed proportionally |
+
+**Inventory impact**: Extra stock from over-production is automatically valued at `product.cost_per_unit` per unit via the existing `production_output` stock movement — no additional code changes needed.
+
+---
+
+### Bug 3: Inventory Value / Cost Per Unit Inflated (Double-Counted)
+
+#### Problem
+Product inventory values were inflated by 2–5×. Example: Calamansi Pasteurized (`batch_size=300g`, ingredient cost ₱40/batch) showed `₱0.27/g` instead of the correct `₱0.13/g`.
+
+The inflation affected:
+- Inventory Value card (`@ ₱X/unit` rate)
+- Item list Cost column
+- Modal header Total Value
+- Cost breakdown section total
+
+#### Root Cause
+`calculateTotalProductCost()` in `helpers.js` summed:
+```
+cost_per_unit + labor_cost + overhead_cost + additional_packaging_cost + recipe_cost
+```
+
+However, `cost_per_unit` (stored in the DB after the wizard's Cost step) is already computed as:
+```
+cost_per_unit = (ingredients + packaging + labor + overhead + additional_packaging) / (batch_size × yield%)
+```
+Adding all sub-components on top of the already-inclusive `cost_per_unit` caused systematic double-counting.
+
+`recipe_cost` is a dynamically recomputed raw ingredient sum (per batch, not per output unit) returned by the backend on every item fetch — also already baked into `cost_per_unit`.
+
+#### Fix
+**File**: `frontend/Components/items/details/helpers.js` — lines 113–122
+
+```js
+// Before: summed 5 fields, all of which overlap with cost_per_unit
+// After: cost_per_unit is the single authoritative COGS per output unit
+export const calculateTotalProductCost = (item) => {
+  if (!item) return 0;
+  return parseFloat(item.cost_per_unit) || 0;
+};
+```
+
+One function change fixes all 4 display surfaces simultaneously. No backend changes, no data mutations.
+
+---
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `frontend/Components/items/details/helpers.js` | Fix `calculateTotalProductCost` — remove double-count |
+| `frontend/Components/products/ProductCreateWizard.jsx` | Round on load (6dp) and on save (10dp) |
+| `frontend/Components/products/wizard/RecipeFormulationStep.jsx` | Round on input (6dp) |
+| `backend/src/services/jobOrderService.js` | Remove cap, fix `isFinalCompletion`, fix ingredient consumption |
+| `frontend/Components/jo/JODetailsModal.jsx` | "Target" button, hint text update |
+
+### Documentation Updated
+- `TROUBLESHOOTING.md` — Updated issue #7, added issues #25 and #26
+- `DEVELOPMENT_HISTORY.md` — This entry; TOC updated for phases 28–32

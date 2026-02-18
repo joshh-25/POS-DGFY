@@ -113,13 +113,11 @@ export const hasRecipeData = (item) => {
 export const calculateTotalProductCost = (item) => {
   if (!item) return 0;
 
-  const costPerUnit = parseFloat(item.cost_per_unit) || 0;
-  const laborCost = parseFloat(item.labor_cost) || 0;
-  const overheadCost = parseFloat(item.overhead_cost) || 0;
-  const packagingCost = parseFloat(item.additional_packaging_cost) || 0;
-  const recipeCost = parseFloat(item.recipe_cost) || 0;
-
-  return costPerUnit + laborCost + overheadCost + packagingCost + recipeCost;
+  // cost_per_unit is the authoritative COGS per output unit, already computed as:
+  // (ingredients + packaging + labor + overhead) / (batch_size × yield%).
+  // All other fields (labor_cost, overhead_cost, additional_packaging_cost, recipe_cost)
+  // are subsets already baked into cost_per_unit — adding them again causes double-counting.
+  return parseFloat(item.cost_per_unit) || 0;
 };
 
 /**

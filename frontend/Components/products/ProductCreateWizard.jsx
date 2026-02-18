@@ -111,11 +111,12 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
       };
 
       // Denormalize ingredients: User inputs "Per Batch", DB stores "Per Unit"
-      // So when loading, we multiply by batch_size to show "Per Batch" values
+      // So when loading, we multiply by batch_size to show "Per Batch" values.
+      // Round to 6dp to prevent floating-point drift from accumulating across edit cycles.
       if (loadedData.ingredients && loadedData.batch_size) {
         loadedData.ingredients = loadedData.ingredients.map(ing => ({
           ...ing,
-          quantity: (Number(ing.quantity) || 0) * Number(loadedData.batch_size)
+          quantity: parseFloat(((Number(ing.quantity) || 0) * Number(loadedData.batch_size)).toFixed(6))
         }));
       }
 
@@ -265,8 +266,9 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
         sanitized.ingredients = sanitized.ingredients.map(item => ({
           ...item,
           // Normalize: User inputs "Per Batch", but Backend/DB expects "Per Unit"
-          // So we divide by batch size to get the per-unit requirement
-          quantity: (Number(item.quantity) || 0) / batchSize,
+          // So we divide by batch size to get the per-unit requirement.
+          // Round to 10dp to eliminate floating-point noise before DB persistence.
+          quantity: parseFloat(((Number(item.quantity) || 0) / batchSize).toFixed(10)),
           item_id: Number(item.item_id)
         })).filter(item => item.item_id && item.quantity > 0);
       }

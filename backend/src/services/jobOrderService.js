@@ -376,16 +376,11 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       throw error;
     }
 
-    if (qtyToProcess > remainingQuantity + 0.001) {
-      // Allow small floating point error tolerance
-      console.error(`[JO Completion] Qty exceeds remaining: requested=${qtyToProcess}, remaining=${remainingQuantity}, total=${totalQuantityToProduce}, produced=${currentQuantityProduced}`);
-      const error = new Error(`Cannot produce ${qtyToProcess}. Only ${remainingQuantity.toFixed(2)} remaining (Total: ${totalQuantityToProduce}, Already Produced: ${currentQuantityProduced}).`);
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Check if this is the final completion (allow for tiny float differences)
-    const isFinalCompletion = Math.abs(qtyToProcess - remainingQuantity) < 0.001;
+    // Final completion = total produced (after this batch) meets or exceeds the target.
+    // Covers exact completion, float-imprecise completion, and over-production.
+    // Over-production is allowed: users may record higher-than-target yields.
+    const newQuantityProducedPreview = currentQuantityProduced + qtyToProcess;
+    const isFinalCompletion = newQuantityProducedPreview >= totalQuantityToProduce - 0.001;
 
     // Calculate ratio for ingredient consumption
     // Avoid division by zero if totalQuantityToProduce is somehow 0 (should correspond to validation in create)
@@ -423,10 +418,14 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
       // Calculate quantity to consume for this chunk (now in ingredient's UOM)
       let quantityToConsume;
-      if (isFinalCompletion) {
-        // For final completion, consume exactly what is left of the requirement to avoid rounding errors
+      if (isFinalCompletion && qtyToProcess <= remainingQuantity + 0.001) {
+        // Exact/near-exact completion: consume the precise remaining requirement
+        // to avoid floating-point accumulation across partial batches.
         quantityToConsume = convertedTotalRequired - previouslyConsumed;
       } else {
+        // Partial completion OR over-production: consume proportionally.
+        // consumptionRatio = qtyToProcess / totalQuantityToProduce.
+        // For over-production ratio > 1.0 — correct: more output = more ingredients consumed.
         quantityToConsume = convertedTotalRequired * consumptionRatio;
       }
 

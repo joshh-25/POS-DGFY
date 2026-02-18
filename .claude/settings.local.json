@@ -84,7 +84,10 @@
       "Bash(c:/xampp/mysql/bin/mysql:*)",
       "Bash(pm2 restart:*)",
       "Bash(find:*)",
-      "Bash(git -C \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\" log --oneline -1)"
+      "Bash(git -C \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\" log --oneline -1)",
+      "Bash(Get-Content \"c:\\\\xampp\\\\htdocs\\\\SKU-Inventory-Manager\\\\DEVELOPMENT_HISTORY.md\")",
+      "Bash(Measure-Object:*)",
+      "Bash(Select-Object -ExpandProperty Lines)"
     ]
   }
 }

@@ -391,7 +391,14 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                           step="0.01"
                           min="0"
                           value={ing.quantity}
-                          onChange={(e) => updateIngredient(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                          onChange={(e) => {
+                            if (e.target.value === '') {
+                              updateIngredient(index, 'quantity', '');
+                            } else {
+                              const raw = parseFloat(e.target.value);
+                              updateIngredient(index, 'quantity', isNaN(raw) ? 0 : parseFloat(raw.toFixed(6)));
+                            }
+                          }}
                         />
                         <Button variant="ghost" size="sm" onClick={() => removeIngredient(index)}>
                           <Trash2 className="w-4 h-4 text-red-500" />

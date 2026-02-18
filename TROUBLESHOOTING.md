@@ -80,20 +80,21 @@ FROM items WHERE item_id = <affected_item_id>;
 ```
 - **Verification**: Check that the item has batches: `SELECT * FROM fifo_batches WHERE item_id = <id>`
 
-### 7. Job Order Completion Fails with Quantity Validation Error
-**Symptoms**:
+### 7. Job Order Over-Production Previously Blocked
+**Symptoms** (historical — now resolved):
 - Error: `Cannot produce X. Only Y remaining.`
-- Happens when trying to complete more than the remaining quantity
+- Real-world yields slightly exceed the target (e.g., target 24000g, actual 24200g)
 
-**Cause**:
-- The Job Order was partially completed before
-- `quantity_produced` already has a value, reducing remaining quantity
-- User is trying to produce the original `quantity_to_produce` instead of the remaining amount
+**Cause** (resolved in Phase 32):
+- The backend previously enforced a hard upper limit equal to `quantity_to_produce`
+- Over-production is a valid real-world scenario (batch yields are not always exact)
 
 **Solution**:
-- Check the "Produced So Far" value shown in the completion dialog
-- Only enter the remaining quantity (Total - Already Produced)
-- Use the "Max" button to auto-fill the correct remaining quantity
+- **Fixed in Code (Phase 32)**: The upper-bound check has been removed. Any positive quantity is now accepted.
+- The "Target" button (formerly "Max") in the completion dialog sets the input to the remaining target as a convenience — users may type any higher value to record over-production.
+- The JO will be marked `completed` when total produced meets or exceeds the target.
+- Ingredients are consumed proportionally (ratio > 1.0 for over-production).
+- **If you still see this error**: Ensure the backend has been restarted to pick up the Phase 32 changes (`pm2 restart sku-backend`).
 
 ### 8. Port Already in Use (EADDRINUSE)
 **Symptoms**:
@@ -376,3 +377,38 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
   2. Log in as Admin.
   3. Observe logs: `🔄 [Auth] Refreshing token... { companyToken: '...' }`.
   4. Ensure no red 401 errors appear in the network tab.
+
+### 25. Product Ingredient Quantity Shows 0.9999999999 Instead of 1
+**Symptoms**:
+- After saving a product and reopening the Edit Product wizard, ingredient quantities like `1` appear as `0.9999999999` or similar floating-point values.
+- The issue gets worse with each save-and-reload cycle.
+
+**Cause**:
+- The wizard stores ingredient quantities "per batch" in the UI but normalizes to "per unit" for DB storage by dividing by `batch_size` on save and multiplying back on load.
+- Example: `1 / 300 = 0.003333...` (repeating float) → `0.003333... × 300 = 0.9999...` (float drift)
+- No rounding was applied at any stage, so `DECIMAL(24,12)` faithfully preserved the imprecise value.
+
+**Solution**:
+- **Fixed in Code (Phase 32)**:
+  - `RecipeFormulationStep.jsx`: Input rounded to 6 decimal places on every change.
+  - `ProductCreateWizard.jsx`: Rounded to 6dp on load (denormalization) and 10dp on save (normalization), eliminating drift.
+- **Verification**: Create a product with `batch_size=300`, set an ingredient quantity to `1`, save, re-open — should display exactly `1`. Repeat 5 times; value must remain stable.
+- **Note**: Existing products with stored imprecise values will self-correct on the next save through the wizard.
+
+### 26. Inventory Value / Cost Per Unit Is Inflated (Shows 2×–5× the Correct Value)
+**Symptoms**:
+- A product's "Inventory Value" card and `@ ₱X/unit` rate are significantly higher than expected.
+- Example: Calamansi Pasteurized shows `₱0.27/g` when the correct cost is `₱0.13/g`.
+- The inflation appears to be roughly 2× the true cost.
+
+**Cause**:
+- `calculateTotalProductCost()` in `frontend/Components/items/details/helpers.js` was summing:
+  `cost_per_unit + labor_cost + overhead_cost + additional_packaging_cost + recipe_cost`
+- However, `cost_per_unit` (saved during the product wizard's Cost step) already contains ALL of those components: it is calculated as `(ingredients + packaging + labor + overhead) / (batch_size × yield%)`.
+- Adding the sub-components again caused 2×–5× inflation depending on how many extra cost fields were set.
+
+**Solution**:
+- **Fixed in Code (Phase 32)**: `calculateTotalProductCost()` now returns only `parseFloat(item.cost_per_unit)`.
+- This fixes all 4 display surfaces simultaneously: Inventory Value card, `@ ₱X/unit` label, Cost column in item list, and the modal header total.
+- **Verification**: Open any product's details. The `@ ₱X/unit` rate should now match the `cost_per_unit` value visible in the product's Cost step in the wizard.
+- **Note**: `labor_cost`, `overhead_cost`, and `additional_packaging_cost` remain stored separately in `ItemCostBreakdown` and are still shown correctly in the cost breakdown panel — they are just no longer added to the inventory value total.

@@ -329,13 +329,14 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   placeholder="Enter quantity produced"
                   className="font-bold text-lg"
                 />
-                <Button variant="outline" size="sm" onClick={handleSetMaxQuantity} className="h-10 px-3">
-                  Max
+                <Button variant="outline" size="sm" onClick={handleSetMaxQuantity} className="h-10 px-3" title="Set to remaining target quantity">
+                  Target
                 </Button>
               </div>
               <p className="text-xs text-slate-500">
-                Total Ordered: {displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || ''} |
-                Produced So Far: {displayJO.quantity_produced || 0}
+                Target: {displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || ''} &nbsp;|&nbsp;
+                Produced So Far: {displayJO.quantity_produced || 0} &nbsp;|&nbsp;
+                <span className="text-amber-600">Over-production allowed</span>
               </p>
             </div>
 
