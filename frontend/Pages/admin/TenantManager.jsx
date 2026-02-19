@@ -43,7 +43,6 @@ export default function TenantManager() {
         adminEmail: '',
         adminPassword: '',
         plan: 'standard',
-        plan: 'standard',
         subscriptionId: ''
     });
 

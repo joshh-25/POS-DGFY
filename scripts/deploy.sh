@@ -176,7 +176,7 @@ if command -v curl >/dev/null 2>&1; then
     SUCCESS=0
 
     while [ $COUNT -lt $MAX_RETRIES ]; do
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL" || true)
         
         if [[ "$HTTP_CODE" =~ ^2 ]]; then
             echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
