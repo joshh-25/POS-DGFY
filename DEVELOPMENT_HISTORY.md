@@ -5439,3 +5439,36 @@ This phase focused on finalizing the PayPal subscription flow for Premium accoun
 | `backend/src/services/authService.js` | `isAvailable()` check in `isTokenBlacklisted` to fail-open when Redis is down |
 | `backend/tests/tenantProvisioning.test.js` | 14 new 2.5 tests; 2.3 fixture names updated to conform to `DB_NAME_PATTERN` |
 | `System_Audit/2.5-DDL_string_interpolation.md` | Marked resolved with full implementation details |
+
+---
+
+## Phase 38: Tenant Management Fixes & Deployment Hardening
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-19
+
+### Backend Fixes
+- [x] **Tenant Model Timestamp Mapping**:
+  - **Issue**: The `Tenant` model used default camelCase `createdAt/updatedAt` but the database used snake_case `created_at/updated_at`. This caused 500 Internal Server Errors when fetching/sorting tenants.
+  - **Fix**: Added `underscored: true` to `Tenant.js` model definition, ensuring correct mapping to database columns.
+  - **Impact**: Admin Portal now correctly lists all tenants without errors.
+
+### Deployment & Infrastructure
+- [x] **Deployment Script Robustness**:
+  - **Issue**: The `deploy.sh` script would fail during the verification step if `curl` returned a non-zero exit code (even with `|| true` due to `set -e` sensitivity).
+  - **Fix**: Refactored the verification loop to explicitly capture exit codes (`set +e` ... `set -e`), preventing false positives in deployment failuress.
+  - **Result**: Deployment script now reliably retries connection until backend is ready.
+
+- [x] **Frontend Build Optimization**:
+  - **Issue**: A duplicate key `plan: 'standard'` in `TenantManager.jsx` caused build warnings.
+  - **Fix**: Removed the duplicate key.
+  - **Result**: Cleaner build logs.
+
+- [x] **Legacy Tenant Patching**:
+  - Used `backend/scripts/register_legacy_tenant.js` to upgrade the legacy `SureBiz Corp` tenant to **Premium** plan on production, ensuring they have access to all features.
+
+### Audit & Compliance
+- [x] **Backend Build Script**:
+  - Updated `backend/package.json` to include a `build` script (no-op) to satisfy monorepo deployment contracts.
+  - Marked as "Fixed" in `docs/testing/production-readiness-audit.md`.
+
+---

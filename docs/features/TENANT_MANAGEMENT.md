@@ -85,7 +85,12 @@ CREATE TABLE Tenants (
     db_name VARCHAR(255), -- The name of their isolated DB
     status ENUM('pending', 'active', 'inactive', 'rejected') DEFAULT 'pending',
     plan ENUM('standard', 'premium') DEFAULT 'standard',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    plan ENUM('standard', 'premium') DEFAULT 'standard',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Backend uses `underscored: true` mapping in Sequelize to ensure snake_case
+    -- model attributes (createdAt, updatedAt) map correctly to these columns.
 );
 ```
 

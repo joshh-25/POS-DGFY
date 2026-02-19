@@ -14,10 +14,6 @@ The project has successfully passed functional QA (Phase 32 fixes are verified).
 *   **Impact:** Running migrations on a clean production server will result in a database missing ~90% of its tables.
 *   **Recommendation:** Align `.sequelizerc` to point to the correct migration folder and consolidate fragmented migrations.
 
-### 2. Missing Backend Build Script 🔴
-*   **Discovery:** The root `package.json` initiates `npm run build:backend`, but the backend's `package.json` lacks a `build` script.
-*   **Impact:** Automated deployment pipelines (like GitHub Actions or PM2 deployments) will fail during the build phase.
-*   **Recommendation:** Add a `build` script to `backend/package.json` (even if it's a "no-op" `echo 'No build needed'`) to satisfy the monorepo contract.
 
 ### 3. Insecure Development Defaults 🟠
 *   **Discovery:** The `.env` template and current config use `NODE_ENV=development` and hardcoded JWT secrets.
@@ -36,6 +32,7 @@ The project has successfully passed functional QA (Phase 32 fixes are verified).
 *   **Process Management:** `ecosystem.config.cjs` is correctly configured for PM2 (Production Process Manager).
 *   **Health Checks:** The `/health` endpoint is functional and reports on Database and Redis status.
 *   **Functional Stability:** All Phase 32 bug fixes (Precision, Over-Production, Value Calculation) are verified and present on the `master` branch.
+*   **Backend Build:** Fixed. The `package.json` now includes a `build` script to prevent pipeline failures.
 
 ## Next Steps
 1. Resolve the Migration Path discrepancy in `.sequelizerc`.

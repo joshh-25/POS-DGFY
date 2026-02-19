@@ -4,7 +4,8 @@ Use this guide to ensure a safe and successful deployment to the production serv
 
 ## 1. Pre-Deployment Checks (Local)
 - [ ] **Code Status**: All changes committed and pushed to `main`.
-- [ ] **Build Check**: storage
+- [ ] **Method Selection**: Prefer using `./scripts/deploy.sh` for full automation.
+- [ ] **Build Check**: storage (if manual)
     ```bash
     cd frontend
     npm run build

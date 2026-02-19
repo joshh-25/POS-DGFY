@@ -108,6 +108,27 @@ node backend/scripts/onboard-production-tenant.js
 
 ---
 
+### 5. `register_legacy_tenant.js` - Legacy Tenant Upgrade
+
+Upgrades the primary legacy tenant (SureBiz Corp) to Premium plan standards.
+
+**Usage:**
+```bash
+node backend/scripts/register_legacy_tenant.js
+```
+
+**What it does:**
+1. Connects to the database and looks for the tenant with `db_name = 'sku_inventory_manager'`.
+2. Updates their plan to `premium`.
+3. Sets `subscription_status` to `active`.
+4. Ensures the user mapping exists for `admin@test.com`.
+
+**When to use:**
+- If the main admin account is stuck on "Standard" plan after a deployment.
+- If features like AI Chat or demand forecasting are locked for the Superadmin.
+
+---
+
 ## 🎓 Tutorial: How to Use These Scripts
 
 ### Scenario 1: "Port 5000 is already in use" Error

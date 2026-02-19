@@ -46,6 +46,16 @@ chmod +x scripts/deploy.sh
 > [!NOTE]
 > **Multi-Tenancy Updates**: The `deploy.sh` script now automatically runs `backend/scripts/sync-tenant-schemas.js`. This ensures that if you add new columns or tables to the database, **ALL** existing tenant databases will be updated to match the new schema automatically. You do not need to run this manually.
 
+
+### 3. Local Development vs. Production
+**Important**: Deployment script only restarts the **production** server. If you fixed a backend bug (e.g., Model definition), you **must restart your local backend server** manually to see the fix locally.
+
+```bash
+# Local development restart
+pm2 restart all
+# or use Ctrl+C and npm run dev
+```
+
 ---
 
 ### 2. Multi-Tenancy Onboarding (One-time)
