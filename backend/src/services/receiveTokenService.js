@@ -75,7 +75,7 @@ export const generateToken = async (orderType, orderId, userId, expiryDays = DEF
     // Check for existing active token
     const existingToken = await ReceiveToken.findOne({
         where: {
-            order_type: orderType,
+            token_type: orderType,
             order_id: orderId,
             expires_at: { [Op.gt]: new Date() },
             used_at: null
@@ -97,7 +97,7 @@ export const generateToken = async (orderType, orderId, userId, expiryDays = DEF
 
     await ReceiveToken.create({
         token_hash: tokenHash,
-        order_type: orderType,
+        token_type: orderType,
         order_id: orderId,
         created_by: userId,
         expires_at: expiresAt
@@ -137,7 +137,7 @@ export const validateToken = async (token) => {
 
     // Fetch order details to ensure it's still valid
     let order;
-    if (receiveToken.order_type === 'PO') {
+    if (receiveToken.token_type === 'PO') {
         order = await PurchaseOrder.findByPk(receiveToken.order_id);
     } else {
         order = await JobOrder.findByPk(receiveToken.order_id);
@@ -183,7 +183,7 @@ export const markTokenUsed = async (token, userId) => {
 export const getPurchaseOrderDetails = async (token) => {
     const { receiveToken, order } = await validateToken(token);
 
-    if (receiveToken.order_type !== 'PO') {
+    if (receiveToken.token_type !== 'PO') {
         throw new Error('Token is not for a Purchase Order');
     }
 
@@ -198,7 +198,7 @@ export const getPurchaseOrderDetails = async (token) => {
 export const getJobOrderDetails = async (token) => {
     const { receiveToken, order } = await validateToken(token);
 
-    if (receiveToken.order_type !== 'JO') {
+    if (receiveToken.token_type !== 'JO') {
         throw new Error('Token is not for a Job Order');
     }
 
