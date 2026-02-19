@@ -114,9 +114,8 @@ export default (sequelize) => {
         sequelize,
         modelName: 'Tenant',
         tableName: 'tenants',
-        timestamps: true,
-        createdAt: 'created_at',
-        updatedAt: 'updated_at'
+        underscored: true,
+        timestamps: true
     });
 
     return Tenant;
