@@ -176,9 +176,14 @@ if command -v curl >/dev/null 2>&1; then
     SUCCESS=0
 
     while [ $COUNT -lt $MAX_RETRIES ]; do
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL" || true)
-        
-        if [[ "$HTTP_CODE" =~ ^2 ]]; then
+        set +e
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
+        EXIT_CODE=$?
+        set -e
+
+        if [ $EXIT_CODE -ne 0 ]; then
+             echo "   ... curl failed with exit code $EXIT_CODE. Waiting..."
+        elif [[ "$HTTP_CODE" =~ ^2 ]]; then
             echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
             SUCCESS=1
             break
