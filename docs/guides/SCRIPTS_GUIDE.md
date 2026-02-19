@@ -60,8 +60,11 @@ Automates the entire deployment process on the production server.
 2. Installs dependencies (ensures build tools are available)
 3. Builds the frontend (uses `NODE_ENV=production` for optimization)
 4. Runs database migrations (idempotent)
-5. Restarts all PM2 services
-6. Fails safely if any step errors out (`set -e`)
+5. Runs maintenance scripts: `deploy_fix_precision.js` (product_composition precision), `surgical_migrate.js` (index pruning), `deploy_fix_precision_v2.js` (quantity column precision across all tables), `sync-tenant-schemas.js`, `register_legacy_tenant.js`
+6. Restarts all PM2 services via `ecosystem.config.js`
+7. Smoke-tests the backend API (10 retries, 30s timeout)
+8. Runs billing verification
+9. Fails safely if any step errors out (`set -e`)
 
 ---
 
@@ -129,7 +132,32 @@ node backend/scripts/register_legacy_tenant.js
 
 ---
 
-### 6. `verify-qr-receiving-flow.js` - Real-World Engagement Verification
+### 6. `deploy_fix_precision_v2.js` - Quantity Column Precision Migration
+
+Upgrades all physical quantity columns to `DECIMAL(24, 12)` across every tenant database. Runs automatically via `deploy.sh` Step 5 on every deploy (idempotent — re-running is safe).
+
+**Usage (manual):**
+```bash
+node backend/scripts/deploy_fix_precision_v2.js
+```
+
+**Tables & columns patched:**
+| Table | Columns |
+|-------|---------|
+| `jo_ingredients` | `quantity_required`, `quantity_consumed`, `stock_before`, `stock_after` |
+| `job_orders` | `quantity_to_produce`, `quantity_produced` |
+| `po_line_items` | `quantity_ordered`, `quantity_received` |
+| `stock_movements` | `quantity` |
+| `fifo_batches` | `quantity`, `quantity_consumed` |
+| `items` | `current_stock`, `max_capacity`, `min_threshold`, `purchase_allowance`, `batch_size` |
+
+**When to use manually:**
+- After adding a new tenant database to ensure their schema is immediately at full precision.
+- If you see decimal truncation in JO ingredient quantities or stock levels.
+
+---
+
+### 7. `verify-qr-receiving-flow.js` - Real-World Engagement Verification
 
 Simulates the full end-to-end user flow for generating QR codes and receiving goods (PO/JO).
 
