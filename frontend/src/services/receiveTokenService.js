@@ -12,7 +12,12 @@ export const generateReceiveToken = async (orderType, orderId, expiryDays = 7) =
         order_id: orderId,
         expiry_days: expiryDays
     });
-    return response.data.data;
+    const data = response.data.data;
+    // Embed the target receive URL so the UI can construct the full link correctly
+    return {
+        ...data,
+        url: `/receive/${data.token}`
+    };
 };
 
 /**
@@ -21,6 +26,18 @@ export const generateReceiveToken = async (orderType, orderId, expiryDays = 7) =
  */
 export const validateReceiveToken = async (token) => {
     const response = await api.get(`/receive-tokens/${token}`);
+    return response.data.data;
+};
+
+/**
+ * Perform the receive operation (PO or JO) via the QR token.
+ * No user authentication required — token is the credential.
+ * @param {string} token - The raw token from the QR URL
+ * @param {object} receiptData - For PO: { line_items, notes, delivery_rating }
+ *                               For JO: { quantity_produced, notes, quality_check }
+ */
+export const receiveViaToken = async (token, receiptData) => {
+    const response = await api.post(`/receive-tokens/${token}/receive`, receiptData);
     return response.data.data;
 };
 

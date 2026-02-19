@@ -20,6 +20,8 @@ Welcome to the SKU Inventory Manager documentation hub.
 
 ## ⚙️ Operations & Maintenance (`docs/ops/`)
 - **[Deployment Guide](ops/DEPLOYMENT_GUIDE.md)**: Production deployment instructions.
+- **[Production Transition Guide](deployment/transition-guide.md)**: Step-by-step roadmap for moving recent fixes to production.
+- **[Production Readiness Audit](testing/production-readiness-audit.md)**: Current status and historical verification of production stability.
 - **[Troubleshooting](ops/TROUBLESHOOTING.md)**: Solutions for common issues.
 
 ## 🤖 AI & Intelligence (`docs/ai/`)

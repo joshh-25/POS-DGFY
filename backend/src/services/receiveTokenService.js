@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
+import * as purchaseOrderService from './purchaseOrderService.js';
+import * as jobOrderService from './jobOrderService.js';
 
 // Default token expiry (7 days)
 const DEFAULT_TOKEN_EXPIRY_DAYS = 7;
@@ -137,10 +139,88 @@ export const validateToken = async (token) => {
 
     // Fetch order details to ensure it's still valid
     let order;
+    const orderId = receiveToken.order_id;
+
     if (receiveToken.token_type === 'PO') {
-        order = await PurchaseOrder.findByPk(receiveToken.order_id);
+        const fullPO = await PurchaseOrder.findByPk(orderId, {
+            include: [
+                { model: dbStore.get('Supplier'), as: 'supplier' },
+                {
+                    model: dbStore.get('POLineItem'),
+                    as: 'lineItems',
+                    include: [{ model: dbStore.get('Item'), as: 'item' }]
+                }
+            ]
+        });
+
+        if (fullPO) {
+            const safeNum = (val) => {
+                const p = parseFloat(val);
+                return isNaN(p) ? 0 : p;
+            };
+
+            const poData = fullPO.toJSON();
+            // NEW: Explicit construction to prevent spread issues
+            order = {
+                order_type: 'PO',
+                order_id: poData.po_id,
+                order_number: poData.po_number,
+                supplier_name: poData.supplier?.name,
+                status: poData.status,
+                total_items: (poData.lineItems || []).length,
+                total_remaining: (poData.lineItems || []).reduce((sum, li) => {
+                    const ordered = safeNum(li.quantity_ordered);
+                    const received = safeNum(li.quantity_received);
+                    return sum + Math.max(0, ordered - received);
+                }, 0),
+                items: (poData.lineItems || []).map(li => {
+                    const ordered = safeNum(li.quantity_ordered);
+                    const received = safeNum(li.quantity_received);
+                    return {
+                        line_item_id: li.line_item_id,
+                        item_name: li.item?.name,
+                        sku_code: li.item?.sku_code,
+                        quantity_ordered: ordered,
+                        quantity_received_total: received,
+                        quantity_remaining: Math.max(0, ordered - received),
+                        unit_of_measure: li.item?.unit_of_measure
+                    };
+                })
+            };
+        }
     } else {
-        order = await JobOrder.findByPk(receiveToken.order_id);
+        const fullJO = await JobOrder.findByPk(orderId, {
+            include: [
+                { model: dbStore.get('Item'), as: 'product' },
+                {
+                    model: dbStore.get('JOIngredient'),
+                    as: 'ingredients',
+                    include: [{ model: dbStore.get('Item'), as: 'item' }]
+                }
+            ]
+        });
+
+
+        if (fullJO) {
+            const joData = fullJO.toJSON();
+            // NEW: Explicit construction to prevent spread issues
+            order = {
+                order_type: 'JO',
+                order_id: joData.jo_id,
+                order_number: joData.jo_number,
+                product_name: joData.product?.name,
+                status: joData.status,
+                quantity_to_produce: parseFloat(joData.quantity_to_produce) || 0,
+                quantity_produced: parseFloat(joData.quantity_produced) || 0,
+                ingredients: (joData.ingredients || []).map(ing => ({
+                    item_id: ing.item_id,
+                    item_name: ing.item?.name,
+                    quantity_required: parseFloat(ing.quantity_required) || 0,
+                    unit_of_measure: ing.item?.unit_of_measure || 'units'
+                })),
+                items: []
+            };
+        }
     }
 
     if (!order) {
@@ -149,24 +229,26 @@ export const validateToken = async (token) => {
         throw error;
     }
 
+    const tokenJson = receiveToken.toJSON();
     return {
-        receiveToken,
+        receiveToken: {
+            token_id: tokenJson.id,
+            token_type: tokenJson.token_type,
+            expires_at: tokenJson.expires_at
+        },
         order
     };
 };
 
 /**
  * Mark a token as used
- * @param {string} token - The raw token
- * @param {number} userId - User who used it
+ * @param {number} tokenId - The token ID
+ * @param {number} userId - User who used it (optional for anonymous scan)
  */
-export const markTokenUsed = async (token, userId) => {
+export const markTokenUsed = async (tokenId, userId = null) => {
     const ReceiveToken = dbStore.get('ReceiveToken');
-    const tokenHash = hashToken(token);
 
-    const receiveToken = await ReceiveToken.findOne({
-        where: { token_hash: tokenHash }
-    });
+    const receiveToken = await ReceiveToken.findByPk(tokenId);
 
     if (receiveToken) {
         await receiveToken.update({
@@ -203,4 +285,51 @@ export const getJobOrderDetails = async (token) => {
     }
 
     return order;
+};
+
+/**
+ * Perform the receive operation (PO or JO) via a QR token.
+ * The token acts as the authorization credential — no user JWT required.
+ * Marks the token as used upon success.
+ *
+ * @param {string} rawToken - The raw token from the QR code URL
+ * @param {object} receiptData - For PO: { line_items, notes, delivery_rating }
+ *                               For JO: { quantity_produced, notes, quality_check }
+ */
+export const receiveViaToken = async (rawToken, receiptData) => {
+    const ReceiveToken = dbStore.get('ReceiveToken');
+
+    const tokenHash = hashToken(rawToken);
+    const receiveToken = await ReceiveToken.findOne({
+        where: {
+            token_hash: tokenHash,
+            expires_at: { [Op.gt]: new Date() },
+            used_at: null
+        }
+    });
+
+    if (!receiveToken) {
+        const error = new Error('Invalid or expired token');
+        error.statusCode = 401;
+        throw error;
+    }
+
+    const orderId = receiveToken.order_id;
+    let result;
+
+    if (receiveToken.token_type === 'PO') {
+        result = await purchaseOrderService.receivePurchaseOrder(orderId, receiptData, null);
+    } else if (receiveToken.token_type === 'JO') {
+        const { quantity_produced, notes, quality_check } = receiptData;
+        result = await jobOrderService.completeJobOrder(orderId, null, null, notes, quantity_produced, quality_check);
+    } else {
+        const error = new Error('Unknown token type');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // Mark token as used
+    await receiveToken.update({ used_at: new Date(), used_by: null });
+
+    return result;
 };

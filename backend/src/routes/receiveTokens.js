@@ -14,15 +14,22 @@ router.post('/', authenticate, receiveTokenController.generateToken);
 /**
  * @route   GET /api/v1/receive-tokens/:token
  * @desc    Validate token and get order details for mobile receive page
- * @access  Private (any authenticated user)
+ * @access  Public (token is the credential)
  */
-router.get('/:token', authenticate, receiveTokenController.validateToken);
+router.get('/:token', receiveTokenController.validateToken);
+
+/**
+ * @route   POST /api/v1/receive-tokens/:token/receive
+ * @desc    Perform PO or JO receive using the QR token as authorization
+ * @access  Public (token is the credential)
+ */
+router.post('/:token/receive', receiveTokenController.receiveViaToken);
 
 /**
  * @route   POST /api/v1/receive-tokens/:tokenId/use
  * @desc    Mark a token as used after successful receive
- * @access  Private (any authenticated user)
+ * @access  Public (token-based auth)
  */
-router.post('/:tokenId/use', authenticate, receiveTokenController.markTokenUsed);
+router.post('/:tokenId/use', receiveTokenController.markTokenUsed);
 
 export default router;

@@ -26,9 +26,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
-import { validateReceiveToken, markTokenUsed } from '../src/services/receiveTokenService.js';
-import { receivePurchaseOrder } from '../src/services/purchaseOrderService.js';
-import { completeJobOrder } from '../src/services/jobOrderService.js';
+import { validateReceiveToken, receiveViaToken } from '../src/services/receiveTokenService.js';
 import { cn } from "../src/lib/utils.js";
 import { format, addDays } from 'date-fns';
 
@@ -62,7 +60,6 @@ export default function MobileReceive() {
                 setCountdown(prev => {
                     if (prev <= 1) {
                         clearInterval(timer);
-                        navigate('/');
                         return 0;
                     }
                     return prev - 1;
@@ -71,23 +68,31 @@ export default function MobileReceive() {
 
             return () => clearInterval(timer);
         }
-    }, [success, navigate]);
+    }, [success]);
+
+    useEffect(() => {
+        if (countdown === 0) {
+            navigate('/');
+        }
+    }, [countdown, navigate]);
 
     // Initialize quantities when order data loads
     useEffect(() => {
-        if (orderData) {
-            if (orderData.items) {
+        if (orderData && orderData.order_type) {
+            if (orderData.order_type === 'PO') {
                 // PO Logic
                 const initialQuantities = {};
-                orderData.items.forEach(item => {
-                    initialQuantities[item.line_item_id] = item.quantity_remaining;
+                (orderData.items || []).forEach(item => {
+                    const remaining = parseFloat(item.quantity_remaining);
+                    initialQuantities[item.line_item_id] = isNaN(remaining) ? 0 : remaining;
                 });
                 setReceivedQuantities(initialQuantities);
-            } else if (orderData.quantity_to_produce) {
+            } else if (orderData.order_type === 'JO') {
                 // JO Logic
                 const currentProduced = parseFloat(orderData.quantity_produced || 0);
-                const total = parseFloat(orderData.quantity_to_produce);
-                setProductionQuantity(total - currentProduced);
+                const total = parseFloat(orderData.quantity_to_produce || 0);
+                const remaining = total - currentProduced;
+                setProductionQuantity(isNaN(remaining) ? 0 : Math.max(0, remaining));
             }
         }
     }, [orderData]);
@@ -97,6 +102,14 @@ export default function MobileReceive() {
             setLoading(true);
             setError(null);
             const result = await validateReceiveToken(token);
+            console.log(`[MobileReceive] Token Validate Result for ${token}:`, JSON.stringify({
+                order_type: result.order?.order_type,
+                token_type: result.receiveToken?.token_type,
+                order_number: result.order?.order_number
+            }, null, 2));
+            if (!result.order) {
+                console.warn('[MobileReceive] Warning: Token valid but no order attached!');
+            }
             setTokenData(result);
             setOrderData(result.order);
         } catch (err) {
@@ -107,14 +120,12 @@ export default function MobileReceive() {
     };
 
     const handleQuantityChange = (lineItemId, value) => {
-        const numValue = parseFloat(value) || 0;
-        const item = orderData?.items?.find(i => i.line_item_id === lineItemId);
-        const maxAllowed = item?.quantity_remaining || 0;
-        const clampedValue = Math.max(0, Math.min(numValue, maxAllowed));
+        const numValue = parseFloat(value);
+        const safeValue = isNaN(numValue) ? 0 : Math.max(0, numValue);
 
         setReceivedQuantities(prev => ({
             ...prev,
-            [lineItemId]: clampedValue
+            [lineItemId]: safeValue
         }));
     };
 
@@ -126,18 +137,18 @@ export default function MobileReceive() {
     const setToMax = (lineItemId) => {
         const item = orderData?.items?.find(i => i.line_item_id === lineItemId);
         if (item) {
+            const remaining = parseFloat(item.quantity_remaining);
             setReceivedQuantities(prev => ({
                 ...prev,
-                [lineItemId]: item.quantity_remaining
+                [lineItemId]: isNaN(remaining) ? 0 : remaining
             }));
         }
     };
 
     const handleProductionQuantityChange = (value) => {
-        const numValue = parseFloat(value) || 0;
-        const maxAllowed = (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0));
-        const clampedValue = Math.max(0, Math.min(numValue, maxAllowed));
-        setProductionQuantity(clampedValue);
+        const numValue = parseFloat(value);
+        const safeValue = isNaN(numValue) ? 0 : Math.max(0, numValue);
+        setProductionQuantity(safeValue);
     };
 
     const adjustProductionQuantity = (delta) => {
@@ -145,7 +156,14 @@ export default function MobileReceive() {
     };
 
     const setProductionToMax = () => {
-        const maxAllowed = (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0));
+        if (!orderData) {
+            console.warn('[MobileReceive] Cannot set MAX: No order data');
+            return;
+        }
+        const target = parseFloat(orderData.quantity_to_produce) || 0;
+        const produced = parseFloat(orderData.quantity_produced) || 0;
+        const maxAllowed = Math.max(0, target - produced);
+        console.log('[MobileReceive] Setting Production MAX:', maxAllowed, '(Target:', target, 'Produced:', produced, ')');
         setProductionQuantity(maxAllowed);
     };
 
@@ -154,8 +172,9 @@ export default function MobileReceive() {
 
         setSubmitting(true);
         try {
+            let receiptData;
+
             if (orderData.order_type === 'PO') {
-                // Validate at least one item has quantity
                 const totalReceiving = Object.values(receivedQuantities).reduce((sum, qty) => sum + qty, 0);
                 if (totalReceiving === 0) {
                     toast.error('Please enter at least one quantity to receive');
@@ -163,32 +182,33 @@ export default function MobileReceive() {
                     return;
                 }
 
-                const line_items = orderData.items
-                    .filter(item => receivedQuantities[item.line_item_id] > 0)
-                    .map(item => ({
-                        line_item_id: item.line_item_id,
-                        quantity_received: receivedQuantities[item.line_item_id],
-                        quality_check_status: 'passed'
-                    }));
-
-                await receivePurchaseOrder(orderData.order_id, {
-                    line_items,
+                receiptData = {
+                    line_items: (orderData.items || [])
+                        .filter(item => (receivedQuantities[item.line_item_id] || 0) > 0)
+                        .map(item => ({
+                            line_item_id: item.line_item_id,
+                            quantity_received: receivedQuantities[item.line_item_id],
+                            quality_check_status: 'passed'
+                        })),
                     notes,
                     delivery_rating: 5
-                });
+                };
             } else {
-                // JO Logic
                 if (productionQuantity <= 0) {
                     toast.error('Please enter a quantity greater than 0');
                     setSubmitting(false);
                     return;
                 }
 
-                await completeJobOrder(orderData.order_id, null, notes, productionQuantity, qualityCheck);
+                receiptData = {
+                    quantity_produced: productionQuantity,
+                    notes,
+                    quality_check: qualityCheck
+                };
             }
 
-            // Mark token as used
-            await markTokenUsed(tokenData.token_id);
+            // Use the token itself as authorization — no user JWT needed
+            await receiveViaToken(token, receiptData);
 
             setSuccess(true);
             toast.success(orderData.order_type === 'PO'
@@ -203,8 +223,8 @@ export default function MobileReceive() {
 
     // Calculate total being received
     const totalReceiving = orderData?.order_type === 'PO'
-        ? Object.values(receivedQuantities).reduce((sum, qty) => sum + (qty || 0), 0)
-        : productionQuantity;
+        ? Object.values(receivedQuantities).reduce((sum, qty) => sum + (parseFloat(qty) || 0), 0)
+        : (parseFloat(productionQuantity) || 0);
 
     if (loading) {
         return (
@@ -217,16 +237,38 @@ export default function MobileReceive() {
         );
     }
 
-    if (error) {
+    // Safety check: if we have orderData but it's missing type/ID, something is wrong
+    const isMalformed = orderData && (!orderData.order_type || (!orderData.order_id && !orderData.po_id && !orderData.jo_id));
+
+    if (error || isMalformed) {
         return (
             <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl p-8 text-center shadow-lg max-w-md">
+                <div className="bg-white rounded-2xl p-8 text-center shadow-lg max-w-md w-full">
                     <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold text-slate-900 mb-2">Token Error</h2>
-                    <p className="text-slate-600 mb-6">{error}</p>
-                    <Button onClick={() => navigate('/')} variant="outline">
-                        Go to Dashboard
-                    </Button>
+                    <h2 className="text-xl font-bold text-slate-900 mb-2">{isMalformed ? 'Data Link Error' : 'Token Error'}</h2>
+                    <p className="text-slate-600 mb-6">
+                        {isMalformed
+                            ? 'The server validated your scan but returned incomplete order information. Please try refreshing or contact admin.'
+                            : error}
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <Button onClick={() => window.location.reload()} variant="teal" className="w-full">
+                            Refresh Page
+                        </Button>
+                        <Button onClick={() => navigate('/')} variant="outline" className="w-full">
+                            Go to Dashboard
+                        </Button>
+                    </div>
+
+                    {/* DEBUG PANEL IN ERROR VIEW */}
+                    <div className="mt-8 p-4 bg-slate-800 text-white rounded-lg font-mono text-xs overflow-auto max-h-64 text-left border-2 border-red-500">
+                        <p className="text-red-400 mb-1 font-bold">--- DIAGNOSTIC DATA ---</p>
+                        <p>Order Type: {orderData?.order_type || 'UNDEFINED'}</p>
+                        <p>Order Number: {orderData?.order_number || 'NULL'}</p>
+                        <hr className="my-2 border-slate-700" />
+                        <p className="text-gray-400">Raw Order Data:</p>
+                        <pre>{JSON.stringify(orderData, null, 2)}</pre>
+                    </div>
                 </div>
             </div>
         );
@@ -257,8 +299,19 @@ export default function MobileReceive() {
         );
     }
 
-    const isPO = orderData?.order_type === 'PO';
-    const remainingToProduce = !isPO ? (parseFloat(orderData.quantity_to_produce) - parseFloat(orderData.quantity_produced || 0)) : 0;
+    // Improved determination of order type
+    let isPO = orderData?.order_type === 'PO';
+    // Fallback: Check order number pattern if type is missing/ambiguous
+    if (!orderData?.order_type && orderData?.order_number?.startsWith('PO-')) {
+        isPO = true;
+        console.warn('[MobileReceive] Forced PO type based on order number pattern');
+    }
+
+    const remainingToProduce = (!isPO && orderData)
+        ? Math.max(0, (parseFloat(orderData.quantity_to_produce || 0) - parseFloat(orderData.quantity_produced || 0)))
+        : 0;
+
+    const safeRemainingToProduce = isNaN(remainingToProduce) ? 0 : remainingToProduce;
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -310,7 +363,7 @@ export default function MobileReceive() {
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm text-slate-500">
-                                                Expected: <span className="font-medium text-slate-700">{item.quantity_remaining}</span>
+                                                Expected: <span className="font-medium text-slate-700">{parseFloat(item.quantity_remaining) || 0}</span>
                                             </p>
                                             <p className="text-xs text-slate-400">
                                                 {item.unit_of_measure}
@@ -334,11 +387,10 @@ export default function MobileReceive() {
                                             <Input
                                                 type="number"
                                                 inputMode="decimal"
-                                                value={receivedQuantities[item.line_item_id] ?? ''}
+                                                value={isNaN(receivedQuantities[item.line_item_id]) ? '' : (receivedQuantities[item.line_item_id] ?? '')}
                                                 onChange={(e) => handleQuantityChange(item.line_item_id, e.target.value)}
                                                 className="h-12 text-center text-xl font-bold pr-16"
                                                 min={0}
-                                                max={item.quantity_remaining}
                                             />
                                             <Button
                                                 variant="ghost"
@@ -355,7 +407,6 @@ export default function MobileReceive() {
                                             size="icon"
                                             className="h-12 w-12 flex-shrink-0"
                                             onClick={() => adjustQuantity(item.line_item_id, 1)}
-                                            disabled={receivedQuantities[item.line_item_id] >= item.quantity_remaining}
                                         >
                                             <Plus className="w-5 h-5" />
                                         </Button>
@@ -369,12 +420,12 @@ export default function MobileReceive() {
                                     <div className="flex-1">
                                         <p className="font-medium text-slate-900">Quantity Produced</p>
                                         <p className="text-sm text-slate-500">
-                                            Remaining: {remainingToProduce}
+                                            Remaining: {safeRemainingToProduce}
                                         </p>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-sm text-slate-500">
-                                            Total: <span className="font-medium text-slate-700">{orderData?.quantity_to_produce}</span>
+                                            Total: <span className="font-medium text-slate-700">{parseFloat(orderData?.quantity_to_produce) || 0}</span>
                                         </p>
                                     </div>
                                 </div>
@@ -394,11 +445,10 @@ export default function MobileReceive() {
                                         <Input
                                             type="number"
                                             inputMode="decimal"
-                                            value={productionQuantity}
+                                            value={isNaN(productionQuantity) ? '' : productionQuantity}
                                             onChange={(e) => handleProductionQuantityChange(e.target.value)}
                                             className="h-12 text-center text-xl font-bold pr-16"
                                             min={0}
-                                            max={remainingToProduce}
                                         />
                                         <Button
                                             variant="ghost"
@@ -415,7 +465,6 @@ export default function MobileReceive() {
                                         size="icon"
                                         className="h-12 w-12 flex-shrink-0"
                                         onClick={() => adjustProductionQuantity(1)}
-                                        disabled={productionQuantity >= remainingToProduce}
                                     >
                                         <Plus className="w-5 h-5" />
                                     </Button>
@@ -425,14 +474,21 @@ export default function MobileReceive() {
                                 <div className="mt-6 pt-4 border-t border-slate-100">
                                     <p className="text-sm font-medium text-slate-700 mb-3">Ingredients Consumption (Est.)</p>
                                     <div className="space-y-2">
-                                        {orderData?.ingredients?.map((ing, idx) => (
-                                            <div key={idx} className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-600">{ing.item_name}</span>
-                                                <span className="text-slate-900 font-mono">
-                                                    {(parseFloat(ing.quantity_required) * (productionQuantity / parseFloat(orderData.quantity_to_produce || 1))).toFixed(2)} {ing.unit_of_measure}
-                                                </span>
-                                            </div>
-                                        ))}
+                                        {orderData?.ingredients?.map((ing, idx) => {
+                                            const req = parseFloat(ing.quantity_required) || 0;
+                                            const total = parseFloat(orderData.quantity_to_produce) || 1;
+                                            const ratio = productionQuantity / total;
+                                            const estimated = req * ratio;
+
+                                            return (
+                                                <div key={idx} className="flex justify-between items-center text-sm">
+                                                    <span className="text-slate-600">{ing.item_name}</span>
+                                                    <span className="text-slate-900 font-mono">
+                                                        {(isNaN(estimated) ? 0 : estimated).toFixed(2)} {ing.unit_of_measure}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
@@ -485,7 +541,7 @@ export default function MobileReceive() {
                             <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
                                 <span className="text-slate-600 font-medium">Receiving Now</span>
                                 <span className="text-xl font-bold text-teal-600">
-                                    {totalReceiving}
+                                    {isNaN(totalReceiving) ? 0 : totalReceiving}
                                 </span>
                             </div>
                         </>
@@ -500,7 +556,7 @@ export default function MobileReceive() {
                             <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
                                 <span className="text-slate-600 font-medium">Producing Now</span>
                                 <span className="text-xl font-bold text-teal-600">
-                                    {productionQuantity}
+                                    {isNaN(productionQuantity) ? 0 : productionQuantity}
                                 </span>
                             </div>
                         </>
@@ -561,6 +617,18 @@ export default function MobileReceive() {
 
             {/* Bottom padding for fixed button */}
             <div className="h-24" />
+
+            {import.meta.env.DEV && (
+            <div className="p-4 m-4 bg-slate-800 text-white rounded-lg font-mono text-xs overflow-auto max-h-96 border-2 border-red-500">
+                <p className="text-red-400 mb-1 font-bold">--- DIAGNOSTIC DATA ---</p>
+                <p>Is PO Detected: {isPO ? 'YES' : 'NO'}</p>
+                <p>Order Type: {orderData?.order_type || 'UNDEFINED'}</p>
+                <p>Order Number: {orderData?.order_number || 'NULL'}</p>
+                <hr className="my-2 border-slate-700" />
+                <p className="text-gray-400">Raw Order Data:</p>
+                <pre>{JSON.stringify(orderData, null, 2)}</pre>
+            </div>
+            )}
         </div>
     );
 }

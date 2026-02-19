@@ -47,13 +47,31 @@ export const validateToken = async (req, res, next) => {
 };
 
 /**
+ * Perform the receive operation (PO or JO) via QR token — no user auth required.
+ * POST /api/v1/receive-tokens/:token/receive
+ */
+export const receiveViaToken = async (req, res, next) => {
+    try {
+        const { token } = req.params;
+        const result = await receiveTokenService.receiveViaToken(token, req.body);
+        res.json({
+            success: true,
+            data: result,
+            message: 'Received successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * Mark token as used (called after successful receive)
  * POST /api/v1/receive-tokens/:tokenId/use
  */
 export const markTokenUsed = async (req, res, next) => {
     try {
         const { tokenId } = req.params;
-        const userId = req.user.user_id;
+        const userId = req.user?.user_id || null;
 
         const token = await receiveTokenService.markTokenUsed(tokenId, userId);
 

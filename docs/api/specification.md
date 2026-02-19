@@ -1771,6 +1771,134 @@ No body required.
 
 ---
 
+## Receive Tokens (QR Scan) Endpoints
+
+These endpoints power the mobile QR receiving flow for Purchase Orders and Job Orders. The validate and receive endpoints are **public** — the QR token itself is the authorization credential.
+
+### POST /receive-tokens
+Generate a QR token for a PO or JO. The token encodes a URL that the mobile receiver scans.
+
+**Access:** Private (requires JWT)
+
+**Request**
+```json
+{
+  "order_type": "PO",
+  "order_id": 39,
+  "expiry_days": 7
+}
+```
+
+**Response (201)**
+```json
+{
+  "success": true,
+  "data": {
+    "token": "a3f8c2e1...",
+    "expires_at": "2026-02-26T10:00:00.000Z",
+    "url": "/receive/a3f8c2e1..."
+  }
+}
+```
+
+---
+
+### GET /receive-tokens/:token
+Validate a QR token and retrieve order details for the mobile receive page.
+
+**Access:** Public (token is the credential)
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "receiveToken": {
+      "token_id": 5,
+      "token_type": "PO",
+      "expires_at": "2026-02-26T10:00:00.000Z"
+    },
+    "order": {
+      "order_type": "PO",
+      "order_id": 39,
+      "order_number": "PO-2026-943841",
+      "supplier_name": "Pillow Supplier",
+      "status": "pending",
+      "total_items": 1,
+      "total_remaining": 60,
+      "items": [
+        {
+          "line_item_id": 12,
+          "item_name": "Pillow",
+          "sku_code": "PIL-001",
+          "quantity_ordered": 60,
+          "quantity_received_total": 0,
+          "quantity_remaining": 60,
+          "unit_of_measure": "pcs"
+        }
+      ]
+    }
+  }
+}
+```
+
+For a **JO** token the `order` shape is:
+```json
+{
+  "order_type": "JO",
+  "order_id": 12,
+  "order_number": "JO-2026-001",
+  "product_name": "Assembled Pillow",
+  "status": "in_progress",
+  "quantity_to_produce": 100,
+  "quantity_produced": 0,
+  "ingredients": [
+    { "item_id": 3, "item_name": "Pillow Fill", "quantity_required": 200, "unit_of_measure": "g" }
+  ],
+  "items": []
+}
+```
+
+---
+
+### POST /receive-tokens/:token/receive
+Perform the PO or JO receive operation. The QR token is validated server-side; no user JWT is required.
+
+**Access:** Public (token is the credential)
+
+**Request — PO**
+```json
+{
+  "line_items": [
+    { "line_item_id": 12, "quantity_received": 60, "quality_check_status": "passed" }
+  ],
+  "notes": "All items in good condition",
+  "delivery_rating": 5
+}
+```
+
+**Request — JO**
+```json
+{
+  "quantity_produced": 80,
+  "notes": "Batch complete",
+  "quality_check": "pass"
+}
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": { "po_id": 39, "status": "received", ... },
+  "message": "Received successfully"
+}
+```
+
+> **Note:** This endpoint also marks the token as `used_at` atomically. A token can only be used once.
+
+---
+
 ## Email Configuration
 
 The system uses Nodemailer with SMTP for sending emails. All email features gracefully degrade - if email fails, the primary operation (approval/invitation) still succeeds.

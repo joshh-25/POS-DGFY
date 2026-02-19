@@ -129,6 +129,27 @@ node backend/scripts/register_legacy_tenant.js
 
 ---
 
+### 6. `verify-qr-receiving-flow.js` - Real-World Engagement Verification
+
+Simulates the full end-to-end user flow for generating QR codes and receiving goods (PO/JO).
+
+**Usage:**
+```bash
+node backend/tests/verify-qr-receiving-flow.js
+```
+
+**What it does:**
+1.  **Creates a Test PO:** Order quantity 500.
+2.  **Generates QR Token:** Simulates the backend API response for the "Generate QR" button.
+3.  **Simulates Under-Receiving:** Attempts to receive 450/500 units. Verifies status becomes `partial`.
+4.  **Simulates Over-Receiving:** Attempts to receive 550/500 units. Verifies status becomes `received` and inventory correctly updates.
+
+**When to use:**
+- Immediately after a production deployment to verify the API and database are correctly synchronized.
+- When troubleshooting "Unknown Column" or 500 errors in the Receive Token flow.
+
+---
+
 ## 🎓 Tutorial: How to Use These Scripts
 
 ### Scenario 1: "Port 5000 is already in use" Error

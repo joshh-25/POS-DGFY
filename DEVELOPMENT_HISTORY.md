@@ -41,6 +41,7 @@
 - [Phase 35: Provisioning Atomic Cleanup (Audit 2.3)](#phase-35-provisioning-atomic-cleanup-audit-23)
 - [Phase 36: Tenant Registration Rate Limiting (Audit 2.4)](#phase-36-tenant-registration-rate-limiting-audit-24)
 - [Phase 37: DDL Identifier Escaping + Runtime Stability Fixes (Audit 2.5)](#phase-37-ddl-identifier-escaping--runtime-stability-fixes-audit-25)
+- [Phase 39: QR Receive Flow — End-to-End Fix](#phase-39-qr-receive-flow--end-to-end-fix)
 
 ---
 
@@ -5439,6 +5440,48 @@ This phase focused on finalizing the PayPal subscription flow for Premium accoun
 | `backend/src/services/authService.js` | `isAvailable()` check in `isTokenBlacklisted` to fail-open when Redis is down |
 | `backend/tests/tenantProvisioning.test.js` | 14 new 2.5 tests; 2.3 fixture names updated to conform to `DB_NAME_PATTERN` |
 | `System_Audit/2.5-DDL_string_interpolation.md` | Marked resolved with full implementation details |
+
+---
+
+## Phase 39: QR Receive Flow — End-to-End Fix
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-19
+
+### Root Causes Identified & Fixed
+
+- [x] **Sequelize Model Serialization in Service Return**:
+  - **Issue**: `receiveTokenService.validateToken` returned a live Sequelize model instance for `receiveToken`. When `res.json()` serialized it, the Sequelize proxy returned only raw DB columns, not the expected DTO fields. The frontend saw `order_type: undefined` and `items: []`.
+  - **Fix**: Replaced the raw model return with an explicit plain object: `{ token_id, token_type, expires_at }`.
+  - **File**: `backend/src/services/receiveTokenService.js`
+
+- [x] **PO/JO Receive Called Through Auth-Gated Endpoint**:
+  - **Issue**: `MobileReceive.jsx` called `POST /purchase-orders/:id/receive` and `completeJobOrder` directly. Both routes use `router.use(authenticate)` — requiring a JWT. Mobile QR scans have no session, so every receive silently failed with a 401. The token was never marked used, and stock was never updated.
+  - **Fix**: Added a new **public** endpoint `POST /api/v1/receive-tokens/:token/receive`. The raw QR token is the authorization credential. The service validates the token, dispatches to the correct PO or JO service internally, and marks the token used atomically.
+  - **Files**: `backend/src/services/receiveTokenService.js` (new `receiveViaToken` function), `backend/src/controllers/receiveTokenController.js` (new action), `backend/src/routes/receiveTokens.js` (new route)
+
+- [x] **`markTokenUsed` Called with `undefined` ID**:
+  - **Issue**: Frontend called `markTokenUsed(tokenData.token_id)` but `tokenData` was the full `{ receiveToken, order }` object — `token_id` doesn't exist at the top level.
+  - **Fix**: Moot — `markTokenUsed` is no longer called separately from the frontend. The new `receiveViaToken` service marks the token used atomically on the backend.
+
+- [x] **`navigate('/')` Called During Render Phase**:
+  - **Issue**: `navigate('/')` was called inside the `setCountdown` state updater callback. React's state updaters run during render, so calling `navigate` there triggered a state update on `BrowserRouter` mid-render, causing a React warning.
+  - **Fix**: Moved navigation to a dedicated `useEffect` that watches `countdown === 0`.
+  - **File**: `frontend/Pages/MobileReceive.jsx`
+
+- [x] **Always-Visible Diagnostic Panel in Production**:
+  - **Issue**: A `DIAGNOSTIC DATA` panel was unconditionally rendered at the bottom of `MobileReceive.jsx`, exposing raw order data to all users.
+  - **Fix**: Wrapped with `{import.meta.env.DEV && (...)}`.
+  - **File**: `frontend/Pages/MobileReceive.jsx`
+
+- [x] **Emergency File Logging in Controller**:
+  - **Issue**: `receiveTokenController.validateToken` had a `fs.appendFileSync('emergency_api_log.txt', ...)` block executing on every QR scan in production.
+  - **Fix**: Removed entirely.
+  - **File**: `backend/src/controllers/receiveTokenController.js`
+
+### Verification
+- PO QR scan: Received Pillow PO — status updated to `received` ✅
+- JO QR scan: Completed Job Order — quantity produced updated ✅
+- Token correctly marked `used_at` after receive ✅
 
 ---
 
