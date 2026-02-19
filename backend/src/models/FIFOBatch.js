@@ -12,7 +12,7 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
     allowNull: false
   },
   quantity: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   cost_per_unit: {
@@ -36,7 +36,7 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
     allowNull: true
   },
   quantity_consumed: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     defaultValue: 0
   }
 }, {

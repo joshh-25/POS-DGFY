@@ -56,22 +56,22 @@ const Item = sequelize.define('Item', {
     allowNull: true
   },
   current_stock: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     defaultValue: 0,
     validate: {
       min: 0
     }
   },
   max_capacity: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   min_threshold: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   purchase_allowance: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   unit_of_measure: {
@@ -97,7 +97,7 @@ const Item = sequelize.define('Item', {
     comment: 'Shelf life in days after opening'
   },
   batch_size: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   yield_percentage: {

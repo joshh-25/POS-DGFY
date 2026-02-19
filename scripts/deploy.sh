@@ -111,14 +111,22 @@ log "Step 5: Running maintenance and sync scripts..."
 
 # Run precision fix script if it exists
 if [ -f "scripts/deploy_fix_precision.js" ]; then
-    echo ">> Running structural precision fixes..."
+    echo ">> Running structural precision fixes (product_composition)..."
     node scripts/deploy_fix_precision.js
-    
+
     echo ">> Running surgical schema fixes (Webhooks & Index Pruning)..."
     node scripts/surgical_migrate.js
 else
     # Keeping the original echo if script is missing, just in case it was a placeholder
     echo ">> (Skipping precision fixes - script not found)"
+fi
+
+# Run v2 precision fix (JO, PO, Stock, FIFO, Item quantity columns)
+if [ -f "scripts/deploy_fix_precision_v2.js" ]; then
+    echo ">> Running precision migration v2 (quantity columns across all tables)..."
+    node scripts/deploy_fix_precision_v2.js
+else
+    warn "Precision v2 script not found (backend/scripts/deploy_fix_precision_v2.js)"
 fi
 
 # Sync Tenant Schemas

@@ -42,6 +42,7 @@
 - [Phase 36: Tenant Registration Rate Limiting (Audit 2.4)](#phase-36-tenant-registration-rate-limiting-audit-24)
 - [Phase 37: DDL Identifier Escaping + Runtime Stability Fixes (Audit 2.5)](#phase-37-ddl-identifier-escaping--runtime-stability-fixes-audit-25)
 - [Phase 39: QR Receive Flow — End-to-End Fix](#phase-39-qr-receive-flow--end-to-end-fix)
+- [Phase 40: Model DECIMAL Precision Alignment](#phase-40-model-decimal-precision-alignment)
 
 ---
 
@@ -5482,6 +5483,58 @@ This phase focused on finalizing the PayPal subscription flow for Premium accoun
 - PO QR scan: Received Pillow PO — status updated to `received` ✅
 - JO QR scan: Completed Job Order — quantity produced updated ✅
 - Token correctly marked `used_at` after receive ✅
+
+### Production Deployment (2026-02-19)
+- Deployed via `bash scripts/deploy.sh` on `hermes-cloud` ✅
+- Frontend build: 2263 modules, clean ✅
+- PM2 restart: both `sku-backend` + `sku-frontend` online ✅
+- Live end-to-end test passed for both PO and JO QR flows ✅
+
+---
+
+## Phase 40: Model DECIMAL Precision Alignment
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-19
+
+### Problem
+`deploy_fix_precision.js` (Phase 32) patched `product_composition.quantity_required` at the DB level to `DECIMAL(24,12)`, and `ProductComposition.js` was updated to match. However, 6 other Sequelize models still declared their physical quantity columns as `DECIMAL(12,2)`, creating a mismatch between model definitions and actual production DB column types. Identified via post-deployment audit of the `docs/testing/production-readiness-audit.md`.
+
+### Root Cause
+The original precision fix was scoped narrowly to `product_composition` only. Other tables storing physical quantities (stock levels, JO ingredients, PO quantities, FIFO batch sizes) were never updated.
+
+### Fix
+
+**Models updated** (`DECIMAL(12, 2)` → `DECIMAL(24, 12)` on quantity fields):
+- [x] `backend/src/models/JOIngredient.js` — `quantity_required`, `quantity_consumed`, `stock_before`, `stock_after`
+- [x] `backend/src/models/JobOrder.js` — `quantity_to_produce`, `quantity_produced`
+- [x] `backend/src/models/POLineItem.js` — `quantity_ordered`, `quantity_received`
+- [x] `backend/src/models/StockMovement.js` — `quantity`
+- [x] `backend/src/models/FIFOBatch.js` — `quantity`, `quantity_consumed`
+- [x] `backend/src/models/Item.js` — `current_stock`, `max_capacity`, `min_threshold`, `purchase_allowance`, `batch_size`
+
+**Fields intentionally left at `DECIMAL(12,2)` or narrower** (monetary/rate fields where 2dp is correct):
+- `PurchaseOrder`: `total_amount`, `discount`, `tax_rate`
+- `POLineItem`: `unit_price`, `total_price`
+- `Item`: `yield_percentage`, `processing_loss` (`DECIMAL(5,2)` — percentage, correct)
+- `Item`: `cost_per_unit` (`DECIMAL(10,4)` — monetary, correct)
+
+**New deployment script**:
+- [x] `backend/scripts/deploy_fix_precision_v2.js` — ALTERs all 6 tables × all tenant DBs
+- [x] Registered in `scripts/deploy.sh` Step 5 (runs after v1 and surgical_migrate)
+
+### Safety
+DECIMAL widening is always non-destructive in MySQL. No data loss possible. No Sequelize migrations required (script handles DB-side directly, same pattern as v1).
+
+### Post-Deploy Verification
+Run on server after next deploy:
+```sql
+SHOW COLUMNS FROM jo_ingredients LIKE 'quantity_required';   -- expect decimal(24,12)
+SHOW COLUMNS FROM job_orders LIKE 'quantity_to_produce';     -- expect decimal(24,12)
+SHOW COLUMNS FROM stock_movements LIKE 'quantity';           -- expect decimal(24,12)
+SHOW COLUMNS FROM fifo_batches LIKE 'quantity';              -- expect decimal(24,12)
+SHOW COLUMNS FROM items LIKE 'current_stock';                -- expect decimal(24,12)
+SHOW COLUMNS FROM po_line_items LIKE 'quantity_ordered';     -- expect decimal(24,12)
+```
 
 ---
 

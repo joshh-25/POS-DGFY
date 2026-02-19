@@ -16,11 +16,11 @@ const POLineItem = sequelize.define('POLineItem', {
     allowNull: false
   },
   quantity_ordered: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   quantity_received: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     defaultValue: 0
   },
   unit_price: {

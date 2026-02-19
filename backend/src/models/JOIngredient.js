@@ -16,7 +16,7 @@ const JOIngredient = sequelize.define('JOIngredient', {
     allowNull: false
   },
   quantity_required: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   unit_of_measure: {
@@ -25,15 +25,15 @@ const JOIngredient = sequelize.define('JOIngredient', {
     comment: 'Recipe UOM used for quantity_required'
   },
   quantity_consumed: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   stock_before: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   stock_after: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: true
   },
   batch_id: {

@@ -17,11 +17,11 @@ const JobOrder = sequelize.define('JobOrder', {
     allowNull: false
   },
   quantity_to_produce: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   quantity_produced: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false,
     defaultValue: 0
   },

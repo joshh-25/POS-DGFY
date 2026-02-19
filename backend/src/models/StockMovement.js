@@ -16,7 +16,7 @@ const StockMovement = sequelize.define('StockMovement', {
     allowNull: false
   },
   quantity: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(24, 12),
     allowNull: false
   },
   from_location: {
