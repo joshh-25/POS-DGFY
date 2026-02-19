@@ -21,6 +21,7 @@
     "validate:ai": "node scripts/validate-ai-tools.js",
     "generate:ai-docs": "node scripts/generate-ai-docs.js",
     "ai:check": "npm run validate:ai && npm run generate:ai-docs",
+    "build": "echo 'No backend build required'",
     "lint": "eslint src"
   },
   "keywords": [

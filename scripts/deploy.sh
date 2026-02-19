@@ -102,15 +102,9 @@ cd "$PROJECT_ROOT"
 log "Step 4: Running database migrations..."
 cd "$BACKEND_DIR"
 
-# Primary Migrations (src/migrations)
-echo ">> Running primary migrations..."
+# Run Migrations (using configured .sequelizerc path)
+echo ">> Running database migrations..."
 npx sequelize-cli db:migrate
-
-# Secondary Migrations (legacy 'migrations' folder check)
-if [ -d "migrations" ]; then
-    log "Running secondary migrations (if any)..."
-    npx sequelize-cli db:migrate --migrations-path migrations
-fi
 
 # 5. Structural Fixes & Helper Scripts
 log "Step 5: Running maintenance and sync scripts..."
@@ -133,6 +127,14 @@ if [ -f "scripts/sync-tenant-schemas.js" ]; then
     node "scripts/sync-tenant-schemas.js"
 else
     warn "Tenant sync script not found (backend/scripts/sync-tenant-schemas.js)"
+fi
+
+# Register/Update Legacy Admin Tenant
+echo ">> Ensuring Legacy Admin (admin@test.com) is Premium..."
+if [ -f "scripts/register_legacy_tenant.js" ]; then
+    node "scripts/register_legacy_tenant.js"
+else
+    warn "Legacy registration script not found (backend/scripts/register_legacy_tenant.js)"
 fi
 
 cd "$PROJECT_ROOT"
