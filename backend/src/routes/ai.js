@@ -83,4 +83,11 @@ router.delete(
  */
 router.get('/exports/:id', checkPermission(PERMISSIONS.AI.actions.AI_CHAT_VIEW), aiController.downloadExport);
 
+/**
+ * @route   GET /api/v1/ai/diagnostics
+ * @desc    Run AI capability and knowledge gap diagnostic report
+ * @access  Private (AI_CHAT_VIEW)
+ */
+router.get('/diagnostics', checkPermission(PERMISSIONS.AI.actions.AI_CHAT_VIEW), aiController.getDiagnostics);
+
 export default router;

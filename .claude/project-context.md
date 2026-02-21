@@ -1,42 +1,37 @@
 # SKU Inventory Manager - Project Context
 
 ## Project Overview
-This is a SKU Inventory Manager system with React frontend and Node.js/Express backend, using MySQL database and Redis for caching.
+This is a multi-tenant SKU Inventory Manager system with React frontend and Node.js/Express backend, using MySQL database and Redis for caching. It supports distributed database-per-tenant architecture and AI-assisted inventory management.
 
 ## Technology Stack
-- **Frontend**: React + Vite, Tailwind CSS
-- **Backend**: Node.js, Express, Sequelize ORM
-- **Database**: MySQL (via XAMPP)
-- **Cache**: Redis (Memurai/Docker on Windows)
-- **Platform**: Windows (XAMPP environment)
+- **Frontend**: React 18 + Vite, Tailwind CSS + Shadcn UI
+- **Backend**: Node.js, Express, Sequelize ORM (MySQL 8.0)
+- **Database**: MySQL (via XAMPP or separate instance)
+- **Cache**: Redis (Docker or Memurai on port 6379)
+- **Platform**: Multi-platform (Primary development on Windows/XAMPP)
 
 ## Key Decisions & Preferences
-<!-- Add your preferences here as we work together -->
+- Multi-tenant isolation is critical: always use `dbStore.get()` or `tenantHandler` context.
+- UI components should follow Shadcn UI patterns.
+- Backend logic resides in Services; Controllers only handle HTTP.
 
 ## Known Issues & Current Work
-<!-- Track issues and work in progress -->
+- Void/Reversal logic for stock movements (Current focus).
+- AI cost control and token usage tracking.
 
 ## Important File Locations
 - Backend: `/backend/src/`
-- Frontend Components: `/Components/`
-- Frontend Pages: `/Pages/`
-- Frontend Services: `/src/services/`
-- Database: `/backend/database-setup.sql`
+- Frontend Components: `/frontend/Components/`
+- Frontend Pages: `/frontend/Pages/`
+- Documentation: `/docs/` and root `.md` files
+- System Audit: `/System_Audit/`
 
 ## Development Commands
-- Backend dev: `cd backend && npm run dev` (Port 5000)
-- Frontend dev: `npm run dev` (Port 5173)
-- MySQL: Via XAMPP Control Panel
-- Redis: Docker or Memurai on port 6379
-
-## Modified Files This Session
-- Components/items/ItemDetailsModal.jsx
-- Components/items/ItemFormModal.jsx
-- Pages/Items.jsx
-- backend/src/models/Item.js
-- backend/database-setup.sql
-- src/services/api.js
-- src/services/itemService.js
+- Full Stack: `npm run dev` (Concurrent Backend + Frontend)
+- Backend Only: `npm run dev:backend` (Port 5000 in dev, 5001 in prod)
+- Frontend Only: `npm run dev:frontend` (Port 5173)
+- Database: `cd backend && npx sequelize-cli db:migrate`
 
 ## Notes
-- Last updated: 2025-12-27
+- Last updated: 2026-02-20
+- Use `CLAUDE.md` and `.claude/hooks/session-start.sh` for session-specific context.

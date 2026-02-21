@@ -272,13 +272,19 @@ export const blacklistToken = async (token) => {
 export const isTokenBlacklisted = async (token) => {
   if (!process.env.REDIS_URL) {
     logger.warn('Skipping token blacklist check: REDIS_URL not configured');
-    return false; // Fail Open if Redis is not configured
+    return false; // Fail Open if Redis is not configured (Dev/Test)
   }
+
   if (!cacheService.isAvailable()) {
-    logger.warn('Skipping token blacklist check: Redis is not connected');
-    return false; // Fail Open if Redis is configured but currently disconnected
+    // FAIL CLOSED: Redis is configured but down.
+    // We cannot verify if the token is revoked, so we must assume it might be.
+    // Throwing an error here will cause the request to fail (500), which is safer than allowing potentially revoked access.
+    logger.error('CRITICAL: Redis unavailable for token blacklist check. Denying access (Fail Closed).');
+    throw new Error('Service unavailable: Validation check failed');
   }
+
   const blacklistKey = `blacklist:token:${token}`;
+  // Use getCritical to enforce fail-closed at the cache level too, though isAvailable check above catches most cases.
   const result = await cacheService.getCritical(blacklistKey);
   return result === 'true';
 };

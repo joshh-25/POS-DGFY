@@ -116,7 +116,8 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
     role: role.charAt(0).toUpperCase() + role.slice(1), // Capitalize role
     inviteUrl,
     tenantName,
-    expiresIn: '7 days'
+    expiresIn: '7 days',
+    appUrl
   });
 
   return sendEmail({
@@ -142,7 +143,8 @@ export const sendCompanyApprovedEmail = async ({ email, companyName, companyToke
     companyName,
     adminEmail: email,
     companyToken,
-    loginUrl
+    loginUrl,
+    appUrl
   });
 
   return sendEmail({
@@ -168,7 +170,8 @@ export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionRe
     companyName,
     adminEmail: email,
     rejectionReason,
-    registerUrl
+    registerUrl,
+    appUrl
   });
 
   return sendEmail({
@@ -210,7 +213,8 @@ export const sendSubscriptionExpiringEmail = async ({ email, companyName, expiry
   const html = getSubscriptionExpiringTemplate({
     companyName,
     expiryDate: new Date(expiryDate).toLocaleDateString(),
-    upgradeUrl
+    upgradeUrl,
+    appUrl
   });
 
   return sendEmail({
@@ -226,7 +230,8 @@ export const sendSubscriptionExpiringEmail = async ({ email, companyName, expiry
 export const sendSubscriptionCancelledEmail = async ({ email, companyName, downgradeDate }) => {
   const html = getSubscriptionCancelledTemplate({
     companyName,
-    downgradeDate: new Date(downgradeDate).toLocaleDateString()
+    downgradeDate: new Date(downgradeDate).toLocaleDateString(),
+    appUrl
   });
 
   return sendEmail({
@@ -242,7 +247,8 @@ export const sendSubscriptionCancelledEmail = async ({ email, companyName, downg
 export const sendPaymentFailedEmail = async ({ email, companyName, retryDate }) => {
   const html = getPaymentFailedTemplate({
     companyName,
-    retryDate: retryDate ? new Date(retryDate).toLocaleDateString() : 'soon'
+    retryDate: retryDate ? new Date(retryDate).toLocaleDateString() : 'soon',
+    appUrl
   });
 
   return sendEmail({
@@ -258,7 +264,8 @@ export const sendPaymentFailedEmail = async ({ email, companyName, retryDate }) 
 export const sendPaymentFailedGracePeriodEmail = async ({ email, companyName, gracePeriodEnd }) => {
   const html = getPaymentFailedGracePeriodTemplate({
     companyName,
-    gracePeriodEnd: new Date(gracePeriodEnd).toLocaleDateString()
+    gracePeriodEnd: new Date(gracePeriodEnd).toLocaleDateString(),
+    appUrl
   });
 
   return sendEmail({

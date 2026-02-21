@@ -1,0 +1,787 @@
+﻿
+> sku-inventory-manager-backend@1.0.0 test
+> node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/voidMovement.supertest.test.js
+
+node.exe : (node:34680) ExperimentalWarning: 
+VM Modules is an experimental feature and 
+might change at any time
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif    
+ied: ((node:34680) Ex...nge at any     
+time:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom    
+mandError
+ 
+(Use `node --trace-warnings ...` to show 
+where the warning was created)
+2026-02-20 13:41:02:412 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:02:412 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:02 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 252 "-" "-"[39m
+2026-02-20 13:41:02:412 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:02:412 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:02 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 731 "-" "-"[39m
+2026-02-20 13:41:02:412 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/auth/register HTTP/1.1" 201 258 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/auth/login HTTP/1.1" 200 729 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/9999999/void HTTP/1.1" 401 135 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/9999999/void HTTP/1.1" 401 94 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/202/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/203/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/204/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/205/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/207/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/99999999/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/209/void HTTP/1.1" 403 95 "-" "-"[39m
+2026-02-20 13:41:03:413 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 13:41:03:413 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:05:41:03 +0000] "POST /api/v1/stock-movements/210/void HTTP/1.1" 403 95 "-" "-"[39m
+FAIL tests/voidMovement.supertest.test.js
+  POST /api/v1/stock-movements/:id/void ΓÇö 
+Real HTTP Integration
+    Authentication gate
+      ΓêÜ returns 401 when no Authorization 
+header is provided (5 ms)
+      ΓêÜ returns 401 when Authorization 
+header contains a garbage token (4 ms)
+    Permission gate
+      ΓêÜ returns 403 when a viewer (no 
+CREATE_ADJUSTMENT) attempts a void (28 ms)
+    Joi validation gate
+      ├ù returns 422 when reason is missing 
+from the request body (28 ms)
+      ├ù returns 422 when reason is an empty 
+string (23 ms)
+    Business logic: Finding 5.3 ΓÇö 
+batch-consumed guard (HTTP layer)
+      ├ù returns 409 when voiding a receipt 
+whose batch was partially consumed (47 ms)
+      ├ù returns 409 when voiding a receipt 
+whose batch was fully consumed (29 ms)
+    Business logic: 404 for non-existent 
+movement
+      ├ù returns 404 for a movement ID that 
+does not exist (5 ms)
+    Business logic: double-void prevention
+      ├ù returns 400 when trying to void an 
+already-voided movement (19 ms)
+    Happy path: successful void
+      ├ù returns 200 with correct shape when 
+voiding an untouched receipt (18 ms)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Joi validation 
+gate ΓÇ║ returns 422 when reason is missing 
+from the request body
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 422
+    Received: 403
+
+    [0m [90m 171 |[39m                 
+[33m.[39msend({})[33m;[39m  [90m// no 
+reason field[39m
+     [90m 172 |[39m
+    [31m[1m>[22m[39m[90m 173 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m422[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 174 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mfalse[39m)[33m;[39m
+     [90m 175 |[39m             expect(res
+[33m.[39mbody[33m.[39merrors)[33m.[39mto
+Equal(
+     [90m 176 |[39m                 
+expect[33m.[39marrayContaining([[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:173:32)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Joi validation 
+gate ΓÇ║ returns 422 when reason is an empty 
+string
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 422
+    Received: 403
+
+    [0m [90m 188 |[39m                 
+[33m.[39msend({ reason[33m:[39m 
+[32m''[39m })[33m;[39m
+     [90m 189 |[39m
+    [31m[1m>[22m[39m[90m 190 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m422[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 191 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mfalse[39m)[33m;[39m
+     [90m 192 |[39m         })[33m;[39m
+     [90m 193 |[39m     })[33m;[39m[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:190:32)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Business 
+logic: Finding 5.3 ΓÇö batch-consumed guard 
+(HTTP layer) ΓÇ║ returns 409 when voiding a 
+receipt whose batch was partially consumed
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 409
+    Received: 403
+
+    [0m [90m 204 |[39m                 
+[33m.[39msend({ reason[33m:[39m 
+[32m'Attempting to void partially consumed 
+receipt'[39m })[33m;[39m
+     [90m 205 |[39m
+    [31m[1m>[22m[39m[90m 206 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m409[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 207 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mfalse[39m)[33m;[39m
+     [90m 208 |[39m             expect(res
+[33m.[39mbody[33m.[39mmessage)[33m.[39mt
+oMatch([35m/Cannot void this 
+movement.*batch.*already been.*used 
+downstream/i[39m)[33m;[39m
+     [90m 209 |[39m         
+})[33m;[39m[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:206:32)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Business 
+logic: Finding 5.3 ΓÇö batch-consumed guard 
+(HTTP layer) ΓÇ║ returns 409 when voiding a 
+receipt whose batch was fully consumed
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 409
+    Received: 403
+
+    [0m [90m 217 |[39m                 
+[33m.[39msend({ reason[33m:[39m 
+[32m'Attempting to void fully consumed 
+receipt'[39m })[33m;[39m
+     [90m 218 |[39m
+    [31m[1m>[22m[39m[90m 219 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m409[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 220 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mfalse[39m)[33m;[39m
+     [90m 221 |[39m             expect(res
+[33m.[39mbody[33m.[39mmessage)[33m.[39mt
+oMatch([35m/Cannot void this 
+movement.*batch.*already been.*used 
+downstream/i[39m)[33m;[39m
+     [90m 222 |[39m         
+})[33m;[39m[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:219:32)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Business 
+logic: 404 for non-existent movement ΓÇ║ 
+returns 404 for a movement ID that does not 
+exist
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 404
+    Received: 403
+
+    [0m [90m 230 |[39m                 
+[33m.[39msend({ reason[33m:[39m 
+[32m'Void non-existent'[39m })[33m;[39m
+     [90m 231 |[39m
+    [31m[1m>[22m[39m[90m 232 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m404[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 233 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mfalse[39m)[33m;[39m
+     [90m 234 |[39m         })[33m;[39m
+     [90m 235 |[39m     })[33m;[39m[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:232:32)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Business 
+logic: double-void prevention ΓÇ║ returns 
+400 when trying to void an already-voided 
+movement
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 200
+    Received: 403
+
+    [0m [90m 244 |[39m                 [3
+3m.[39m[36mset[39m([32m'Authorization'[3
+9m[33m,[39m [32m`Bearer 
+${managerToken}`[39m)
+     [90m 245 |[39m                 
+[33m.[39msend({ reason[33m:[39m 
+[32m'First void'[39m })[33m;[39m
+    [31m[1m>[22m[39m[90m 246 |[39m     
+        expect(firstVoid[33m.[39mstatus)[3
+3m.[39mtoBe([35m200[39m)[33m;[39m
+     [90m     |[39m                        
+              [31m[1m^[22m[39m
+     [90m 247 |[39m
+     [90m 248 |[39m             [90m// 
+Second void ΓÇö must fail[39m
+     [90m 249 |[39m             
+[36mconst[39m secondVoid [33m=[39m 
+[36mawait[39m request(app)[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:246:38)
+
+  ΓùÅ POST /api/v1/stock-movements/:id/void 
+ΓÇö Real HTTP Integration ΓÇ║ Happy path: 
+successful void ΓÇ║ returns 200 with correct 
+shape when voiding an untouched receipt
+
+    expect(received).toBe(expected) // 
+Object.is equality
+
+    Expected: 200
+    Received: 403
+
+    [0m [90m 270 |[39m
+     [90m 271 |[39m             [90m// 
+HTTP status and response shape[39m
+    [31m[1m>[22m[39m[90m 272 |[39m     
+        expect(res[33m.[39mstatus)[33m.[3
+9mtoBe([35m200[39m)[33m;[39m
+     [90m     |[39m                        
+        [31m[1m^[22m[39m
+     [90m 273 |[39m             expect(res
+[33m.[39mbody[33m.[39msuccess)[33m.[39mt
+oBe([36mtrue[39m)[33m;[39m
+     [90m 274 |[39m             expect(res
+[33m.[39mbody[33m.[39mmessage)[33m.[39mt
+oMatch([35m/voided 
+successfully/i[39m)[33m;[39m
+     [90m 275 |[39m             expect(res
+[33m.[39mbody[33m.[39mdata)[33m.[39mtoBe
+Defined()[33m;[39m[0m
+
+      at Object.<anonymous> 
+(tests/voidMovement.supertest.test.js:272:32)
+
+Test Suites: 1 failed, 1 total
+Tests:       7 failed, 3 passed, 10 total
+Snapshots:   0 total
+Time:        3.571 s
+Ran all test suites matching 
+/tests\\voidMovement.supertest.test.js/i.
+Jest did not exit one second after the test 
+run has completed.
+
+'This usually means that there are 
+asynchronous operations that weren't stopped 
+in your tests. Consider running Jest with 
+`--detectOpenHandles` to troubleshoot this 
+issue.
+2026-02-20 13:46:02:462 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 13:51:02:512 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 13:56:02:562 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:01:02:12 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:06:02:62 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:11:02:112 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:16:02:162 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:21:02:212 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:26:02:262 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:31:02:312 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:36:02:362 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:41:02:412 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:46:02:462 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:51:02:512 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 14:56:02:562 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:01:02:12 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:06:02:62 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:11:02:112 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:16:02:162 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:21:02:212 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:26:02:262 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:31:02:312 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:36:02:362 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:41:02:412 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:46:02:462 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:51:02:512 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 15:56:02:562 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:01:02:12 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:06:02:62 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:11:02:112 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:16:02:162 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:21:02:212 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:26:02:262 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:31:02:312 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:36:02:362 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:41:02:412 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:46:02:462 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:51:02:512 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 16:56:02:562 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 17:01:02:12 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 17:06:02:62 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)
+2026-02-20 17:11:03:113 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
+Error: ConnectionManager.getConnection was called after the connection manager was closed!
+    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
+    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
+    at new Promise (<anonymous>)
+    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
+    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
+    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
+    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
+    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:884:34)

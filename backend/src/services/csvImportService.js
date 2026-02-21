@@ -18,7 +18,8 @@ export const parseCSV = (csvContent) => {
             columns: true,
             skip_empty_lines: true,
             trim: true,
-            cast: false // Keep as strings, we'll transform manually
+            cast: false, // Keep as strings, we'll transform manually
+            bom: true // Fix 6.5: Handle UTF-8 Byte Order Mark
         });
         return { success: true, records };
     } catch (error) {
@@ -38,8 +39,7 @@ const transformRow = (row) => {
     if (row.name) item.name = row.name.trim();
     if (row.category) item.category = row.category.trim().toLowerCase();
     if (row.product_type) {
-        const pt = row.product_type.trim().toLowerCase();
-        item.product_type = pt || null;
+        item.product_type = row.product_type.trim().toLowerCase() || null;
     } else {
         item.product_type = null;
     }
@@ -342,17 +342,40 @@ export const confirmImport = async (rows, userId) => {
         failed: []
     };
 
-    // Separate valid rows by type for optimized processing
-    const invalidRows = rows.filter(r => !r.valid);
-    const validRows = rows.filter(r => r.valid);
+    if (!rows || !Array.isArray(rows)) {
+        return { success: false, error: 'Invalid rows data provided' };
+    }
 
-    // Track failed rows from validation
-    for (const row of invalidRows) {
-        results.failed.push({
-            rowNumber: row.rowNumber,
-            sku_code: row.sku_code,
-            errors: row.errors
-        });
+    // Get all existing SKUs for re-validation for efficiency
+    const Item = dbStore.get('Item');
+    const existingItems = await Item.findAll({
+        attributes: ['item_id', 'sku_code'],
+        where: { status: { [Op.in]: ['active', 'draft'] } }
+    });
+    const existingSkus = new Map(existingItems.map(i => [i.sku_code, i.item_id]));
+
+    // Re-validate and sanitize all rows on the backend
+    const validRows = [];
+    for (const row of rows) {
+        // Fix 6.1: RE-VALIDATE everything on the backend.
+        // Even if client says it is valid, we don't trust it.
+        const validation = await validateItem(row.data, row.rowNumber, existingSkus);
+
+        if (!validation.valid) {
+            results.failed.push({
+                rowNumber: row.rowNumber,
+                sku_code: row.sku_code || (row.data && row.data.sku_code) || 'Unknown',
+                errors: validation.errors
+            });
+        } else {
+            // Use the backend-validated and sanitized data
+            validRows.push({
+                ...row,
+                data: validation.data,
+                action: validation.action,
+                existingItemId: validation.existingItemId
+            });
+        }
     }
 
     // Separate by category type
@@ -362,7 +385,6 @@ export const confirmImport = async (rows, userId) => {
     // === BATCH 1: Process simple items (raw_material, packaging, supplies) ===
     // These can use bulkCreate for much better performance
     if (simpleItems.length > 0) {
-        const Item = dbStore.get('Item');
         const sequelize = dbStore.get('sequelize');
 
         // Separate creates and updates
@@ -383,7 +405,8 @@ export const confirmImport = async (rows, userId) => {
 
                     const createdItems = await Item.bulkCreate(itemsData, {
                         transaction,
-                        returning: true
+                        returning: true,
+                        validate: true // Fix 6.1: Enforce model validations during bulk import
                     });
                     await transaction.commit();
 
@@ -420,7 +443,8 @@ export const confirmImport = async (rows, userId) => {
                     try {
                         await Item.update(row.data, {
                             where: { item_id: row.existingItemId },
-                            transaction
+                            transaction,
+                            validate: true // Ensure updates are also validated
                         });
                         await transaction.commit();
                         return { success: true, row };

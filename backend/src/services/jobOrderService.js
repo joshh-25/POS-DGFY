@@ -319,237 +319,247 @@ export const finalizeJobOrder = async (joId, userId) => {
 };
 
 export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null, quantityProduced = null, qualityCheck = null) => {
-  try {
-    const JobOrder = dbStore.get('JobOrder');
-    const Item = dbStore.get('Item');
-    const JOIngredient = dbStore.get('JOIngredient');
-    const FIFOBatch = dbStore.get('FIFOBatch');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-    console.log(`[JO Completion] Starting completion for JO #${joId} by User ${userId}`);
+  // Start transaction
+  return await sequelize.transaction(async (t) => {
+    try {
+      const JobOrder = dbStore.get('JobOrder');
+      const Item = dbStore.get('Item');
+      const JOIngredient = dbStore.get('JOIngredient');
+      const FIFOBatch = dbStore.get('FIFOBatch');
 
-    const jo = await JobOrder.findByPk(joId, {
-      include: [
-        { model: Item, as: 'product' },
-        {
-          model: JOIngredient,
-          as: 'ingredients',
-          include: [{ model: Item, as: 'item' }]
-        }
-      ]
-    });
+      console.log(`[JO Completion] Starting completion for JO #${joId} by User ${userId}`);
 
-    if (!jo) {
-      console.error(`[JO Completion] Job Order ${joId} not found`);
-      const error = new Error('Job order not found');
-      error.statusCode = 404;
-      throw error;
-    }
+      const jo = await JobOrder.findByPk(joId, {
+        include: [
+          { model: Item, as: 'product' },
+          {
+            model: JOIngredient,
+            as: 'ingredients',
+            include: [{ model: Item, as: 'item' }]
+          }
+        ],
+        transaction: t // Lock row or at least participate in transaction
+      });
 
-    if (jo.status === 'completed') {
-      console.error(`[JO Completion] Job Order ${joId} already completed`);
-      const error = new Error('Job order already completed');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (jo.status === 'draft') {
-      console.error(`[JO Completion] Job Order ${joId} is still a draft`);
-      const error = new Error('Cannot complete a draft job order. Please finalize it first.');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Determine quantity to process in this transaction
-    const currentQuantityProduced = parseFloat(jo.quantity_produced || 0);
-    const totalQuantityToProduce = parseFloat(jo.quantity_to_produce);
-    const remainingQuantity = totalQuantityToProduce - currentQuantityProduced;
-
-    // If quantityProduced is not provided, assume full remaining quantity (legacy behavior)
-    const qtyToProcess = quantityProduced ? parseFloat(quantityProduced) : remainingQuantity;
-
-    console.log(`[JO Completion] Processing Qty: ${qtyToProcess}, Remaining: ${remainingQuantity}`);
-
-    // Validation
-    if (qtyToProcess <= 0) {
-      const error = new Error('Quantity to produce must be greater than 0');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Final completion = total produced (after this batch) meets or exceeds the target.
-    // Covers exact completion, float-imprecise completion, and over-production.
-    // Over-production is allowed: users may record higher-than-target yields.
-    const newQuantityProducedPreview = currentQuantityProduced + qtyToProcess;
-    const isFinalCompletion = newQuantityProducedPreview >= totalQuantityToProduce - 0.001;
-
-    // Calculate ratio for ingredient consumption
-    // Avoid division by zero if totalQuantityToProduce is somehow 0 (should correspond to validation in create)
-    const consumptionRatio = totalQuantityToProduce > 0 ? (qtyToProcess / totalQuantityToProduce) : 1;
-
-    // Process ingredients (FIFO consumption) with UOM conversion support
-    for (const ingredient of jo.ingredients) {
-      const item = ingredient.item;
-      const totalRequired = parseFloat(ingredient.quantity_required);
-      const ingredientUom = normalizeUom(item.unit_of_measure);
-      // FIRST PRIORITY: Use stored recipe UOM from JOIngredient table
-      // SECOND PRIORITY: Use passed unit_of_measure (rare case)
-      // FALLBACK: Use item's stock UOM
-      const recipeUom = normalizeUom(ingredient.unit_of_measure || ingredient.item?.unit_of_measure);
-
-      console.log(`[JO Completion] Processing Ingredient: ${item.name} (ID: ${item.item_id}) -- RecipeUOM: ${recipeUom}, StockUOM: ${ingredientUom}`);
-
-      // Convert required quantity to ingredient's UOM if compatible
-      let convertedTotalRequired = totalRequired;
-      if (areCompatible(recipeUom, ingredientUom) && recipeUom !== ingredientUom) {
-        const converted = convertQuantity(totalRequired, recipeUom, ingredientUom);
-        if (converted !== null) {
-          convertedTotalRequired = converted;
-          console.log(`[JO Completion] Converted ${totalRequired} ${recipeUom} -> ${converted} ${ingredientUom}`);
-        } else {
-          console.warn(`[JO Completion] Conversion failed despite compatibility check for ${item.name}`);
-        }
-      } else if (recipeUom !== ingredientUom) {
-        console.error(`[JO Completion] Incompatible units for ${item.name}: ${recipeUom} vs ${ingredientUom}`);
-        throw new Error(`Incompatible units for ingredient ${item.name}: Cannot convert ${recipeUom} to ${ingredientUom}`);
+      if (!jo) {
+        console.error(`[JO Completion] Job Order ${joId} not found`);
+        const error = new Error('Job order not found');
+        error.statusCode = 404;
+        throw error;
       }
 
-      // Also convert previously consumed amount if stored in different UOM
-      const previouslyConsumed = parseFloat(ingredient.quantity_consumed || 0);
-
-      // Calculate quantity to consume for this chunk (now in ingredient's UOM)
-      let quantityToConsume;
-      if (isFinalCompletion && qtyToProcess <= remainingQuantity + 0.001) {
-        // Exact/near-exact completion: consume the precise remaining requirement
-        // to avoid floating-point accumulation across partial batches.
-        quantityToConsume = convertedTotalRequired - previouslyConsumed;
-      } else {
-        // Partial completion OR over-production: consume proportionally.
-        // consumptionRatio = qtyToProcess / totalQuantityToProduce.
-        // For over-production ratio > 1.0 — correct: more output = more ingredients consumed.
-        quantityToConsume = convertedTotalRequired * consumptionRatio;
-      }
-
-      // Ensure we don't consume negative amounts (safety check)
-      quantityToConsume = Math.max(0, quantityToConsume);
-
-      console.log(`[JO Completion] Consuming ${quantityToConsume} ${ingredientUom} of ${item.name}`);
-
-      const stockBefore = parseFloat(item.current_stock);
-
-      if (stockBefore < quantityToConsume) {
-        console.error(`[JO Completion] Insufficient Stock for ${item.name}. Req: ${quantityToConsume}, Avail: ${stockBefore}`);
-        const error = new Error(`Insufficient stock for ${item.name}. Required: ${quantityToConsume.toFixed(2)} ${ingredientUom}, Available: ${stockBefore.toFixed(2)} ${ingredientUom}`);
+      if (jo.status === 'completed') {
+        console.error(`[JO Completion] Job Order ${joId} already completed`);
+        const error = new Error('Job order already completed');
         error.statusCode = 400;
         throw error;
       }
 
-      // Use centralized service for consumption
-      const movement = await createStockMovement({
-        item_id: item.item_id,
-        quantity: quantityToConsume,
-        movement_type: 'production_consumption',
+      if (jo.status === 'draft') {
+        console.error(`[JO Completion] Job Order ${joId} is still a draft`);
+        const error = new Error('Cannot complete a draft job order. Please finalize it first.');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // Determine quantity to process in this transaction
+      const currentQuantityProduced = parseFloat(jo.quantity_produced || 0);
+      const totalQuantityToProduce = parseFloat(jo.quantity_to_produce);
+      const remainingQuantity = totalQuantityToProduce - currentQuantityProduced;
+
+      // If quantityProduced is not provided, assume full remaining quantity (legacy behavior)
+      const qtyToProcess = quantityProduced ? parseFloat(quantityProduced) : remainingQuantity;
+
+      console.log(`[JO Completion] Processing Qty: ${qtyToProcess}, Remaining: ${remainingQuantity}`);
+
+      // Validation
+      if (qtyToProcess <= 0) {
+        const error = new Error('Quantity to produce must be greater than 0');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // Final completion = total produced (after this batch) meets or exceeds the target.
+      // Covers exact completion, float-imprecise completion, and over-production.
+      // Over-production is allowed: users may record higher-than-target yields.
+      const newQuantityProducedPreview = currentQuantityProduced + qtyToProcess;
+      const isFinalCompletion = newQuantityProducedPreview >= totalQuantityToProduce - 0.001;
+
+      // Calculate ratio for ingredient consumption
+      // Avoid division by zero if totalQuantityToProduce is somehow 0 (should correspond to validation in create)
+      const consumptionRatio = totalQuantityToProduce > 0 ? (qtyToProcess / totalQuantityToProduce) : 1;
+
+      // Process ingredients (FIFO consumption) with UOM conversion support
+      for (const ingredient of jo.ingredients) {
+        const item = ingredient.item;
+        const totalRequired = parseFloat(ingredient.quantity_required);
+        const ingredientUom = normalizeUom(item.unit_of_measure);
+        // FIRST PRIORITY: Use stored recipe UOM from JOIngredient table
+        // SECOND PRIORITY: Use passed unit_of_measure (rare case)
+        // FALLBACK: Use item's stock UOM
+        const recipeUom = normalizeUom(ingredient.unit_of_measure || ingredient.item?.unit_of_measure);
+
+        console.log(`[JO Completion] Processing Ingredient: ${item.name} (ID: ${item.item_id}) -- RecipeUOM: ${recipeUom}, StockUOM: ${ingredientUom}`);
+
+        // Convert required quantity to ingredient's UOM if compatible
+        let convertedTotalRequired = totalRequired;
+        if (areCompatible(recipeUom, ingredientUom) && recipeUom !== ingredientUom) {
+          const converted = convertQuantity(totalRequired, recipeUom, ingredientUom);
+          if (converted !== null) {
+            convertedTotalRequired = converted;
+            console.log(`[JO Completion] Converted ${totalRequired} ${recipeUom} -> ${converted} ${ingredientUom}`);
+          } else {
+            console.warn(`[JO Completion] Conversion failed despite compatibility check for ${item.name}`);
+          }
+        } else if (recipeUom !== ingredientUom) {
+          console.error(`[JO Completion] Incompatible units for ${item.name}: ${recipeUom} vs ${ingredientUom}`);
+          throw new Error(`Incompatible units for ingredient ${item.name}: Cannot convert ${recipeUom} to ${ingredientUom}`);
+        }
+
+        // Also convert previously consumed amount if stored in different UOM
+        const previouslyConsumed = parseFloat(ingredient.quantity_consumed || 0);
+
+        // Calculate quantity to consume for this chunk (now in ingredient's UOM)
+        let quantityToConsume;
+        if (isFinalCompletion && qtyToProcess <= remainingQuantity + 0.001) {
+          // Exact/near-exact completion: consume the precise remaining requirement
+          // to avoid floating-point accumulation across partial batches.
+          quantityToConsume = convertedTotalRequired - previouslyConsumed;
+        } else {
+          // Partial completion OR over-production: consume proportionally.
+          // consumptionRatio = qtyToProcess / totalQuantityToProduce.
+          // For over-production ratio > 1.0 — correct: more output = more ingredients consumed.
+          quantityToConsume = convertedTotalRequired * consumptionRatio;
+        }
+
+        // Ensure we don't consume negative amounts (safety check)
+        quantityToConsume = Math.max(0, quantityToConsume);
+
+        console.log(`[JO Completion] Consuming ${quantityToConsume} ${ingredientUom} of ${item.name}`);
+
+        const stockBefore = parseFloat(item.current_stock);
+
+        if (stockBefore < quantityToConsume) {
+          console.error(`[JO Completion] Insufficient Stock for ${item.name}. Req: ${quantityToConsume}, Avail: ${stockBefore}`);
+          const error = new Error(`Insufficient stock for ${item.name}. Required: ${quantityToConsume.toFixed(2)} ${ingredientUom}, Available: ${stockBefore.toFixed(2)} ${ingredientUom}`);
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Use centralized service for consumption
+        // PASS TRANSACTION 't'
+        const movement = await createStockMovement({
+          item_id: item.item_id,
+          quantity: quantityToConsume,
+          movement_type: 'production_consumption',
+          reference_id: jo.jo_number,
+          reference_type: 'JO',
+          notes: `Partial production: ${qtyToProcess} units`,
+          // batch_id could be passed if specific batch was selected, but for auto-FIFO we leave it null.
+          // Ideally JO completion could allow manual batch selection, but for now we default to FIFO.
+        }, userId, t);
+
+        // Update stock (re-read from item as service updated it, or calculate)
+        const stockAfter = stockBefore - quantityToConsume;
+
+        // Update ingredient record with batch reference and INCREMENT consumption
+        await ingredient.update({
+          quantity_consumed: parseFloat(ingredient.quantity_consumed || 0) + quantityToConsume,
+          stock_before: ingredient.stock_before === null ? stockBefore : ingredient.stock_before,
+          stock_after: stockAfter,
+          batch_id: movement.batch_id || ingredient.batch_id // Track primary batch used
+        }, { transaction: t });
+      }
+
+      // Add finished product to stock via Service
+      const product = jo.product;
+
+      console.log(`[JO Completion] Adding Product Stock: ${qtyToProcess} of ${product.name}`);
+
+      // Create production output movement
+      // Use createStockMovement with 'production_output' which handles positive addition
+      // PASS TRANSACTION 't'
+      const productionMovement = await createStockMovement({
+        item_id: product.item_id,
+        quantity: qtyToProcess,
+        movement_type: 'production_output',
         reference_id: jo.jo_number,
         reference_type: 'JO',
-        notes: `Partial production: ${qtyToProcess} units`,
-        // batch_id could be passed if specific batch was selected, but for auto-FIFO we leave it null.
-        // Ideally JO completion could allow manual batch selection, but for now we default to FIFO.
-      }, userId);
+        notes: notes || null,
+        expiry_date: expiryDateOverride || null, // Service handles fallback to shelf life
+        cost_per_unit: product.cost_per_unit, // Product cost (should be calculated from ingredients, but current logic uses static cost)
+        po_number: jo.jo_number // Use JO number as "PO Number" for batch
+      }, userId, t);
 
-      // Update stock (re-read from item as service updated it, or calculate)
-      const stockAfter = stockBefore - quantityToConsume;
+      // Update JO status, quantity_produced, and save notes
+      const newQuantityProduced = currentQuantityProduced + qtyToProcess;
+      const newStatus = isFinalCompletion ? 'completed' : 'partial';
 
-      // Update ingredient record with batch reference and INCREMENT consumption
-      await ingredient.update({
-        quantity_consumed: parseFloat(ingredient.quantity_consumed || 0) + quantityToConsume,
-        stock_before: ingredient.stock_before === null ? stockBefore : ingredient.stock_before,
-        stock_after: stockAfter,
-        batch_id: movement.batch_id || ingredient.batch_id // Track primary batch used
-      });
-    }
+      await jo.update({
+        status: newStatus,
+        quantity_produced: newQuantityProduced,
+        completion_date: isFinalCompletion ? new Date() : null, // Only set completion date when fully finished? Or update last activity? Usually completion_date implies "Finished".
+        completed_by: isFinalCompletion ? userId : null,
+        notes: notes ? (jo.notes ? `${jo.notes}\n${notes}` : notes) : jo.notes, // Append notes,
+        quality_check: qualityCheck || jo.quality_check // Update quality check status
+      }, { transaction: t });
 
-    // Add finished product to stock via Service
-    const product = jo.product;
-
-    console.log(`[JO Completion] Adding Product Stock: ${qtyToProcess} of ${product.name}`);
-
-    // Create production output movement
-    // Use createStockMovement with 'production_output' which handles positive addition
-    const productionMovement = await createStockMovement({
-      item_id: product.item_id,
-      quantity: qtyToProcess,
-      movement_type: 'production_output',
-      reference_id: jo.jo_number,
-      reference_type: 'JO',
-      notes: notes || null,
-      expiry_date: expiryDateOverride || null, // Service handles fallback to shelf life
-      cost_per_unit: product.cost_per_unit, // Product cost (should be calculated from ingredients, but current logic uses static cost)
-      po_number: jo.jo_number // Use JO number as "PO Number" for batch
-    }, userId);
-
-    // Update JO status, quantity_produced, and save notes
-    const newQuantityProduced = currentQuantityProduced + qtyToProcess;
-    const newStatus = isFinalCompletion ? 'completed' : 'partial';
-
-    await jo.update({
-      status: newStatus,
-      quantity_produced: newQuantityProduced,
-      completion_date: isFinalCompletion ? new Date() : null, // Only set completion date when fully finished? Or update last activity? Usually completion_date implies "Finished".
-      completed_by: isFinalCompletion ? userId : null,
-      notes: notes ? (jo.notes ? `${jo.notes}\n${notes}` : notes) : jo.notes, // Append notes,
-      quality_check: qualityCheck || jo.quality_check // Update quality check status
-    });
-
-    // Reload JO with all associations including item details
-    const completedJO = await JobOrder.findByPk(jo.jo_id, {
-      include: [
-        {
-          model: JOIngredient,
-          as: 'ingredients',
-          include: [{
+      // Reload JO with all associations including item details
+      const completedJO = await JobOrder.findByPk(jo.jo_id, {
+        include: [
+          {
+            model: JOIngredient,
+            as: 'ingredients',
+            include: [{
+              model: Item,
+              as: 'item',
+              attributes: ['item_id', 'name', 'unit_of_measure']
+            }, {
+              model: FIFOBatch,
+              as: 'batch'
+            }]
+          },
+          {
             model: Item,
-            as: 'item',
+            as: 'product',
             attributes: ['item_id', 'name', 'unit_of_measure']
-          }, {
-            model: FIFOBatch,
-            as: 'batch'
-          }]
-        },
-        {
-          model: Item,
-          as: 'product',
-          attributes: ['item_id', 'name', 'unit_of_measure']
-        }
-      ]
-    });
+          }
+        ],
+        transaction: t
+      });
 
-    // Transform ingredients to match frontend expectations
-    const ingredientsConsumed = completedJO.ingredients.map(ing => ({
-      item_id: ing.item_id,
-      item_name: ing.item?.name || 'Unknown',
-      unit_of_measure: ing.item?.unit_of_measure || '',
-      quantity_required: parseFloat(ing.quantity_required),
-      quantity_consumed: parseFloat(ing.quantity_consumed),
-      stock_before: parseFloat(ing.stock_before),
-      stock_after: parseFloat(ing.stock_after),
-      batch_info: ing.batch ? {
-        batch_id: ing.batch.batch_id,
-        expiry_date: ing.batch.expiry_date,
-        po_number: ing.batch.po_number
-      } : null
-    }));
+      // Transform ingredients to match frontend expectations
+      const ingredientsConsumed = completedJO.ingredients.map(ing => ({
+        item_id: ing.item_id,
+        item_name: ing.item?.name || 'Unknown',
+        unit_of_measure: ing.item?.unit_of_measure || '',
+        quantity_required: parseFloat(ing.quantity_required),
+        quantity_consumed: parseFloat(ing.quantity_consumed),
+        stock_before: parseFloat(ing.stock_before),
+        stock_after: parseFloat(ing.stock_after),
+        batch_info: ing.batch ? {
+          batch_id: ing.batch.batch_id,
+          expiry_date: ing.batch.expiry_date,
+          po_number: ing.batch.po_number
+        } : null
+      }));
 
-    console.log(`[JO Completion] Successfully finished. Status: ${newStatus}`);
+      console.log(`[JO Completion] Successfully finished. Status: ${newStatus}`);
 
-    // Return enriched data
-    return {
-      ...completedJO.toJSON(),
-      ingredients_consumed: ingredientsConsumed
-    };
-  } catch (error) {
-    console.error(`[JO Completion Error] ${error.message}`);
-    console.error(error.stack);
-    throw error;
-  }
+      // Return enriched data
+      return {
+        ...completedJO.toJSON(),
+        ingredients_consumed: ingredientsConsumed
+      };
+    } catch (error) {
+      console.error(`[JO Completion Error] ${error.message}`);
+      console.error(error.stack);
+      // Transaction will automatically rollback when this block throws
+      throw error;
+    }
+  });
 };
 
 export const archiveJobOrder = async (joId, userId) => {

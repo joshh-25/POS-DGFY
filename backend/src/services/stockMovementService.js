@@ -61,7 +61,64 @@ export const getStockMovements = async (queryParams) => {
  * - Creates a new FIFO batch if item is FIFO-enabled
  * - Uses expiry_date if provided, otherwise calculates from shelf_life_days
  */
+/**
+ * Helper to execute a function with retry logic for deadlocks
+ */
+const executeWithRetry = async (operation, maxRetries = 3) => {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      // Check for deadlock (Postgres: 40P01, MySQL: 1213)
+      const isDeadlock = error.original?.code === '40P01' || error.parent?.code === '40P01' ||
+        error.original?.errno === 1213 || error.parent?.errno === 1213;
+
+      if (isDeadlock && attempt < maxRetries - 1) {
+        const delay = Math.random() * 100 * (attempt + 1); // Exponential jitter
+        console.warn(`[StockMovement] Deadlock detected. Retrying attempt ${attempt + 1}/${maxRetries} after ${delay.toFixed(0)}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 export const createStockMovement = async (movementData, userId, transaction = null) => {
+  // If an external transaction is provided, we CANNOT retry because we don't control the transaction scope.
+  // The caller must handle retries in that case.
+  if (transaction) {
+    return createStockMovementInternal(movementData, userId, transaction);
+  }
+
+  // If no external transaction, we manage the transaction and can retry on deadlock
+  return executeWithRetry(async () => {
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+    const t = await sequelize.transaction();
+    try {
+      const result = await createStockMovementInternal(movementData, userId, t);
+      await t.commit();
+      return result;
+    } catch (err) {
+      if (!t.finished) {
+        try { await t.rollback(); } catch (_) { }
+      }
+      throw err;
+    }
+  });
+};
+
+/**
+ * Internal implementation detailing the lock and movement logic
+ * (Moved from original createStockMovement)
+ */
+const createStockMovementInternal = async (movementData, userId, transaction) => {
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
   const StockMovement = dbStore.get('StockMovement');
@@ -69,7 +126,11 @@ export const createStockMovement = async (movementData, userId, transaction = nu
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const { item_id, quantity, movement_type, batch_id, expiry_date } = movementData;
-  const options = transaction ? { transaction } : {};
+
+  const options = {
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  };
 
   const item = await Item.findByPk(item_id, options);
   if (!item) {
@@ -453,6 +514,7 @@ export const voidMovement = async (movementId, userId, reason) => {
         { model: Item, as: 'item' },
         { model: BatchTransaction, as: 'batchTransactions' }
       ],
+      lock: transaction.LOCK.UPDATE, // Prevent concurrent voids (Finding 5.3 / Phase 1 hardening)
       transaction
     });
 
@@ -479,6 +541,29 @@ export const voidMovement = async (movementId, userId, reason) => {
     else if (movement_type === 'calculated_loss') reverseType = 'adjustment';
     else if (movement_type === 'transfer') reverseType = 'transfer';
     else if (movement_type === 'production_output') reverseType = 'adjustment';
+
+    // ─── Guard: Finding 5.3 ─────────────────────────────────────────────────
+    // For additions (purchase_receipt etc.) that created a FIFO batch, check
+    // BEFORE touching stock whether any downstream movement has consumed that
+    // batch. We must check here — before the stock update — because a partial
+    // consumption means current_stock < receipt amount, so the negative-stock
+    // guard below would fire first with a misleading message.
+    if (quantity > 0 && reverseQuantity < 0 && batch_id) {
+      const batchForGuard = await FIFOBatch.findByPk(batch_id, { transaction });
+      if (batchForGuard) {
+        const alreadyConsumed = parseFloat(batchForGuard.quantity_consumed);
+        if (alreadyConsumed > 0.0001) {
+          const error = new Error(
+            `Cannot void this movement: the associated batch (ID: ${batch_id}) has already been ` +
+            `used downstream (consumed: ${alreadyConsumed} ${originalMovement.item?.unit_of_measure || 'units'}). ` +
+            `Please void or reverse all downstream consumption first.`
+          );
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // Update item stock
     const item = await Item.findByPk(item_id, { transaction });
@@ -521,17 +606,18 @@ export const voidMovement = async (movementId, userId, reason) => {
     }
 
     // Handle FIFO batch reversal for additions (purchase_receipt, return, production_output)
-    // When voiding an addition, we need to mark the batch as consumed
+    // The batch-consumed guard above already confirmed this batch has zero consumption,
+    // so we safely mark it fully consumed to hide it from available stock.
     if (quantity > 0 && reverseQuantity < 0 && batch_id) {
       const batch = await FIFOBatch.findByPk(batch_id, { transaction });
       if (batch) {
-        // Increase quantity_consumed to effectively remove the stock from this batch
         const newConsumed = parseFloat(batch.quantity_consumed) + parseFloat(quantity);
         await batch.update({
           quantity_consumed: Math.min(newConsumed, parseFloat(batch.quantity))
         }, { transaction });
       }
     }
+
 
     // Create the voiding movement (counter-entry)
     const voidMovementRecord = await StockMovement.create({

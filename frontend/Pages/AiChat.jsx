@@ -20,14 +20,17 @@ import {
     X,
     FileText,
     Upload,
-    Lock
+    Lock,
+    ShieldAlert
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import * as aiService from '@/services/aiService';
 import ConfirmActionDialog from '@/Components/ai/ConfirmActionDialog';
 import ActionResultCard from '@/Components/ai/ActionResultCard';
 import { MarkdownRenderer } from '@/Components/ai/MarkdownRenderer';
+import AiDiagnosticsPanel from '@/Components/ai/AiDiagnosticsPanel';
 import DeleteConfirmDialog from '@/Components/ui/DeleteConfirmDialog';
 import { usePermission } from '@/hooks/usePermission';
 import { toast } from 'sonner';
@@ -51,6 +54,7 @@ export default function AiChat() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [attachments, setAttachments] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -488,7 +492,7 @@ export default function AiChat() {
                     )}
                 </div>
 
-                <div className="p-4 border-t border-slate-200">
+                <div className="p-4 border-t border-slate-200 space-y-3">
                     <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                         <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
                             <Clock className="w-4 h-4" />
@@ -498,8 +502,26 @@ export default function AiChat() {
                             <p className="text-xs text-amber-600">Chats auto-delete after 30 days</p>
                         </div>
                     </div>
+                    {can('ai:chat') && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start gap-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50"
+                            onClick={() => setShowDiagnostics(true)}
+                        >
+                            <ShieldAlert className="w-4 h-4" />
+                            AI Capability Checker
+                        </Button>
+                    )}
                 </div>
             </div>
+
+            {/* Diagnostics Modal */}
+            <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
+                <DialogContent className="max-w-2xl p-0 overflow-hidden bg-slate-50">
+                    <AiDiagnosticsPanel onClose={() => setShowDiagnostics(false)} />
+                </DialogContent>
+            </Dialog>
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col bg-slate-50/50">

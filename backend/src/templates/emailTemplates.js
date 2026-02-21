@@ -10,12 +10,24 @@
  * @param {Object} params - Template parameters
  * @param {string} params.inviterName - Name of the person who sent the invitation
  * @param {string} params.role - Role being assigned (Staff/Manager/Admin)
- * @param {string} params.inviteUrl - Full URL to accept the invitation
+ * @param {string} params.invitationToken - The unique token for the invitation
+ * @param {string} params.appUrl - The base URL of the application
  * @param {string} params.tenantName - Company/tenant name
  * @param {string} params.expiresIn - Human-readable expiry time (e.g., "7 days")
  * @returns {string} HTML email content
  */
-export const getInvitationTemplate = ({ inviterName, role, inviteUrl, tenantName, expiresIn }) => {
+
+// Helper to append UTM parameters to a URL
+const appendUtm = (url, campaign) => {
+  if (!url) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}utm_source=email&utm_medium=transactional&utm_campaign=${campaign}`;
+};
+
+export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl }) => {
+  const inviteUrlRaw = `${appUrl}/accept-invite?token=${invitationToken}`;
+  const inviteUrl = appendUtm(inviteUrlRaw, 'user_invitation');
+
   // Role-specific colors
   const roleColors = {
     Staff: { bg: '#e0f2fe', text: '#0369a1' },      // Light blue
@@ -127,10 +139,13 @@ export const getInvitationTemplate = ({ inviterName, role, inviteUrl, tenantName
  * @param {string} params.username - New user's username
  * @param {string} params.role - User's role
  * @param {string} params.tenantName - Company/tenant name
- * @param {string} params.loginUrl - URL to login page
+ * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getWelcomeTemplate = ({ username, role, tenantName, loginUrl }) => {
+export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
+  const loginUrlRaw = `${appUrl}/login`;
+  const loginUrl = appendUtm(loginUrlRaw, 'welcome_email');
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -199,10 +214,13 @@ export const getWelcomeTemplate = ({ username, role, tenantName, loginUrl }) => 
  * @param {string} params.companyName - The approved company name
  * @param {string} params.adminEmail - Admin's email (login identifier)
  * @param {string} params.companyToken - Company's unique token
- * @param {string} params.loginUrl - Full URL to the login page
+ * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyToken, loginUrl }) => {
+export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyToken, appUrl }) => {
+  const loginUrlRaw = `${appUrl}/login`;
+  const loginUrl = appendUtm(loginUrlRaw, 'company_approved');
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -301,10 +319,13 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyTok
  * @param {string} params.companyName - The rejected company name
  * @param {string} params.adminEmail - Admin's email
  * @param {string} [params.rejectionReason] - Optional reason for rejection
- * @param {string} params.registerUrl - URL to try registering again
+ * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyRejectedTemplate = ({ companyName, adminEmail, rejectionReason, registerUrl }) => {
+export const getCompanyRejectedTemplate = ({ companyName, adminEmail, rejectionReason, appUrl }) => {
+  const registerUrlRaw = `${appUrl}/register`;
+  const registerUrl = appendUtm(registerUrlRaw, 'company_rejected');
+
   const reasonSection = rejectionReason ? `
               <!-- Reason Box -->
               <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
@@ -397,7 +418,18 @@ ${reasonSection}
   `.trim();
 };
 
-export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, upgradeUrl }) => {
+/**
+ * Generate subscription expiring notification email template
+ * @param {Object} params - Template parameters
+ * @param {string} params.companyName - The company name
+ * @param {string} params.expiryDate - The date the subscription expires
+ * @param {string} params.appUrl - The base URL of the application
+ * @returns {string} HTML email content
+ */
+export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, appUrl }) => {
+  const upgradeUrlRaw = `${appUrl}/settings?tab=subscription`;
+  const upgradeUrl = appendUtm(upgradeUrlRaw, 'subscription_expiring');
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -440,7 +472,9 @@ export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, upgra
 </html>`.trim();
 };
 
-export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate }) => {
+export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate, appUrl }) => {
+  // No CTA in this email currently, but helper is available.
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -463,7 +497,7 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate })
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px;">Premium Subscription Cancelled</h2>
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
-                The Premium subscription for <strong>${companyName}</strong> has been cancelled. 
+                The Premium subscription for <strong>${companyName}</strong> has been cancelled.
               </p>
               <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
                 You will continue to have access to Premium features until <strong>${downgradeDate}</strong>, after which your account will be transitioned to the Standard plan.
@@ -478,7 +512,9 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate })
 </html>`.trim();
 };
 
-export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
+export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => {
+  // Explicitly linking to PayPal, external URL.
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -516,7 +552,10 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
 </html>`.trim();
 };
 
-export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd }) => {
+export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd, appUrl }) => {
+  const paypalUrlRaw = 'https://www.paypal.com';
+  // UTMs on paypal.com won't help us track *our* engagement
+
   return `
 <!DOCTYPE html>
 <html lang="en">

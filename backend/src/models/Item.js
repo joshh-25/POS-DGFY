@@ -80,7 +80,10 @@ const Item = sequelize.define('Item', {
   },
   cost_per_unit: {
     type: DataTypes.DECIMAL(10, 4),
-    allowNull: true
+    allowNull: true,
+    validate: {
+      min: 0
+    }
   },
   fifo_enabled: {
     type: DataTypes.BOOLEAN,
@@ -186,7 +189,15 @@ const Item = sequelize.define('Item', {
   tableName: 'items',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  paranoid: true,
+  deletedAt: 'deleted_at',
+  indexes: [
+    { fields: ['sku_code'] },
+    { fields: ['category'] },
+    { fields: ['folder_id'] },
+    { fields: ['deleted_at'] }
+  ]
 });
 
 export default Item;

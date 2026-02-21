@@ -1,11 +1,25 @@
 import { getRedisClient, isRedisConnected } from '../config/redis.js';
 import logger from '../config/logger.js';
+import dbStore from '../utils/dbStore.js'; // Fix 8.1: Import for tenant context
 
 /**
  * Cache Service
  * Provides caching functionality with Redis as backend
  * Gracefully degrades to no-op if Redis is unavailable
  */
+
+// Fix 8.1: Helper to scope keys by tenant
+const getScopedKey = (key) => {
+  const store = dbStore.getStore();
+  // If we are in a tenant context (request/job), prefix the key
+  if (store && store.tenantId) {
+    return `tenant:${store.tenantId}:${key}`;
+  }
+  // If global context (system jobs without tenant), leave as is or prefix global?
+  // Finding 8.1 is about collision. Global keys might collide with tenant keys if not careful.
+  // Best practice: If no tenant, assume it's a SYSTEM key.
+  return `system:${key}`;
+};
 
 /**
  * Get cached value by key
@@ -23,7 +37,8 @@ export const get = async (key) => {
       return null;
     }
 
-    const value = await client.get(key);
+    const scopedKey = getScopedKey(key);
+    const value = await client.get(scopedKey);
     return value;
   } catch (error) {
     logger.error('Cache get error:', { key, error: error.message });
@@ -47,7 +62,8 @@ export const getCritical = async (key) => {
       throw new Error('Redis client is not available (Fail-Closed)');
     }
 
-    const value = await client.get(key);
+    const scopedKey = getScopedKey(key);
+    const value = await client.get(scopedKey);
     return value;
   } catch (error) {
     logger.error('Cache getCritical error:', { key, error: error.message });
@@ -73,10 +89,11 @@ export const set = async (key, value, ttl = null) => {
       return false;
     }
 
+    const scopedKey = getScopedKey(key);
     if (ttl) {
-      await client.setEx(key, ttl, value);
+      await client.setEx(scopedKey, ttl, value);
     } else {
-      await client.set(key, value);
+      await client.set(scopedKey, value);
     }
     return true;
   } catch (error) {
@@ -101,7 +118,8 @@ export const del = async (key) => {
       return false;
     }
 
-    await client.del(key);
+    const scopedKey = getScopedKey(key);
+    await client.del(scopedKey);
     return true;
   } catch (error) {
     logger.error('Cache delete error:', { key, error: error.message });
@@ -154,7 +172,8 @@ export const getMultiple = async (keys) => {
       return {};
     }
 
-    const values = await client.mGet(keys);
+    const scopedKeys = keys.map(k => getScopedKey(k));
+    const values = await client.mGet(scopedKeys);
     const result = {};
     keys.forEach((key, index) => {
       if (values[index] !== null) {
@@ -187,10 +206,11 @@ export const setMultiple = async (keyValuePairs, ttl = null) => {
 
     const pipeline = client.multi();
     Object.entries(keyValuePairs).forEach(([key, value]) => {
+      const scopedKey = getScopedKey(key);
       if (ttl) {
-        pipeline.setEx(key, ttl, value);
+        pipeline.setEx(scopedKey, ttl, value);
       } else {
-        pipeline.set(key, value);
+        pipeline.set(scopedKey, value);
       }
     });
     await pipeline.exec();
@@ -209,6 +229,52 @@ export const isAvailable = () => {
   return isRedisConnected();
 };
 
+/**
+ * Acquire a distributed lock (Fix 8.2)
+ * @param {string} key - Lock key
+ * @param {number} ttl - Lock timeout in seconds
+ * @returns {Promise<boolean>} - True if lock acquired
+ */
+export const acquireLock = async (key, ttl = 60) => {
+  if (!isRedisConnected()) return true; // Fail-open (allow execution if no redis) or Fail-safe? Default to allow but warn? Or strictly false?
+  // Distributed lock usually implies strictness. if Redis down, maybe dont run job twice?
+  // For now, if Redis down, return true allowing execution (single instance assumption fallback)
+
+  try {
+    const client = getRedisClient();
+    if (!client) return true;
+
+    // Use raw key for locks (system wide) or scoped? 
+    // Scheduler locks are usually system wide.
+    // If we use getScopedKey, it will be 'system:scheduler:lock' which is fine.
+    const scopedKey = getScopedKey(key);
+
+    // set(key, value, { NX: true, EX: ttl })
+    const result = await client.set(scopedKey, 'LOCKED', {
+      NX: true,
+      EX: ttl
+    });
+
+    return result === 'OK';
+  } catch (error) {
+    logger.error('Cache acquireLock error:', error);
+    return false; // Error acquiring lock
+  }
+};
+
+/**
+ * Release a distributed lock
+ */
+export const releaseLock = async (key) => {
+  if (!isRedisConnected()) return;
+  try {
+    const client = getRedisClient();
+    await client.del(getScopedKey(key));
+  } catch (err) {
+    logger.error('Cache releaseLock error', err);
+  }
+};
+
 export default {
   get,
   set,
@@ -217,5 +283,7 @@ export default {
   getMultiple,
   setMultiple,
   isAvailable,
+  acquireLock,
+  releaseLock
 };
 

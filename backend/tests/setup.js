@@ -30,4 +30,6 @@ jest.unstable_mockModule('../src/config/redis.js', () => ({
 }));
 
 // Set NODE_ENV to test explicitly if not already set
-process.env.NODE_ENV = 'test';
+if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'test';
+}

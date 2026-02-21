@@ -314,8 +314,116 @@ describe('voidMovement', () => {
     });
   });
 
+  describe('Void receipt with consumed batch (Finding 5.3)', () => {
+    let f53Item;
+
+    beforeEach(async () => {
+      f53Item = await Item.create({
+        sku_code: 'F53-TEST-' + Date.now(),
+        name: 'F53 Batch Guard Item',
+        category: 'raw_material',
+        unit_of_measure: 'kg',
+        current_stock: 0,
+        fifo_enabled: true,
+        cost_price: 5.00
+      });
+    });
+
+    afterEach(async () => {
+      await BatchTransaction.destroy({ where: {} });
+      await StockMovement.destroy({ where: { item_id: f53Item?.item_id } });
+      await FIFOBatch.destroy({ where: { item_id: f53Item?.item_id } });
+      await Item.destroy({ where: { item_id: f53Item?.item_id } });
+    });
+
+    it('should throw 409 when voiding a receipt whose batch was partially consumed', async () => {
+      // 1. Receive 100 units -> creates Batch A
+      const receiptMovement = await createStockMovement({
+        item_id: f53Item.item_id,
+        quantity: 100,
+        movement_type: 'purchase_receipt',
+        reference_type: 'MANUAL',
+        cost_per_unit: 5.00,
+        notes: 'F53 receipt for partial consume test'
+      }, testUser.user_id);
+
+      // 2. Consume 50 units from Batch A (simulates a Job Order)
+      await createStockMovement({
+        item_id: f53Item.item_id,
+        quantity: 50,
+        movement_type: 'production_consumption',
+        reference_type: 'JO',
+        reference_id: 'JO-F53-PARTIAL'
+      }, testUser.user_id);
+
+      // 3. Attempt to void the receipt -> must fail
+      await expect(
+        voidMovement(receiptMovement.movement_id, testUser.user_id, 'Trying to void used receipt')
+      ).rejects.toThrow(/Cannot void this movement.*batch.*already been.*used downstream/i);
+
+      // 4. Stock should remain unchanged (rollback occurred)
+      const item = await Item.findByPk(f53Item.item_id);
+      expect(parseFloat(item.current_stock)).toBe(50); // 100 received, 50 consumed
+    });
+
+    it('should throw 409 when voiding a receipt whose batch was fully consumed', async () => {
+      // 1. Receive 30 units -> creates Batch
+      const receiptMovement = await createStockMovement({
+        item_id: f53Item.item_id,
+        quantity: 30,
+        movement_type: 'purchase_receipt',
+        reference_type: 'MANUAL',
+        cost_per_unit: 5.00,
+        notes: 'F53 receipt for full consume test'
+      }, testUser.user_id);
+
+      // 2. Consume all 30 units
+      await createStockMovement({
+        item_id: f53Item.item_id,
+        quantity: 30,
+        movement_type: 'production_consumption',
+        reference_type: 'JO',
+        reference_id: 'JO-F53-FULL'
+      }, testUser.user_id);
+
+      // 3. Attempt to void the receipt -> must fail
+      await expect(
+        voidMovement(receiptMovement.movement_id, testUser.user_id, 'Trying to void fully used receipt')
+      ).rejects.toThrow(/Cannot void this movement.*batch.*already been.*used downstream/i);
+
+      // 4. Stock remains at 0 (no double-negative)
+      const item = await Item.findByPk(f53Item.item_id);
+      expect(parseFloat(item.current_stock)).toBe(0);
+    });
+
+    it('should allow voiding a receipt when batch has zero consumption', async () => {
+      // 1. Receive 40 units -> creates Batch (never consumed)
+      const receiptMovement = await createStockMovement({
+        item_id: f53Item.item_id,
+        quantity: 40,
+        movement_type: 'purchase_receipt',
+        reference_type: 'MANUAL',
+        cost_per_unit: 5.00,
+        notes: 'F53 receipt for zero consume test'
+      }, testUser.user_id);
+
+      // 2. Void the receipt immediately -> should succeed
+      const voidResult = await voidMovement(
+        receiptMovement.movement_id,
+        testUser.user_id,
+        'Voiding unused receipt'
+      );
+
+      expect(voidResult.movement_type).toBe('return');
+      expect(parseFloat(voidResult.quantity)).toBe(-40);
+
+      const item = await Item.findByPk(f53Item.item_id);
+      expect(parseFloat(item.current_stock)).toBe(0);
+    });
+  });
+
   describe('Void with negative stock prevention', () => {
-    it('should prevent voiding an addition if it would cause negative stock', async () => {
+    it('should block voiding an addition whose batch was partially consumed (batch guard fires before stock check)', async () => {
       // Create a fresh item
       const negStockItem = await Item.create({
         sku_code: 'NEG-STOCK-' + Date.now(),
@@ -347,12 +455,15 @@ describe('voidMovement', () => {
         let item = await Item.findByPk(negStockItem.item_id);
         expect(parseFloat(item.current_stock)).toBe(20);
 
-        // Try to void the original 100 addition - should fail (would make stock -80)
+        // Try to void the original 100 addition — should fail.
+        // The batch-consumed guard (Finding 5.3) fires first and returns a more
+        // specific error than "negative stock" (though both would prevent the void).
         await expect(
           voidMovement(addMovement.movement_id, testUser.user_id, 'Try to void addition')
-        ).rejects.toThrow('Cannot void: would result in negative stock');
+        ).rejects.toThrow(/Cannot void this movement.*batch.*already been.*used downstream/i);
 
       } finally {
+        await BatchTransaction.destroy({ where: {} });
         await StockMovement.destroy({ where: { item_id: negStockItem.item_id } });
         await FIFOBatch.destroy({ where: { item_id: negStockItem.item_id } });
         await Item.destroy({ where: { item_id: negStockItem.item_id } });
@@ -360,3 +471,4 @@ describe('voidMovement', () => {
     });
   });
 });
+

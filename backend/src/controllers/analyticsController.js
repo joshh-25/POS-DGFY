@@ -37,7 +37,8 @@ export const getAnomalies = async (req, res, next) => {
         const { category, itemId, days } = req.query;
 
         const options = {
-            category: category || null,
+            // Fix 7.3: Sanitize category to prevent operator injection (ensure string)
+            category: typeof category === 'string' ? category : null,
             itemId: itemId ? parseInt(itemId) : null,
             days: days ? parseInt(days) : 30
         };

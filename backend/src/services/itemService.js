@@ -601,7 +601,10 @@ export const updateItem = async (itemId, itemData, userId = null) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const item = await Item.findByPk(itemId);
+    const item = await Item.findByPk(itemId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
 
     if (!item) {
       const error = new Error('Item not found');

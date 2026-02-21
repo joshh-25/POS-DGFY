@@ -91,11 +91,21 @@ export const deleteConversation = async (conversationId) => {
   return response.data;
 };
 
+/**
+ * Run AI capability and knowledge gap diagnostics
+ * @returns {Promise<Object>} Diagnostics report
+ */
+export const getDiagnostics = async () => {
+  const response = await api.get('/ai/diagnostics');
+  return response.data;
+};
+
 export default {
   sendMessage,
   confirmAction,
   cancelAction,
   getConversations,
   getConversation,
-  deleteConversation
+  deleteConversation,
+  getDiagnostics
 };

@@ -10,12 +10,15 @@
 2. [Documentation Structure Overview](#2-documentation-structure-overview)
 3. [Root-Level Documentation Files](#3-root-level-documentation-files)
 4. [Technical Documentation Directory](#4-technical-documentation-directory)
-5. [AI Assistant Configuration](#5-ai-assistant-configuration)
-6. [Workflow Automation](#6-workflow-automation)
-7. [CI/CD Configuration](#7-cicd-configuration)
-8. [Documentation Maintenance](#8-documentation-maintenance)
-9. [New Project Checklist](#9-new-project-checklist)
-10. [Quick Reference](#10-quick-reference)
+5. [System Audit Directory](#5-system-audit-directory)
+6. [Scripts & Utilities](#6-scripts--utilities)
+7. [Containerization & Infrastructure](#7-containerization--infrastructure)
+8. [AI Assistant Configuration](#8-ai-assistant-configuration)
+9. [Workflow Automation](#9-workflow-automation)
+10. [CI/CD Configuration](#10-cicd-configuration)
+11. [Documentation Maintenance](#11-documentation-maintenance)
+12. [New Project Checklist](#12-new-project-checklist)
+13. [Quick Reference](#13-quick-reference)
 
 ---
 
@@ -67,6 +70,9 @@ PROJECT_ROOT/
 ├── 📄 PREREQUISITES.md           # Environment requirements
 ├── 📄 TROUBLESHOOTING.md         # Common errors & solutions
 ├── 📄 DEVELOPMENT_HISTORY.md     # Changelog & development log
+├── 📄 DEPLOYMENT_GUIDE.md        # Production deployment runbook
+├── 📄 CRITICAL_SYSTEMS.md        # Mission-critical component registry
+├── 📄 docker-compose.yml         # Container orchestration (if applicable)
 │
 ├── 📁 docs/                      # Technical documentation
 │   ├── README.md                 # Documentation index
@@ -75,13 +81,21 @@ PROJECT_ROOT/
 │   ├── 📁 api/                   # API documentation
 │   ├── 📁 architecture/          # System design & proposals
 │   ├── 📁 database/              # Data models
+│   ├── 📁 deployment/            # Deployment procedures & configs
 │   ├── 📁 development/           # Dev guides
 │   ├── 📁 features/              # Feature specifications
+│   ├── 📁 generated/             # Auto-generated documentation
 │   ├── 📁 guides/                # Process guides
+│   ├── 📁 ops/                   # Operations & monitoring
 │   ├── 📁 reference/             # Cheatsheets
-│   └── 📁 setup/                 # Component setup
+│   ├── 📁 setup/                 # Component setup
+│   └── 📁 testing/               # Test strategies & reports
+│
+├── 📁 scripts/                   # Utility & deployment scripts
+├── 📁 System_Audit/              # Security & quality audit trail
 │
 ├── 📁 .agent/                    # AI workflow definitions
+├── 📁 .claude/                   # AI session context & audit reports
 └── 📁 .github/                   # GitHub automation
 ```
 
@@ -472,6 +486,100 @@ Local → [Version Control] → Production
 
 ---
 
+### 3.8 DEPLOYMENT_GUIDE.md — Production Deployment Runbook
+
+**Purpose**: Step-by-step instructions for deploying to production environments.
+
+**Template Structure**:
+
+```markdown
+# [Project Name] - Deployment Guide
+
+> **Purpose**: Complete deployment runbook for all environments
+
+---
+
+## Pre-Deployment Checklist
+- [ ] All tests passing
+- [ ] Environment variables configured
+- [ ] Database migrations ready
+- [ ] Backup completed
+
+---
+
+## Deployment Methods
+
+### Method 1: [Automated Deployment]
+```bash
+[deploy command]
+```
+
+### Method 2: [Manual Deployment]
+1. [Step 1]
+2. [Step 2]
+
+---
+
+## Environment-Specific Configuration
+
+| Setting | Staging | Production |
+|---------|---------|------------|
+| [Config] | [Value] | [Value] |
+
+---
+
+## Post-Deployment Verification
+| Check | Command | Expected Result |
+|-------|---------|-----------------|
+| [Health] | `[command]` | [Result] |
+
+---
+
+## Rollback Procedure
+1. [Rollback step 1]
+2. [Rollback step 2]
+```
+
+---
+
+### 3.9 CRITICAL_SYSTEMS.md — Mission-Critical Component Registry
+
+**Purpose**: Document components that require extra care during modifications.
+
+**Template Structure**:
+
+```markdown
+# [Project Name] - Critical Systems
+
+> ⚠️ **These components require extra caution.** Changes to any of these
+> systems should include thorough testing and peer review.
+
+---
+
+## Critical Components
+
+### 1. [Component Name]
+- **Files**: `[path/to/files]`
+- **Why Critical**: [Explanation]
+- **Testing Requirements**: [What must be tested]
+- **Rollback Plan**: [How to revert]
+
+### 2. [Component Name]
+- **Files**: `[path/to/files]`
+- **Why Critical**: [Explanation]
+- **Testing Requirements**: [What must be tested]
+- **Rollback Plan**: [How to revert]
+
+---
+
+## Modification Rules
+1. Never modify critical systems without running the full test suite
+2. Always create a backup before schema changes
+3. Document all changes in `DEVELOPMENT_HISTORY.md`
+```
+
+---
+
 ## 4. Technical Documentation Directory
 
 ### 4.1 docs/README.md — Documentation Index
@@ -524,27 +632,176 @@ Local → [Version Control] → Production
 
 | Directory | Contents |
 |-----------|----------|
+| `docs/ai/` | AI integration guidelines, prompt logs, usage policies |
 | `docs/api/` | API endpoints, request/response schemas, integration patterns |
 | `docs/architecture/` | System diagrams, component relationships, data flows |
 | `docs/database/` | Schema definitions, ERD, migration guides |
-| `docs/development/` | Coding standards, testing guides, roadmaps |
+| `docs/deployment/` | Deployment procedures, server configs, release processes |
+| `docs/development/` | Coding standards, contribution guides, roadmaps |
+| `docs/features/` | Feature specifications, user stories, acceptance criteria |
+| `docs/generated/` | Auto-generated docs (API specs, schema dumps, coverage reports) |
+| `docs/guides/` | Process guides, how-tos, onboarding walkthroughs |
 | `docs/images/` | Diagrams and screenshots |
+| `docs/ops/` | Operations runbooks, monitoring configs, alerting rules |
+| `docs/reference/` | Cheatsheets, command reference, quick lookup tables |
+| `docs/setup/` | Component-specific setup (databases, services, third-party) |
+| `docs/testing/` | Test strategies, coverage reports, E2E test documentation |
 
 ---
 
-## 5. AI Assistant Configuration
+## 5. System Audit Directory
 
-### 5.1 Directory Structure
+### 5.1 Purpose
+
+**Purpose**: Maintain a traceable record of security reviews, quality audits, and identified issues with their resolution status.
+
+### 5.2 Directory Structure
+
+```
+System_Audit/
+├── README.md                          # Audit index & overview
+├── [N.N]-[issue_name].md              # Individual audit findings
+│   (e.g., 1.1-sql_injection.md)
+│   (e.g., 5.2-race_condition.md)
+└── ...
+```
+
+### 5.3 Audit File Template
+
+```markdown
+# [N.N] [Issue Title]
+
+**Category**: [Security | Performance | Data Integrity | Infrastructure]
+**Severity**: [Critical | High | Medium | Low]
+**Status**: ✅ RESOLVED | 🔄 IN PROGRESS | ⚠️ OPEN
+**Confidence**: [1-10]/10
+
+---
+
+## Description
+[What the issue is and why it matters]
+
+## Root Cause
+[Technical explanation of the underlying problem]
+
+## Resolution
+
+### Changes Made
+| File | Change |
+|------|--------|
+| `[file]` | [What was changed] |
+
+### Code Diff
+```diff
+- [old code]
++ [new code]
+```
+
+## Verification
+- **Test**: `[test command]`
+- **Result**: [PASS/FAIL with evidence]
+
+## Remaining Risk
+[Any residual risk or follow-up items]
+```
+
+### 5.4 Naming Convention
+
+| Pattern | Example | Meaning |
+|---------|---------|--------|
+| `N.N-name.md` | `1.1-sql_injection.md` | Category 1, item 1 |
+| `N.N-name.md` | `6.2-csv_formula_injection.md` | Category 6, item 2 |
+
+Use numeric prefixes to group by category (e.g., 1.x = Authentication, 2.x = Authorization, etc.).
+
+---
+
+## 6. Scripts & Utilities
+
+### 6.1 Purpose
+
+**Purpose**: Centralize operational scripts for deployment, diagnostics, database management, and development utilities.
+
+### 6.2 Directory Structure
+
+```
+scripts/
+├── deploy.sh              # Production deployment script
+├── deploy-remote.sh       # Remote server deployment
+├── kill-dev.sh            # Stop development processes
+├── kill-port.sh           # Free occupied ports
+└── [other utilities]      # Project-specific scripts
+```
+
+### 6.3 Script Documentation Standard
+
+Every script should include a header comment block:
+
+```bash
+#!/bin/bash
+# ============================================================
+# Script: [script-name.sh]
+# Purpose: [What this script does]
+# Usage: ./scripts/[script-name.sh] [args]
+# Prerequisites: [Required tools, permissions, or environment]
+# ============================================================
+```
+
+---
+
+## 7. Containerization & Infrastructure
+
+### 7.1 docker-compose.yml
+
+**Purpose**: Define containerized services for development and production parity.
+
+**Template Structure**:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  [service-name]:
+    image: [image:tag]
+    ports:
+      - "[host]:[container]"
+    environment:
+      - [VAR]=[value]
+    volumes:
+      - [host-path]:[container-path]
+    restart: unless-stopped
+
+  # Add additional services as needed
+```
+
+### 7.2 When to Add Containerization Docs
+
+| Trigger | Action |
+|---------|--------|
+| Project uses Docker | Create `docker-compose.yml` with all services |
+| Multiple services needed | Document service dependencies and startup order |
+| Dev/prod parity required | Document environment-specific overrides |
+| CI/CD uses containers | Document test container configuration |
+
+---
+
+## 8. AI Assistant Configuration
+
+### 8.1 Directory Structure
 
 ```
 .claude/ (or .ai/, .cursor/, etc.)
 ├── settings.local.json    # Permission configuration
 ├── project-context.md     # Session-persistent context
+├── [audit-report].md      # AI-generated audit reports (optional)
 └── hooks/
     └── session-start.sh   # Session initialization
 ```
 
-### 5.2 settings.local.json — Permissions
+> **Note**: AI-generated audit files (e.g., `comprehensive-audit-report.md`, `remaining-issues-analysis.md`) can live here as working documents. Finalized findings should be moved to `System_Audit/`.
+
+### 8.2 settings.local.json — Permissions
 
 **Purpose**: Define commands AI can auto-run safely.
 
@@ -562,7 +819,7 @@ Local → [Version Control] → Production
 }
 ```
 
-### 5.3 project-context.md — Session Context
+### 8.3 project-context.md — Session Context
 
 **Purpose**: Track session-specific context that persists across AI interactions.
 
@@ -586,7 +843,7 @@ Local → [Version Control] → Production
 - Last updated: [Date]
 ```
 
-### 5.4 session-start.sh — Initialization
+### 8.4 session-start.sh — Initialization
 
 **Purpose**: Run checks when starting a new AI session.
 
@@ -617,7 +874,7 @@ echo "📝 Last: $(git log -1 --oneline 2>/dev/null)"
 
 ---
 
-## 6. Workflow Automation
+## 9. Workflow Automation
 
 ### 6.1 .agent/workflows/ Directory
 
@@ -672,7 +929,7 @@ description: [Brief description of what this workflow does]
 
 ---
 
-## 7. CI/CD Configuration
+## 10. CI/CD Configuration
 
 ### 7.1 .github/workflows/
 
@@ -718,7 +975,7 @@ jobs:
 
 ---
 
-## 8. Documentation Maintenance
+## 11. Documentation Maintenance
 
 ### 8.1 When to Update Documentation
 
@@ -728,6 +985,9 @@ jobs:
 | Bug fixed | TROUBLESHOOTING if common error |
 | Config changed | SETUP, PREREQUISITES, .env.example |
 | Breaking change | README, CLAUDE.md, migration guide |
+| Security fix | System_Audit file, CRITICAL_SYSTEMS if applicable |
+| Deployment change | DEPLOYMENT_GUIDE, scripts/ headers |
+| New script added | Script header comment, QUICK_START if relevant |
 | Release | DEVELOPMENT_HISTORY, version numbers |
 
 ### 8.2 Documentation Review Checklist
@@ -737,6 +997,9 @@ jobs:
 - [ ] Examples are current and runnable
 - [ ] Version numbers updated if applicable
 - [ ] Diagrams updated if architecture changed
+- [ ] Audit files reflect current resolution status
+- [ ] Script headers are accurate and up to date
+- [ ] Docker configurations match current services
 
 ### 8.3 Linking Best Practices
 
@@ -753,7 +1016,7 @@ See [Architecture](docs/architecture/system-architecture.md).
 
 ---
 
-## 9. New Project Checklist
+## 12. New Project Checklist
 
 ### Phase 1: Project Initialization (Day 1)
 - [ ] Create `README.md` with basic project info
@@ -765,17 +1028,22 @@ See [Architecture](docs/architecture/system-architecture.md).
 - [ ] Create `QUICK_START.md` for fast onboarding
 - [ ] Create `.env.example` with all variables documented
 - [ ] Create `CLAUDE.md` (or equivalent AI context file)
+- [ ] Create `CRITICAL_SYSTEMS.md` if project has sensitive components
 
 ### Phase 3: As Development Progresses
 - [ ] Initialize `DEVELOPMENT_HISTORY.md` and update with each phase
-- [ ] Create `docs/` directory structure
+- [ ] Create `docs/` directory structure (including `testing/`, `deployment/`, `ops/`)
 - [ ] Create `docs/README.md` index
 - [ ] Add API documentation as endpoints are built
 - [ ] Document database schema
+- [ ] Create `scripts/` directory with documented utility scripts
+- [ ] Initialize `System_Audit/` directory if conducting security reviews
 
 ### Phase 4: Pre-Deployment
 - [ ] Create `PREREQUISITES.md` covering all environments
 - [ ] Create `TROUBLESHOOTING.md` from encountered issues
+- [ ] Create `DEPLOYMENT_GUIDE.md` with production deployment runbook
+- [ ] Create `docker-compose.yml` if using containers
 - [ ] Create `.agent/workflows/deploy.md`
 - [ ] Create `.github/workflows/ci.yml`
 
@@ -783,16 +1051,20 @@ See [Architecture](docs/architecture/system-architecture.md).
 - [ ] Update `DEVELOPMENT_HISTORY.md` with each release
 - [ ] Add new errors to `TROUBLESHOOTING.md`
 - [ ] Keep AI context files updated
+- [ ] Update `System_Audit/` files as issues are found and resolved
+- [ ] Review `CRITICAL_SYSTEMS.md` when architecture changes
 
 ---
 
-## 10. Quick Reference
+## 13. Quick Reference
 
 ### Initialize Documentation Structure Command
 
 ```bash
 # Create all directories
-mkdir -p docs/{api,architecture,database,development,images}
+mkdir -p docs/{ai,api,architecture,database,deployment,development,features,generated,guides,images,ops,reference,setup,testing}
+mkdir -p scripts
+mkdir -p System_Audit
 mkdir -p .claude/hooks
 mkdir -p .agent/workflows
 mkdir -p .github/workflows
@@ -800,20 +1072,27 @@ mkdir -p .github/workflows
 # Create root files
 touch README.md CLAUDE.md SETUP.md QUICK_START.md
 touch PREREQUISITES.md TROUBLESHOOTING.md DEVELOPMENT_HISTORY.md
+touch DEPLOYMENT_GUIDE.md CRITICAL_SYSTEMS.md
 touch LICENSE .gitignore .env.example
 
 # Create docs files
-touch docs/README.md docs/QUICK_REFERENCE.md
+touch docs/README.md docs/MIGRATION_MAP.md
 touch docs/api/specification.md
 touch docs/architecture/system-architecture.md
 touch docs/database/schema.md
+touch docs/deployment/production.md
 touch docs/development/{guidelines.md,environment-setup.md}
+touch docs/testing/test-strategy.md
+touch docs/ops/monitoring.md
 
 # Create AI and automation files
 touch .claude/settings.local.json .claude/project-context.md
 touch .claude/hooks/session-start.sh
 touch .agent/workflows/deploy.md
 touch .github/workflows/ci.yml
+
+# Create audit index
+touch System_Audit/README.md
 ```
 
 ### Documentation Linking Hierarchy
@@ -828,12 +1107,21 @@ README.md (Entry Point)
 │       ↓
 │   TROUBLESHOOTING.md
 │
+├── DEPLOYMENT_GUIDE.md (Operations)
+│       ↓
+│   CRITICAL_SYSTEMS.md
+│
+├── System_Audit/ (Quality & Security)
+│
 └── docs/README.md (Technical Hub)
         ↓
     ├── docs/api/
     ├── docs/architecture/
     ├── docs/database/
-    └── docs/development/
+    ├── docs/deployment/
+    ├── docs/development/
+    ├── docs/ops/
+    └── docs/testing/
 ```
 
 ### File Purpose Summary
@@ -847,7 +1135,12 @@ README.md (Entry Point)
 | `PREREQUISITES.md` | Environment requirements |
 | `TROUBLESHOOTING.md` | Error catalog and solutions |
 | `DEVELOPMENT_HISTORY.md` | Development changelog |
+| `DEPLOYMENT_GUIDE.md` | Production deployment runbook |
+| `CRITICAL_SYSTEMS.md` | Mission-critical component registry |
+| `docker-compose.yml` | Container orchestration definition |
 | `docs/README.md` | Technical docs navigation |
+| `System_Audit/` | Security & quality audit trail |
+| `scripts/` | Utility & deployment scripts |
 
 ---
 

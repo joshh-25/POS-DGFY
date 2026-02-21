@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import * as emailService from '../services/emailService.js';
+import cacheService from '../services/cacheService.js'; // Fix 8.2: Import cache service for locking
 import logger from '../config/logger.js';
 
 /**
@@ -12,11 +13,28 @@ export const initBillingScheduler = () => {
     // Run at 00:00 every day
     cron.schedule('0 0 * * *', async () => {
         logger.info('Running daily billing check...');
+
+        // Fix 8.2: Distributed Lock to prevent duplicate execution in clustered environments
+        // Lock for 1 hour (3600s) to cover worst-case execution time
+        const LOCK_KEY = 'scheduler:billing:daily_check';
+        const acquired = await cacheService.acquireLock(LOCK_KEY, 3600);
+
+        if (!acquired) {
+            logger.warn('Billing scheduler lock held by another instance. Skipping execution.');
+            return;
+        }
+
         try {
             await checkExpiringSubscriptions();
             await checkExpiredSubscriptions();
         } catch (error) {
             logger.error('Billing scheduler error:', error);
+        } finally {
+            // Validate that we should release the lock?
+            // Usually we release to allow re-runs, but since this is daily, 
+            // keeping it locked until TTL implies "only run once per day interval" if we don't release? 
+            // No, TTL is for crash recovery. We should release when done so manual triggers works or just good citizenship.
+            await cacheService.releaseLock(LOCK_KEY);
         }
     });
 

@@ -38,6 +38,10 @@ const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 
+// Landlord Models
+import AiUsageLogFactory from './Landlord/AiUsageLog.js';
+const AiUsageLog = AiUsageLogFactory(sequelize);
+
 // Define associations
 // Tenant & Payment associations
 Tenant.hasMany(Payment, { foreignKey: 'tenant_id', as: 'payments' });
@@ -211,7 +215,8 @@ const db = {
   Tenant,
   UserTenantMapping,
   Payment,
-  WebhookLog
+  WebhookLog,
+  AiUsageLog
 };
 
 export default db;
@@ -250,7 +255,8 @@ export {
   Tenant,
   UserTenantMapping,
   Payment,
-  WebhookLog
+  WebhookLog,
+  AiUsageLog
 };
 
 

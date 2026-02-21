@@ -186,17 +186,30 @@ export const detectAnomalies = async (options = {}) => {
 
     if (items.length === 0) return [];
 
+    // Fix 7.1: Batch fetch movements to avoid N+1 queries
+    const itemIds = items.map(i => i.item_id);
+    const allMovements = await StockMovement.findAll({
+        where: {
+            item_id: { [Op.in]: itemIds },
+            timestamp: { [Op.gte]: startDate }
+        },
+        order: [['timestamp', 'ASC']]
+    });
+
+    // Group movements by item_id
+    const movementsByItem = new Map();
+    allMovements.forEach(m => {
+        if (!movementsByItem.has(m.item_id)) {
+            movementsByItem.set(m.item_id, []);
+        }
+        movementsByItem.get(m.item_id).push(m);
+    });
+
     const anomalies = [];
 
     for (const item of items) {
-        // Fetch movements for this item
-        const movements = await StockMovement.findAll({
-            where: {
-                item_id: item.item_id,
-                timestamp: { [Op.gte]: startDate }
-            },
-            order: [['timestamp', 'ASC']]
-        });
+        // Get movements from the grouped map
+        const movements = movementsByItem.get(item.item_id) || [];
 
         if (movements.length < 5) continue; // Need some history for stats
 

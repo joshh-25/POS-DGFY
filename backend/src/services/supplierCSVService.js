@@ -16,7 +16,8 @@ export const parseCSV = (csvContent) => {
             columns: true,
             skip_empty_lines: true,
             trim: true,
-            cast: false // Keep as strings
+            cast: false, // Keep as strings
+            bom: true // Fix 6.5: Handle UTF-8 Byte Order Mark
         });
         return { success: true, records };
     } catch (error) {
@@ -171,48 +172,69 @@ export const confirmImport = async (rows, userId) => {
         failed: []
     };
 
-    for (const row of rows) {
-        if (!row.valid) {
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+    const transaction = await sequelize.transaction();
+
+    try {
+        for (const row of rows) {
+            if (!row.valid) {
+                results.failed.push({
+                    rowNumber: row.rowNumber,
+                    name: row.name,
+                    errors: row.errors
+                });
+                continue;
+            }
+
+            try {
+                const Supplier = dbStore.get('Supplier');
+                if (row.action === 'CREATE') {
+                    const newSupplier = await Supplier.create({
+                        ...row.data,
+                        status: row.data.status || 'active'
+                    }, { transaction });
+
+                    results.created.push({
+                        rowNumber: row.rowNumber,
+                        supplier_id: newSupplier.supplier_id,
+                        name: newSupplier.name
+                    });
+                } else {
+                    // UPDATE
+                    await Supplier.update(row.data, {
+                        where: { supplier_id: row.existingSupplierId },
+                        transaction
+                    });
+                    results.updated.push({
+                        rowNumber: row.rowNumber,
+                        supplier_id: row.existingSupplierId,
+                        name: row.data.name
+                    });
+                }
+            } catch (error) {
+                // Should we fail the whole batch? Implementation Plan 6.4 implies "transaction" which usually means atomicity.
+                // However, preserving partial success logic requires isolated transactions or savepoints.
+                // Given "Wrap confirmImport logic in a Sequelize transaction", we'll enforce atomicity for the batch of valid rows.
+                throw error;
+            }
+        }
+
+        await transaction.commit();
+
+    } catch (batchError) {
+        await transaction.rollback();
+        // Mark all valid rows as failed due to batch error
+        const validRows = rows.filter(r => r.valid);
+        for (const row of validRows) {
             results.failed.push({
                 rowNumber: row.rowNumber,
                 name: row.name,
-                errors: row.errors
-            });
-            continue;
-        }
-
-        try {
-            const Supplier = dbStore.get('Supplier');
-            if (row.action === 'CREATE') {
-                const newSupplier = await Supplier.create({
-                    ...row.data,
-                    // If status missing, default to active is handled by DB/Schema default, 
-                    // but safety check:
-                    status: row.data.status || 'active'
-                });
-                results.created.push({
-                    rowNumber: row.rowNumber,
-                    supplier_id: newSupplier.supplier_id,
-                    name: newSupplier.name
-                });
-            } else {
-                // UPDATE
-                await Supplier.update(row.data, {
-                    where: { supplier_id: row.existingSupplierId }
-                });
-                results.updated.push({
-                    rowNumber: row.rowNumber,
-                    supplier_id: row.existingSupplierId,
-                    name: row.data.name
-                });
-            }
-        } catch (error) {
-            results.failed.push({
-                rowNumber: row.rowNumber,
-                name: row.name || 'Unknown',
-                errors: [error.message]
+                errors: [`Batch Transaction Failed: ${batchError.message}`]
             });
         }
+        // Created and Updated arrays should be empty (or cleared) since we rolled back
+        results.created = [];
+        results.updated = [];
     }
 
     return {
@@ -280,6 +302,12 @@ export const exportSuppliers = async (filters = {}) => {
                 let val = s[header];
                 if (val === null || val === undefined) return '';
                 val = String(val);
+
+                // Fix: CSV Formula Injection Prevention
+                if (/^[=+\-@]/.test(val)) {
+                    val = `'${val}`;
+                }
+
                 // Escape quotes and wrap in quotes if contains comma or quote
                 if (val.includes(',') || val.includes('"') || val.includes('\n')) {
                     return `"${val.replace(/"/g, '""')}"`;

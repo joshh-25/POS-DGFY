@@ -84,7 +84,38 @@ const useStore = create((set) => ({
     const state = useStore.getState();
     return state.cache[key];
   },
-  clearCache: () => set({ cache: {} })
+  clearCache: () => set({ cache: {} }),
+
+  // Fix 10.2: Add reset action to clear all state (e.g. on logout)
+  reset: () => set({
+    items: [],
+    selectedItem: null,
+    itemsLoading: false,
+    suppliers: [],
+    selectedSupplier: null,
+    suppliersLoading: false,
+    purchaseOrders: [],
+    selectedPurchaseOrder: null,
+    purchaseOrdersLoading: false,
+    jobOrders: [],
+    selectedJobOrder: null,
+    jobOrdersLoading: false,
+    stockMovements: [],
+    stockMovementsLoading: false,
+    dashboardStats: null,
+    lowStockItems: [],
+    recentMovements: [],
+    dashboardLoading: false,
+    error: null,
+    loading: false,
+    user: null,
+    isAuthenticated: false,
+    currentUser: null,
+    userLoading: false,
+    allUsers: [],
+    usersLoading: false,
+    cache: {}
+  })
 }));
 
 export default useStore;

@@ -1,0 +1,178 @@
+
+import { jest } from '@jest/globals';
+import request from 'supertest';
+import { v4 as uuidv4 } from 'uuid';
+
+// 1. Mock external services (PayPal, OpenAI, etc.) to isolate the test
+jest.unstable_mockModule('../src/services/paypalService.js', () => ({
+    paypalService: {
+        verifySubscription: jest.fn(),
+        getSubscriptionDetails: jest.fn(),
+        verifyWebhookSignature: jest.fn().mockResolvedValue(true)
+    }
+}));
+
+// Mock AI Service to avoid real OpenAI calls, but KEEP valid logic for permission checks
+const mockToolExecute = jest.fn();
+jest.unstable_mockModule('../src/services/aiToolExecutor.js', () => ({
+    execute: mockToolExecute
+}));
+
+// Mock Logger to silence output
+jest.unstable_mockModule('../src/config/logger.js', () => ({
+    default: {
+        info: jest.fn(),
+        error: jest.fn(),
+        warn: jest.fn(),
+        debug: jest.fn()
+    }
+}));
+
+// Mock tenantHandler to bypass subscription checks
+jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
+    tenantHandler: (req, res, next) => {
+        req.tenant = {
+            id: 'test-tenant-123',
+            name: 'Test Tenant',
+            plan: 'premium' // CRITICAL: satisfies requirePremium
+        };
+        next();
+    }
+}));
+
+// 2. Import dependencies
+const { default: app } = await import('../src/server.js');
+const { sequelize, User, PendingAIAction, AIConversation } = await import('../src/models/index.js');
+const { generateToken } = await import('../src/services/authService.js');
+
+describe('TOCTOU Integration Test', () => {
+    let adminUser;
+    let adminToken;
+    let conversationId;
+
+    beforeAll(async () => {
+        // No-op, we sync in beforeEach
+    });
+
+    afterAll(async () => {
+        await sequelize.close();
+    });
+
+    beforeEach(async () => {
+        // Clear mocks
+        jest.clearAllMocks();
+        mockToolExecute.mockResolvedValue({ message: 'Tool executed successfully' });
+
+        // Reset Database completely for each test
+        await sequelize.sync({ force: true });
+
+        // Create Admin User
+        // Give them necessary permissions to bypass middleware
+        adminUser = await User.create({
+            username: 'admin_user',
+            email: 'admin@test.com',
+            password_hash: 'hash',
+            role: 'admin',
+            is_active: true,
+            permissions: ['ai:action', 'ai:chat'] // Allow access to endpoint
+        });
+
+        adminToken = generateToken(adminUser);
+        conversationId = uuidv4();
+
+        // Create a conversation
+        await AIConversation.create({
+            conversation_id: conversationId,
+            user_id: adminUser.user_id,
+            messages: [],
+            last_message_at: new Date(),
+            expires_at: new Date(Date.now() + 3600000)
+        });
+    });
+
+    it('should BLOCK a confirmed action if the user role is downgraded BEFORE confirmation (TOCTOU)', async () => {
+        // 1. Setup: Create a pending action for 'delete_item' (requires admin)
+        const actionId = uuidv4();
+
+        const pendingAction = await PendingAIAction.create({
+            action_id: actionId,
+            user_id: adminUser.user_id,
+            conversation_id: conversationId,
+            action_type: 'delete_item',
+            description: 'Delete Item 123',
+            action_payload: { item_id: 123, reason: 'Test' },
+            status: 'pending',
+            expires_at: new Date(Date.now() + 300000)
+        });
+
+        // 2. Attack Simulation: Downgrade User to Manager
+        // Manager has 'ai:action' permission (so they pass middleware), 
+        // BUT they do not have 'admin' role (so they should fail the tool check).
+        await adminUser.update({
+            role: 'manager',
+            permissions: ['ai:action', 'ai:chat'] // Keep endpoint access
+        });
+
+        // 3. Execution: Try to confirm the action
+        const response = await request(app)
+            .post('/api/v1/ai/confirm')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ actionId: actionId });
+
+        // 4. Verification
+        // The controller returns 200 OK even on error (soft error), with success: false
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(false);
+
+        // This error check confirms it was our PERMISSION check that failed
+        expect(response.body.message).toMatch(/You don't have permission/i);
+        expect(response.body.message).toMatch(/requires admin/i);
+
+        expect(mockToolExecute).not.toHaveBeenCalled();
+
+        // Note: The controller currently marks it as 'confirmed' (processed) even if execution failed (returned error result).
+        // The important part is that the tool was NOT executed and the response indicated failure.
+        const refreshedAction = await PendingAIAction.findByPk(actionId);
+        expect(refreshedAction.status).toBe('confirmed');
+
+        let result = refreshedAction.execution_result;
+        if (typeof result === 'string') {
+            try {
+                result = JSON.parse(result);
+            } catch (e) {
+                // ignore
+            }
+        }
+        expect(result).toBeDefined();
+        expect(result.type).toBe('error');
+    });
+
+    it('should ALLOW the action if the user RETAINS their role', async () => {
+        // Control test: User stays admin
+        const actionId = uuidv4();
+        await PendingAIAction.create({
+            action_id: actionId,
+            user_id: adminUser.user_id,
+            conversation_id: conversationId,
+            action_type: 'delete_item',
+            description: 'Delete Item 456',
+            action_payload: { item_id: 456, reason: 'Test' },
+            status: 'pending',
+            expires_at: new Date(Date.now() + 300000)
+        });
+
+        // No downgrade
+
+        const response = await request(app)
+            .post('/api/v1/ai/confirm')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ actionId: actionId });
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(mockToolExecute).toHaveBeenCalledWith('delete_item', expect.anything(), expect.anything());
+
+        const refreshedAction = await PendingAIAction.findByPk(actionId);
+        expect(refreshedAction.status).toBe('confirmed');
+    });
+});

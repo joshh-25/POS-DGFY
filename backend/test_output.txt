@@ -1,151 +1,70 @@
-(node:18884) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
-(Use `node --trace-warnings ...` to show where the warning was created)
-2026-02-17 16:56:49:5649 [32minfo[39m: [32m[TenantHandler] Resolving tenant for token: token-1771318609807[39m
-2026-02-17 16:56:49:5649 [32minfo[39m: [32m[TenantHandler] Found tenant: Proof of Concept 1771318609807 (proof-1771318609807)[39m
-2026-02-17 16:56:49:5649 [32minfo[39m: [32mCreating new DB connection for tenant: Proof of Concept 1771318609807 (db-1771318609807)[39m
-2026-02-17 16:56:49:5649 [31merror[39m: [31mFailed to connect to tenant DB db-1771318609807: Unknown database 'db-1771318609807'[39m
-SequelizeConnectionError: Unknown database 'db-1771318609807'
-    at ConnectionManager.connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\mysql\connection-manager.js:126:17)
-    at processTicksAndRejections (node:internal/process/task_queues:103:5)
-    at ConnectionManager._connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:332:24)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:250:32
-    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:280:7)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:26
-    at Sequelize.authenticate (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:972:5)
-    at TenantConnector.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\utils\TenantConnector.js:95:13)
-    at tenantHandler (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\middleware\tenantHandler.js:51:35)
-2026-02-17 16:56:49:5649 [31merror[39m: [31mTenant Handler Error: Unknown database 'db-1771318609807'[39m
-SequelizeConnectionError: Unknown database 'db-1771318609807'
-    at ConnectionManager.connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\mysql\connection-manager.js:126:17)
-    at processTicksAndRejections (node:internal/process/task_queues:103:5)
-    at ConnectionManager._connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:332:24)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:250:32
-    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:280:7)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:26
-    at Sequelize.authenticate (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:972:5)
-    at TenantConnector.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\utils\TenantConnector.js:95:13)
-    at tenantHandler (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\middleware\tenantHandler.js:51:35)
-2026-02-17 16:56:49:5649 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [17/Feb/2026:08:56:49 +0000] "POST /api/v1/payments/upgrade HTTP/1.1" 500 76 "-" "-"[39m
-2026-02-17 16:56:49:5649 [32minfo[39m: [32m[TenantHandler] Resolving tenant for token: token-1771318609807[39m
-2026-02-17 16:56:49:5649 [32minfo[39m: [32m[TenantHandler] Found tenant: Proof of Concept 1771318609807 (proof-1771318609807)[39m
-2026-02-17 16:56:49:5649 [32minfo[39m: [32mCreating new DB connection for tenant: Proof of Concept 1771318609807 (db-1771318609807)[39m
-2026-02-17 16:56:49:5649 [31merror[39m: [31mFailed to connect to tenant DB db-1771318609807: Unknown database 'db-1771318609807'[39m
-SequelizeConnectionError: Unknown database 'db-1771318609807'
-    at ConnectionManager.connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\mysql\connection-manager.js:126:17)
-    at processTicksAndRejections (node:internal/process/task_queues:103:5)
-    at ConnectionManager._connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:332:24)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:250:32
-    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:280:7)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:26
-    at Sequelize.authenticate (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:972:5)
-    at TenantConnector.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\utils\TenantConnector.js:95:13)
-    at tenantHandler (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\middleware\tenantHandler.js:51:35)
-2026-02-17 16:56:49:5649 [31merror[39m: [31mTenant Handler Error: Unknown database 'db-1771318609807'[39m
-SequelizeConnectionError: Unknown database 'db-1771318609807'
-    at ConnectionManager.connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\mysql\connection-manager.js:126:17)
-    at processTicksAndRejections (node:internal/process/task_queues:103:5)
-    at ConnectionManager._connect (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:332:24)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:250:32
-    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:280:7)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:26
-    at Sequelize.authenticate (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:972:5)
-    at TenantConnector.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\utils\TenantConnector.js:95:13)
-    at tenantHandler (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\middleware\tenantHandler.js:51:35)
-2026-02-17 16:56:49:5649 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [17/Feb/2026:08:56:49 +0000] "POST /api/v1/payments/upgrade HTTP/1.1" 500 76 "-" "-"[39m
-2026-02-17 16:56:49:5649 [33mwarn[39m: [33m[TenantHandler] ⚠️ No company token provided in request headers[39m
-  console.error
-    PayPal Verification Failed: Error: Subscription verification failed. Status: APPROVAL_PENDING
-        at registerCompanyRequest (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\adminTenantController.js:58:27)
-        at processTicksAndRejections (node:internal/process/task_queues:103:5)
+﻿
+> sku-inventory-manager-backend@1.0.0 test
+> node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/reproduce_import_bypass.test.js --verbose --detectOpenHandles
 
-    [0m [90m 59 |[39m                 }
-     [90m 60 |[39m             } [36mcatch[39m (err) {
-    [31m[1m>[22m[39m[90m 61 |[39m                 console[33m.[39merror([32m'PayPal Verification Failed:'[39m[33m,[39m err)[33m;[39m
-     [90m    |[39m                         [31m[1m^[22m[39m
-     [90m 62 |[39m                 [90m// Fallback: If verification fails but we have an ID, maybe manual review?[39m
-     [90m 63 |[39m                 [90m// For now, fail hard to prevent free access.[39m
-     [90m 64 |[39m                 [36mreturn[39m res[33m.[39mstatus([35m400[39m)[33m.[39mjson({[0m
+node.exe : (node:19996) ExperimentalWarning: VM Modules is 
+an experimental feature and might change at any time
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:19996)  
+   Ex...nge at any time:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning 
+was created)
+2026-02-20 16:55:05:555 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 16:55:05:555 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:08:55:05 +0000] "POST /api/v1/items/import/confirm HTTP/1.1" 200 288 "-" "-"[39m
+2026-02-20 16:55:05:555 [33mwarn[39m: [33m[TenantHandler] ΓÜá∩╕Å No company token provided in request headers[39m
+2026-02-20 16:55:05:555 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [20/Feb/2026:08:55:05 +0000] "POST /api/v1/items/import/confirm HTTP/1.1" 200 307 "-" "-"[39m
+PASS tests/reproduce_import_bypass.test.js
+  Import Validation Bypass Reproduction
+    ΓêÜ should NOT bypass validation when client sends 
+tampered payload to confirmImport (91 ms)
+    ΓêÜ should NOT allow creating items without required 
+product_type even if valid: true is sent (14 ms)
 
-      at registerCompanyRequest (src/controllers/adminTenantController.js:61:25)
-
-2026-02-17 16:56:49:5649 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [17/Feb/2026:08:56:49 +0000] "POST /api/v1/admin/tenants/register HTTP/1.1" 400 117 "-" "-"[39m
-2026-02-17 16:56:49:5649 [33mwarn[39m: [33m[TenantHandler] ⚠️ No company token provided in request headers[39m
-  console.log
-    Auto-provisioning Premium Tenant: Paid Premium Co
-
-      at registerCompanyRequest (src/controllers/adminTenantController.js:97:21)
-
-2026-02-17 16:56:50:5650 [32minfo[39m: [32m[Provisioning] Approving existing tenant: e9e11652-b0e6-484f-833c-bc56c43a1e7c (DB: sku_tenant_paidpremiumco_e9e11652)[39m
-2026-02-17 16:56:50:5650 [32minfo[39m: [32m[Provisioning] Creating database sku_tenant_paidpremiumco_e9e11652...[39m
-2026-02-17 16:56:50:5650 [32minfo[39m: [32m[Provisioning] Syncing schema for sku_tenant_paidpremiumco_e9e11652...[39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32m[Provisioning] Schema synced successfully[39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32m[Provisioning] Seeding Admin User...[39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32mCreated email-tenant mapping: paid@premium.test -> e9e11652-b0e6-484f-833c-bc56c43a1e7c[39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32m[Provisioning] Email-tenant mapping created for paid@premium.test[39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32m[Provisioning] Tenant provisioned successfully![39m
-2026-02-17 16:56:51:5651 [32minfo[39m: [32mEmail transporter initialized[39m
-2026-02-17 16:56:54:5654 [32minfo[39m: [32mEmail sent successfully to paid@premium.test[39m
-2026-02-17 16:56:54:5654 [35mhttp[39m: [35m::ffff:127.0.0.1 - - [17/Feb/2026:08:56:54 +0000] "POST /api/v1/admin/tenants/register HTTP/1.1" 201 255 "-" "-"[39m
-FAIL tests/subscriptionIntegration.test.js (6.275 s)
-  Subscription Integration — Final Efficacy Verification
-    Scenario: upgradeToPremium End-to-End
-      × should FAIL to upgrade if PayPal returns APPROVAL_PENDING (60 ms)
-      × should SUCCEED to upgrade if PayPal returns ACTIVE (10 ms)
-    Scenario: New registration with Premium Gate
-      √ should REJECT registration if premium subscription is APPROVAL_PENDING (22 ms)
-      √ should ACCEPT registration if premium subscription is ACTIVE (4206 ms)
-
-  ● Subscription Integration — Final Efficacy Verification › Scenario: upgradeToPremium End-to-End › should FAIL to upgrade if PayPal returns APPROVAL_PENDING
-
-    expect(received).toBe(expected) // Object.is equality
-
-    Expected: 400
-    Received: 500
-
-    [0m [90m 93 |[39m                 [33m.[39msend({ subscriptionId[33m:[39m [32m'SUB-ERR'[39m })[33m;[39m
-     [90m 94 |[39m
-    [31m[1m>[22m[39m[90m 95 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m400[39m)[33m;[39m
-     [90m    |[39m                                     [31m[1m^[22m[39m
-     [90m 96 |[39m
-     [90m 97 |[39m             [36mconst[39m refreshed [33m=[39m [36mawait[39m [33mTenant[39m[33m.[39mfindByPk(testTenant[33m.[39mid)[33m;[39m
-     [90m 98 |[39m             expect(refreshed[33m.[39mplan)[33m.[39mtoBe([32m'standard'[39m)[33m;[39m[0m
-
-      at Object.<anonymous> (tests/subscriptionIntegration.test.js:95:37)
-
-  ● Subscription Integration — Final Efficacy Verification › Scenario: upgradeToPremium End-to-End › should SUCCEED to upgrade if PayPal returns ACTIVE
-
-    expect(received).toBe(expected) // Object.is equality
-
-    Expected: 200
-    Received: 500
-
-    [0m [90m 114 |[39m                 [33m.[39msend({ subscriptionId[33m:[39m [32m'SUB-OK'[39m })[33m;[39m
-     [90m 115 |[39m
-    [31m[1m>[22m[39m[90m 116 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m200[39m)[33m;[39m
-     [90m     |[39m                                     [31m[1m^[22m[39m
-     [90m 117 |[39m
-     [90m 118 |[39m             [36mconst[39m refreshed [33m=[39m [36mawait[39m [33mTenant[39m[33m.[39mfindByPk(testTenant[33m.[39mid)[33m;[39m
-     [90m 119 |[39m             expect(refreshed[33m.[39mplan)[33m.[39mtoBe([32m'premium'[39m)[33m;[39m[0m
-
-      at Object.<anonymous> (tests/subscriptionIntegration.test.js:116:37)
-
-Test Suites: 1 failed, 1 total
-Tests:       2 failed, 2 passed, 4 total
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
 Snapshots:   0 total
-Time:        6.321 s
-Ran all test suites matching /tests\\subscriptionIntegration.test.js/i.
-Jest did not exit one second after the test run has completed.
+Time:        2.78 s
+Ran all test suites matching 
+/tests\\reproduce_import_bypass.test.js/i.
 
-'This usually means that there are asynchronous operations that weren't stopped in your tests. Consider running Jest with `--detectOpenHandles` to troubleshoot this issue.
-2026-02-17 17:01:49:149 [31merror[39m: [31mAI cleanup error: ConnectionManager.getConnection was called after the connection manager was closed![39m
-Error: ConnectionManager.getConnection was called after the connection manager was closed!
-    at ConnectionManager.getConnection (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\connection-manager.js:113:13)
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:638:111
-    at C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:65:25
-    at new Promise (<anonymous>)
-    at retryAsPromised (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\retry-as-promised\dist\index.js:54:12)
-    at Sequelize.query (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\sequelize.js:631:12)
-    at MySQLQueryInterface.bulkDelete (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\dialects\abstract\query-interface.js:992:33)
-    at AIConversation.destroy (C:\xampp\htdocs\SKU-Inventory-Manager\backend\node_modules\sequelize\src\model.js:3083:42)
-    at Timeout.cleanupExpiredData [as _onTimeout] (C:\xampp\htdocs\SKU-Inventory-Manager\backend\src\controllers\aiController.js:826:34)
-^C
+Jest has detected the following 1 open handle potentially 
+keeping Jest from exiting:
+
+  ΓùÅ  CustomGC
+
+    [0m [90m 11 |[39m [36mimport[39m { createRequire 
+} [36mfrom[39m [32m'module'[39m[33m;[39m
+     [90m 12 |[39m [36mconst[39m require [33m=[39m cr
+eateRequire([36mimport[39m[33m.[39mmeta[33m.[39murl)
+[33m;[39m
+    [31m[1m>[22m[39m[90m 13 |[39m [36mconst[39m 
+pdfParse [33m=[39m 
+require([32m'pdf-parse'[39m)[33m;[39m
+     [90m    |[39m                  [31m[1m^[22m[39m
+     [90m 14 |[39m [36mconst[39m mammoth [33m=[39m 
+require([32m'mammoth'[39m)[33m;[39m
+     [90m 15 |[39m [36mimport[39m [33m*[39m 
+[36mas[39m aiService [36mfrom[39m 
+[32m'../services/aiService.js'[39m[33m;[39m
+     [90m 16 |[39m [36mimport[39m dbStore 
+[36mfrom[39m 
+[32m'../utils/dbStore.js'[39m[33m;[39m[0m
+
+      at requireNative 
+(node_modules/@napi-rs/canvas/js-binding.js:100:16)
+      at Object.<anonymous> 
+(node_modules/@napi-rs/canvas/js-binding.js:319:17)
+      at Object.<anonymous> 
+(node_modules/@napi-rs/canvas/index.js:19:5)
+      at Module.Object.<anonymous> (node_modules/pdf-parse/
+node_modules/pdfjs-dist/legacy/build/pdf.mjs:14346:10)
+      at src/controllers/aiController.js:13:18
+      at Object.<anonymous> 
+(tests/reproduce_import_bypass.test.js:62:30)
+

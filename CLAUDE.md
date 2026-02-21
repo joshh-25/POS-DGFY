@@ -4,8 +4,8 @@
 **Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
 **Status**: Development Phase
 # CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Feb 6, 2026
-> **Version:** 2.5.0
+> **Last Updated:** Feb 20, 2026
+> **Version:** 2.5.1
 
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
@@ -36,7 +36,7 @@
 8.  **Stock Movements**: Centralized audit trail with void/reversal capability.
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
-11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **51 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence. Supports bulk folder creation/deletion via single confirmation.
+11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **52 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence. Supports bulk folder creation/deletion via single confirmation.
 12. **Email Notifications (Gmail SMTP)**: Automated emails for user invitations, company approval/rejection notifications. Uses Nodemailer with graceful degradation (failures don't block operations).
 
 ## 🤖 AI Assistant Features
@@ -56,14 +56,16 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - Write operations require confirmation (5-minute expiry)
 - Conversations retained for 30 days
 - Role-based permissions (Staff: read-only, Manager+: write access)
-- 51 AI tools mapped to existing backend services (includes bulk folder creation/deletion)
+- 52 AI tools mapped to existing backend services (includes bulk folder creation/deletion)
 - **Multi-Tenant Isolation**: Uses `dbStore.get()` for tenant-aware database writes
 - **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
+- **Diagnostics Endpoint**: `GET /api/v1/ai/diagnostics` — on-demand capability gap report (no DB writes)
 
 **Frontend Components:**
 - `Components/ai/MarkdownRenderer.jsx` - Markdown rendering with Tailwind styling
 - `Components/ai/ActionResultCard.jsx` - Structured result display
 - `Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
+- `Components/ai/AiDiagnosticsPanel.jsx` - AI capability & knowledge gap checker panel
 
 **Files**: See `docs/ai/AI_GUIDELINES.md` for full documentation.
 
@@ -105,6 +107,8 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 4.  **Soft Deletes**: NEVER `DELETE` from `items`. Use `status='inactive'`, set `deleted_at`.
 5.  **Smart Restock**: `itemService` auto-calculates `min_threshold` if `max_capacity` changes.
 6.  **Error Handling**: Use the central error handler. Throw normal Errors with `statusCode` property.
+7.  **CSV Imports**: NEVER trust client-supplied validation flags in `confirmImport`. Always re-validate and sanitize row data on the backend before persistence.
+8.  **CSV Exports**: ALWAYS use the `escapeCSVCell` logic (or equivalent prefixing for `=`, `+`, `-`, `@`) when exporting text to CSV to prevent spreadsheet formula injection. Favor export-side sanitization over import-side mutation.
 
 # 📂 Project Structure
 ```text

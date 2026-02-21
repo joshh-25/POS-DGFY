@@ -1,5 +1,5 @@
-> **Version:** 1.9.0
-> **Last Updated:** February 14, 2026
+> **Version:** 2.0.0
+> **Last Updated:** February 19, 2026
 > **Tool Count:** 52
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
@@ -193,6 +193,13 @@ All write operations follow a strict confirmation workflow to prevent accidental
 | **Real-time Updates** | Data may be slightly stale during high-activity periods |
 | **Complex Calculations** | May need multiple queries for complex analytics |
 | **Historical Trends** | Limited to 90 days of movement history |
+| **Archived Records** | Cannot query archived POs or JOs (archive filter not exposed to AI tools) |
+| **Soft-Delete Reversal** | Cannot restore soft-deleted items or suppliers |
+| **Recipe Management** | Cannot add/remove product composition ingredients after item creation |
+| **Stock Movement Void** | Cannot void/reverse existing stock movements |
+| **Folder Rename** | Cannot rename or update an inventory folder after creation |
+
+> **Gap Coverage Report**: Use the **AI Capability Checker** panel in the AI Chat sidebar to get a live, tenant-specific report of all current capability and knowledge gaps.
 
 ### Business Rule Limitations
 
@@ -503,6 +510,22 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 ---
 
 ## Changelog
+
+### v2.0.0 (February 19, 2026) - AI Capability Gap Checker
+- **New Feature**: `GET /api/v1/ai/diagnostics` — stateless, read-only diagnostic endpoint that returns a structured gap report for the current tenant
+- **New Service**: `backend/src/services/aiDiagnosticsService.js`
+  - `SYSTEM_FEATURE_MAP` — 71-entry static map of every system feature vs its covering AI tool (or `null` for gaps)
+  - `runDiagnostics(user)` — computes coverage %, capability gaps (with severity + recommendation), and knowledge gaps
+  - Live tenant DB counts via 12 parallel `dbStore.get()` `COUNT` queries (read-only, fully tenant-isolated)
+  - Dynamic knowledge gaps built from real data (e.g. "6 archived POs are inaccessible")
+- **New Component**: `frontend/Components/ai/AiDiagnosticsPanel.jsx`
+  - Three-tab panel: **Gaps** (grouped by category, severity-colored) / **Knowledge** / **Covered**
+  - Per-category `Progress` bars + overall coverage percentage bar
+  - Tenant data snapshot (items, suppliers, POs, JOs with archived counts)
+  - Collapsible, one-time `localStorage` onboarding hint
+- **AI Chat Integration**: "AI Capability Checker" toggle button added to AI Chat sidebar bottom section
+- **Limitations Section Updated**: Added 5 new known gap entries to the Technical Limitations table
+- **Route**: `GET /api/v1/ai/diagnostics` — protected by `authenticate` + `requirePremium` + `AI_CHAT_VIEW` permission
 
 ### v1.0.0 (January 29, 2026)
 - Initial AI integration release

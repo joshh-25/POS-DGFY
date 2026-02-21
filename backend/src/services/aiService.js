@@ -15,6 +15,44 @@ import { buildSystemPrompt, getCapabilitiesExplanation, getLimitationsExplanatio
 import { getOpenAITools, getToolByName, toolRequiresConfirmation } from '../config/aiTools.js';
 import { buildContext, hasPermission, getPermissionError, hasGranularPermission, getGranularPermissionError } from './aiContextService.js';
 import * as toolExecutor from './aiToolExecutor.js';
+import { AiUsageLog } from '../models/index.js';
+
+const RATES = {
+  'gpt-4o': { input: 5.00 / 1000000, output: 15.00 / 1000000 },
+  'gpt-4o-mini': { input: 0.150 / 1000000, output: 0.600 / 1000000 }
+};
+
+/**
+ * Log AI usage to database
+ * @param {Object} usage - Usage object from OpenAI response
+ * @param {string} model - Model used
+ * @param {Object} user - User object
+ */
+const logAiUsage = async (usage, model, user) => {
+  if (!usage || !user) return;
+
+  try {
+    const inputTokens = usage.prompt_tokens || 0;
+    const outputTokens = usage.completion_tokens || 0;
+
+    let cost = 0;
+    const rate = RATES[model] || RATES['gpt-4o']; // Default to gpt-4o if unknown
+
+    cost = (inputTokens * rate.input) + (outputTokens * rate.output);
+
+    await AiUsageLog.create({
+      tenant_id: user.tenant_id,
+      user_id: user.user_id,
+      model: model,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cost_usd: cost.toFixed(6)
+    });
+  } catch (error) {
+    logger.error('Failed to log AI usage:', error);
+    // Don't block the response if logging fails
+  }
+};
 
 // Lazy initialize OpenAI client
 let _openai = null;
@@ -108,6 +146,10 @@ export const processMessage = async (message, conversationHistory = [], user, co
       temperature: 0.7,
       max_tokens: 4096
     });
+
+    if (response.usage) {
+      await logAiUsage(response.usage, response.model, user);
+    }
 
     const assistantMessage = response.choices[0].message;
 
@@ -304,6 +346,10 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
     temperature: 0.7,
     max_tokens: 4096
   });
+
+  if (finalResponse.usage) {
+    await logAiUsage(finalResponse.usage, finalResponse.model, user);
+  }
 
   const finalMessage = finalResponse.choices[0].message;
 
@@ -744,6 +790,23 @@ export const executeConfirmedAction = async (actionId, pendingAction, user) => {
     // Check if expired
     if (new Date(pendingAction.expires_at) < new Date()) {
       throw new Error('This action has expired. Please try again.');
+    }
+
+    // Security Fix: TOCTOU Permission Check
+    // Re-verify that the user still has permission to execute this tool
+    // (Role or permissions might have changed since valid confirmation was generated)
+    const tool = getToolByName(pendingAction.toolName);
+
+    if (tool) {
+      // 1. Check Role Permission
+      if (tool.requiredRole && !hasPermission(user.role, tool.requiredRole)) {
+        throw new Error(getPermissionError(pendingAction.toolName.replace(/_/g, ' '), tool.requiredRole));
+      }
+
+      // 2. Check Granular Permission
+      if (tool.requiredPermission && !hasGranularPermission(user, tool.requiredPermission)) {
+        throw new Error(getGranularPermissionError(pendingAction.toolName.replace(/_/g, ' '), tool.requiredPermission));
+      }
     }
 
     // Execute the tool

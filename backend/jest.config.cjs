@@ -8,6 +8,6 @@ module.exports = {
     testTimeout: 30000,
     verbose: true,
     roots: ['<rootDir>/tests'],
-    setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+    setupFilesAfterEnv: process.env.TEST_TYPE === 'integration' ? [] : ['<rootDir>/tests/setup.js'],
     collectCoverageFrom: ['src/**/*.js', '!src/config/*.js', '!src/seeders/*.js'],
 };

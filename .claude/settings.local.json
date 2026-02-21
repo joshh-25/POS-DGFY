@@ -89,7 +89,11 @@
       "Bash(npx jest:*)",
       "Bash(npm test:*)",
       "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" ls-files:*)",
-      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" rm --cached audit_dump.js diag_pillow.js diag_recent_tokens.js diag_token.js dump_tenant.js find_pillow.js inspect_jo_39.js inspect_specific.js list_all_admin_orders.js list_all_tokens.js raw_jo.js temp_check_users.js)"
+      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" rm --cached audit_dump.js diag_pillow.js diag_recent_tokens.js diag_token.js dump_tenant.js find_pillow.js inspect_jo_39.js inspect_specific.js list_all_admin_orders.js list_all_tokens.js raw_jo.js temp_check_users.js)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(done)",
+      "Bash(sort:*)"
     ]
   }
 }

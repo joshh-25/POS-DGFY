@@ -225,3 +225,38 @@ Successfully recovered and integrated the "Original" project database (`sku_inve
 - Restored access to 67 items, 23 suppliers, and 3 historical AI chat sessions.
 - Finalized the Multi-Tenancy transition by ensuring no legacy data was left behind.
 - Verified that all legacy data is fully compatible with recent architectural fixes (Supplier Coverage, Permission Parsing).
+
+---
+
+## Bulk Audit Resolution & Security Verification (2026-02-20)
+
+### High-Level Summary
+Completed a comprehensive resolution of high-priority audit findings across multiple system components (Ranges 5.x–11.x). Validated these fixes using a newly established "Real-World" integration testing framework (`tests/supertest_security.test.js`) that runs against a Dockerized Redis instance, ensuring that security patches and infrastructure logic work in a production-like environment.
+
+### Core Resolutions
+1.  **Security (Injection & validation)**:
+    -   **Operator Injection (Finding 7.3)**: Sanitized `req.query` inputs in `analyticsController`.
+    -   **CSV Injection (Finding 6.2)**: Implemented formula sanitization for spreadsheet exports.
+    -   **Date Range Abuse (Finding 7.2)**: Enforced strict 1-year caps on Report date ranges.
+2.  **Infrastructure (Concurrency & Integrity)**:
+    -   **Distributed Locking (Finding 8.2)**: Wrapped the Billing Scheduler in a Redis-based distributed lock to prevent duplicate execution in clustered environments.
+    -   **Stock Integrity (Finding 5.3)**: Prevented voiding of stock movements that have already been consumed by downstream processes.
+    -   **CSV Atomicity (Finding 6.4)**: Wrapped Supplier imports in Sequelize transactions.
+3.  **Performance & Standards**:
+    -   **N+1 Queries (Finding 7.1)**: Refactored `analyticsService.detectAnomalies` to use batch fetching.
+    -   **Database Indexing (Finding 11.2)**: Added missing indexes to `Item` model (`sku_code`, `category`, `folder_id`).
+    -   **Tenant Isolation (Finding 8.1)**: Implemented scoped cache keys in `cacheService`.
+
+### Verification
+-   **Integration Suite**: Developed `tests/supertest_security.test.js` to bypass mocks and hit the real backend + Redis.
+-   **Results**:
+    -   ✅ **Distributed Locking**: Verified lock acquisition and release mechanics in Redis to ms precision.
+    -   ✅ **Security Inputs**: Verified API correctly sanitizes object injection attempts (`?category[$ne]=null`).
+    -   ✅ **Validation**: Verified date range caps and CSV import constraints.
+
+### Files Modified
+-   `backend/src/services/stockMovementService.js`, `csvImportService.js`, `analyticsService.js`, `cacheService.js`
+-   `backend/src/controllers/analyticsController.js`, `reportController.js`
+-   `backend/src/models/Item.js`
+-   `backend/src/schedulers/billingScheduler.js`
+-   `backend/tests/supertest_security.test.js` (New)

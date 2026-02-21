@@ -1,0 +1,63 @@
+﻿
+> sku-inventory-manager-backend@1.0.0 test
+> node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/voidMovement.test.js
+
+node.exe : (node:12832) ExperimentalWarning: 
+VM Modules is an experimental feature and 
+might change at any time
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified:  
+   ((node:12832) Ex...nge at any time:Strin  
+  g) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandE 
+   rror
+ 
+(Use `node --trace-warnings ...` to show 
+where the warning was created)
+PASS tests/voidMovement.test.js
+  voidMovement
+    Void purchase_receipt
+      ΓêÜ should decrease stock and mark 
+batch as consumed when voiding 
+purchase_receipt (67 ms)
+    Void production_consumption
+      ΓêÜ should increase stock and restore 
+batch quantity_consumed (55 ms)
+    Void calculated_loss
+      ΓêÜ should increase stock when voiding 
+calculated_loss (32 ms)
+    Double-void prevention
+      ΓêÜ should throw error when attempting 
+to void an already voided movement (37 ms)
+    Void non-existent movement
+      ΓêÜ should throw 404 error for 
+non-existent movement (4 ms)
+    Multi-batch consumption void
+      ΓêÜ should restore all affected 
+batches when voiding multi-batch consumption 
+(88 ms)
+    Void receipt with consumed batch 
+(Finding 5.3)
+      ΓêÜ should throw 409 when voiding a 
+receipt whose batch was partially consumed 
+(39 ms)
+      ΓêÜ should throw 409 when voiding a 
+receipt whose batch was fully consumed (42 
+ms)
+      ΓêÜ should allow voiding a receipt 
+when batch has zero consumption (42 ms)
+    Void with negative stock prevention
+      ΓêÜ should block voiding an addition 
+whose batch was partially consumed (batch 
+guard fires before stock check) (39 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        1.299 s, estimated 2 s
+Ran all test suites matching 
+/tests\\voidMovement.test.js/i.

@@ -34,8 +34,10 @@ describe('Auth Fail-Closed (Redis Down)', () => {
         await sequelize.close();
     });
 
-    test('should return 500 when Redis fails during blacklist check (Fail-Closed)', async () => {
-        // Setup: Mock getCritical to throw an error
+    test('should return 500 when Redis is disconnected (Fail-Closed)', async () => {
+        // Setup: Simulate Redis being disconnected
+        mockCacheService.isAvailable.mockReturnValue(false);
+        // We also mock getCritical to throw, just in case logic slips through
         mockCacheService.getCritical.mockRejectedValue(new Error('Redis connection failed'));
 
         // Ensure REDIS_URL is set so the check runs (simulating enabled but broken Redis)

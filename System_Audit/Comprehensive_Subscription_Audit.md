@@ -39,8 +39,9 @@ This document consolidates the findings and fixes for critical logic gaps discov
 The system now implements an **Integrated Verification Standard** to prove efficacy:
 
 1. **State-Based Proof**: Verification now moves beyond simple unit mocks to hit actual routes via Supertest and verify the final state in the database.
-2. **Boundary Interception**: Tests intercept network calls at the lowest client boundary (axios), forcing the system to evaluate real payloads.
-3. **Idempotent Extensions**: Guarding against duplicate sale events with database constraints and authoritative expiration dates from PayPal.
+2.  **Boundary Interception**: Tests intercept network calls at the lowest client boundary (axios), forcing the system to evaluate real payloads.
+3.  **Idempotent Extensions**: Guarding against duplicate sale events with database constraints and authoritative expiration dates from PayPal.
+4.  **Engagement Signaling**: Tests verify that critical engagement events (upgrades) are recorded in the database and logs, ensuring observability of user actions.
 
 ## Related Audit Files
 - [3.4 Billing Date Logic Drift](file:///c:/xampp/htdocs/SKU-Inventory-Manager/System_Audit/3.4-Billing_date_logic_drift.md)

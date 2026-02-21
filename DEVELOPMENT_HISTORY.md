@@ -43,8 +43,15 @@
 - [Phase 37: DDL Identifier Escaping + Runtime Stability Fixes (Audit 2.5)](#phase-37-ddl-identifier-escaping--runtime-stability-fixes-audit-25)
 - [Phase 39: QR Receive Flow — End-to-End Fix](#phase-39-qr-receive-flow--end-to-end-fix)
 - [Phase 40: Model DECIMAL Precision Alignment](#phase-40-model-decimal-precision-alignment)
+- [Phase 41: SKUpervisor AI Capability & Knowledge Gap Checker](#phase-41-skupervisor-ai-capability--knowledge-gap-checker)
+- [Phase 42: Job Order Transactional Atomicity (Audit 5.2)](#phase-42-job-order-transactional-atomicity-audit-52)
+- [Phase 43: Void Movement Data Integrity (Audit 5.3)](#phase-43-void-movement-data-integrity-audit-53)
+- [Phase 44: Session Initialization Hook (§5.4)](#phase-44-session-initialization-hook-54)
+- [Phase 45: Import Validation Hardening (Audit 6.1)](#phase-45-import-validation-hardening-audit-61)
+- [Phase 46: CSV Formula Injection Fix (Audit 6.2)](#phase-46-csv-formula-injection-fix-audit-62)
 
 ---
+
 
 # SKU Inventory Manager - Development Task Tracking
 
@@ -5538,6 +5545,66 @@ SHOW COLUMNS FROM po_line_items LIKE 'quantity_ordered';     -- expect decimal(2
 
 ---
 
+## Phase 41: SKUpervisor AI Capability & Knowledge Gap Checker
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-19
+
+### Problem
+There was no way for admins or managers to know what the AI assistant could or could not do within the system. Feature gaps (system capabilities with no AI tool), knowledge gaps (tenant data the AI cannot access), and coverage metrics were entirely invisible. New tenants had no onboarding hint about AI limitations.
+
+### Solution
+Added a stateless, read-only diagnostic feature — the **AI Capability Checker** — accessible from the AI Chat sidebar. It runs an on-demand audit comparing a static `SYSTEM_FEATURE_MAP` against registered AI tools and live tenant DB counts, returning a structured gap report.
+
+### New Files
+- [x] `backend/src/services/aiDiagnosticsService.js`
+  - `SYSTEM_FEATURE_MAP` — 71-entry ground-truth map of every system feature vs covering AI tool
+  - `runDiagnostics(user)` — computes coverage %, capability gaps with severity + recommendation, dynamic knowledge gaps from live DB counts
+  - `fetchTenantData()` — 12 parallel read-only `COUNT` queries via `dbStore.get()` (fully tenant-isolated)
+  - `buildDynamicKnowledgeGaps()` — emits knowledge gap entries only when relevant data actually exists in tenant DB
+- [x] `frontend/Components/ai/AiDiagnosticsPanel.jsx`
+  - Three-tab panel: **Gaps** / **Knowledge** / **Covered**
+  - Per-category `Progress` bars + overall coverage bar
+  - Tenant data snapshot grid (items, suppliers, POs, JOs with archived counts)
+  - Collapsible header + one-time `localStorage` onboarding hint (`ai_diagnostics_seen` key)
+  - Designed to render inside a Dialog/Modal (no fixed height constraints)
+
+### Modified Files
+- [x] `backend/src/controllers/aiController.js` — added `getDiagnostics` handler (dynamic import to avoid circular deps); added to default export
+- [x] `backend/src/routes/ai.js` — registered `GET /diagnostics` with `authenticate` + `requirePremium` + `AI_CHAT_VIEW` guards
+- [x] `frontend/src/services/aiService.js` — added `getDiagnostics()` method + default export
+- [x] `frontend/Pages/AiChat.jsx` — added `showDiagnostics` state, `ShieldAlert` icon import, `AiDiagnosticsPanel` import, toggle button + panel in sidebar bottom section
+
+### Documentation Updated
+- [x] `CLAUDE.md` — tool count corrected (51 → 52), `AiDiagnosticsPanel` added to frontend components list, diagnostics endpoint noted
+- [x] `docs/ai/AI_GUIDELINES.md` — bumped to v2.0.0, added v2.0.0 changelog entry, added 5 known gaps to Technical Limitations table, added gap checker callout
+
+### Identified Gaps (documented in SYSTEM_FEATURE_MAP)
+| Severity | Gap |
+|----------|-----|
+| High | Cannot add/remove product recipe ingredients after creation |
+| High | Cannot void/reverse stock movements |
+| Medium | Cannot restore soft-deleted items or suppliers |
+| Medium | Cannot update (rename) inventory folders after creation |
+| Medium | Cannot archive/restore POs or job orders |
+| Medium | Cannot transition JO from draft to in_progress |
+| Low | Cannot view archived POs/JOs |
+| Low | No batch lineage query, extended item properties, report snapshots, bulk discounts, receive tokens |
+
+### Architecture Notes
+- **Stateless & read-only** — no new DB table, no writes at any point
+- **Safe fallbacks** — every DB count wrapped in `.catch(() => 0)` so one bad model never breaks the whole report
+- **Tenant isolated** — all queries use `dbStore.get()` inside an authenticated tenant request context
+- **`SYSTEM_FEATURE_MAP` maintenance** — when adding a new tool to `aiTools.js`, update the map in `aiDiagnosticsService.js` to mark the feature as covered
+
+### Post-Deploy Verification
+1. Open AI Chat → click **"AI Capability Checker"** button in sidebar
+2. Click **"Run Analysis"** → report loads with coverage bars and tabs
+3. Switch tabs: Gaps / Knowledge / Covered → all populated correctly
+4. Confirm onboarding hint shows once, dismisses on X click, does not reappear
+5. Verify `GET /api/v1/ai/diagnostics` returns 200 with `feature_coverage.coverage_pct` > 0
+
+---
+
 ## Phase 38: Tenant Management Fixes & Deployment Hardening
 **Status**: ✅ COMPLETE  
 **Date**: 2026-02-19
@@ -5568,3 +5635,126 @@ SHOW COLUMNS FROM po_line_items LIKE 'quantity_ordered';     -- expect decimal(2
   - Marked as "Fixed" in `docs/testing/production-readiness-audit.md`.
 
 ---
+
+## Phase 42: Job Order Transactional Atomicity (Audit 5.2)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-20
+
+### Backend Fixes
+- [x] **Job Order Completion Transactionality**:
+  - **Issue**: `completeJobOrder` in `jobOrderService.js` was performing multiple database mutations (ingredient stock updates, product output creation, status update) outside of a unified transaction. This risked data inconsistency if the process was interrupted halfway through.
+  - **Fix**: Wrapped the entire `completeJobOrder` logic in a `sequelize.transaction`. Passed the transaction object `t` into all internal database calls, including the call to `stockMovementService.createStockMovement`.
+  - **Impact**: Guaranteed 100% data integrity for Job Order completion. All changes either succeed together or roll back entirely.
+
+### Verification
+- [x] **Integration Test (Atomicity)**:
+  - Created and ran `tests/jobOrderAtomicity.test.js`.
+  - Simulated a failure during the second ingredient consumption phase (insufficient stock).
+  - Verified that the first ingredient's stock deduction was correctly rolled back, leaving the database in its original state.
+- [x] **Regression Testing**:
+  - Verified that regular successful Job Order completion still functions correctly and commits all changes.
+
+### Files Modified
+- `backend/src/services/jobOrderService.js`
+- `System_Audit/5.2-Job_order_transactional_atomicity.md` (Marked as Resolved)
+
+---
+
+---
+
+## Phase 44: Session Initialization Hook (§5.4)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-20
+
+### Objective
+Implement a robust, non-blocking session initialization script as specified in `DOCUMENTATION_GUIDE.md` §5.4 to provide immediate situational awareness for humans and AI agents at the start of every session.
+
+### Technical Implementation
+- [x] **7-Section Health Audit**: Created `.claude/hooks/session-start.sh` with granular checks:
+    1. **Dependencies**: Verifies root, frontend, and backend `node_modules`.
+    2. **Env Vars**: Validates required production variables and warns for missing optional ones (Redis, AI, PayPal).
+    3. **Git Context**: Identifies active branch, last commit, and uncommitted change count.
+    4. **Runtime (PM2)**: Directly queries `pm2 jlist` to verify backend and frontend service status.
+    5. **API Health**: Performs live `curl` to `/health` endpoint (auto-detecting ports 5000/5001) to verify live DB and Redis connectivity.
+    6. **Activity Detection**: Analyzes `git diff` of the last commit to provide contextual reference links to relevant components.
+    7. **Quick Commands**: Integrated interactive command cheatsheet.
+
+- [x] **Project Context Update**: Refreshed `.claude/project-context.md` with:
+    - Updated tech stack (React 18, Node.js 18+).
+    - Corrected port references (5000/5001).
+    - Cleared stale session metadata from 2025.
+
+### Verification Results
+- [x] **Live Environment Testing**: Verified via Git Bash `sh.exe`.
+- [x] **API Resilience**: Confirmed the script correctly detects "Not Connected" states for optional services (Redis) without failing the session build.
+- [x] **Idempotency**: Safe for automatic or repetitive execution.
+
+### Files Modified
+- `.claude/hooks/session-start.sh` [REWRITTEN]
+- `.claude/project-context.md` [UPDATED]
+- `DEVELOPMENT_HISTORY.md` [UPDATED]
+- `CLAUDE.md` [BUMPED]
+
+---
+
+## Phase 45: Import Validation Hardening (Audit 6.1)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-20
+
+### Objective
+Secure the CSV import process by implementing "Zero Trust" validation on the backend confirmation endpoint, preventing clients from bypassing domain rules via tampered payloads.
+
+### Security Fixes
+- [x] **Zero-Trust Backend Re-validation**:
+    - **Issue**: The `confirmImport` endpoint was blindly trusting the `valid: true` flag and the data payload sent from the client's "Preview" step. This allowed malicious users to bypass Joi and Model-level validations via interception.
+    - **Fix**: Refactored `csvImportService.js` to re-run the full `validateItem` logic for every row during the confirmation step. The client's `valid` flag is now ignored, and the server uses its own validated/sanitized data for database persistence.
+- [x] **Model-Level Hardening**:
+    - **Fix**: Added `min: 0` validation to `cost_per_unit` in `Item.js`.
+    - **Fix**: Enabled `validate: true` for all database operations in the import flow (`bulkCreate` and `update`).
+
+### Verification Results
+- [x] **Security Reproduction Test**: Created `backend/tests/reproduce_import_bypass.test.js`.
+    - **Scenario**: Simulated an authorized but malicious user sending a tampered JSON payload with `valid: true` but negative cost and missing required fields.
+    - **Result**: Confirmed the backend correctly rejected the rows with specific error messages and prevented database corruption.
+- [x] **Manual Audit Verification**: Updated `System_Audit/6.1-Import_validation_bypass.md` with the resolution and 10/10 confidence rating.
+
+### Files Modified
+- `backend/src/models/Item.js`
+- `backend/src/services/csvImportService.js`
+- `backend/tests/reproduce_import_bypass.test.js` [NEW]
+- `System_Audit/6.1-Import_validation_bypass.md`
+
+---
+
+## Phase 46: CSV Formula Injection Fix (Audit 6.2)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-21
+
+### Overview
+Addressed the CSV Formula Injection vulnerability identified in `System_Audit/6.2-CSV_formula_injection.md`. The system was previously vulnerable to malicious spreadsheets formulas (`=`, `+`, `-`, `@`) when exporting data to CSV.
+
+### Root Cause Analysis
+The export logic only handled standard CSV escaping (commas and quotes) but didn't neutralize spreadsheet-specific formula prefixes.
+
+### Improvements Implemented
+
+#### 1. Shift to Export-Side Sanitization
+- Replaced the previous strategy of sanitizing on **import** (which mutated database data and cluttered the UI) with a more robust **export-side** sanitization.
+- Clean strings are kept in the database, while the CSV generation layer automatically handles safety.
+
+#### 2. Enhanced CSV Escaping
+- Updated `backend/src/services/csvExportService.js` to automatically prefix dangerous characters with a single quote `'` during cell generation.
+- Applied identical protection to the `Supplier` CSV export in `backend/src/services/supplierCSVService.js`.
+
+### Verification
+- **Logic Validation**: Verified cell-level prefixing via logic scripts.
+- **Engagement Proof**: Conducted a full-stack Supertest integration (`csv_injection_engagement.test.js`) which:
+  - Posted malicious data to the REST API.
+  - Triggered an export through the standard controllers/middlewares.
+  - Verified that the transport-layer response (the CSV) was safely neutralized.
+
+### Documents Modified
+- `backend/src/services/csvExportService.js`
+- `backend/src/services/supplierCSVService.js`
+- `backend/src/services/csvImportService.js` (Removed legacy mutation logic)
+- `System_Audit/6.2-CSV_formula_injection.md` (Updated to Resolved)

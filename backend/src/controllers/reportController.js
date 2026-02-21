@@ -3,12 +3,47 @@ import * as reportService from '../services/reportService.js';
 // Helper to extract date filters from request
 const extractDateFilters = (req) => {
   const filters = {};
-  if (req.query.startDate) {
-    filters.startDate = req.query.startDate;
+  const MAX_RANGE_DAYS = 365;
+
+  let start = req.query.startDate ? new Date(req.query.startDate) : null;
+  let end = req.query.endDate ? new Date(req.query.endDate) : null;
+
+  // Validate dates
+  if (start && isNaN(start.getTime())) start = null;
+  if (end && isNaN(end.getTime())) end = null;
+
+  // Default logic: If no dates, default to last 30 days
+  if (!start && !end) {
+    end = new Date();
+    start = new Date();
+    start.setDate(end.getDate() - 30);
+  } else if (start && !end) {
+    end = new Date(); // From start until now
+  } else if (!start && end) {
+    start = new Date(end);
+    start.setDate(end.getDate() - 30); // 30 days ending at end date
   }
-  if (req.query.endDate) {
-    filters.endDate = req.query.endDate;
+
+  // Ensure start <= end
+  if (start > end) {
+    const temp = start;
+    start = end;
+    end = temp;
   }
+
+  // enforce max range
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays > MAX_RANGE_DAYS) {
+    // Cap at start + MAX_RANGE
+    end = new Date(start);
+    end.setDate(start.getDate() + MAX_RANGE_DAYS);
+  }
+
+  filters.startDate = start.toISOString();
+  filters.endDate = end.toISOString();
+
   return filters;
 };
 
