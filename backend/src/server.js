@@ -21,7 +21,7 @@ import { testConnection } from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import logger from './config/logger.js';
-import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
+import { generalLimiter } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
 import { initBillingScheduler } from './schedulers/billingScheduler.js';
@@ -209,8 +209,8 @@ import aiRoutes from './routes/ai.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 
-// Apply stricter rate limiter to auth routes
-app.use('/api/v1/auth', authLimiter, authRoutes);
+// Auth routes (authLimiter applied selectively per-route in auth.js)
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/items', itemRoutes);
