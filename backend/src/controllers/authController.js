@@ -97,7 +97,8 @@ export const lookupEmail = async (req, res, next) => {
         data: {
           company_token: tenants[0].company_token,
           company_name: tenants[0].name,
-          tenant_id: tenants[0].id
+          tenant_id: tenants[0].id,
+          status: tenants[0].status
         },
         message: 'Tenant found',
         timestamp: new Date().toISOString()
@@ -112,7 +113,8 @@ export const lookupEmail = async (req, res, next) => {
         tenants: tenants.map(t => ({
           id: t.id,
           name: t.name,
-          company_token: t.company_token
+          company_token: t.company_token,
+          status: t.status
         }))
       },
       message: 'Multiple tenants found',

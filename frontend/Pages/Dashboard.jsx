@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { movements: recentMovements, loading: movementsLoading } = useRecentMovements(10);
   const { purchaseOrders, loading: poLoading } = usePurchaseOrders();
   const { suppliers, loading: suppliersLoading } = useSuppliers();
-  const { alerts: expiryAlerts, loading: alertsLoading } = useExpiryAlerts();
+  const { alerts: expiryAlerts, loading: alertsLoading, refetch: refetchExpiryAlerts } = useExpiryAlerts();
   const { tenantPlan } = usePermission();
 
   const pendingPOs = purchaseOrders?.filter(po => po.status === 'pending').length || 0;
@@ -224,7 +224,7 @@ export default function Dashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <LowStockList items={lowStockItems || []} />
-        <ExpiringBatchesList alerts={expiryAlerts || []} />
+        <ExpiringBatchesList alerts={expiryAlerts || []} onRefresh={refetchExpiryAlerts} />
         {tenantPlan === 'premium' ? (
           <ForecastWidget />
         ) : (

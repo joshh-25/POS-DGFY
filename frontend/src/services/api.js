@@ -10,6 +10,69 @@ const api = axios.create({
   },
 });
 
+// ── Single-tab mutex ────────────────────────────────────────────────────────
+// Prevents parallel 401s within a single tab from each firing a separate
+// refresh request. Only one refresh is ever in-flight at a time; subsequent
+// 401s queue and retry with the new token once the single refresh completes.
+let isRefreshing = false;
+let failedQueue = []; // Array of { resolve, reject } for queued requests
+
+// Tracks whether THIS tab initiated the current refresh.
+// Tabs that received 'token-refresh-started' from another tab set isRefreshing=true
+// but must NOT reset it in .finally() — only the leader resets it there.
+let iAmRefreshLeader = false;
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error);
+    else resolve(token);
+  });
+  failedQueue = [];
+};
+
+// ── Cross-tab coordination via BroadcastChannel ─────────────────────────────
+// Solves the multi-tab RTR race condition:
+//   - Tab A gets 401, broadcasts 'token-refresh-started', starts the refresh.
+//   - Tab B gets 401, receives the broadcast, sets isRefreshing=true locally,
+//     queues its request — it does NOT start a competing refresh.
+//   - Tab A completes, broadcasts 'token-refresh-success' with the new token.
+//   - Tab B adopts the new token and drains its local queue.
+// Without this, Tab B would fire its own refresh with the already-blacklisted
+// token (RTR), get a 401, and force-logout the user.
+const authChannel = (() => {
+  try { return new BroadcastChannel('sku_auth'); } catch { return null; }
+})();
+
+if (authChannel) {
+  authChannel.onmessage = ({ data }) => {
+    if (data.type === 'token-refresh-started') {
+      // Another tab is leading — mark ourselves as refreshing so new 401s queue.
+      isRefreshing = true;
+    }
+    if (data.type === 'token-refresh-success') {
+      // Another tab completed the refresh — adopt the new tokens and drain our queue.
+      localStorage.setItem('authToken', data.token);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      if (isRefreshing) {
+        processQueue(null, data.token);
+        isRefreshing = false;
+      }
+    }
+    if (data.type === 'session-expired' || data.type === 'auth:logout') {
+      // Another tab's refresh failed, or the user logged out in another tab.
+      // Show a banner in this tab so the user can choose to re-login.
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    }
+  };
+}
+
+// Re-broadcast deliberate logout to other tabs.
+// authService.js dispatches 'auth:logout' locally; we forward it via BroadcastChannel
+// so other open tabs can show the session-expired banner.
+window.addEventListener('auth:logout', () => {
+  authChannel?.postMessage({ type: 'auth:logout' });
+});
+
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
   (config) => {
@@ -37,54 +100,97 @@ api.interceptors.response.use(
 
     // Handle 401 errors (unauthorized)
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
+      const storedRefreshToken = localStorage.getItem('refreshToken');
 
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        const companyToken = localStorage.getItem('companyToken');
-
-        if (refreshToken) {
-          console.debug('🔄 [Auth] Refreshing token...', { companyToken });
-
-          const refreshConfig = {
-            headers: {}
-          };
-
-          if (companyToken) {
-            refreshConfig.headers['x-company-token'] = companyToken;
-          }
-
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
-            refreshToken
-          }, refreshConfig);
-
-          const { token, refreshToken: newRefreshToken } = response.data.data;
-          localStorage.setItem('authToken', token);
-          if (newRefreshToken) {
-            localStorage.setItem('refreshToken', newRefreshToken);
-          }
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-
-          // Ensure retry also has company token if needed
-          if (companyToken && !originalRequest.headers['x-company-token']) {
-            originalRequest.headers['x-company-token'] = companyToken;
-          }
-
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        console.error('❌ [Auth] Token refresh failed:', refreshError);
-        // Refresh failed, logout user
+      // No refresh token at all — immediate logout, no attempt
+      if (!storedRefreshToken) {
         localStorage.removeItem('authToken');
-
-        localStorage.removeItem('refreshToken');
         localStorage.removeItem('companyToken');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
+        window.location.href = '/login?reason=session_expired';
+        return Promise.reject(error);
       }
+
+      // A refresh is already in-flight (either started by this tab or by another tab
+      // that broadcast 'token-refresh-started') — queue this request so it retries
+      // with the new token once the single refresh completes.
+      if (isRefreshing) {
+        if (failedQueue.length >= 20) {
+          // Queue cap: Dashboard fires at most 6 concurrent calls; 20 is a safe ceiling.
+          // Reject immediately rather than grow the queue unboundedly during a long refresh.
+          return Promise.reject(error);
+        }
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(token => {
+          originalRequest._retry = true; // prevent double-refresh if this retry also gets a 401
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          if (!originalRequest.headers['x-company-token']) {
+            const ct = localStorage.getItem('companyToken');
+            if (ct) originalRequest.headers['x-company-token'] = ct;
+          }
+          return api(originalRequest);
+        });
+      }
+
+      // First 401 in this tab — acquire the lock, announce leadership, perform the refresh
+      originalRequest._retry = true;
+      isRefreshing = true;
+      iAmRefreshLeader = true;
+      authChannel?.postMessage({ type: 'token-refresh-started' }); // tell other tabs to queue
+
+      return new Promise((resolve, reject) => {
+        const companyToken = localStorage.getItem('companyToken');
+        const refreshConfig = companyToken
+          ? { headers: { 'x-company-token': companyToken } }
+          : {};
+
+        console.debug('🔄 [Auth] Refreshing token...', { companyToken });
+
+        axios.post(
+          `${API_BASE_URL}/auth/refresh-token`,
+          { refreshToken: storedRefreshToken },
+          { ...refreshConfig, timeout: 15000 } // bare axios has no timeout — enforce one so .finally() always runs
+        )
+          .then(({ data }) => {
+            const { token, refreshToken: newRefreshToken } = data.data;
+            localStorage.setItem('authToken', token);
+            if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken);
+
+            // Broadcast success BEFORE draining the local queue so that other tabs
+            // adopt the new token and drain their own queues concurrently.
+            authChannel?.postMessage({ type: 'token-refresh-success', token, refreshToken: newRefreshToken });
+
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            if (companyToken && !originalRequest.headers['x-company-token']) {
+              originalRequest.headers['x-company-token'] = companyToken;
+            }
+
+            processQueue(null, token); // unblock all queued requests with new token
+            resolve(api(originalRequest));
+          })
+          .catch(err => {
+            console.error('❌ [Auth] Token refresh failed:', err);
+            processQueue(err, null); // fail all queued requests in this tab
+            authChannel?.postMessage({ type: 'session-expired' }); // show banner in other tabs
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('companyToken');
+            window.location.href = '/login?reason=session_expired'; // this tab hard-redirects
+            reject(err);
+          })
+          .finally(() => {
+            // Only the tab that STARTED the refresh resets the leader state here.
+            // Follower tabs reset isRefreshing when they receive 'token-refresh-success'
+            // or 'session-expired' via the BroadcastChannel message handler.
+            if (iAmRefreshLeader) {
+              isRefreshing = false;
+              iAmRefreshLeader = false;
+            }
+          });
+      });
     }
 
-    // NEW: Handle stale tenant context (Tenant no longer exists or user removed)
+    // Handle stale tenant context (Tenant no longer exists or user removed)
     if (error.response?.status === 404 &&
       (error.response?.data?.message?.includes('Tenant') || error.response?.data?.message?.includes('company token'))) {
       console.warn('⚠️ [Auth] Stale company token detected, clearing...');

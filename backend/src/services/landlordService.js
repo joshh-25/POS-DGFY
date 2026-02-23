@@ -92,7 +92,11 @@ export const findTenantsByEmail = async (email) => {
         include: [{
             model: Tenant,
             as: 'tenant',
-            where: { status: 'active' }
+            where: {
+                status: {
+                    [sequelize.Sequelize.Op.in]: ['active', 'pending']
+                }
+            }
         }]
     });
 

@@ -75,7 +75,7 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700" }
 };
 
-export default function ItemDetailsModal({ item, open, onClose }) {
+export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
   const [defaultOpenSections, setDefaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
 
   if (!item) return null;
@@ -217,7 +217,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
             )}
 
             {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
-            {item.fifo_enabled && <FIFOBatchViewer item={item} />}
+            {item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
 
             {/* Cost Info */}
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -416,7 +416,7 @@ export default function ItemDetailsModal({ item, open, onClose }) {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <FIFOBatchViewer item={item} />
+                  <FIFOBatchViewer item={item} onRefresh={onRefresh} />
                 </AccordionContent>
               </AccordionItem>
             )}

@@ -85,7 +85,6 @@ CREATE TABLE Tenants (
     db_name VARCHAR(255), -- The name of their isolated DB
     status ENUM('pending', 'active', 'inactive', 'rejected') DEFAULT 'pending',
     plan ENUM('standard', 'premium') DEFAULT 'standard',
-    plan ENUM('standard', 'premium') DEFAULT 'standard',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -99,6 +98,62 @@ CREATE TABLE Tenants (
 2.  Backend Middleware (`tenantMiddleware`) looks up the token in `Tenants` table.
 3.  If found and Active, it establishes a connection to the specific `db_name`.
 4.  All subsequent queries in that request use that connection.
+
+## Email-to-Tenant Lookup
+
+The `UserTenantMapping` table in the main DB maps email addresses to tenant IDs. This powers the login pre-screen: users enter their email and the system resolves which company (or companies) they belong to, returning the `company_token` without the user needing to memorize it.
+
+### Endpoint
+```
+POST /api/v1/auth/lookup
+Body: { "email": "user@example.com" }
+```
+
+### Response shapes
+
+**Single tenant** (most common):
+```json
+{
+  "success": true,
+  "data": {
+    "company_token": "abc123...",
+    "company_name": "Acme Corp",
+    "status": "pending"
+  }
+}
+```
+
+**Multiple tenants** (email belongs to more than one company):
+```json
+{
+  "success": true,
+  "data": {
+    "multiple": true,
+    "tenants": [
+      { "id": 1, "name": "Acme Corp", "company_token": "abc...", "status": "active" },
+      { "id": 2, "name": "Beta LLC",  "company_token": "def...", "status": "pending" }
+    ]
+  }
+}
+```
+
+**Not found** (no active/pending tenant for that email): `404`
+
+**Invalid email** (validation failure): `422` with `errors[]` array
+
+### Key behaviors
+- Email is **case-normalized** (lowercased) before lookup — `USER@EXAMPLE.COM` and `user@example.com` resolve identically.
+- Only tenants with status `'active'` or `'pending'` are returned. Rejected/inactive tenants are excluded.
+- Rate-limited to **5 requests per 15-minute window** in production (bypassed in `NODE_ENV=test`).
+
+### Mapping management
+Mappings are created automatically when:
+1. A company is registered (founder email is mapped)
+2. A user is invited and accepts their invitation
+
+The `landlordService.js` functions handle mapping CRUD: `addEmailTenantMapping`, `removeEmailTenantMapping`, `updateEmailTenantMapping`, `findTenantsByEmail`.
+
+---
 
 ## Admin Interface
 

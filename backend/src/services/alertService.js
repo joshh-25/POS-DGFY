@@ -74,11 +74,7 @@ export const getExpiryAlerts = async (options = {}) => {
     where: {
       expiry_date: { [Op.lte]: warningHorizon },
       [Op.and]: [
-        sequelize.where(
-          sequelize.col('quantity'),
-          Op.gt,
-          sequelize.col('quantity_consumed')
-        )
+        sequelize.literal('`quantity` > COALESCE(`quantity_consumed`, 0)')
       ]
     },
     include: [{
@@ -100,7 +96,7 @@ export const getExpiryAlerts = async (options = {}) => {
     if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) return;
 
     const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-    const severity = daysUntilExpiry <= criticalDays ? 'critical' : 'warning';
+    const severity = daysUntilExpiry < 0 ? 'expired' : daysUntilExpiry <= criticalDays ? 'critical' : 'warning';
 
     alerts.push({
       type: 'expiring_batch',

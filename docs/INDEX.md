@@ -24,6 +24,10 @@ Welcome to the SKU Inventory Manager documentation hub.
 - **[Production Readiness Audit](testing/production-readiness-audit.md)**: Current status and historical verification of production stability.
 - **[Troubleshooting](ops/TROUBLESHOOTING.md)**: Solutions for common issues.
 
+## 🧪 Testing (`docs/testing/`)
+- **[Production Readiness Audit](testing/production-readiness-audit.md)**: Current stability status and historical verification (updated 2026-02-21).
+- **[Backend Test README](../backend/tests/README.md)**: How to run Jest tests; coverage details for `lookup_v2.test.js` (10/10).
+
 ## 🤖 AI & Intelligence (`docs/ai/`)
 - **[AI Guidelines](ai/AI_GUIDELINES.md)**: Capability matrix for the "SKUpervisor" AI.
 - **[Conversion Logic](ai/conversion_logic.md)**: How the AI handles batches, yield, and base unit conversions.

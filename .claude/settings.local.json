@@ -93,7 +93,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(done)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(/c/xampp/mysql/bin/mysql -u root -e \"SELECT id, name, status, admin_email, company_token, createdAt FROM tenants ORDER BY createdAt DESC;\" SKU)",
+      "Bash(/c/xampp/mysql/bin/mysql:*)",
+      "Bash(npx vitest run:*)"
     ]
   }
 }

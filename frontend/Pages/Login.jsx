@@ -37,16 +37,23 @@ export default function Login() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!formData.email || !emailRegex.test(formData.email)) {
-      return;
+      return null;
     }
 
     setIsLookingUp(true);
     setLookupError('');
     setAvailableTenants([]);
+    let identifiedToken = null;
 
     try {
+      console.log('🔍 [Login] Looking up email:', formData.email);
       const response = await api.post('/auth/lookup', { email: formData.email });
       const data = response.data.data;
+      console.log('✅ [Login] Lookup success:', data);
+
+      if (!data) {
+        throw new Error('Invalid response from server');
+      }
 
       if (data.multiple) {
         // Multiple tenants - show selector
@@ -55,12 +62,19 @@ export default function Login() {
         setFormData(prev => ({ ...prev, companyToken: '' }));
       } else {
         // Single tenant - auto-fill token
+        identifiedToken = data.company_token;
         setFormData(prev => ({ ...prev, companyToken: data.company_token }));
         setShowTokenField(false);
         setAvailableTenants([]);
+
+        // If the tenant is pending, inform the user
+        if (data.status === 'pending') {
+          setLookupError('Your company is currently awaiting approval. You can sign in once activated.');
+        }
       }
       setLookupDone(true);
     } catch (err) {
+      console.error('❌ [Login] Lookup failed:', err.response?.status, err.response?.data || err.message);
       if (err.response?.status === 404) {
         // Email not found - show manual token field
         setLookupError('Email not found. Enter your company token manually.');
@@ -68,20 +82,37 @@ export default function Login() {
         setFormData(prev => ({ ...prev, companyToken: '' }));
       } else {
         // Network or other error - allow manual entry
+        setLookupError('Identification failed. Please enter your company token manually.');
         setShowTokenField(true);
       }
       setLookupDone(true);
     } finally {
       setIsLookingUp(false);
     }
+    return identifiedToken;
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError('');
 
+    // If still looking up, we need to wait
+    if (isLookingUp) {
+      setError('Identifying company... please wait.');
+      return;
+    }
+
+    let currentToken = formData.companyToken;
+
+    // If lookup wasn't performed yet, do it now
+    if (!lookupDone && formData.email) {
+      setIsLoading(true);
+      currentToken = await handleEmailBlur();
+      setIsLoading(false);
+    }
+
     // Validate company token is present
-    if (!formData.companyToken) {
+    if (!currentToken) {
       setError('Company token is required. Please enter your company token.');
       setShowTokenField(true);
       return;
@@ -90,10 +121,11 @@ export default function Login() {
     setIsLoading(true);
 
     try {
+      console.log('🔐 [Login] Attempting sign-in for:', { email: formData.email, companyToken: currentToken });
       await login({
         email: formData.email,
         password: formData.password,
-        companyToken: formData.companyToken
+        companyToken: currentToken
       });
 
       // Get redirect path or default to dashboard
@@ -102,6 +134,7 @@ export default function Login() {
 
       navigate(redirectPath);
     } catch (err) {
+      console.error('❌ [Login] Authentication failed:', err.response?.status, err.response?.data || err.message);
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);

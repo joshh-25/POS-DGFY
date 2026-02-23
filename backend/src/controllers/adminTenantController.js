@@ -6,6 +6,7 @@ import * as emailService from '../services/emailService.js';
 import { paypalService } from '../services/paypalService.js';
 import * as authService from '../services/authService.js';
 import { deleteTenantDatabase } from '../services/tenantProvisioningService.js';
+import * as landlordService from '../services/landlordService.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -91,6 +92,15 @@ export const registerCompanyRequest = async (req, res) => {
             paypal_subscription_id: validatedSubscriptionId,
             current_period_end: plan === 'premium' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null // Temp 30 days
         });
+
+        // Add email-tenant mapping immediately (even if pending)
+        // This enables the "Auto-fill company token" feature during login
+        try {
+            await landlordService.addEmailTenantMapping(adminEmail, tenant.id);
+        } catch (mappingError) {
+            console.warn(`[Registration] Failed to create email-tenant mapping for ${adminEmail}:`, mappingError.message);
+            // Non-blocking: we still created the tenant
+        }
 
         // If Auto-Approved (Premium), Provision Immediately
         if (initialStatus === 'active') {
@@ -438,6 +448,45 @@ export const updateTenant = async (req, res) => {
             });
         }
 
+        // Special case: pending → active requires full provisioning (same as Approve button).
+        // A plain status flip would leave the tenant with no database, schema, or admin user.
+        if (tenant.status === 'pending' && status === 'active') {
+            const result = await provisionTenant({
+                tenantId: tenant.id,
+                name: tenant.name,
+                dbName: tenant.db_name,
+                companyToken: tenant.company_token,
+                adminEmail: tenant.admin_email,
+                adminPasswordHash: tenant.admin_password_hash
+            });
+
+            // Send approval email (non-blocking)
+            if (emailService.isEmailConfigured()) {
+                try {
+                    await emailService.sendCompanyApprovedEmail({
+                        email: tenant.admin_email,
+                        companyName: tenant.name,
+                        companyToken: tenant.company_token
+                    });
+                } catch (emailError) {
+                    console.warn('[UpdateTenant] Failed to send approval email:', emailError.message);
+                }
+            }
+
+            // Apply plan change if also requested alongside activation
+            if (plan && plan !== tenant.plan) {
+                const refreshed = await Tenant.findByPk(tenant.id);
+                await refreshed.update({ plan });
+            }
+
+            return res.json({
+                success: true,
+                message: 'Tenant approved and provisioned successfully.',
+                data: { ...result, plan: plan || tenant.plan }
+            });
+        }
+
+        // All other transitions (active→inactive, active→rejected, plan change only, etc.)
         const updates = {};
         if (status) updates.status = status;
         if (plan) updates.plan = plan;

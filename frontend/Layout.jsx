@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePermission } from './src/hooks/usePermission'; // Created next
 import { PERMISSIONS } from './src/config/permissions_frontend'; // Need to create this or hardcode strings for now.
@@ -24,6 +24,7 @@ import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
 import useStore from './src/store/useStore.js';
+import { Button } from "@/components/ui/button";
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -57,9 +58,18 @@ const UserProfile = ({ user }) => {
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const navigate = useNavigate();
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
+
+  // Listen for session-expired events dispatched by api.js BroadcastChannel handler.
+  // This fires when ANOTHER tab's refresh failed or that tab logged out deliberately.
+  useEffect(() => {
+    const handler = () => setSessionExpired(true);
+    window.addEventListener('auth:session-expired', handler);
+    return () => window.removeEventListener('auth:session-expired', handler);
+  }, []);
 
   React.useEffect(() => {
     if (!loading) {
@@ -101,6 +111,29 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Session Expired Banner — shown in THIS tab when ANOTHER tab's refresh failed
+          or the user logged out in another tab. The tab that originally failed still
+          hard-redirects to /login; this tab shows a non-disruptive overlay instead. */}
+      {sessionExpired && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl p-8 max-w-sm w-full mx-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+              <LogOut className="w-6 h-6 text-amber-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Session Expired</h2>
+            <p className="text-sm text-slate-600 mb-6">
+              Your session has expired. Please sign in again to continue.
+            </p>
+            <Button
+              className="w-full"
+              onClick={() => navigate('/login?reason=session_expired')}
+            >
+              Sign In Again
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 z-40 flex items-center px-4">
         <button

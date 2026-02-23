@@ -117,7 +117,7 @@ export default function RegisterCompany() {
 
                         <div className="bg-blue-50 rounded-lg p-4 text-left mb-6">
                             <p className="text-sm font-semibold text-blue-800 mb-2">What happens next?</p>
-                            <ul className="text-sm text-blue-700 space-y-1">
+                            <ul className="text-sm text-blue-700 space-y-1 mb-4">
                                 {success.status === 'active' ? (
                                     <>
                                         <li>• Your Premium account is ready</li>
@@ -132,6 +132,23 @@ export default function RegisterCompany() {
                                     </>
                                 )}
                             </ul>
+
+                            {/* Display Company Token */}
+                            <div className="pt-3 border-t border-blue-200">
+                                <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Your Company Token:</p>
+                                <div className="flex items-center justify-between bg-white border border-blue-200 rounded p-2">
+                                    <code className="text-indigo-600 font-mono font-bold text-sm">{success.company_token}</code>
+                                    <button
+                                        onClick={() => navigator.clipboard.writeText(success.company_token)}
+                                        className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-blue-600 mt-2">
+                                    Save this token! You'll need it or your email to identify your company during login.
+                                </p>
+                            </div>
                         </div>
 
                         <Button onClick={() => navigate('/login')} className="w-full" variant="outline">

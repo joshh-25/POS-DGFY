@@ -49,6 +49,9 @@
 - [Phase 44: Session Initialization Hook (§5.4)](#phase-44-session-initialization-hook-54)
 - [Phase 45: Import Validation Hardening (Audit 6.1)](#phase-45-import-validation-hardening-audit-61)
 - [Phase 46: CSV Formula Injection Fix (Audit 6.2)](#phase-46-csv-formula-injection-fix-audit-62)
+- [Phase 47: Token Refresh Race Condition — Hardening & Full Test Coverage](#phase-47-token-refresh-race-condition--hardening--full-test-coverage)
+- [Phase 48: Local Development Database Cleanup](#phase-48-local-development-database-cleanup)
+- [Phase 49: Multi-Tab Token Refresh Coordination (BroadcastChannel)](#phase-49-multi-tab-token-refresh-coordination-broadcastchannel)
 
 ---
 
@@ -5758,3 +5761,245 @@ The export logic only handled standard CSV escaping (commas and quotes) but didn
 - `backend/src/services/supplierCSVService.js`
 - `backend/src/services/csvImportService.js` (Removed legacy mutation logic)
 - `System_Audit/6.2-CSV_formula_injection.md` (Updated to Resolved)
+
+### 2026-02-21: Fixed Company Token Auto-generation and Lookup
+
+#### Issue
+Company tokens were not being auto-filled during login because:
+1. Email-to-tenant mappings were only created for active tenants during provisioning.
+2. The lookup service only queried for active tenants.
+3. A race condition existed on the frontend login page.
+4. Frontend was pointing to the wrong port (5000 instead of 5001) in production.
+5. Missing CORS configuration for the production domain.
+
+#### Fixes Implemented
+- **Backend**: Update `adminTenantController.js` to create email-tenant mappings immediately upon registration (even for pending companies).
+- **Backend**: Update `landlordService.js` to include `pending` tenants in email lookups.
+- **Backend**: Include `status` field in lookup response in `authController.js`.
+- **Backend**: Added production domain and ports to `CORS_ORIGIN` in `.env`.
+- **Frontend**: Standardized `VITE_API_URL` to absolute path in `.env` for production stability.
+- **Frontend**: Refined `Login.jsx` to resolve race conditions and show status messages for pending companies.
+- **Frontend**: Updated `RegisterCompany.jsx` to display the company token on the success screen.
+- **Migration**: Backfilled missing mappings for all existing tenants.
+
+#### Documents Modified
+- `backend/src/controllers/adminTenantController.js`
+- `backend/src/services/landlordService.js`
+- `backend/src/controllers/authController.js`
+- `backend/.env`
+- `frontend/.env`
+- `frontend/Pages/Login.jsx`
+- `frontend/Pages/RegisterCompany.jsx`
+- `frontend/vite.config.js`
+
+#### Verification
+- Created integration test `backend/tests/lookup_v2.test.js` (passed).
+- Manual verification of auto-fill for both existing and new (pending) companies.
+
+---
+
+## Phase 47: Token Refresh Race Condition — Hardening & Full Test Coverage
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-23
+
+### Overview
+Audited and hardened the token refresh mechanism end-to-end. The frontend Axios interceptor had three latent gaps that could cause race conditions under concurrent 401 responses. Three fixes were implemented in `api.js`, and a full test suite (11 tests across two layers) was written to machine-verify all behaviour.
+
+### Root Cause Analysis
+Three gaps were identified in `frontend/src/services/api.js`:
+
+1. **No `_retry` flag** — A queued retry that itself received a 401 from the backend would re-enter the interceptor and trigger a second refresh cycle, creating an infinite loop.
+2. **No queue cap** — During a long refresh, unlimited requests could pile up in `failedQueue`, causing memory pressure and unpredictable drain behaviour.
+3. **No refresh timeout** — If the `/auth/refresh-token` endpoint hung indefinitely, `isRefreshing` would stay `true` forever, permanently blocking all subsequent API calls.
+
+### Fixes Implemented (`frontend/src/services/api.js`)
+- **`_retry` flag**: Set `config._retry = true` on each queued retry. The error interceptor checks this flag before entering a new refresh cycle — retries that get 401 are rejected immediately without triggering a second refresh.
+- **Queue cap of 20**: If `failedQueue.length >= 20`, new 401 requests are rejected immediately with a queue-full error rather than being enqueued.
+- **`timeout: 15000`** on the `axios.post('/auth/refresh-token')` call: Ensures `isRefreshing` always resets (via `.finally()`) within 15 seconds even if the server never responds.
+
+### Test Suite
+
+#### Backend Unit Tests: `backend/tests/token_refresh_race.test.js` (4 tests)
+Runs with mocked Redis (`setup.js` active). Verifies the HTTP layer behaviour of the refresh endpoint in isolation:
+
+| # | Test | What it proves |
+|---|------|----------------|
+| 1.1 | Valid refresh token → new token pair | Happy path: correct JWT structure returned |
+| 1.2 | Expired/invalid token → 401 | Backend correctly rejects bad tokens |
+| 1.3 | Missing token body → 422 | Validator rejects missing `refreshToken` field |
+| 1.4 | Blacklist after use (mocked Redis) | Used token is blacklisted; second use returns 401 |
+
+#### Backend Integration Tests: `backend/tests/token_refresh_race_integration.test.js` (2 tests)
+Runs with **real Redis** (`TEST_TYPE=integration` skips `setup.js`, bypassing the Redis mock). Verifies the actual blacklisting behaviour end-to-end:
+
+| # | Test | What it proves |
+|---|------|----------------|
+| 1.5 | Concurrent refresh calls — no 5xx | Without a distributed lock, all concurrent requests pass the blacklist check before any write completes. No server crashes. Each 200 response has a valid JWT structure. Documents that single-winner enforcement requires Redlock — the **frontend mutex is load-bearing**. |
+| 1.6 | Sequential RTR — used token blacklisted | `rt1 → rt2` succeeds; reusing `rt1` returns 401. Verified via HTTP (not direct service call) due to `AsyncLocalStorage` tenant-scoped Redis key prefix. |
+
+**Key architectural discovery:** `blacklistToken` writes inside an HTTP request context use a `tenant:<id>:blacklist:token:...` Redis key prefix (via `AsyncLocalStorage`). Direct calls from test code outside a request context use `system:blacklist:token:...`. These are different keys — blacklist assertions must be done via HTTP.
+
+**`beforeEach` design:** A 1100ms delay ensures `generateRefreshToken`'s `iat` (issued-at, second-precision) is distinct per test, preventing a prior test's blacklisted token from colliding with the next test's login token.
+
+#### Frontend Interceptor Tests: `frontend/src/services/__tests__/api.interceptor.test.js` (7 tests)
+Uses `axios-mock-adapter` and `vi.resetModules()` per test to get a fresh module with clean `isRefreshing`/`failedQueue` state:
+
+| # | Test | What it proves |
+|---|------|----------------|
+| 2.1 | 6 concurrent 401s → exactly 1 refresh fires | Mutex works: only one refresh call is made regardless of concurrency |
+| 2.2 | Queued retries get correct headers | `Authorization: Bearer <new-token>` and `x-company-token` are set on all retried requests |
+| 2.3 | Refresh failure → all queued requests reject | When refresh returns 401, all waiting requests are drained with an error |
+| 2.4 | Queued retry 401 does not start second refresh | `_retry` flag prevents infinite loop when backend rejects even fresh tokens |
+| 2.5 | Queue cap: requests beyond 20 rejected immediately | Requests 21+ are rejected without being enqueued during a long refresh |
+| 2.6 | 15s timeout resets `isRefreshing` (contract test) | `vi.spyOn(axios, 'post')` asserts `timeout: 15000` is actually passed — not just that fake timers fire. A second refresh cycle succeeds after the first times out. |
+| 2.7 | Network error drains queue and resets `isRefreshing` | `ECONNREFUSED`-style error (no `.response`) still calls `processQueue(err)` and `.finally()`, proven by a successful new refresh cycle immediately after. |
+
+### npm Script Added
+`backend/package.json`:
+```json
+"test:integration": "cross-env TEST_TYPE=integration node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --forceExit --testPathPattern=token_refresh_race_integration"
+```
+`cross-env` required for Windows compatibility (`TEST_TYPE=value cmd` syntax is not recognised on Windows).
+
+### Files Modified/Created
+| File | Change |
+|------|--------|
+| `frontend/src/services/api.js` | Added `_retry` flag, queue cap (20), `timeout: 15000` on refresh call |
+| `backend/tests/token_refresh_race.test.js` | Created — 4 unit tests (mocked Redis) |
+| `backend/tests/token_refresh_race_integration.test.js` | Created — 2 integration tests (real Redis) |
+| `frontend/src/services/__tests__/api.interceptor.test.js` | Created — 7 frontend interceptor tests |
+| `backend/package.json` | Added `test:integration` script + `cross-env` devDependency |
+
+### Test Results
+- Backend unit tests: **4/4 pass**
+- Backend integration tests: **2/2 pass** (requires Redis on `localhost:6379`)
+- Frontend interceptor tests: **7/7 pass**
+
+---
+
+## Phase 48: Local Development Database Cleanup
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-23
+
+### Overview
+Cleaned up the local MySQL instance to remove orphaned tenant databases created by previous incomplete registration attempts. Established a clear understanding of the database architecture for future development.
+
+### Problem Discovered
+The `sku.tenants` table was empty (0 rows) even though 16 separate MySQL databases existed with SKU-related names. Investigation revealed:
+
+- All `tenant*` and `sku_tenant_*` databases were **orphaned** — created during provisioning attempts that never completed properly because no matching row was ever written to `sku.tenants`.
+- Every database contained the same seeded `admin@test.com / admin_user` user (0 items, 0 POs) — no real data in any of them.
+- The `sku.user_tenant_mappings` table was also empty, which is why the email lookup feature always returned 404.
+- The backend was operating in **"default fallback mode"**: `tenantHandler.js` falls back to the default `sku` database when no valid tenant row exists, which is why login still worked with a manually typed token.
+
+### Databases Dropped (all empty, orphaned)
+| Database | Reason |
+|----------|--------|
+| `sku_tenant_paidpremiumco_55dfc44e` | Orphaned provisioning attempt |
+| `sku_tenant_paidpremiumco_7f21272b` | Orphaned provisioning attempt |
+| `tenant1e2ce328-*` through `tenantfaec609d-*` (11 databases) | Orphaned provisioning attempts |
+| `sku_inventory_manager` | Legacy single-tenant database, superseded by `sku` |
+| `sku_inventory_manager_test` | Obsolete test database |
+| `sku_test` | Obsolete test database |
+
+### Database Retained
+| Database | Purpose |
+|----------|---------|
+| `sku` | Main application database (`DB_NAME=SKU` in `.env`). Contains all 36 tables including `tenants`, `user_tenant_mappings`, `users`, and all app tables. **This is both the landlord control plane and the default app database.** |
+
+### Architecture Clarified
+```
+sku (DB_NAME in .env) — landlord + default app DB
+├── tenants              ← registry of all companies
+├── user_tenant_mappings ← email → tenant lookup (powers auto-fill login)
+├── users                ← user accounts
+├── items / purchase_orders / job_orders / fifo_batches / ...
+└── (36 tables total)
+```
+
+**Correct registration flow (going forward):**
+1. Register company via `/register-company` → row created in `sku.tenants` (status: `pending`)
+2. Admin approves in portal → status: `active`; a new dedicated database is provisioned (e.g. `sku_tenant_<name>_<hash>`)
+3. User registers/logs in with company token → `sku.user_tenant_mappings` row created
+4. Email lookup (`POST /api/v1/auth/lookup`) finds the mapping → company token auto-fills on login
+
+### Verification
+- `sku` database: all 36 tables intact, `admin@test.com` user present, structure confirmed clean.
+- All other project databases on the machine (`nexuscommand`, `nota_central`, `notion_queuer`, etc.) were not touched.
+
+---
+
+## Phase 49: Multi-Tab Token Refresh Coordination (BroadcastChannel)
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-23
+**Resolves**: Audit 10.1 (complete resolution — multi-tab gap)
+
+### Overview
+Phase 47 fixed the single-tab race condition (multiple concurrent 401s in one tab). Critical evaluation revealed a remaining real-world gap: two open browser tabs could both attempt token refresh simultaneously, causing RTR (Refresh Token Rotation) to blacklist the first tab's refresh token before the second tab could use it, forcing an unintended logout.
+
+### Root Cause
+The `isRefreshing` mutex in `frontend/src/services/api.js` is a JavaScript module-level variable — scoped to a single browser tab's JS heap. Each tab has its own copy. Two tabs hitting 401 simultaneously:
+
+1. Tab A: `isRefreshing = false` → acquires leader, calls `/auth/refresh-token`
+2. Tab B: `isRefreshing = false` (its own copy) → also calls `/auth/refresh-token` ~50ms later
+3. Tab A's refresh succeeds → old refresh token is blacklisted by RTR
+4. Tab B fires with the now-blacklisted token → 401 → forced logout
+
+### Solution: BroadcastChannel API
+`BroadcastChannel('sku_auth')` is a browser-native API for direct tab-to-tab messaging on the same origin. No server roundtrip. No WebSocket. No polyfill needed (supported in all modern browsers).
+
+**Cross-tab messaging protocol:**
+| Message Type | Sent by | Received by | Effect |
+|---|---|---|---|
+| `token-refresh-started` | Leader tab | Follower tabs | Follower sets `isRefreshing = true` → queues locally |
+| `token-refresh-success` | Leader tab | Follower tabs | Follower adopts new token → drains local queue → retries |
+| `session-expired` | Leader tab (on refresh fail) | Follower tabs | Follower shows "Session Expired" banner |
+| `auth:logout` | Any tab (deliberate logout) | Other tabs | Other tabs show "Session Expired" banner |
+
+**`iAmRefreshLeader` flag:** Added alongside `isRefreshing` to track which tab initiated the refresh. The `.finally()` block only resets `isRefreshing` when `iAmRefreshLeader === true`. Follower tabs reset via the `onmessage` handler — they never ran `axios.post`, so their `.finally()` would not fire.
+
+### UX Decision: Banner vs. Hard-Redirect for Other Tabs
+- **Originating tab** (refresh failed or deliberate logout): hard-redirects to `/login?reason=session_expired`
+- **Other open tabs**: show a non-disruptive overlay banner ("Session Expired — Sign In Again")
+
+This prevents all other tabs from flash-redirecting simultaneously when only one tab expired. Users can finish reading the current page before clicking through to login.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `frontend/src/services/api.js` | Added `BroadcastChannel` layer, `iAmRefreshLeader` flag, cross-tab message protocol |
+| `frontend/Layout.jsx` | Added `sessionExpired` state, `useEffect` listener for `auth:session-expired` window event, session expired banner overlay |
+| `frontend/src/services/__tests__/api.interceptor.test.js` | Added tests 2.8 and 2.9; added BroadcastChannel mock using `class` syntax with `globalThis.__bcInstance` |
+
+### Test Coverage Added (2 new tests, total 9/9)
+
+| # | Test | What it proves |
+|---|------|----------------|
+| 2.8 | Receiving `token-refresh-success` from another tab drains local queue | A follower tab whose request was queued (`isRefreshing = true`) correctly adopts the cross-tab token and retries the queued request — without ever calling `/auth/refresh-token` itself |
+| 2.9 | Receiving `session-expired` or `auth:logout` from another tab fires `auth:session-expired` on window | The banner event is dispatched correctly regardless of which message type is received |
+
+**Test infrastructure note:** `BroadcastChannel` must be mocked using `class` syntax (not `vi.fn()`) to avoid a vitest warning. The instance must be stored on `globalThis.__bcInstance` (not a module-level `let`) to survive `vi.resetModules()` which re-imports `api.js` per test.
+
+### Test Results
+```
+✓ 2.1 — only 1 refresh request fires for 6 concurrent 401s
+✓ 2.2 — queued retries receive Authorization and x-company-token headers
+✓ 2.3 — all queued requests reject when the refresh call fails
+✓ 2.4 — a queued retry that receives 401 does not trigger a second refresh
+✓ 2.5 — requests beyond queue cap of 20 are rejected immediately during long refresh
+✓ 2.6 — isRefreshing resets after the 15s refresh timeout, allowing a new attempt
+✓ 2.7 — network error during refresh drains queue and resets isRefreshing
+✓ 2.8 — receiving token-refresh-success from another tab drains local queue
+✓ 2.9 — receiving session-expired from another tab fires auth:session-expired on window
+Test Files: 1 passed (1) | Tests: 9 passed (9) | Duration: ~1s
+```
+
+### Audit 10.1 Resolution Summary
+| Scenario | Before Phase 47 | After Phase 47 | After Phase 49 |
+|---|---|---|---|
+| Single-tab concurrent 401s | 🔴 Multiple refresh calls | ✅ Mutex (1 refresh) | ✅ Unchanged |
+| Multi-tab concurrent refresh | 🔴 RTR collision → forced logout | 🔴 Still unresolved | ✅ BroadcastChannel coordination |
+| Deliberate logout synced to other tabs | 🔴 Other tabs stay "logged in" | 🔴 Still unresolved | ✅ `auth:logout` broadcast |
+| Session expiry UX in other tabs | 🔴 Hard-redirect chaos | 🔴 Still unresolved | ✅ Graceful banner |
+| Automated test coverage | 0 tests | 13 tests (7 frontend + 6 backend) | 15 tests (9 frontend + 6 backend) |

@@ -935,6 +935,17 @@ export default function Items() {
           item={selectedItem}
           open={showDetailsModal}
           onClose={() => setShowDetailsModal(false)}
+          onRefresh={async () => {
+            if (!selectedItem) return;
+            try {
+              const { getItemById } = await import('../src/services/itemService.js');
+              const refreshed = await getItemById(selectedItem.item_id);
+              setSelectedItem(refreshed);
+            } catch (e) {
+              console.error('Failed to refresh item after write-off:', e);
+            }
+            refetch();
+          }}
         />
         <ItemFormModal
           item={editingItem}
