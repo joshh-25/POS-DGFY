@@ -24,8 +24,9 @@ export const generalLimiter = rateLimit({
   message: createRateLimitError('Too many requests from this IP, please try again later.'),
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Disable validation warnings when running behind reverse proxy
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  // Trust proxy so limiter reads the real client IP from X-Forwarded-For (set by Nginx)
+  // Without this, all users behind Nginx share a single 127.0.0.1 bucket → mass 429s
+  validate: { trustProxy: true },
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,
@@ -52,7 +53,7 @@ export const authLimiter = rateLimit({
   message: createRateLimitError('Too many authentication attempts, please try again later.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: { trustProxy: true },
   handler: (req, res) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,
@@ -74,7 +75,7 @@ export const lookupLimiter = rateLimit({
   message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: { trustProxy: true },
   handler: (req, res) => {
     logger.warn('Email lookup rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,
@@ -96,7 +97,7 @@ export const tenantRegistrationLimiter = rateLimit({
   message: createRateLimitError('Too many registration requests from this IP, please try again after an hour.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: { trustProxy: true },
   handler: (req, res) => {
     logger.warn('Tenant registration rate limit exceeded', {
       ip: req.ip || req.connection.remoteAddress,

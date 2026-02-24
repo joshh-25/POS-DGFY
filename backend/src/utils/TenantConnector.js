@@ -76,9 +76,13 @@ class TenantConnector {
                     dialect: 'mysql',
                     logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
                     pool: {
-                        max: 5,
+                        // 5 users per tenant + 2 buffer for concurrent requests from same user.
+                        // 10 tenants × 7 = 70 tenant connections + 30 landlord = 100 total,
+                        // safely under MySQL's default max_connections of 151.
+                        max: 7,
                         min: 0,
-                        acquire: 30000,
+                        // Fail fast (10s) instead of making users wait 30s for a connection slot
+                        acquire: 10000,
                         idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
                         evict: 1000  // Check for idle connections every 1s
                     },

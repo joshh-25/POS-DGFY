@@ -21,9 +21,13 @@ const sequelize = new Sequelize(
     dialect: process.env.DB_DIALECT || 'mysql',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     pool: {
-      max: 5,
+      // Landlord DB is hit on every single request (tenant resolution).
+      // At 50 users × ~3 concurrent requests = ~150 simultaneous touches at peak.
+      // 30 connections keeps waits near-zero while staying under MySQL's default max_connections (151).
+      max: 30,
       min: 0,
-      acquire: 30000,
+      // Fail fast (10s) instead of making users wait 30s for a connection slot
+      acquire: 10000,
       idle: 10000
     },
     define: {

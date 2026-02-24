@@ -37,7 +37,7 @@
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
 11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **52 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence. Supports bulk folder creation/deletion via single confirmation.
-12. **Email Notifications (Gmail SMTP)**: Automated emails for user invitations, company approval/rejection notifications. Uses Nodemailer with graceful degradation (failures don't block operations).
+12. **Email Notifications (Gmail SMTP)**: Automated emails for user invitations, company approval/rejection, **subscription expiry warnings, and payment failure alerts**. Uses Nodemailer with graceful degradation.
 
 ## 🤖 AI Assistant Features
 The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
@@ -154,6 +154,9 @@ pm2 logs
 
 # Full deployment (pulls code, installs deps, builds, migrates, restarts)
 ./scripts/deploy.sh
+
+# Remote Deployment Trigger (from local machine)
+bash scripts/deploy-remote.sh
 ```
 
 ## Development (Local testing only)

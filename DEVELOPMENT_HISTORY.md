@@ -52,6 +52,9 @@
 - [Phase 47: Token Refresh Race Condition — Hardening & Full Test Coverage](#phase-47-token-refresh-race-condition--hardening--full-test-coverage)
 - [Phase 48: Local Development Database Cleanup](#phase-48-local-development-database-cleanup)
 - [Phase 49: Multi-Tab Token Refresh Coordination (BroadcastChannel)](#phase-49-multi-tab-token-refresh-coordination-broadcastchannel)
+- [Phase 50: Production Deployment Hardening & Strategy](#phase-50-production-deployment-hardening--strategy)
+- [Phase 51: Auth Rate Limiting Refinement (429 Fix)](#phase-51-auth-rate-limiting-refinement-429-fix)
+- [Phase 52: Dashboard UI Scrollability & Connection Fixes](#phase-52-dashboard-ui-scrollability--connection-fixes)
 
 ---
 
@@ -6003,3 +6006,76 @@ Test Files: 1 passed (1) | Tests: 9 passed (9) | Duration: ~1s
 | Deliberate logout synced to other tabs | 🔴 Other tabs stay "logged in" | 🔴 Still unresolved | ✅ `auth:logout` broadcast |
 | Session expiry UX in other tabs | 🔴 Hard-redirect chaos | 🔴 Still unresolved | ✅ Graceful banner |
 | Automated test coverage | 0 tests | 13 tests (7 frontend + 6 backend) | 15 tests (9 frontend + 6 backend) |
+
+---
+
+## Phase 50: Production Deployment Hardening & Strategy
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-23
+
+### Overview
+Hardened the deployment pipeline to ensure a zero-data-loss transition from local development to the production server at `skupervisor.surebizcorp.com`.
+
+### Infrastructure & Deployment
+- [x] **New Script**: Created `scripts/deploy-remote.sh` for triggering deployments from local dev environments.
+- [x] **Process Audit**: Reviewed `scripts/deploy.sh` to confirm it includes `db:migrate`, `sync-tenant-schemas.js`, and `npm install` for both layers.
+- [x] **Security Workflow**: Established a production safety manual where the user performs manual SSH backups (`mysqldump`) before deployment.
+- [x] **Email Verification**: Audited and verified SMTP connectivity for `smtp.gmail.com` using `skupervisor@gmail.com`.
+    - Enumerated & verified all 6 transactional email flows (Invitations, Approvals, Expiry Warnings, etc.).
+
+### Results
+- Successfully pushed the Cumulative fix bundle (CSV injection, session init, token refresh race) to production.
+- Production environment now has a verified manual backup procedure.
+
+---
+
+## Phase 51: Auth Rate Limiting Refinement (429 Fix)
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-23
+
+### Issue: 429 Too Many Requests on Logout
+During stress testing on the production server, users were receiving `429` errors on `/auth/logout`.
+
+### Root Cause Analysis
+The `authLimiter` (strict: 5 req/15 min in production) was applied as a **blanket middleware** in `server.js` for all `/api/v1/auth/*` routes.
+- Every login + logout cycle consumed 2 slots.
+- Legitimate users were being throttled after just 2-3 sessions.
+- Authenticated endpoints like `/logout` and `/refresh-token` do not require brute-force protection as they already require a valid JWT.
+
+### Fix Applied
+- **Selective Limiting**: Moved `authLimiter` from the blanket mount in `server.js` to specific route definitions in `auth.js`.
+- **Targeting**: Limiter is now only active on `/login` and `/register`.
+- **Secondary Protection**: The `generalLimiter` (100 req/15 min) remains active on all auth routes as a backup.
+
+### Impact
+- Stress testing login/logout cycles now works seamlessly without 429 errors.
+- Authentication security remains high for public, brute-forceable entry points.
+
+---
+
+## Phase 52: Dashboard UI Scrollability & Connection Fixes
+**Status**: ✅ COMPLETE  
+**Date**: 2026-02-23
+
+### Issue 1: Dashboard Alerts Not Scrollable
+Users were unable to scroll down to view all low stock items on the dashboard because the UI lists were hard-limited to 5 items without scrolling logic.
+
+### UI Fix Applied
+- **LowStockList.jsx**: Removed the `.slice(0, 5)` limit for mapping items and applied `max-h-[400px] overflow-y-auto` to the container.
+- **ExpiringBatchesList.jsx**: Proactively applied the same `max-h-[400px] overflow-y-auto` fix to the expiry list to ensure consistency across the dashboard.
+
+### Issue 2: Frontend ERR_CONNECTION_REFUSED
+After fixing the UI, the frontend was throwing `ERR_CONNECTION_REFUSED` when trying to fetch data from the dashboard `stats`, `low-stock`, and `recent-movements` endpoints.
+
+### Connection & Infrastructure Fixes
+1. **Port Mismatch**: The backend process (`server.js`) was running on port `5000` (driven by `backend/.env`), but the frontend's build config (`VITE_API_URL` and `vite.config.js`) was directing API calls to `5001`.
+   - *Fix*: Updated `frontend/.env` and `vite.config.js` to point back to `5000`.
+2. **PM2 DB Sync Deadlock**: Backend was configured in `ecosystem.config.cjs` to run in `cluster` mode instead of `fork` mode. This caused multiple NodeJS threads to start and simultaneously attempt to execute `sequelize.sync({ alter: true })`, deadlocking the MySQL database when they both tried adding foreign keys (e.g., to `receive_tokens`).
+   - *Fix*: Stopped PM2, cleared the blocking MySQL queries via `KILL`, and updated `ecosystem.config.cjs` to use `exec_mode: 'fork'` and `instances: 1` for the backend.
+3. **Vite Rebuild**: Because Vite statically compiles environment variables into its production bundle (`dist/`), merely changing the `.env` file didn't update the running web app.
+   - *Fix*: Ran `npm run build` inside the `frontend` folder to bake the correct `VITE_API_URL` into `index.js`, resolving the connection failure.
+
+### Impact
+- Dashboard items (Low Stock, Expiries) are now fully visible and scrollable.
+- PM2 starts the backend process flawlessly every time without database contention/deadlocks.
+- Frontend properly connects to the backend API without network errors.

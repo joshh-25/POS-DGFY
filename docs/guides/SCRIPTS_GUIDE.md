@@ -68,7 +68,29 @@ Automates the entire deployment process on the production server.
 
 ---
 
-### 3. `kill-dev.sh` - Kill All Development Servers
+### 3. `deploy-remote.sh` - Remote Deployment Trigger (Local)
+
+Triggers the production deployment from your local development machine.
+
+**Usage:**
+```bash
+# Run from your local root directory
+bash scripts/deploy-remote.sh
+```
+
+**What it does:**
+1. **Confirmation**: Asks for explicit confirmation to avoid accidental deployments.
+2. **Git Push**: Pushes your current `master` branch up to GitHub.
+3. **Remote Execution**: SSHs into the production server and executes `./scripts/deploy.sh`.
+4. **Streaming**: Streams the remote deployment logs directly to your local terminal.
+
+**Pre-requisites:**
+- SSH access to `192.53.116.33` on port `64428`.
+- SSH Key or server password.
+
+---
+
+### 4. `kill-dev.sh` - Kill All Development Servers
 
 Kills all common development ports at once (5000, 5173, 5174).
 
@@ -474,6 +496,26 @@ If you encounter issues:
 4. Check Git Bash is up to date
 
 For other issues, refer to the main [README.md](README.md) or [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md).
+
+### 9. `test_invitation_email.js` - Email Service Diagnostic
+
+Tests the SMTP connection and invitation email flow.
+
+**Usage:**
+```bash
+# Run from backend directory
+node src/scripts/test_invitation_email.js --email=your@email.com
+```
+
+**What it does:**
+1.  Verifies the SMTP connection defined in `.env`.
+2.  Triggers a real invitation email to the specified address.
+3.  Logs the outcome (Success/Failure) to the terminal.
+
+**When to use:**
+- After changing SMTP credentials.
+- If users report they are not receiving invitations.
+- To verify Gmail App Password configuration.
 
 ---
 

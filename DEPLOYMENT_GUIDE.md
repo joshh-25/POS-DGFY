@@ -165,14 +165,25 @@ systemctl status mysql
 
 ## Quick One-Liner Deployment (From Local Machine)
 
-After committing your changes locally, you can deploy with a single command:
+As of **2026-02-23**, there are two ways to trigger a remote deployment without manually SSH-ing for every command:
+
+### Option A: The Automated Trigger (Recommended)
+We have provided a dedicated script in your local development environment that handles the git push and remote execution in one go.
 
 ```bash
-git push origin master; ssh -p 64428 root@192.53.116.33 "cd /var/www/skupervisor && ./scripts/deploy.sh"
+# Run from your local root directory
+bash scripts/deploy-remote.sh
+```
+This script will confirm the deployment, push your local `master` branch to GitHub, and then SSH into the production server to run the full `./scripts/deploy.sh` pipeline.
+
+### Option B: Manual SSH Command (One-Liner)
+If you prefer a direct command:
+```bash
+git push origin master && ssh -p 64428 root@192.53.116.33 "cd /var/www/skupervisor && ./scripts/deploy.sh"
 ```
 
-> [!NOTE]
-> You will be prompted for the SSH password. The `git pull` on the server uses a stored GitHub PAT, so no password is needed there.
+> [!CAUTION]
+> **Data Safety First**: Always ensure you have a fresh database backup before major deployments. You can run `mysqldump skupervisor_prod > /var/backups/manual_pre_deploy.sql` on the server before starting.
 
 ---
 

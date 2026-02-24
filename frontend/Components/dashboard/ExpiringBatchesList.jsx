@@ -71,8 +71,8 @@ export default function ExpiringBatchesList({ alerts, onRefresh }) {
     }
 
     return (
-      <div className="divide-y divide-slate-100">
-        {alertList.slice(0, 5).map((alert, index) => {
+      <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+        {alertList.map((alert, index) => {
           const isMissingExpiry = alert.type === 'missing_expiry_date';
 
           const days = alert.days_until_expiry;

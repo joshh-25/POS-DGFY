@@ -1,1 +1,0 @@
-UPDATE Users SET permissions='["items:view","items:create","items:edit","items:delete","suppliers:view","suppliers:create","suppliers:edit","suppliers:delete","po:view","po:create","po:edit","jo:view","jo:create","jo:edit","stock:view","stock:create","reports:view","settings:view","settings:edit","users:manage"]' WHERE email='testuser@sigmacorp.test';

@@ -68,8 +68,8 @@ export default function LowStockList({ items }) {
     }
 
     return (
-      <div className="divide-y divide-slate-100">
-        {itemList.slice(0, 5).map((item, index) => {
+      <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+        {itemList.map((item, index) => {
           const percentage = Math.round((item.current_stock / item.max_capacity) * 100);
           const isCritical = item.current_stock < item.min_threshold * 0.5;
 

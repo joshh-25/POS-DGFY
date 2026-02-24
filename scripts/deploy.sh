@@ -147,19 +147,48 @@ fi
 
 cd "$PROJECT_ROOT"
 
+# 5b. Inject required env vars into backend .env if not already present
+log "Step 5b: Ensuring production env vars are set..."
+ENV_FILE="$BACKEND_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    # RATE_LIMIT_MAX_REQUESTS: raises per-IP limit from 100 to 500 so legitimate users
+    # with multiple tabs and AI Chat usage don't trigger 429 errors.
+    if ! grep -q "^RATE_LIMIT_MAX_REQUESTS=" "$ENV_FILE"; then
+        echo "" >> "$ENV_FILE"
+        echo "# Rate limit per real client IP (500 req/15min — safe for 5 users/tenant doing AI Chat + Dashboard)" >> "$ENV_FILE"
+        echo "RATE_LIMIT_MAX_REQUESTS=500" >> "$ENV_FILE"
+        log "Added RATE_LIMIT_MAX_REQUESTS=500 to backend/.env"
+    else
+        log "RATE_LIMIT_MAX_REQUESTS already set in backend/.env — skipping."
+    fi
+else
+    warn "backend/.env not found at $ENV_FILE — skipping env var injection."
+fi
+
 # 6. Restart Services
-# 5b. Force Production Env for PM2
 log "Step 6: Restarting PM2 services (Production Mode)..."
 if command -v pm2 >/dev/null 2>&1; then
-    # Start or Restart using the ecosystem file to ensure env vars are loaded
-    if [ -f "ecosystem.config.js" ]; then
-        echo ">> using ecosystem.config.js..."
-        pm2 startOrRestart ecosystem.config.js --env production --update-env
-    else 
-        # Fallback if no ecosystem file (though we just created it)
-        warn "ecosystem.config.js not found. Restarting existing processes..."
+    # Prefer ecosystem.config.cjs (current CommonJS config file)
+    # Fall back to .js if .cjs is not found (legacy support)
+    if [ -f "$PROJECT_ROOT/ecosystem.config.cjs" ]; then
+        ECOSYSTEM_FILE="$PROJECT_ROOT/ecosystem.config.cjs"
+    elif [ -f "$PROJECT_ROOT/ecosystem.config.js" ]; then
+        ECOSYSTEM_FILE="$PROJECT_ROOT/ecosystem.config.js"
+    else
+        ECOSYSTEM_FILE=""
+    fi
+
+    if [ -n "$ECOSYSTEM_FILE" ]; then
+        echo ">> Using $ECOSYSTEM_FILE..."
+        # startOrReload: zero-downtime reload if already running, fresh start if not
+        pm2 startOrReload "$ECOSYSTEM_FILE" --env production --update-env
+    else
+        warn "No ecosystem config file found. Restarting existing PM2 processes..."
         pm2 restart all --update-env
     fi
+
+    # Persist the process list so PM2 auto-starts after a server reboot
+    pm2 save
 else
     warn "PM2 not found in PATH. Skipping service restart."
 fi
@@ -167,60 +196,62 @@ fi
 # 7. Post-Deployment Verification
 log "Step 7: Verifying deployment..."
 
-# Simple Smoke Test
-# Wait a few seconds for server to boot
+# Use the dedicated /health endpoint (no auth required, returns DB + Redis status).
+# Backend runs on port 5000 (not 5001).
+API_HEALTH_URL="http://localhost:5000/health"
+
+echo ">> Waiting for backend to boot..."
 sleep 5
 
-API_HEALTH_URL="http://localhost:5001/api/v1/health" # Adjust if there is a specific health endpoint, otherwise check root or items
-# Fallback to items endpoint if health doesn't exist yet (based on previous curl examples)
-API_TEST_URL="http://localhost:5001/api/v1/items"
-
-echo ">> Pinging Backend API ($API_TEST_URL)..."
+echo ">> Pinging health endpoint ($API_HEALTH_URL)..."
 
 if command -v curl >/dev/null 2>&1; then
-    # Retry loop: Try 10 times, waiting 3 seconds between checks (Total 30s)
+    # Retry loop: 10 attempts × 3 seconds = 30 seconds max wait
     MAX_RETRIES=10
     COUNT=0
     SUCCESS=0
 
     while [ $COUNT -lt $MAX_RETRIES ]; do
         set +e
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_TEST_URL")
+        RESPONSE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" "$API_HEALTH_URL")
         EXIT_CODE=$?
         set -e
 
         if [ $EXIT_CODE -ne 0 ]; then
-             echo "   ... curl failed with exit code $EXIT_CODE. Waiting..."
-        elif [[ "$HTTP_CODE" =~ ^2 ]]; then
-            echo "   ✅ Backend appears healthy (HTTP $HTTP_CODE)"
+            echo "   ... curl failed (exit $EXIT_CODE). Server may still be starting. Waiting..."
+        elif [[ "$RESPONSE" == "200" ]]; then
+            echo "   ✅ Backend is healthy (HTTP 200)"
+            # Show DB/Redis status from health response if jq is available
+            if command -v jq >/dev/null 2>&1; then
+                echo "   DB status:    $(jq -r '.services.database.status' /tmp/health_response.json 2>/dev/null || echo 'n/a')"
+                echo "   Redis status: $(jq -r '.services.redis.status' /tmp/health_response.json 2>/dev/null || echo 'n/a')"
+                echo "   Tenant pool:  $(jq -r '.services.tenantPool.utilization' /tmp/health_response.json 2>/dev/null || echo 'n/a')"
+            fi
             SUCCESS=1
             break
-        elif [[ "$HTTP_CODE" == "401" ]]; then
-            echo "   ✅ Backend is reachable (HTTP 401 Unauthorized is expected for protected routes)"
-            SUCCESS=1
+        elif [[ "$RESPONSE" == "503" ]]; then
+            echo "   ⚠️  Backend responded 503 (DB or Redis unhealthy). Check logs."
+            SUCCESS=1  # Server is running, just a dependency issue — don't block deploy
             break
         else
-            echo "   ... Attempt $((COUNT+1))/$MAX_RETRIES: Received HTTP $HTTP_CODE. Waiting..."
+            echo "   ... Attempt $((COUNT+1))/$MAX_RETRIES: HTTP $RESPONSE. Waiting..."
         fi
-        
+
         sleep 3
         COUNT=$((COUNT+1))
     done
 
     if [ $SUCCESS -eq 0 ]; then
-        warn "Backend did not respond with 2xx/401 after 30 seconds."
-        echo "   Last HTTP status: $HTTP_CODE" 
-        # We don't exit 1 here to avoid failing the whole pipeline if it's just slow, 
-        # but we warn significantly.
+        warn "Backend did not respond after 30 seconds. Check: pm2 logs sku-backend"
     fi
-
 else
-    echo ">> curl not found, skipping API check."
+    echo ">> curl not found, skipping health check."
 fi
 
-# Check PM2 status
+# Show PM2 process status
 if command -v pm2 >/dev/null 2>&1; then
-    pm2 status | grep -E "online|errored" || true
+    echo ""
+    pm2 list
 fi
 
 # 8. Production Billing Verification

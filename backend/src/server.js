@@ -298,6 +298,9 @@ const startServer = async () => {
       tenantConnector.startPeriodicCleanup();
     });
 
+    // Kill requests that hang longer than 30 seconds (prevents connection pool exhaustion)
+    server.setTimeout(30000);
+
     // Graceful shutdown
     const gracefulShutdown = async (signal) => {
       logger.info(`${signal} received. Starting graceful shutdown...`);
@@ -328,15 +331,17 @@ const startServer = async () => {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-    // Handle unhandled promise rejections
+    // Handle unhandled promise rejections — log but do NOT crash the server.
+    // Calling gracefulShutdown here would take down all 50 users whenever any background
+    // job (billing scheduler, OpenAI, PayPal) throws an unexpected error.
     process.on('unhandledRejection', (err) => {
-      logger.error('Unhandled Promise Rejection:', err);
-      gracefulShutdown('unhandledRejection');
+      logger.error('Unhandled Promise Rejection (non-fatal, server kept alive):', err);
     });
 
-    // Handle uncaught exceptions
+    // Handle truly unrecoverable errors (synchronous throws that corrupt Node.js state).
+    // These legitimately require a restart — PM2 will bring the server back up.
     process.on('uncaughtException', (err) => {
-      logger.error('Uncaught Exception:', err);
+      logger.error('Uncaught Exception (fatal, initiating graceful shutdown):', err);
       gracefulShutdown('uncaughtException');
     });
   } catch (error) {
