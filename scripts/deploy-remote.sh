@@ -64,18 +64,55 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 # ------------------------------------------
-# Step 3: Push to GitHub
+# Step 3: Sync with remote before pushing
+# ------------------------------------------
+echo -e "\n${YELLOW}🔄 Fetching remote changes...${NC}"
+git fetch origin master
+
+# Check if remote is ahead of local (would cause push rejection)
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/master)
+BASE=$(git merge-base HEAD origin/master)
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+    echo -e "${GREEN}✅ Already up to date with remote.${NC}"
+elif [ "$LOCAL" = "$BASE" ]; then
+    # Remote is ahead — pull before pushing
+    echo -e "${YELLOW}⚠️  Remote has commits your local branch doesn't have. Pulling first...${NC}"
+    git pull --rebase origin master
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Pull/rebase failed — there are merge conflicts that need manual resolution.${NC}"
+        echo -e "   Run: git status"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Pull successful. Local is now up to date.${NC}"
+elif [ "$REMOTE" = "$BASE" ]; then
+    echo -e "${GREEN}✅ Local is ahead of remote — ready to push.${NC}"
+else
+    # Branches have diverged
+    echo -e "${YELLOW}⚠️  Local and remote have diverged. Attempting rebase...${NC}"
+    git pull --rebase origin master
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Rebase failed — there are merge conflicts that need manual resolution.${NC}"
+        echo -e "   Run: git status  then resolve conflicts, then re-run this script."
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Rebase successful.${NC}"
+fi
+
+# ------------------------------------------
+# Step 4: Push to GitHub
 # ------------------------------------------
 echo -e "\n${YELLOW}📦 Pushing to GitHub (master)...${NC}"
 git push origin master
 if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ Git push failed. Fix conflicts or auth errors before deploying.${NC}"
+    echo -e "${RED}❌ Git push failed. Fix auth errors before deploying.${NC}"
     exit 1
 fi
 echo -e "${GREEN}✅ Push successful.${NC}"
 
 # ------------------------------------------
-# Step 4: SSH into server and run deploy.sh
+# Step 5: SSH into server and run deploy.sh
 # ------------------------------------------
 echo -e "\n${YELLOW}📡 Connecting to production server...${NC}"
 
