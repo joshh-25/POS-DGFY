@@ -26,8 +26,8 @@ module.exports = {
         },
         {
             name: 'sku-frontend',
-            script: 'npm',
-            args: 'run preview',
+            script: './node_modules/.bin/vite',
+            args: 'preview --host --port 5173',
             cwd: './frontend',
             env: {
                 NODE_ENV: 'production',
