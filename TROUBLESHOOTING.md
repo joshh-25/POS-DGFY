@@ -537,3 +537,91 @@ DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
 **Solution**:
 - **Fixed in Audit 2.6**: The hook re-application loop filters to canonical hook names only, skipping proxy targets (`beforeCreate`, `beforeUpdate`, `afterCreate`, `afterUpdate`). Only `beforeSave` (or equivalent canonical name) is passed to `addHook`; Sequelize handles the fan-out exactly once.
 - If this regression surfaces again, inspect `m.FIFOBatch.options.hooks.beforeCreate.length` on a fresh tenant instance — it should be `1`, matching the source model.
+
+### 34. PM2 Frontend Process Enters "errored" State After Deploy (Wrong Vite Mode)
+**Symptoms**:
+- `pm2 list` shows `sku-frontend` with status `errored` immediately after `deploy.sh` runs.
+- `pm2 logs sku-frontend` shows Vite attempting to serve source files or failing because no entry point exists.
+- The frontend site is unreachable (connection refused on port 5173).
+
+**Cause**:
+- `ecosystem.config.cjs` was configured to run the Vite **dev server** (`vite --host`) instead of the **preview server** (`vite preview`). The dev server is not suitable for production — it processes unbundled source files and requires full dev dependencies.
+- If `script: 'npm'` + `args: 'run preview'` was used as an intermediate fix, npm intercepts `--host` as an npm config flag (not a vite flag), causing the wrong mode to run and a `npm warn Unknown cli config "--host"` warning.
+
+**Solution**:
+- Correct `ecosystem.config.cjs` to call the vite binary directly:
+  ```javascript
+  {
+      name: 'sku-frontend',
+      script: './node_modules/.bin/vite',
+      args: 'preview --host --port 5173',
+      cwd: './frontend',
+      env: { NODE_ENV: 'production' },
+      env_production: { NODE_ENV: 'production' },
+  }
+  ```
+- **One-time server step**: PM2's `startOrReload` does NOT update the `script` property from cache. After changing the script path you must manually re-register the process:
+  ```bash
+  pm2 delete sku-frontend
+  pm2 start ecosystem.config.cjs --only sku-frontend --env production
+  pm2 save
+  ```
+- **Verification**: `pm2 list` should show `sku-frontend` as `online`. `curl http://localhost:5173/` should return `HTTP 200`.
+
+### 35. Backend Health Check Returns 404 in deploy.sh (Port Mismatch)
+**Symptoms**:
+- deploy.sh Step 7 prints `Attempt X/10: HTTP 404. Waiting...` for all 10 retries.
+- The backend is actually running and the API works fine — only the health check fails.
+- `pm2 logs sku-backend` shows the server started successfully on a port other than 5000.
+
+**Cause**:
+- `deploy.sh` was hardcoded to ping `http://localhost:5000/health`.
+- If `backend/.env` has `PORT=5001` (or any other port), the health check URL is wrong.
+- Additionally, the `/health` route was registered in `server.js` **after** `app.use(tenantHandler)`. Any middleware error during startup could intercept the request before it reached the health route.
+
+**Solution**:
+- **Fixed in Phase 54**: `deploy.sh` now reads `PORT` dynamically from `backend/.env`:
+  ```bash
+  BACKEND_PORT=$(grep -E '^PORT=' "$BACKEND_DIR/.env" | head -1 | cut -d'=' -f2 | tr -d '[:space:]')
+  BACKEND_PORT="${BACKEND_PORT:-5000}"
+  API_HEALTH_URL="http://localhost:${BACKEND_PORT}/health"
+  ```
+- **Fixed in Phase 54**: `app.get('/health', ...)` in `server.js` is now registered **before** `app.use(tenantHandler)` so it is an unconditional fast path through no business middleware.
+- **Manual check**: `curl -v http://localhost:<PORT>/health` — should return HTTP 200 JSON if server is running.
+
+### 36. ERR_ERL_PERMISSIVE_TRUST_PROXY Spam in Production Error Logs
+**Symptoms**:
+- Error logs are flooded with `ERR_ERL_PERMISSIVE_TRUST_PROXY` on every request.
+- The message reads: `express-rate-limit: "validate.trustProxy" ... The Express "trust proxy" setting is permissive`.
+- Rate limiting still functions, but every request generates an error-level log entry.
+
+**Cause**:
+- `express-rate-limit`'s `validate: { trustProxy: true }` option means **"throw an error if the Express trust proxy setting is permissive"** — it is a *validation enforcement* flag, not a proxy enablement flag.
+- When `app.set('trust proxy', true)` is set (required for Nginx in production) the library considers this permissive and raises the error to force developers to acknowledge the risk.
+
+**Solution**:
+- **Fixed in Phase 54**: Changed `validate: { trustProxy: true }` → `validate: { trustProxy: false }` on all four rate limiters in `backend/src/middleware/rateLimiter.js`.
+- `trustProxy: false` opts out of the validation check entirely. The actual proxy header reading (`X-Forwarded-For`) is controlled by `app.set('trust proxy', true)` in `server.js`, which is unaffected.
+- **Verification**: Restart the backend and tail logs — no `ERR_ERL_PERMISSIVE_TRUST_PROXY` lines should appear.
+
+### 37. deploy.sh Changes (from git pull) Don't Take Effect on the Same Run
+**Symptoms**:
+- You edit `deploy.sh`, push to GitHub, and run `./scripts/deploy.sh`.
+- The new steps/fixes you added are not executed — the old behavior persists.
+- On the *next* deploy the new code runs correctly.
+
+**Cause**:
+- Bash reads the entire script file into memory before executing the first line.
+- When `git pull` updates `deploy.sh` mid-execution, the old in-memory version continues running. The file on disk has been updated, but the process is still executing the old bytes.
+
+**Solution**:
+- **Fixed in Phase 54**: `deploy.sh` now re-executes itself immediately after `git pull` using `exec`:
+  ```bash
+  SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  if [ "${DEPLOY_REEXECED:-0}" != "1" ]; then
+      export DEPLOY_REEXECED=1
+      exec bash "$SCRIPT_PATH" "$@"
+  fi
+  ```
+  `exec` replaces the current shell process with the freshly-pulled script. The `DEPLOY_REEXECED` guard prevents infinite re-execution.
+- After this fix, any change to `deploy.sh` takes effect on the same deploy run that pulled it.

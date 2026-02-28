@@ -1593,20 +1593,22 @@ async function getExpiryAlerts({ critical_days = 7, warning_days = 30 }) {
 }
 
 async function getForecast({ item_id, days = 30 }) {
-  const forecast = await forecastService.getStockForecast({
-    itemId: item_id,
-    days
-  });
+  const allForecasts = await forecastService.forecastStockLevels(days);
+
+  const forecast = item_id
+    ? allForecasts.filter(f => f.item_id === item_id)
+    : allForecasts;
 
   return {
     forecast_days: days,
     items: forecast.map(f => ({
       item_id: f.item_id,
-      item_name: f.item_name,
+      sku_code: f.sku_code,
+      item_name: f.name,
       current_stock: f.current_stock,
-      daily_consumption_rate: f.daily_consumption_rate,
-      projected_stock: f.projected_stock,
-      days_until_stockout: f.days_until_stockout,
+      daily_consumption_rate: f.avg_daily_consumption,
+      projected_stock: f.forecasted_stock,
+      days_until_stockout: f.days_until_depletion === Infinity ? null : f.days_until_depletion,
       status: f.status
     }))
   };

@@ -151,7 +151,7 @@ export default function ConfirmActionDialog({
                     {item.item_name || `Item #${item.item_id}`} x {item.quantity}
                   </span>
                   <span className="text-slate-600 font-medium">
-                    ${(item.unit_price * item.quantity).toFixed(2)}
+                    ₱{(item.unit_price * item.quantity).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -159,7 +159,7 @@ export default function ConfirmActionDialog({
             {details.total_amount && (
               <div className="border-t border-slate-200 mt-2 pt-2 flex justify-between font-medium">
                 <span>Total</span>
-                <span className="text-slate-900">${details.total_amount.toFixed(2)}</span>
+                <span className="text-slate-900">₱{details.total_amount.toFixed(2)}</span>
               </div>
             )}
           </div>

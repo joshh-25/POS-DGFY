@@ -340,10 +340,6 @@ export default function StockMovements() {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
           {canCreate('stock_movements') && (
             <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
               <Plus className="w-4 h-4 mr-2" />

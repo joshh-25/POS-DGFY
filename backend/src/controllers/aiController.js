@@ -278,7 +278,9 @@ export const chat = async (req, res, next) => {
 
     // Handle different response types
     if (response.type === 'confirmation_required') {
-      response.message = `🔔 I'm ready to ${response.description.toLowerCase()}. Please confirm to proceed.`;
+      // Use the AI's own message (which may include impact warnings) if available,
+      // otherwise fall back to a generic prompt
+      response.message = response.ai_message || `🔔 I'm ready to ${response.description.toLowerCase()}. Please confirm to proceed.`;
 
       // Store pending action in database
       await PendingAIAction.create({

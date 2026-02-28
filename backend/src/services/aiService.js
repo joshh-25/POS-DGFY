@@ -70,6 +70,19 @@ const getOpenAI = () => {
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 
 /**
+ * Normalize LaTeX math delimiters to remark-math compatible format.
+ * GPT-4o outputs \[...\] and \(...\) but remark-math v6 only parses $$...$$ and $...$.
+ */
+function normalizeLatexDelimiters(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\\\[/g, '\n$$\n')   // \[ → $$ on its own line (display math)
+    .replace(/\\\]/g, '\n$$\n')   // \] → $$
+    .replace(/\\\(/g, '$')        // \( → $ (inline math)
+    .replace(/\\\)/g, '$');       // \) → $
+}
+
+/**
  * Process a user message and return AI response
  * @param {string} message - User's message
  * @param {Array} conversationHistory - Previous messages
@@ -171,7 +184,7 @@ export const processMessage = async (message, conversationHistory = [], user, co
     // Regular text response
     return {
       type: 'text',
-      content: assistantMessage.content,
+      content: normalizeLatexDelimiters(assistantMessage.content),
       conversationId
     };
 
@@ -296,17 +309,32 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
     }
   }
 
-  // If any tool requires confirmation, return confirmation request
+  // If any tool requires confirmation, generate a contextual warning then return
   const confirmationRequired = results.find(r => r.type === 'confirmation_required');
   if (confirmationRequired) {
+    // Find the tool call arguments for the confirmation-required tool
+    const matchingCall = assistantMessage.tool_calls.find(
+      tc => tc.function.name === confirmationRequired.toolName
+    );
+    const toolArgs = matchingCall ? JSON.parse(matchingCall.function.arguments || '{}') : {};
+
+    // Second API call (no tools) to generate a specific impact warning
+    const warningText = await generateDestructiveWarning(
+      confirmationRequired.toolName,
+      toolArgs,
+      user,
+      messages
+    );
+
     return {
       type: 'confirmation_required',
       action_id: confirmationRequired.action_id,
       action_type: confirmationRequired.toolName,
       description: confirmationRequired.description,
       details: confirmationRequired.details,
-      expires_in: 300, // 5 minutes
-      conversationId
+      expires_in: 300,
+      conversationId,
+      ai_message: warningText // Always populated (or null → fallback in controller)
     };
   }
 
@@ -381,12 +409,50 @@ const handleToolCalls = async (assistantMessage, messages, user, conversationId,
 
   return {
     type: 'text',
-    content: finalMessage.content,
+    content: normalizeLatexDelimiters(finalMessage.content),
     conversationId,
     toolsExecuted: currentToolsExecuted,
     toolContext  // Include structured data for conversation memory
   };
 };
+
+/**
+ * Generate a contextual warning message for destructive/irreversible operations.
+ * Makes a separate API call with tools disabled to force a pure text warning response.
+ * GPT-4o returns null content when making tool calls, so this guarantees a warning exists.
+ */
+async function generateDestructiveWarning(toolName, toolArgs, user, messages) {
+  try {
+    const warningPrompt = `The user just asked you to perform a destructive/irreversible operation: "${toolName}" with these parameters: ${JSON.stringify(toolArgs, null, 2)}.
+
+In 2-4 sentences, explain to the user:
+1. What will be permanently changed or removed (be specific — use names/IDs from the parameters)
+2. That this cannot be undone once confirmed
+
+Format using markdown. Start with ⚠️.`;
+
+    const warningResponse = await getOpenAI().chat.completions.create({
+      model: MODEL,
+      messages: [
+        ...messages,
+        { role: 'user', content: warningPrompt }
+      ],
+      tools: undefined,       // NO tools — force text-only response
+      tool_choice: undefined,
+      temperature: 0.3,       // Low temp for consistent, factual warnings
+      max_tokens: 300
+    });
+
+    if (warningResponse.usage) {
+      await logAiUsage(warningResponse.usage, warningResponse.model, user);
+    }
+
+    return warningResponse.choices[0].message.content || null;
+  } catch (err) {
+    logger.warn('generateDestructiveWarning failed, using fallback:', err.message);
+    return null; // Graceful degradation — caller uses generic fallback message
+  }
+}
 
 /**
  * Extract key context from tool results for conversation memory

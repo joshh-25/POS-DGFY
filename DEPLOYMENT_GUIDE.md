@@ -2,8 +2,8 @@
 
 ## Overview
 This guide covers the deployment process for the SKU Inventory Manager (SKUpervisor) application. The system consists of:
-- **Frontend**: React + Vite (Port 5173/80)
-- **Backend**: Node.js + Express (Port 5000)
+- **Frontend**: React + Vite preview server (Port 5173/80)
+- **Backend**: Node.js + Express (Port 5001)
 - **Database**: MySQL
 - **Process Manager**: PM2
 
@@ -109,7 +109,7 @@ pm2 restart all
 ### Backend (.env)
 Located in `backend/.env`:
 ```env
-PORT=5000
+PORT=5001
 DB_HOST=localhost
 DB_USER=root
 DB_PASS=your_password
@@ -213,6 +213,19 @@ The project uses `ecosystem.config.cjs` (CommonJS format) in the root directory.
 - Sets `env_production` variables (`NODE_ENV=production`)
 - Configures restart protections: `max_memory_restart: '512M'`, `max_restarts: 10`, `min_uptime: '10s'`, `restart_delay: 5000`
 
+**Frontend process** (`sku-frontend`) runs **Vite's preview server** (not the dev server), which serves the pre-built `dist/` directory:
+```javascript
+{
+    name: 'sku-frontend',
+    script: './node_modules/.bin/vite',
+    args: 'preview --host --port 5173',
+    cwd: './frontend',
+    env: { NODE_ENV: 'production' },
+}
+```
+> [!CAUTION]
+> Do NOT use `vite --host` (dev mode) or `npm run preview` (npm intercepts `--host` as npm config). Always use the direct binary path shown above.
+
 `deploy.sh` automatically detects and uses this file. Manual usage:
 ```bash
 pm2 startOrReload ecosystem.config.cjs --env production --update-env
@@ -221,4 +234,13 @@ pm2 save  # persist so processes survive server reboots
 
 > [!IMPORTANT]
 > Always use the ecosystem file for PM2 commands — not `pm2 restart all` — to ensure production env vars and restart protections are applied correctly.
+
+> [!NOTE]
+> **One-time step when changing the `script` property**: PM2's `startOrReload` caches the process definition and will NOT pick up a change to the `script` path. If you ever change which binary `sku-frontend` runs, you must manually re-register it once:
+> ```bash
+> pm2 delete sku-frontend
+> pm2 start ecosystem.config.cjs --only sku-frontend --env production
+> pm2 save
+> ```
+> After this one-time step, subsequent `pm2 startOrReload` calls will work normally.
 

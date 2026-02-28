@@ -1,5 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 /**
  * MarkdownRenderer - Renders markdown content with custom Tailwind styling
@@ -13,7 +16,8 @@ export function MarkdownRenderer({ content, className = '' }) {
   return (
     <div className={`prose prose-slate max-w-none ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
         // Headings
         h1: (props) => (

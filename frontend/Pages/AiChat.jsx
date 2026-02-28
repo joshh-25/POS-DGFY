@@ -497,7 +497,7 @@ export default function AiChat() {
                                 <div className="flex-1 min-w-0">
                                     <span className="truncate block">{conv.title || 'Untitled Chat'}</span>
                                     <span className="text-xs text-slate-400">
-                                        {formatConversationDate(conv.updated_at)}
+                                        {formatConversationDate(conv.last_message_at || conv.created_at)}
                                     </span>
                                 </div>
                                 <button

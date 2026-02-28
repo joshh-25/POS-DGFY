@@ -56,6 +56,7 @@
 - [Phase 51: Auth Rate Limiting Refinement (429 Fix)](#phase-51-auth-rate-limiting-refinement-429-fix)
 - [Phase 52: Dashboard UI Scrollability & Connection Fixes](#phase-52-dashboard-ui-scrollability--connection-fixes)
 - [Phase 53: Production Stability Hardening — Rate Limiter, Crash Recovery & Connection Pools](#phase-53-production-stability-hardening--rate-limiter-crash-recovery--connection-pools)
+- [Phase 54: Deployment Pipeline Full Fix — Frontend Production Mode, Health Checks & Port Alignment](#phase-54-deployment-pipeline-full-fix--frontend-production-mode-health-checks--port-alignment)
 
 ---
 
@@ -6147,3 +6148,111 @@ A full audit of the production infrastructure uncovered **5 confirmed root cause
 - **Memory leak protection**: PM2 auto-restarts at 512MB before OOM kill
 - **Deployment**: Single `bash scripts/deploy-remote.sh` from local machine handles git sync + push + full server deploy
 - Frontend properly connects to the backend API without network errors.
+
+---
+
+## Phase 54: Deployment Pipeline Full Fix — Frontend Production Mode, Health Checks & Port Alignment
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-28
+
+### Problem
+Running `./scripts/deploy.sh` resulted in multiple cascading failures on every deploy:
+1. `sku-frontend` PM2 process entered `errored` state immediately after restart
+2. Backend health check (Step 7) always reported `HTTP 404` for all 10 retry attempts
+3. `ERR_ERL_PERMISSIVE_TRUST_PROXY` spam in error logs on every request
+4. deploy.sh's own changes (from git pull) did not take effect on the same run
+
+### Root Cause Investigation
+
+#### Issue 1 — Frontend Errored State
+`ecosystem.config.cjs` had `sku-frontend` configured as:
+```javascript
+script: './node_modules/vite/bin/vite.js',
+args: '--host',
+env: { NODE_ENV: 'development' }
+```
+This launched Vite's **dev server** (with HMR and source transforms) in production. On a cold PM2 `startOrReload`, the process crashed because it couldn't serve unbundled source files correctly.
+
+The correct production mode is **`vite preview`**, which serves the pre-built `dist/` directory. A secondary attempt used `script: 'npm', args: 'run preview'`, but npm intercepted `--host` as an npm config flag (not a vite flag), causing `npm warn Unknown cli config "--host"` and still running the dev server.
+
+**Fix**: Changed to the direct vite binary with explicit subcommand:
+```javascript
+script: './node_modules/.bin/vite',
+args: 'preview --host --port 5173',
+env: { NODE_ENV: 'production' }
+```
+
+**One-time server step required**: Because PM2's `startOrReload` caches the process definition, the `script` property change does not take effect automatically. A one-time `pm2 delete sku-frontend` + `pm2 start ecosystem.config.cjs --only sku-frontend --env production` was needed to fully re-register the process.
+
+#### Issue 2 — Backend Health Check 404
+Two compounding causes:
+- The `/health` route in `server.js` was registered **after** `app.use(tenantHandler)`. On requests without a company token header (like the deploy script's curl), `tenantHandler` intercepted the request. If any async middleware threw during cold-start DB contention, a 5xx was returned before reaching `/health`.
+- `deploy.sh` hardcoded `http://localhost:5000/health`, but the backend `.env` has `PORT=5001`.
+
+**Fix 1** (`server.js`): Moved `app.get('/health', ...)` to **before** `app.use(tenantHandler)` so it's a zero-dependency fast path through no business middleware.
+
+**Fix 2** (`deploy.sh`): Changed health check URL to read `PORT` dynamically from `backend/.env`:
+```bash
+BACKEND_PORT=$(grep -E '^PORT=' "$BACKEND_DIR/.env" | head -1 | cut -d'=' -f2 | tr -d '[:space:]')
+BACKEND_PORT="${BACKEND_PORT:-5000}"
+API_HEALTH_URL="http://localhost:${BACKEND_PORT}/health"
+```
+Also increased `sleep 5` to `sleep 15` to give the backend adequate startup time before the first retry.
+
+#### Issue 3 — ERR_ERL_PERMISSIVE_TRUST_PROXY Spam
+After Phase 53 changed `validate: { trustProxy: false }` → `validate: { trustProxy: true }` on all four rate limiters, `express-rate-limit` began throwing `ERR_ERL_PERMISSIVE_TRUST_PROXY` on every request. This is because `trustProxy: true` in the validate config means **"throw an error if the app's trust proxy setting is permissive"** — the opposite of what was intended.
+
+With `app.set('trust proxy', true)` (set in production for Nginx), the library considers the setup permissive (any IP can be spoofed via headers). The flag's purpose is to force developers to explicitly disable it if they understand the risk.
+
+**Fix** (`rateLimiter.js`): Changed `validate: { trustProxy: true }` → `validate: { trustProxy: false }` on all four limiters. This opts out of the validation check entirely, silencing the error spam while still correctly reading `X-Forwarded-For` (which depends on `app.set('trust proxy', true)`, not the validate flag).
+
+#### Issue 4 — deploy.sh Self-Update Not Taking Effect
+Bash reads the entire script into memory before executing it. When `git pull` updates `deploy.sh`, the old version is already running in memory — changes to the script itself never take effect on the same invocation.
+
+**Fix** (`deploy.sh`): Added a self-re-exec block immediately after `git pull`:
+```bash
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+if [ "${DEPLOY_REEXECED:-0}" != "1" ]; then
+    export DEPLOY_REEXECED=1
+    exec bash "$SCRIPT_PATH" "$@"
+fi
+```
+`exec` replaces the current process with the freshly-pulled script. The `DEPLOY_REEXECED` guard prevents an infinite loop.
+
+#### Issue 5 — Frontend Health Check Blocked by Vite allowedHosts
+`curl http://localhost:5173/` in deploy.sh Step 7 was returning 404 because `vite.config.js` did not include `'localhost'` in `allowedHosts`. Vite's preview server was rejecting the request.
+
+**Fix** (`vite.config.js`): Added `'localhost'` to `allowedHosts` in both `server` and `preview` blocks.
+
+#### Issue 6 — Vite Proxy Targeting Wrong Backend Port
+`vite.config.js` had the API proxy target set to `http://127.0.0.1:5000`, but the backend runs on port `5001`.
+
+**Fix** (`vite.config.js`): Changed proxy target to `http://127.0.0.1:5001` in both `server` and `preview` blocks.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `ecosystem.config.cjs` | `sku-frontend` now uses `vite preview` via direct binary; `NODE_ENV: 'production'` |
+| `backend/src/server.js` | `/health` route moved before `tenantHandler` middleware |
+| `backend/src/middleware/rateLimiter.js` | `validate: { trustProxy: false }` on all 4 limiters |
+| `scripts/deploy.sh` | Self-re-exec after git pull; dynamic PORT from .env; `sleep 15`; frontend health check added |
+| `frontend/vite.config.js` | Added `'localhost'` to `allowedHosts`; proxy target changed from port 5000 → 5001 |
+
+### Verification
+Final deploy output after all fixes:
+```
+✅ Backend is healthy (HTTP 200)
+   DB status:    connected
+   Redis status: connected
+   Tenant pool:  0%
+
+✅ Frontend is healthy (HTTP 200) — serving from dist/
+```
+
+### Impact
+- `deploy.sh` runs to completion without manual intervention on every deploy
+- Frontend serves the production-built `dist/` bundle (not dev server with HMR overhead)
+- Health check accurately reflects backend readiness using the correct port
+- No more `ERR_ERL_PERMISSIVE_TRUST_PROXY` error spam in production logs
+- deploy.sh improvements (e.g., new env vars, new steps) take effect on the same run they are pulled
