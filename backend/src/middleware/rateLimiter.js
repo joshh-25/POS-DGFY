@@ -118,7 +118,7 @@ export const generalLimiter = rateLimit({
   message: createRateLimitError('Too many requests from this IP, please try again later.'),
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  validate: { trustProxy: true },
+  validate: { trustProxy: false },
   handler: (req, res, _next, options) => {
     const scope = getScopeFromRequest(req, 'other');
     const response = buildRateLimitResponse(
@@ -148,7 +148,7 @@ export const authLimiter = rateLimit({
   message: createRateLimitError('Too many authentication attempts, please try again later.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: true },
+  validate: { trustProxy: false },
   keyGenerator: (req) => {
     const ip = req.ip || req.connection?.remoteAddress || 'unknown-ip';
     const email = normalizeEmail(req.body?.email);
@@ -178,7 +178,7 @@ export const lookupLimiter = rateLimit({
   message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: true },
+  validate: { trustProxy: false },
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
       req,
@@ -201,7 +201,7 @@ export const tenantRegistrationLimiter = rateLimit({
   message: createRateLimitError('Too many registration requests from this IP, please try again after an hour.'),
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: true },
+  validate: { trustProxy: false },
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
       req,

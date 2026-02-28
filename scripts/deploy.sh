@@ -212,11 +212,11 @@ fi
 log "Step 7: Verifying deployment..."
 
 # Use the dedicated /health endpoint (no auth required, returns DB + Redis status).
-# Backend runs on port 5000 (not 5001).
-API_HEALTH_URL="http://localhost:5000/health"
+# Backend runs on port 5001 (set via PORT in backend/.env).
+API_HEALTH_URL="http://localhost:5001/health"
 
 echo ">> Waiting for backend to boot..."
-sleep 5
+sleep 15
 
 echo ">> Pinging health endpoint ($API_HEALTH_URL)..."
 
@@ -264,6 +264,42 @@ if command -v curl >/dev/null 2>&1; then
     fi
 else
     echo ">> curl not found, skipping health check."
+fi
+
+# Frontend health check — verify vite preview is serving the dist build
+FRONTEND_HEALTH_URL="http://localhost:5173/"
+echo ""
+echo ">> Waiting for frontend preview server to boot..."
+sleep 3
+
+if command -v curl >/dev/null 2>&1; then
+    FE_MAX_RETRIES=8
+    FE_COUNT=0
+    FE_SUCCESS=0
+
+    while [ $FE_COUNT -lt $FE_MAX_RETRIES ]; do
+        set +e
+        FE_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_HEALTH_URL")
+        FE_EXIT=$?
+        set -e
+
+        if [ $FE_EXIT -ne 0 ]; then
+            echo "   ... curl failed (exit $FE_EXIT). Frontend may still be starting. Waiting..."
+        elif [[ "$FE_RESPONSE" == "200" ]]; then
+            echo "   ✅ Frontend is healthy (HTTP 200) — serving from dist/"
+            FE_SUCCESS=1
+            break
+        else
+            echo "   ... Attempt $((FE_COUNT+1))/$FE_MAX_RETRIES: HTTP $FE_RESPONSE. Waiting..."
+        fi
+
+        sleep 3
+        FE_COUNT=$((FE_COUNT+1))
+    done
+
+    if [ $FE_SUCCESS -eq 0 ]; then
+        warn "Frontend did not respond after 24 seconds. Check: pm2 logs sku-frontend"
+    fi
 fi
 
 # Show PM2 process status

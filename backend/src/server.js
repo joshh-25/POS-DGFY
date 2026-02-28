@@ -108,10 +108,7 @@ if (process.env.NODE_ENV === 'development') {
 // Rate limiting - apply general limiter to all routes
 app.use('/api', generalLimiter);
 
-// Tenant Resolution & Context Middleware (Must be before API routes)
-app.use(tenantHandler);
-
-// Health check endpoint
+// Health check — intentionally before tenantHandler (no business middleware)
 app.get('/health', async (req, res) => {
   const startTime = process.uptime();
   const health = {
@@ -188,6 +185,9 @@ app.get('/health', async (req, res) => {
   const statusCode = health.success ? 200 : 503;
   res.status(statusCode).json(health);
 });
+
+// Tenant Resolution & Context Middleware (Must be before API routes)
+app.use(tenantHandler);
 
 // API routes
 import authRoutes from './routes/auth.js';

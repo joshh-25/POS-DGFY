@@ -26,11 +26,11 @@ module.exports = {
         },
         {
             name: 'sku-frontend',
-            script: './node_modules/vite/bin/vite.js',
-            args: '--host',
+            script: 'npm',
+            args: 'run preview',
             cwd: './frontend',
             env: {
-                NODE_ENV: 'development',
+                NODE_ENV: 'production',
             },
             env_production: {
                 NODE_ENV: 'production',
