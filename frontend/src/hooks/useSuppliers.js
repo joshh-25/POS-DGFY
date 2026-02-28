@@ -6,7 +6,6 @@ export const useSuppliers = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
-
   const fetchSuppliers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -19,7 +18,7 @@ export const useSuppliers = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchSuppliers();

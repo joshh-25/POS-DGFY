@@ -6,7 +6,6 @@ export const usePurchaseOrders = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
-
   const fetchPurchaseOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -21,7 +20,7 @@ export const usePurchaseOrders = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchPurchaseOrders();

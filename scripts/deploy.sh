@@ -13,8 +13,8 @@
 # Configuration & Setup
 # ------------------------------------------
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+# Exit immediately on errors, unset vars, or pipe failures
+set -euo pipefail
 
 # Resolve Project Root (assumes script is in <root>/scripts/)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,6 +57,25 @@ error() {
     echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1"
 }
 
+# Helper: append env variable if missing
+ensure_env_var() {
+    local file_path="$1"
+    local key="$2"
+    local value="$3"
+    local comment="${4:-}"
+
+    if grep -q "^${key}=" "$file_path"; then
+        log "${key} already set in backend/.env - skipping."
+        return
+    fi
+
+    if [ -n "$comment" ]; then
+        echo "$comment" >> "$file_path"
+    fi
+    echo "${key}=${value}" >> "$file_path"
+    log "Added ${key}=${value} to backend/.env"
+}
+
 # Run validation before proceeding
 check_env
 
@@ -73,7 +92,9 @@ log "Starting deployment for: $PROJECT_ROOT"
 
 # 1. Pull Latest Changes
 log "Step 1: Pulling latest code from git..."
-git pull origin master
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+log "Detected branch: $CURRENT_BRANCH"
+git pull origin "$CURRENT_BRANCH"
 
 # 2. Install Dependencies
 log "Step 2: Installing dependencies..."
@@ -151,18 +172,12 @@ cd "$PROJECT_ROOT"
 log "Step 5b: Ensuring production env vars are set..."
 ENV_FILE="$BACKEND_DIR/.env"
 if [ -f "$ENV_FILE" ]; then
-    # RATE_LIMIT_MAX_REQUESTS: raises per-IP limit from 100 to 500 so legitimate users
-    # with multiple tabs and AI Chat usage don't trigger 429 errors.
-    if ! grep -q "^RATE_LIMIT_MAX_REQUESTS=" "$ENV_FILE"; then
-        echo "" >> "$ENV_FILE"
-        echo "# Rate limit per real client IP (500 req/15min — safe for 5 users/tenant doing AI Chat + Dashboard)" >> "$ENV_FILE"
-        echo "RATE_LIMIT_MAX_REQUESTS=500" >> "$ENV_FILE"
-        log "Added RATE_LIMIT_MAX_REQUESTS=500 to backend/.env"
-    else
-        log "RATE_LIMIT_MAX_REQUESTS already set in backend/.env — skipping."
-    fi
+    echo "" >> "$ENV_FILE"
+    ensure_env_var "$ENV_FILE" "RATE_LIMIT_MAX_REQUESTS" "500" "# Rate limit per real client IP (500 req/15min - tuned for shared office usage)"
+    ensure_env_var "$ENV_FILE" "RATE_LIMIT_MIN_PROD_REQUESTS" "300" "# Production floor for general limiter if max is set too low"
+    ensure_env_var "$ENV_FILE" "RATE_LIMIT_ALERT_THRESHOLD" "50" "# Structured spike alert every N 429 events"
 else
-    warn "backend/.env not found at $ENV_FILE — skipping env var injection."
+    warn "backend/.env not found at $ENV_FILE - skipping env var injection."
 fi
 
 # 6. Restart Services
@@ -230,9 +245,12 @@ if command -v curl >/dev/null 2>&1; then
             SUCCESS=1
             break
         elif [[ "$RESPONSE" == "503" ]]; then
-            echo "   ⚠️  Backend responded 503 (DB or Redis unhealthy). Check logs."
-            SUCCESS=1  # Server is running, just a dependency issue — don't block deploy
-            break
+            error "Backend responded 503 (unhealthy). Deployment will stop. Check PM2 and backend logs."
+            if [ -f /tmp/health_response.json ] && command -v jq >/dev/null 2>&1; then
+                echo "   DB status:    $(jq -r '.services.database.status' /tmp/health_response.json 2>/dev/null || echo 'n/a')"
+                echo "   Redis status: $(jq -r '.services.redis.status' /tmp/health_response.json 2>/dev/null || echo 'n/a')"
+            fi
+            exit 1
         else
             echo "   ... Attempt $((COUNT+1))/$MAX_RETRIES: HTTP $RESPONSE. Waiting..."
         fi
@@ -266,3 +284,5 @@ fi
 cd "$PROJECT_ROOT"
 
 log "✅ Deployment completed successfully!"
+
+

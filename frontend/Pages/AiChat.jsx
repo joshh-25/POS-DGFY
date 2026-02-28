@@ -9,7 +9,6 @@ import {
     Search,
     Plus,
     MessageSquare,
-    ChevronRight,
     Paperclip,
     Image as ImageIcon,
     Mic,
@@ -35,6 +34,13 @@ import DeleteConfirmDialog from '@/Components/ui/DeleteConfirmDialog';
 import { usePermission } from '@/hooks/usePermission';
 import { toast } from 'sonner';
 
+const buildWelcomeMessage = () => ({
+    id: 'welcome',
+    role: 'assistant',
+    content: "Hello! I'm your SKUpervisor AI assistant. I can help you manage inventory, create purchase orders, track job orders, and answer questions about your data. What would you like to do today?",
+    timestamp: new Date().toISOString()
+});
+
 export default function AiChat() {
     const navigate = useNavigate();
     const { can, tenantPlan, loading } = usePermission();
@@ -46,9 +52,9 @@ export default function AiChat() {
     const [conversationId, setConversationId] = useState(null);
     const [conversations, setConversations] = useState([]);
     const [selectedConversation, setSelectedConversation] = useState(null);
-    const [error, setError] = useState(null);
+    const [, setError] = useState(null);
     const [pendingAction, setPendingAction] = useState(null);
-    const [actionResult, setActionResult] = useState(null);
+    const [, setActionResult] = useState(null);
     const [isLoadingConversations, setIsLoadingConversations] = useState(true);
     const [conversationToDelete, setConversationToDelete] = useState(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -62,41 +68,48 @@ export default function AiChat() {
     const imageInputRef = useRef(null);
     const dragCounter = useRef(0);
 
-    // Initial welcome message
-    const welcomeMessage = {
-        id: 'welcome',
-        role: 'assistant',
-        content: "Hello! I'm your SKUpervisor AI assistant. I can help you manage inventory, create purchase orders, track job orders, and answer questions about your data. What would you like to do today?",
-        timestamp: new Date().toISOString()
-    };
-
-    // Load conversations when permission checks pass
-    useEffect(() => {
-        if (!loading && tenantPlan === 'premium') {
-            loadConversations();
-        }
-    }, [loading, tenantPlan]);
-
-    // Scroll to bottom when messages change
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const scrollToBottom = () => {
+    const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    }, []);
 
-    const loadConversations = async () => {
+    const getRateLimitMessage = useCallback((err, fallbackMessage) => {
+        const retryAfterSeconds = err?.response?.data?.retryAfterSeconds;
+        if (retryAfterSeconds) {
+            return `${fallbackMessage} Please retry in about ${retryAfterSeconds} seconds.`;
+        }
+        return fallbackMessage;
+    }, []);
+
+    const loadConversations = useCallback(async ({ showErrorToast = false } = {}) => {
         try {
             setIsLoadingConversations(true);
             const response = await aiService.getConversations();
             setConversations(response.data?.conversations || []);
         } catch (err) {
             console.error('Failed to load conversations:', err);
+            if (showErrorToast) {
+                const isRateLimited = err?.response?.status === 429;
+                const message = isRateLimited
+                    ? getRateLimitMessage(err, 'Recent conversations are temporarily rate-limited.')
+                    : 'Failed to refresh recent conversations.';
+                toast.error(message);
+            }
         } finally {
             setIsLoadingConversations(false);
         }
-    };
+    }, [getRateLimitMessage]);
+
+    // Load conversations when permission checks pass
+    useEffect(() => {
+        if (!loading && tenantPlan === 'premium') {
+            loadConversations();
+        }
+    }, [loading, tenantPlan, loadConversations]);
+
+    // Scroll to bottom when messages change
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, scrollToBottom]);
 
     const loadConversation = async (convId) => {
         try {
@@ -125,7 +138,7 @@ export default function AiChat() {
     const startNewChat = () => {
         setConversationId(null);
         setSelectedConversation(null);
-        setMessages([welcomeMessage]);
+        setMessages([buildWelcomeMessage()]);
         setError(null);
         setActionResult(null);
         setPendingAction(null);
@@ -267,8 +280,6 @@ export default function AiChat() {
             if (response.data?.conversationId && !conversationId) {
                 setConversationId(response.data.conversationId);
                 setSelectedConversation(response.data.conversationId);
-                // Refresh conversation list
-                loadConversations();
             }
 
             // Handle different response types
@@ -303,10 +314,20 @@ export default function AiChat() {
                 };
                 setMessages(prev => [...prev, assistantMessage]);
             }
+
+            // Always refresh recent conversations after successful chat response.
+            // This keeps sidebar state in sync even for existing conversations.
+            loadConversations({ showErrorToast: true });
         } catch (err) {
             console.error('AI chat error:', err);
-            const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to get response from AI';
+            const isRateLimited = err?.response?.status === 429;
+            const errorMessage = isRateLimited
+                ? getRateLimitMessage(err, 'Too many requests to AI right now.')
+                : (err.response?.data?.message || err.response?.data?.error || 'Failed to get response from AI');
             setError(errorMessage);
+            if (isRateLimited) {
+                toast.error(errorMessage);
+            }
 
             // Add error message to chat
             const errorAssistantMessage = {
@@ -416,9 +437,7 @@ export default function AiChat() {
 
     // Initialize with welcome message
     useEffect(() => {
-        if (messages.length === 0) {
-            setMessages([welcomeMessage]);
-        }
+        setMessages((prev) => (prev.length === 0 ? [buildWelcomeMessage()] : prev));
     }, []);
 
     // Auto-resize textarea height

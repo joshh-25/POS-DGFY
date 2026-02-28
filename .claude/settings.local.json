@@ -97,7 +97,10 @@
       "Bash(/c/xampp/mysql/bin/mysql -u root -e \"SELECT id, name, status, admin_email, company_token, createdAt FROM tenants ORDER BY createdAt DESC;\" SKU)",
       "Bash(/c/xampp/mysql/bin/mysql:*)",
       "Bash(npx vitest run:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" fetch origin master)",
+      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" log --oneline HEAD...origin/master)",
+      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" status --short)"
     ]
   }
 }

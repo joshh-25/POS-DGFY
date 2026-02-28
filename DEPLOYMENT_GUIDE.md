@@ -3,7 +3,7 @@
 ## Overview
 This guide covers the deployment process for the SKU Inventory Manager (SKUpervisor) application. The system consists of:
 - **Frontend**: React + Vite (Port 5173/80)
-- **Backend**: Node.js + Express (Port 5001)
+- **Backend**: Node.js + Express (Port 5000)
 - **Database**: MySQL
 - **Process Manager**: PM2
 
@@ -109,14 +109,21 @@ pm2 restart all
 ### Backend (.env)
 Located in `backend/.env`:
 ```env
-PORT=5001
+PORT=5000
 DB_HOST=localhost
 DB_USER=root
 DB_PASS=your_password
 DB_NAME=sku_inventory_manager
 JWT_SECRET=your_jwt_secret
 NODE_ENV=production
-TRUST_PROXY=true # Set to true if behind Nginx/Apache
+TRUST_PROXY=true # Required when running behind Nginx/Apache
+
+# Rate Limiting (auto-injected by deploy.sh if missing)
+RATE_LIMIT_MAX_REQUESTS=500    # Per real client IP per 15 minutes (default 100 is too low)
+RATE_LIMIT_MIN_PROD_REQUESTS=300 # Safety floor for production general limiter
+RATE_LIMIT_ALERT_THRESHOLD=50    # Emit "Rate limit spike alert" every N 429 events
+RATE_LIMIT_WINDOW_MS=900000    # 15 minutes
+
 OPENAI_API_KEY=your_openai_key # Optional: AI features will be disabled if missing
 FRONTEND_URL=https://skupervisor.surebizcorp.com
 
@@ -176,10 +183,10 @@ bash scripts/deploy-remote.sh
 ```
 This script will confirm the deployment, push your local `master` branch to GitHub, and then SSH into the production server to run the full `./scripts/deploy.sh` pipeline.
 
-### Option B: Manual SSH Command (One-Liner)
-If you prefer a direct command:
+### Option B: Deploy Directly on the Server
+If you're already SSH'd into the server, run `deploy.sh` directly — no push needed (the script pulls from GitHub itself):
 ```bash
-git push origin master && ssh -p 64428 root@192.53.116.33 "cd /var/www/skupervisor && ./scripts/deploy.sh"
+cd /var/www/skupervisor && bash scripts/deploy.sh
 ```
 
 > [!CAUTION]
@@ -199,13 +206,19 @@ git push origin master && ssh -p 64428 root@192.53.116.33 "cd /var/www/skupervis
 
 ---
 
-## ecosystem.config.js
+## ecosystem.config.cjs
 
-The project includes a PM2 ecosystem configuration file in the root directory. This file:
+The project uses `ecosystem.config.cjs` (CommonJS format) in the root directory. This file:
 - Defines `sku-backend` and `sku-frontend` processes
-- Sets `env_production` variables (`NODE_ENV=production`, `PORT=5001`)
-- Allows using `pm2 startOrRestart ecosystem.config.js --env production`
+- Sets `env_production` variables (`NODE_ENV=production`)
+- Configures restart protections: `max_memory_restart: '512M'`, `max_restarts: 10`, `min_uptime: '10s'`, `restart_delay: 5000`
+
+`deploy.sh` automatically detects and uses this file. Manual usage:
+```bash
+pm2 startOrReload ecosystem.config.cjs --env production --update-env
+pm2 save  # persist so processes survive server reboots
+```
 
 > [!IMPORTANT]
-> If you use `pm2 restart all --env production` without the ecosystem file, it will fail. Always use `pm2 startOrRestart ecosystem.config.js --env production` for strict environment control.
+> Always use the ecosystem file for PM2 commands — not `pm2 restart all` — to ensure production env vars and restart protections are applied correctly.
 

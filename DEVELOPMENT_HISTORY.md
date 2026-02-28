@@ -55,6 +55,7 @@
 - [Phase 50: Production Deployment Hardening & Strategy](#phase-50-production-deployment-hardening--strategy)
 - [Phase 51: Auth Rate Limiting Refinement (429 Fix)](#phase-51-auth-rate-limiting-refinement-429-fix)
 - [Phase 52: Dashboard UI Scrollability & Connection Fixes](#phase-52-dashboard-ui-scrollability--connection-fixes)
+- [Phase 53: Production Stability Hardening — Rate Limiter, Crash Recovery & Connection Pools](#phase-53-production-stability-hardening--rate-limiter-crash-recovery--connection-pools)
 
 ---
 
@@ -6078,4 +6079,71 @@ After fixing the UI, the frontend was throwing `ERR_CONNECTION_REFUSED` when try
 ### Impact
 - Dashboard items (Low Stock, Expiries) are now fully visible and scrollable.
 - PM2 starts the backend process flawlessly every time without database contention/deadlocks.
+
+---
+
+## Phase 53: Production Stability Hardening — Rate Limiter, Crash Recovery & Connection Pools
+**Status**: ✅ COMPLETE
+**Date**: 2026-02-24
+
+### Problem
+Users reported the web app becoming completely unresponsive for several minutes at a time across all pages (Reports, AI Chat, Dashboard). The sidebar "System Status" showed "All systems operational" even during outages, confirming the server itself was running — the problem was at the rate limiter layer.
+
+### Root Cause Investigation
+A full audit of the production infrastructure uncovered **5 confirmed root causes**:
+
+1. **Rate Limiter Proxy Bug (CONFIRMED — PRIMARY CAUSE)**: All four rate limiters (`generalLimiter`, `authLimiter`, `lookupLimiter`, `tenantRegistrationLimiter`) had `validate: { trustProxy: false, xForwardedForHeader: false }`. Running behind Nginx in production with `app.set('trust proxy', true)`, this caused the limiter to ignore `X-Forwarded-For` and bucket ALL users under the Nginx loopback IP (`127.0.0.1`). The production limit of 100 requests per 15 minutes was shared across all users — normal Dashboard usage (6 parallel API calls per load) drained it rapidly, locking every user out simultaneously for up to 15 minutes.
+
+2. **Server Crash on Any Unhandled Error**: Both `unhandledRejection` and `uncaughtException` called `gracefulShutdown()`, killing the entire Express process. Any uncaught error in a background job (billing scheduler, OpenAI, PayPal webhooks) would bring down the server for all users. PM2 restart takes 30–120 seconds.
+
+3. **PM2 Has No Restart Protections**: `ecosystem.config.cjs` had no `max_memory_restart`, `max_restarts`, `min_uptime`, or `restart_delay`. Memory leaks would grow until the OS killed the process; PM2 would restart blindly with no backoff.
+
+4. **DB Connection Pool Too Small with 30-Second Timeout**: Both the Landlord DB (`max: 5`) and per-tenant DB (`max: 5`) pools were too small for 50 concurrent users. When pools exhausted, requests queued for up to 30 seconds (`acquire: 30000`) before failing.
+
+5. **No HTTP Server Timeout**: `server.listen()` had no `server.setTimeout()` call, allowing external API calls (OpenAI, PayPal, SMTP) to hang indefinitely, holding DB connections.
+
+### Fixes Applied
+
+#### `backend/src/middleware/rateLimiter.js`
+- Changed `validate: { trustProxy: false, xForwardedForHeader: false }` → `validate: { trustProxy: true }` on all four limiters
+- `deploy.sh` now auto-injects `RATE_LIMIT_MAX_REQUESTS=500` into `backend/.env` if not already set (raised from default 100), giving each real user IP 500 requests per 15-minute window
+
+#### `backend/src/server.js`
+- `unhandledRejection` now **logs only** — no longer calls `gracefulShutdown()`. Background errors are isolated; the server stays alive for all users
+- `uncaughtException` still triggers graceful shutdown (it represents corrupted Node.js state requiring a restart)
+- Added `server.setTimeout(30000)` — requests hanging over 30 seconds are killed, freeing DB connections
+
+#### `ecosystem.config.cjs`
+- Added `max_memory_restart: '512M'` — restarts if process exceeds 512MB (memory leak protection)
+- Added `max_restarts: 10` — stops infinite restart loop on persistent startup errors
+- Added `min_uptime: '10s'` — distinguishes a stable process from one that crashes on boot
+- Added `restart_delay: 5000` — 5-second backoff between restarts to protect DB on bad deploys
+
+#### `backend/src/config/database.js` (Landlord DB pool)
+- `max: 5` → `max: 30` (Landlord DB is hit on every request; 30 keeps waits near-zero at peak load)
+- `acquire: 30000` → `acquire: 10000` (fail fast in 10s instead of making users wait 30s)
+
+#### `backend/src/utils/TenantConnector.js` (per-tenant DB pool)
+- `max: 5` → `max: 7` (5 users per tenant + 2 buffer = comfortable headroom per tenant)
+- `acquire: 30000` → `acquire: 10000` (same fast-fail improvement)
+- Total MySQL connections at peak: 30 (landlord) + 10 tenants × 7 = **100** — safely under MySQL's default `max_connections: 151`
+
+#### `scripts/deploy.sh`
+- Fixed PM2 step: now correctly detects `ecosystem.config.cjs` (not the old `.js` extension)
+- Fixed health check: now hits `http://localhost:5000/health` (not port `5001/api/v1/items`)
+- Added Step 5b: auto-injects `RATE_LIMIT_MAX_REQUESTS=500` into `backend/.env` on each deploy if missing
+- Added `pm2 save` after reload so process list survives server reboots
+- Health check now parses and displays DB/Redis/tenant pool status via `jq` if available
+
+#### `scripts/deploy-remote.sh`
+- Added Step 3: pre-deploy git sync — fetches remote, detects if remote is ahead, and runs `git pull --rebase` automatically before pushing (eliminates the "push rejected" error when server has commits local doesn't)
+- Added colored output and uncommitted-changes prompt
+- Added failure message with exact SSH command to check logs
+
+### Impact
+- **429 errors eliminated**: Each user now has their own rate limit bucket (500 req/15min per real IP)
+- **Server stays up**: Background errors no longer crash the process for all users
+- **Faster failure on DB issues**: 10-second acquire timeout vs. 30-second stall
+- **Memory leak protection**: PM2 auto-restarts at 512MB before OOM kill
+- **Deployment**: Single `bash scripts/deploy-remote.sh` from local machine handles git sync + push + full server deploy
 - Frontend properly connects to the backend API without network errors.

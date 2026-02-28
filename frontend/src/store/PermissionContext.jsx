@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getCurrentUser } from '../services/authService';
-import api from '../services/api';
 
 const PermissionContext = createContext(null);
 

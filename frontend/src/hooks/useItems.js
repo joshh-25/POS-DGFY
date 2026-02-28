@@ -6,7 +6,6 @@ export const useItems = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
-
   const fetchItems = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -19,7 +18,7 @@ export const useItems = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchItems();
@@ -213,12 +212,8 @@ export const useFolders = () => {
   }, []);
 
   const createFolder = useCallback(async (name, description) => {
-    try {
-      await itemService.createFolder({ name, description });
-      await fetchFolders(); // Refresh list
-    } catch (err) {
-      throw err;
-    }
+    await itemService.createFolder({ name, description });
+    await fetchFolders(); // Refresh list
   }, [fetchFolders]);
 
   useEffect(() => {

@@ -57,14 +57,16 @@ Automates the entire deployment process on the production server.
 
 **What it does:**
 1. Pulls latest code from git
-2. Installs dependencies (ensures build tools are available)
-3. Builds the frontend (uses `NODE_ENV=production` for optimization)
+2. Installs dependencies (root, backend, frontend)
+3. Builds the frontend (`NODE_ENV=production`)
 4. Runs database migrations (idempotent)
-5. Runs maintenance scripts: `deploy_fix_precision.js` (product_composition precision), `surgical_migrate.js` (index pruning), `deploy_fix_precision_v2.js` (quantity column precision across all tables), `sync-tenant-schemas.js`, `register_legacy_tenant.js`
-6. Restarts all PM2 services via `ecosystem.config.js`
-7. Smoke-tests the backend API (10 retries, 30s timeout)
-8. Runs billing verification
-9. Fails safely if any step errors out (`set -e`)
+5. Runs maintenance scripts: `deploy_fix_precision.js`, `surgical_migrate.js`, `deploy_fix_precision_v2.js`, `sync-tenant-schemas.js`, `register_legacy_tenant.js`
+6. **Auto-injects** `RATE_LIMIT_MAX_REQUESTS=500` into `backend/.env` if not already set
+7. Reloads PM2 via `ecosystem.config.cjs` (zero-downtime reload; falls back to restart if not running)
+8. Saves PM2 process list (`pm2 save`) so processes survive server reboots
+9. Health-checks `http://localhost:5000/health` (10 retries, 30s timeout) — displays DB/Redis/tenant pool status
+10. Runs billing verification
+11. Fails safely if any step errors out (`set -e`)
 
 ---
 
@@ -80,13 +82,17 @@ bash scripts/deploy-remote.sh
 
 **What it does:**
 1. **Confirmation**: Asks for explicit confirmation to avoid accidental deployments.
-2. **Git Push**: Pushes your current `master` branch up to GitHub.
-3. **Remote Execution**: SSHs into the production server and executes `./scripts/deploy.sh`.
-4. **Streaming**: Streams the remote deployment logs directly to your local terminal.
+2. **Uncommitted changes check**: Detects local changes and optionally commits them before deploying.
+3. **Git sync**: Fetches remote, detects divergence, and runs `git pull --rebase` automatically if the remote has commits your local branch doesn't — prevents push rejection errors.
+4. **Git Push**: Pushes local `master` to GitHub.
+5. **Remote Execution**: SSHs into the production server and executes `./scripts/deploy.sh`.
+6. **Streaming**: Streams the remote deployment logs directly to your local terminal.
 
 **Pre-requisites:**
 - SSH access to `192.53.116.33` on port `64428`.
 - SSH Key or server password.
+
+> **Note:** This script is meant to run on your **local machine**, not on the server. If you're already SSH'd into the server, run `bash scripts/deploy.sh` directly instead.
 
 ---
 

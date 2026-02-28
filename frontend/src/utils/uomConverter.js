@@ -173,7 +173,7 @@ export const getAllUomOptions = () => {
 export const getGroupedUomOptions = () => {
     const grouped = {};
 
-    for (const [groupName, group] of Object.entries(UOM_GROUPS)) {
+    for (const [, group] of Object.entries(UOM_GROUPS)) {
         grouped[group.label] = Object.entries(group.units).map(([unitKey, unitData]) => ({
             value: unitKey,
             label: unitData.label

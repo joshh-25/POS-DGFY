@@ -6,7 +6,6 @@ export const useJobOrders = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
-
   const fetchJobOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -21,7 +20,7 @@ export const useJobOrders = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchJobOrders();

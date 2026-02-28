@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
@@ -28,7 +28,6 @@ import api from './services/api.js'
 import './index.css'
 
 function App() {
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const location = useLocation()
   const currentPageName = getPageNameFromPath(location.pathname)
 

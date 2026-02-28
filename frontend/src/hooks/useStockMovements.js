@@ -6,7 +6,6 @@ export const useStockMovements = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
-
   const fetchStockMovements = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -19,7 +18,7 @@ export const useStockMovements = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchStockMovements();
@@ -32,7 +31,6 @@ export const useMovementStats = (params = {}) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
   const fetchStats = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -44,7 +42,7 @@ export const useMovementStats = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params]);
 
   useEffect(() => {
     fetchStats();

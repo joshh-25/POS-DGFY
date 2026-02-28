@@ -384,7 +384,7 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     );
 
     // Fire both concurrently; attach .catch so unhandled rejections don't fail the suite
-    const triggerCall = api.get('/trigger').catch(e => e);
+    api.get('/trigger').catch(e => e);
     // Small delay so /trigger enters the refresh path first
     await new Promise(r => setTimeout(r, 20));
     const queuedCall = api.get('/queued').catch(e => e);
