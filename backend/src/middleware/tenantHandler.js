@@ -6,6 +6,12 @@ import logger from '../config/logger.js';
 import defaultModels from '../models/index.js'; // Fallback models
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 
+// Short-lived in-memory cache for tenant lookups.
+// Avoids a DB round-trip to the landlord database on every single API request.
+// TTL of 60 seconds: tenant tokens rarely change, and 1-minute stale is acceptable.
+const tenantCache = new Map(); // token -> { tenant, expiresAt }
+const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
+
 /**
  * Middleware to resolve tenant and bind models to the request context
  */
@@ -30,10 +36,18 @@ export const tenantHandler = async (req, res, next) => {
             }, next);
         }
 
-        logger.info(`[TenantHandler] Resolving tenant for token: ${companyToken}`);
-
-        // 2. Resolve Tenant
-        const tenant = await findTenantByToken(companyToken);
+        // 2. Resolve Tenant (with in-memory cache to avoid a DB hit on every request)
+        let tenant;
+        const cached = tenantCache.get(companyToken);
+        if (cached && cached.expiresAt > Date.now()) {
+            tenant = cached.tenant;
+        } else {
+            logger.info(`[TenantHandler] Resolving tenant for token: ${companyToken}`);
+            tenant = await findTenantByToken(companyToken);
+            if (tenant) {
+                tenantCache.set(companyToken, { tenant, expiresAt: Date.now() + TENANT_CACHE_TTL_MS });
+            }
+        }
 
         if (!tenant) {
             logger.warn(`Invalid Company Token provided: ${companyToken}. Falling back to default context.`);
@@ -45,7 +59,7 @@ export const tenantHandler = async (req, res, next) => {
             }, next);
         }
 
-        logger.info(`[TenantHandler] Found tenant: ${tenant.name} (${tenant.id})`);
+        logger.debug(`[TenantHandler] Found tenant: ${tenant.name} (${tenant.id})`);
 
         // 3. Get Connection
         const sequelizeInstance = await tenantConnector.getConnection(tenant);

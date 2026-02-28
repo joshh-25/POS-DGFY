@@ -7,68 +7,78 @@ export const getDashboardStats = async () => {
   const JobOrder = dbStore.get('JobOrder');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  const totalItems = await Item.count({ where: { status: 'active' } });
+  // Run all 7 queries in parallel instead of sequentially
+  const [
+    totalItems,
+    lowStockItems,
+    healthyStockItems,
+    overStockItems,
+    pendingPOs,
+    activeJOs,
+    inventoryValueResult
+  ] = await Promise.all([
+    Item.count({ where: { status: 'active' } }),
 
-  const lowStockItems = await Item.count({
-    where: {
-      status: 'active',
-      min_threshold: { [Op.ne]: null }, // Only count items with thresholds set
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.lte,
-          sequelize.col('min_threshold')
-        )
-      ]
-    }
-  });
+    Item.count({
+      where: {
+        status: 'active',
+        min_threshold: { [Op.ne]: null },
+        [Op.and]: [
+          sequelize.where(
+            sequelize.col('current_stock'),
+            Op.lte,
+            sequelize.col('min_threshold')
+          )
+        ]
+      }
+    }),
 
-  // Calculate healthy stock (items with stock between min threshold and max capacity)
-  const healthyStockItems = await Item.count({
-    where: {
-      status: 'active',
-      min_threshold: { [Op.ne]: null }, // Only count items with thresholds set
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.gt,
-          sequelize.col('min_threshold')
-        ),
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.lte,
-          sequelize.col('max_capacity')
-        )
-      ]
-    }
-  });
+    // Calculate healthy stock (items with stock between min threshold and max capacity)
+    Item.count({
+      where: {
+        status: 'active',
+        min_threshold: { [Op.ne]: null },
+        [Op.and]: [
+          sequelize.where(
+            sequelize.col('current_stock'),
+            Op.gt,
+            sequelize.col('min_threshold')
+          ),
+          sequelize.where(
+            sequelize.col('current_stock'),
+            Op.lte,
+            sequelize.col('max_capacity')
+          )
+        ]
+      }
+    }),
 
-  // Calculate overstock (items exceeding max capacity)
-  const overStockItems = await Item.count({
-    where: {
-      status: 'active',
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.gt,
-          sequelize.col('max_capacity')
-        )
-      ]
-    }
-  });
+    // Calculate overstock (items exceeding max capacity)
+    Item.count({
+      where: {
+        status: 'active',
+        [Op.and]: [
+          sequelize.where(
+            sequelize.col('current_stock'),
+            Op.gt,
+            sequelize.col('max_capacity')
+          )
+        ]
+      }
+    }),
 
-  const pendingPOs = await PurchaseOrder.count({ where: { status: 'pending' } });
-  const activeJOs = await JobOrder.count({ where: { status: 'in_progress' } });
+    PurchaseOrder.count({ where: { status: 'pending' } }),
+    JobOrder.count({ where: { status: 'in_progress' } }),
 
-  // Calculate total inventory value
-  // Optimized to use Database Aggregation to avoid fetching all items
-  const inventoryValueResult = await Item.findAll({
-    where: { status: 'active' },
-    attributes: [
-      [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
-    ],
-    raw: true
-  });
+    // Calculate total inventory value using DB aggregation
+    Item.findAll({
+      where: { status: 'active' },
+      attributes: [
+        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
+      ],
+      raw: true
+    })
+  ]);
 
   const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
 
