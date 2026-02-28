@@ -96,6 +96,14 @@ CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 log "Detected branch: $CURRENT_BRANCH"
 git pull origin "$CURRENT_BRANCH"
 
+# Re-exec this script with the freshly-pulled version so any changes to deploy.sh
+# itself take effect immediately (bash reads the whole file before executing).
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+if [ "${DEPLOY_REEXECED:-0}" != "1" ]; then
+    export DEPLOY_REEXECED=1
+    exec bash "$SCRIPT_PATH" "$@"
+fi
+
 # 2. Install Dependencies
 log "Step 2: Installing dependencies..."
 
@@ -212,8 +220,10 @@ fi
 log "Step 7: Verifying deployment..."
 
 # Use the dedicated /health endpoint (no auth required, returns DB + Redis status).
-# Backend runs on port 5001 (set via PORT in backend/.env).
-API_HEALTH_URL="http://localhost:5001/health"
+# Read PORT dynamically from backend/.env so the URL is always correct.
+BACKEND_PORT=$(grep -E '^PORT=' "$BACKEND_DIR/.env" | head -1 | cut -d'=' -f2 | tr -d '[:space:]')
+BACKEND_PORT="${BACKEND_PORT:-5000}"
+API_HEALTH_URL="http://localhost:${BACKEND_PORT}/health"
 
 echo ">> Waiting for backend to boot..."
 sleep 15
