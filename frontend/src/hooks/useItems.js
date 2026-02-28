@@ -6,6 +6,7 @@ export const useItems = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
+  const paramsKey = JSON.stringify(params);
   const fetchItems = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -18,7 +19,7 @@ export const useItems = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [params]);
+  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchItems();

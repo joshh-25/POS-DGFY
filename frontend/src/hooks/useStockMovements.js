@@ -6,6 +6,7 @@ export const useStockMovements = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
+  const paramsKey = JSON.stringify(params);
   const fetchStockMovements = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -18,7 +19,7 @@ export const useStockMovements = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [params]);
+  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchStockMovements();
@@ -31,6 +32,7 @@ export const useMovementStats = (params = {}) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const paramsKey = JSON.stringify(params);
   const fetchStats = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -42,7 +44,7 @@ export const useMovementStats = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [params]);
+  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchStats();

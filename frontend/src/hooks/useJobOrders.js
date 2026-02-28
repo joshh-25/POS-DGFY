@@ -6,6 +6,7 @@ export const useJobOrders = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
+  const paramsKey = JSON.stringify(params);
   const fetchJobOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -20,7 +21,7 @@ export const useJobOrders = (params = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [params]);
+  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchJobOrders();
