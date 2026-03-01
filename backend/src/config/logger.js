@@ -69,10 +69,11 @@ const transports = [
     maxsize: 5242880, // 5MB
     maxFiles: 5,
   }),
-  // Combined log file
+  // Combined log file — only warn+ in production to avoid high-frequency disk I/O
   new winston.transports.File({
     filename: path.join(logsDir, 'combined.log'),
     format: format,
+    level: process.env.NODE_ENV === 'production' ? 'warn' : 'info',
     maxsize: 5242880, // 5MB
     maxFiles: 5,
   }),

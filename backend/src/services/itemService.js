@@ -6,6 +6,12 @@ import { getVariations } from '../config/searchSynonyms.js';
 import { getAllSettings } from './settingsService.js';
 import { createStockMovement } from './stockMovementService.js';
 
+// Cache for system settings — avoids a DB query on every item create/update.
+// Keyed by companyToken (from AsyncLocalStorage) so tenants don't cross-contaminate.
+// Settings change very rarely, so a 5-minute TTL is safe.
+const _settingsCache = new Map(); // companyToken -> { settings, expiresAt }
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Calculate min_threshold and purchase_allowance based on max_capacity
  * Reads settings from system settings table:
@@ -16,8 +22,18 @@ import { createStockMovement } from './stockMovementService.js';
  * @returns {Promise<object>} Object with min_threshold and purchase_allowance
  */
 const calculateThresholds = async (maxCapacity) => {
-  // Fetch settings from database
-  const settings = await getAllSettings();
+  // Key the cache by tenant so different tenants don't share each other's settings.
+  // dbStore.getStore() returns the current request's AsyncLocalStorage context.
+  const store = dbStore.getStore();
+  const tenantKey = store?.tenantId ?? 'default';
+  const cached = _settingsCache.get(tenantKey);
+  let settings;
+  if (cached && cached.expiresAt > Date.now()) {
+    settings = cached.settings;
+  } else {
+    settings = await getAllSettings();
+    _settingsCache.set(tenantKey, { settings, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
+  }
   const autoCalc = settings.enable_auto_reorder?.value ?? true; // Default ON for backward compatibility
 
   // If auto-calculate is OFF, return null thresholds
@@ -62,6 +78,25 @@ export const getItems = async (queryParams) => {
   const Item = dbStore.get('Item');
   const ProductComposition = dbStore.get('ProductComposition');
   const ItemFolder = dbStore.get('ItemFolder');
+
+  // Lightweight dropdown path — skips all joins and semantic search.
+  // Used by create/edit wizards that only need a name+id list for <select> dropdowns.
+  if (queryParams.fields === 'dropdown') {
+    const { limit = 1000, category, status } = queryParams;
+    const where = { status: { [Op.ne]: 'inactive' } };
+    if (category) where.category = category;
+    if (status) where.status = status;
+
+    const rows = await Item.findAll({
+      where,
+      attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'current_stock'],
+      order: [['name', 'ASC']],
+      limit: parseInt(limit),
+    });
+
+    const items = rows.map(item => ({ ...item.toJSON(), id: item.item_id }));
+    return { items, pagination: { page: 1, limit: parseInt(limit), total: items.length, pages: 1 } };
+  }
 
   const {
     page = 1,

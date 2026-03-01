@@ -85,7 +85,11 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   tableName: 'purchase_orders',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['status'] },
+    { fields: ['supplier_id'] },
+  ],
 });
 
 export default PurchaseOrder;

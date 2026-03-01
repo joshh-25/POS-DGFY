@@ -1,6 +1,12 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
 
+// Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
+// The JWT is cryptographically verified before the cache is consulted, so this is safe.
+// isTokenBlacklisted() still runs first, so logout is immediately honoured.
+const _userCache = new Map(); // user_id -> { user, expiresAt }
+const USER_CACHE_TTL_MS = 30_000; // 30 seconds
+
 export const authenticate = async (req, res, next) => {
   try {
     // Get token from header
@@ -52,9 +58,22 @@ export const authenticate = async (req, res, next) => {
       throw error;
     }
 
-    // Find user
-    const User = dbStore.get('User');
-    const user = await User.findByPk(decoded.user_id);
+    // Find user — check cache first to avoid a DB hit on every request.
+    // Cache key includes the company token so tenants with the same numeric user_id
+    // don't cross-contaminate each other (user_id=1 is very common across tenants).
+    const companyToken = req.headers['x-company-token'] || 'default';
+    const cacheKey = `${companyToken}:${decoded.user_id}`;
+    const cached = _userCache.get(cacheKey);
+    let user;
+    if (cached && cached.expiresAt > Date.now()) {
+      user = cached.user;
+    } else {
+      const User = dbStore.get('User');
+      user = await User.findByPk(decoded.user_id);
+      if (user) {
+        _userCache.set(cacheKey, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+      }
+    }
 
     if (!user) {
       return res.status(401).json({

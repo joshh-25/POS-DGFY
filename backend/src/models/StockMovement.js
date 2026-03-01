@@ -70,7 +70,13 @@ const StockMovement = sequelize.define('StockMovement', {
   tableName: 'stock_movements',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: false,
+  indexes: [
+    { fields: ['item_id'] },
+    { fields: ['movement_type'] },
+    { fields: ['timestamp'] },
+    { fields: ['item_id', 'movement_type', 'timestamp'] },
+  ],
 });
 
 export default StockMovement;

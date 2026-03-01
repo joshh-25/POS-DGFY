@@ -76,7 +76,11 @@ const JobOrder = sequelize.define('JobOrder', {
   tableName: 'job_orders',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['status'] },
+    { fields: ['product_id'] },
+  ],
 });
 
 export default JobOrder;

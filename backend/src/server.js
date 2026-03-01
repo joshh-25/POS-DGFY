@@ -13,6 +13,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import paymentRoutes from './routes/payments.js';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import morgan from 'morgan';
 import express from 'express'; // Added missing express import if it was implicit before? No, it's used at line 35.
 // Let's just fix the order.
@@ -92,6 +93,9 @@ app.use(cors(corsOptions));
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Gzip compression — reduces JSON response sizes by 60-80%
+app.use(compression());
 
 // Body parsing middleware
 // Increased limit to 10mb to support bulk CSV imports (up to 1000 items)

@@ -196,7 +196,8 @@ const Item = sequelize.define('Item', {
     { fields: ['sku_code'] },
     { fields: ['category'] },
     { fields: ['folder_id'] },
-    { fields: ['deleted_at'] }
+    { fields: ['deleted_at'] },
+    { fields: ['status'] },
   ]
 });
 
