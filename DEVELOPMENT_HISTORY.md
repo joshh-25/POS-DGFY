@@ -6502,3 +6502,7 @@ Following a comprehensive system audit, 5 items were marked as "partially resolv
 #### 5. Missing `validate-token` Route Implementation
 **Status**: CONFIRMED RESOLVED
 - *Evidence*: Discovered that the missing controller reported in earlier phases was a false alarm. The route `GET /api/v1/auth/validate-token/:token` is correctly registered in `auth.js`, implemented via `authController.validateToken()`, and delegates to `landlordService.findTenantByToken()`. Verified functionally via raw `curl`.
+# # #   5 .   A n o m a l y   D e t e c t i o n   O O M   V u l n e r a b i l i t y   ( A u d i t   7 . 1 ) 
+ * * S t a t u s * * :   C O N F I R M E D   R E S O L V E D 
+ -   * F i x * :   T h e   \ d e t e c t A n o m a l i e s \   f u n c t i o n   i n   \  n a l y t i c s S e r v i c e . j s \   p r e v i o u s l y   l o a d e d   a l l   \ S t o c k M o v e m e n t s \   i n t o   m e m o r y   a t   o n c e ,   c a u s i n g   O u t - O f - M e m o r y   c r a s h e s   o n   l a r g e   d a t a s e t s .   R e f a c t o r e d   i t   t o   u s e   c h u n k e d   b a t c h - f e t c h i n g   ( \ C H U N K _ S I Z E = 5 0 0 \ ) ,   b o u n d i n g   m e m o r y   u s a g e   w h i l e   r e t a i n i n g   t h e   N + 1   q u e r y   f i x .  
+ 
