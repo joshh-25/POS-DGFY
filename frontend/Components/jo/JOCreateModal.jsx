@@ -328,7 +328,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto pb-8">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? 'Edit Job Order' : 'Create Job Orders'}
@@ -419,13 +419,21 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                     {isSelected && (
                       <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                         <Label className="text-xs">Qty:</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          className="w-24 h-8"
-                          value={quantities[pid] !== undefined ? quantities[pid] : 1}
-                          onChange={(e) => handleQuantityChange(pid, e.target.value)}
-                        />
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            className="w-24 h-8 pr-8"
+                            value={quantities[pid] !== undefined ? quantities[pid] : 1}
+                            onChange={(e) => handleQuantityChange(pid, e.target.value)}
+                          />
+                          {products.find(p => (p.id || p.item_id) === pid)?.unit_of_measure && (
+                            <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
+                              {products.find(p => (p.id || p.item_id) === pid)?.unit_of_measure}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -439,16 +447,24 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                 <Label className="text-base font-medium">{products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.name}</Label>
                 <div className="flex items-center gap-2">
                   <Label>Quantity:</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    className="w-24"
-                    value={singleQuantity}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSingleQuantity(val === '' ? '' : parseInt(val));
-                    }}
-                  />
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-24 pr-8"
+                      value={singleQuantity}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleQuantity(val === '' ? '' : parseInt(val));
+                      }}
+                    />
+                    {products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure && (
+                      <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
+                        {products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -496,7 +512,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
 
         </div>
 
-        <DialogFooter className="flex justify-between items-center mt-4">
+        <DialogFooter className="flex justify-between items-center mt-6 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <div className="flex gap-2">
             {onSaveDraft && (

@@ -18,7 +18,8 @@ import {
   Menu,
   X,
   LogOut,
-  Bot
+  Bot,
+  PackageCheck
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
@@ -32,6 +33,7 @@ const ALL_NAV_ITEMS = [
   { name: 'Suppliers', icon: Truck, page: 'Suppliers', permission: 'suppliers:view' },
   { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
   { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
+  { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
   { name: 'Reports', icon: FileText, page: 'Reports', permission: 'reports:view' },
   { name: 'AI Chat', icon: Bot, page: 'AiChat', permission: 'ai:chat' },
@@ -69,6 +71,17 @@ export default function Layout({ children, currentPageName }) {
     const handler = () => setSessionExpired(true);
     window.addEventListener('auth:session-expired', handler);
     return () => window.removeEventListener('auth:session-expired', handler);
+  }, []);
+
+  // Fix 10.3: Listen for global server-error events dispatched by api.js on 5xx responses.
+  // Centralizes server-error feedback — individual components don't need their own handlers.
+  useEffect(() => {
+    const handler = (e) => {
+      const message = e.detail?.message || 'Server error. Please try again.';
+      toast.error(message, { duration: 5000, id: 'server-error' });
+    };
+    window.addEventListener('api:server-error', handler);
+    return () => window.removeEventListener('api:server-error', handler);
   }, []);
 
   React.useEffect(() => {

@@ -36,7 +36,7 @@ import {
   Activity
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
-import { formatNumber } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { useJobOrderById } from '@/hooks/useJobOrders.js';
 
 const statusConfig = {
@@ -101,7 +101,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto pb-8">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               <span className="text-xl">{displayJO.jo_number || 'Job Order Details'}</span>
@@ -135,7 +135,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                     {displayJO.product_name || displayJO.product?.name || 'Unknown Product'}
                   </p>
                   <p className="text-slate-500">
-                    Target Output: <span className="font-medium text-slate-900">{displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || 'units'}</span>
+                    Target Output: <span className="font-medium text-slate-900">{formatQty(displayJO.quantity_to_produce)} {displayJO.product?.unit_of_measure || 'units'}</span>
                   </p>
                 </div>
               </div>
@@ -292,7 +292,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
             )}
           </div>
 
-          <DialogFooter className="pt-8">
+          <DialogFooter className="pt-6 mt-6 border-t border-slate-100">
             <Button variant="outline" onClick={onClose}>Close</Button>
             {(displayJO.status === 'in_progress' || displayJO.status === 'partial') && (
               <Button
@@ -334,8 +334,8 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                 </Button>
               </div>
               <p className="text-xs text-slate-500">
-                Target: {displayJO.quantity_to_produce} {displayJO.product?.unit_of_measure || ''} &nbsp;|&nbsp;
-                Produced So Far: {displayJO.quantity_produced || 0} &nbsp;|&nbsp;
+                Target: {formatQty(displayJO.quantity_to_produce)} {displayJO.product?.unit_of_measure || ''} &nbsp;|&nbsp;
+                Produced So Far: {formatQty(displayJO.quantity_produced || 0)} &nbsp;|&nbsp;
                 <span className="text-amber-600">Over-production allowed</span>
               </p>
             </div>

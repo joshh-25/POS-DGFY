@@ -171,8 +171,8 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
       createdBatchId = batch.batch_id;
     }
   }
-  // Handle stock deductions (production_consumption, calculated_loss)
-  else if (movement_type === 'production_consumption' || movement_type === 'calculated_loss') {
+  // Handle stock deductions (production_consumption, calculated_loss, goods_issue)
+  else if (movement_type === 'production_consumption' || movement_type === 'calculated_loss' || movement_type === 'goods_issue') {
     newStock = currentStock - parseFloat(quantity);
     if (newStock < 0) {
       const error = new Error('Insufficient stock');
@@ -213,8 +213,15 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
           cost_per_unit: targetBatch.cost_per_unit
         });
       }
-      // Default FIFO: consume from oldest batches first
+      // Default FIFO (or FEFO for perishable items): consume from oldest/nearest-expiry first
       else {
+        // FEFO: sort by expiry_date ASC for items with shelf_life_days (perishables)
+        // FIFO: sort by received_date ASC for non-perishables
+        const useFefo = movementData.use_fefo === true;
+        const batchOrder = useFefo
+          ? [['expiry_date', 'ASC'], ['received_date', 'ASC']]
+          : [['received_date', 'ASC']];
+
         const batches = await FIFOBatch.findAll({
           where: {
             item_id: item.item_id,
@@ -226,7 +233,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
               )
             ]
           },
-          order: [['received_date', 'ASC']],
+          order: batchOrder,
           ...options
         });
 
@@ -310,7 +317,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   const movement = await StockMovement.create({
     item_id: item.item_id,
     movement_type,
-    quantity: ['production_consumption', 'calculated_loss'].includes(movement_type)
+    quantity: ['production_consumption', 'calculated_loss', 'goods_issue'].includes(movement_type)
       ? -Math.abs(parseFloat(quantity))
       : Math.abs(parseFloat(quantity)),
     reference_id: movementData.reference_id || null,
@@ -541,6 +548,7 @@ export const voidMovement = async (movementId, userId, reason) => {
     else if (movement_type === 'calculated_loss') reverseType = 'adjustment';
     else if (movement_type === 'transfer') reverseType = 'transfer';
     else if (movement_type === 'production_output') reverseType = 'adjustment';
+    else if (movement_type === 'goods_issue') reverseType = 'return'; // Goods returned to stock after dispatch reversal
 
     // ─── Guard: Finding 5.3 ─────────────────────────────────────────────────
     // For additions (purchase_receipt etc.) that created a FIFO batch, check
@@ -602,6 +610,33 @@ export const voidMovement = async (movementId, userId, reason) => {
             quantity_consumed: Math.max(0, parseFloat(batch.quantity_consumed) + quantity)
           }, { transaction });
         }
+      }
+    }
+
+    // Handle Dispatch Order line decrement when voiding a goods_issue movement
+    // reference_id stores the line_id (as string) for DO-type movements
+    if (originalMovement.reference_type === 'DO' && originalMovement.reference_id) {
+      const DispatchOrderLine = dbStore.get('DispatchOrderLine');
+      const DispatchOrder = dbStore.get('DispatchOrder');
+      const doLine = await DispatchOrderLine.findByPk(parseInt(originalMovement.reference_id), { transaction });
+      if (doLine) {
+        const voidedQty = Math.abs(parseFloat(quantity));
+        await doLine.update({
+          qty_dispatched: Math.max(0, parseFloat(doLine.qty_dispatched) - voidedQty),
+          qty_voided: parseFloat(doLine.qty_voided) + voidedQty
+        }, { transaction });
+
+        // Recalculate DO status based on all lines
+        const allLines = await DispatchOrderLine.findAll({ where: { do_id: doLine.do_id }, transaction });
+        let allFulfilled = true;
+        let anyDispatched = false;
+        for (const l of allLines) {
+          const net = parseFloat(l.qty_dispatched) - parseFloat(l.qty_voided);
+          if (net > 0) anyDispatched = true;
+          if (net < parseFloat(l.qty_ordered) - 0.001) allFulfilled = false;
+        }
+        const doStatus = allFulfilled ? 'completed' : anyDispatched ? 'partial' : 'confirmed';
+        await DispatchOrder.update({ status: doStatus }, { where: { do_id: doLine.do_id }, transaction });
       }
     }
 

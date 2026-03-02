@@ -201,6 +201,18 @@ export const canBeProductPackaging = (item) => {
 };
 
 /**
+ * Check if item can be dispatched via a Dispatch Order.
+ * Only finished goods are dispatched to customers; raw materials, WIP, packaging,
+ * and supplies are consumed internally (production) or purchased — never dispatched.
+ * @param {object} item - Item object
+ * @returns {boolean}
+ */
+export const canBeDispatched = (item) => {
+    if (!item) return false;
+    return item.category === CATEGORIES.PRODUCT && item.product_type === PRODUCT_TYPES.FINISHED_GOODS;
+};
+
+/**
  * Get category configuration for legacy compatibility
  * (Used in components that expect categoryConfig object)
  */
@@ -235,5 +247,6 @@ export default {
     canBeJobOrderInput,
     canBeProductIngredient,
     canBeProductPackaging,
+    canBeDispatched,
     getCategoryConfig
 };

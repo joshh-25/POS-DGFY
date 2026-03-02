@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Star, CheckCircle, XCircle, Calendar } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import { formatQty } from '../../src/lib/numberUtils.js';
 import { format, addDays } from 'date-fns';
 
 export default function POReceiptModal({ po, open, onClose, onConfirm }) {
@@ -99,7 +100,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
               <div key={idx} className="bg-slate-50 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-medium text-slate-900">{item.item_name}</span>
-                  <Badge variant="outline">Ordered: {item.quantity}</Badge>
+                  <Badge variant="outline">Ordered: {formatQty(item.quantity)}</Badge>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

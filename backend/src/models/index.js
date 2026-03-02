@@ -29,6 +29,8 @@ import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
 import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
+import DispatchOrder from './DispatchOrder.js';
+import DispatchOrderLine from './DispatchOrderLine.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
@@ -169,6 +171,17 @@ ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 ReceiveToken.belongsTo(User, { foreignKey: 'used_by', as: 'usedByUser' });
 User.hasMany(ReceiveToken, { foreignKey: 'created_by', as: 'createdTokens' });
 
+// DispatchOrder associations
+DispatchOrder.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+DispatchOrder.belongsTo(User, { foreignKey: 'confirmed_by', as: 'confirmedByUser' });
+DispatchOrder.belongsTo(User, { foreignKey: 'archived_by', as: 'archivedByUser' });
+DispatchOrder.hasMany(DispatchOrderLine, { foreignKey: 'do_id', as: 'lines' });
+DispatchOrderLine.belongsTo(DispatchOrder, { foreignKey: 'do_id', as: 'dispatchOrder' });
+DispatchOrderLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+DispatchOrderLine.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
+Item.hasMany(DispatchOrderLine, { foreignKey: 'item_id', as: 'dispatchOrderLines' });
+User.hasMany(DispatchOrder, { foreignKey: 'created_by', as: 'createdDispatchOrders' });
+
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -212,6 +225,8 @@ const db = {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  DispatchOrder,
+  DispatchOrderLine,
   Tenant,
   UserTenantMapping,
   Payment,
@@ -252,6 +267,8 @@ export {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  DispatchOrder,
+  DispatchOrderLine,
   Tenant,
   UserTenantMapping,
   Payment,

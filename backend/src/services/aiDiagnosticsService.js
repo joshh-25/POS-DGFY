@@ -499,6 +499,86 @@ const SYSTEM_FEATURE_MAP = [
     status: 'covered'
   },
 
+  // ─── DISPATCH ORDERS ──────────────────────────────────────────────────────
+  {
+    id: 'do_view',
+    category: 'Dispatch',
+    feature: 'View and filter dispatch orders',
+    covered_by: 'query_dispatch_orders',
+    status: 'covered'
+  },
+  {
+    id: 'do_details',
+    category: 'Dispatch',
+    feature: 'Get dispatch order details with lines and movements',
+    covered_by: 'get_dispatch_order_details',
+    status: 'covered'
+  },
+  {
+    id: 'do_create',
+    category: 'Dispatch',
+    feature: 'Create draft dispatch orders',
+    covered_by: 'create_dispatch_order',
+    status: 'covered'
+  },
+  {
+    id: 'do_confirm',
+    category: 'Dispatch',
+    feature: 'Confirm dispatch orders (lock for dispatch)',
+    covered_by: 'confirm_dispatch_order',
+    status: 'covered'
+  },
+  {
+    id: 'do_dispatch',
+    category: 'Dispatch',
+    feature: 'Execute dispatch (deduct stock via goods_issue movement)',
+    covered_by: 'dispatch_items',
+    status: 'covered'
+  },
+  {
+    id: 'do_cancel',
+    category: 'Dispatch',
+    feature: 'Cancel dispatch orders',
+    covered_by: 'cancel_dispatch_order',
+    status: 'covered'
+  },
+  {
+    id: 'do_archive',
+    category: 'Dispatch',
+    feature: 'Archive completed or cancelled dispatch orders',
+    covered_by: null,
+    status: 'gap',
+    severity: 'low',
+    recommendation: 'Add an archive_dispatch_order tool. The backend supports archiving DOs but no AI tool exposes it.'
+  },
+  {
+    id: 'do_update',
+    category: 'Dispatch',
+    feature: 'Edit draft dispatch orders (header and lines)',
+    covered_by: null,
+    status: 'gap',
+    severity: 'low',
+    recommendation: 'Add an update_dispatch_order tool for editing draft DOs before confirmation.'
+  },
+  {
+    id: 'do_stats',
+    category: 'Dispatch',
+    feature: 'View dispatch order summary statistics',
+    covered_by: null,
+    status: 'gap',
+    severity: 'low',
+    recommendation: 'Add a get_dispatch_stats tool. The backend exposes a /stats endpoint with DO counts by status.'
+  },
+  {
+    id: 'do_export',
+    category: 'Dispatch',
+    feature: 'Export dispatch orders to CSV',
+    covered_by: null,
+    status: 'gap',
+    severity: 'low',
+    recommendation: 'Add an export_dispatch_orders tool. The backend supports CSV export of DOs.'
+  },
+
   // ─── DATA MANAGEMENT ──────────────────────────────────────────────────────
   {
     id: 'export_csv',
@@ -637,7 +717,9 @@ async function fetchTenantData() {
     totalMovements,
     reportSnapshots,
     batchLineageRecords,
-    removedUsers
+    removedUsers,
+    totalDOs,
+    archivedDOs
   ] = await Promise.all([
     safeCount('Item'),
     safeCount('Item', { where: { status: 'active' } }),
@@ -650,7 +732,9 @@ async function fetchTenantData() {
     safeCount('StockMovement'),
     safeCount('ReportSnapshot'),
     safeCount('BatchLineage'),
-    safeCount('User', { where: { deleted_at: { [Op.ne]: null } } })
+    safeCount('User', { where: { deleted_at: { [Op.ne]: null } } }),
+    safeCount('DispatchOrder'),
+    safeCount('DispatchOrder', { where: { archived_at: { [Op.ne]: null } } })
   ]);
 
   return {
@@ -665,7 +749,9 @@ async function fetchTenantData() {
     total_movements:       totalMovements,
     report_snapshots:      reportSnapshots,
     batch_lineage_records: batchLineageRecords,
-    removed_users:         removedUsers
+    removed_users:         removedUsers,
+    total_dos:             totalDOs,
+    archived_dos:          archivedDOs
   };
 }
 
@@ -712,6 +798,14 @@ function buildDynamicKnowledgeGaps(tenantData) {
     gaps.push({
       id: 'removed_users_data',
       description: `${tenantData.removed_users} removed user${tenantData.removed_users > 1 ? 's' : ''} exist but the AI cannot view their records`,
+      severity: 'low'
+    });
+  }
+
+  if (tenantData.archived_dos > 0) {
+    gaps.push({
+      id: 'archived_dos',
+      description: `${tenantData.archived_dos} archived dispatch order${tenantData.archived_dos > 1 ? 's are' : ' is'} inaccessible to the AI`,
       severity: 'low'
     });
   }

@@ -13,6 +13,7 @@
 - [Purchase Orders Endpoints](#purchase-orders-endpoints)
 - [Job Orders Endpoints](#job-orders-endpoints)
 - [Stock Movements Endpoints](#stock-movements-endpoints)
+- [Dispatch Orders Endpoints](#dispatch-orders-endpoints)
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
@@ -344,6 +345,7 @@ Get all items with pagination and filtering
 &sortBy=name
 &sortOrder=asc
 &status=active
+&fields=dropdown     # Lightweight projection: returns only item_id, sku_code, name, unit_of_measure, category, current_stock. Skips all JOINs. Use for dropdowns.
 ```
 
 **Response (200)**
@@ -377,6 +379,8 @@ Get all items with pagination and filtering
   }
 }
 ```
+
+> **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint returns a lightweight projection (6 fields, no JOINs) intended for populating dropdowns. The full pagination wrapper is preserved but `total` reflects only the returned count. Do not use `fields=dropdown` when you need `ProductComposition`, `ItemFolder`, or any join data.
 
 ### GET /items/:item_id
 Get single item details
@@ -1239,6 +1243,285 @@ Content-Disposition: attachment; filename="stock_movements_2024-01-16.csv"
 ```csv
 Movement ID,Date,Item Name,SKU,Type,Quantity,Current Stock,Reference,Batch ID,User,Notes
 94,"1/16/2026, 3:43:53 PM","Calamansi Label 330ml","PKG-005","transfer","1.00",,"N/A","N/A","admin",""
+```
+
+---
+
+## Dispatch Orders Endpoints
+
+Dispatch Orders (DO) are first-class outbound documents for finished goods. They trigger `goods_issue` stock movements and support partial dispatch (ship now, ship later). Requires `do:view`, `do:create`, `do:dispatch`, or `do:delete` permissions.
+
+### GET /dispatch-orders
+List Dispatch Orders (paginated, filterable).
+
+**Query Params**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | integer | Page number (default: 1) |
+| `limit` | integer | Results per page (default: 50, max: 200) |
+| `status` | string | Filter by status: `draft`, `confirmed`, `partial`, `completed`, `cancelled` |
+| `recipient_name` | string | Search by recipient name (partial match) |
+| `from_date` | date | Filter dispatch_date >= this date |
+| `to_date` | date | Filter dispatch_date <= this date |
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "do_id": 1,
+        "do_number": "DO-2026-0001",
+        "recipient_name": "Metro Supermarket",
+        "recipient_type": "external",
+        "dispatch_date": "2026-03-02",
+        "status": "confirmed",
+        "reference_jo": "JO-2026-0012",
+        "reference_po": null,
+        "notes": "Rush delivery",
+        "line_count": 3,
+        "created_at": "2026-03-02T08:00:00Z"
+      }
+    ],
+    "count": 1,
+    "page": 1,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+### GET /dispatch-orders/stats
+Summary counts grouped by status. Used by the Dispatch Orders page stats cards and Dashboard "Pending Dispatches" card.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "draft": 2,
+    "confirmed": 5,
+    "partial": 3,
+    "completed": 41,
+    "cancelled": 1
+  }
+}
+```
+
+---
+
+### GET /dispatch-orders/export
+Export Dispatch Orders list as CSV. Applies formula injection protection on all text cells.
+
+**Query Params**: Same filters as GET /dispatch-orders.
+
+**Response (200)**
+```
+Content-Type: text/csv
+Content-Disposition: attachment; filename="dispatch-orders-2026-03-02.csv"
+```
+```csv
+DO Number,Recipient,Recipient Type,Dispatch Date,Status,Reference JO,Reference PO,Lines,Notes,Created At
+DO-2026-0001,Metro Supermarket,external,2026-03-02,confirmed,JO-2026-0012,,3,Rush delivery,2026-03-02T08:00:00.000Z
+```
+
+---
+
+### GET /dispatch-orders/:id
+Get a single Dispatch Order with all lines and associated stock movements.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "do_id": 1,
+    "do_number": "DO-2026-0001",
+    "recipient_name": "Metro Supermarket",
+    "recipient_type": "external",
+    "dispatch_date": "2026-03-02",
+    "status": "partial",
+    "reference_jo": "JO-2026-0012",
+    "reference_po": null,
+    "notes": null,
+    "created_by": 1,
+    "confirmed_by": 2,
+    "archived_at": null,
+    "lines": [
+      {
+        "line_id": 1,
+        "do_id": 1,
+        "item_id": 5,
+        "qty_ordered": 100,
+        "qty_dispatched": 50,
+        "qty_voided": 0,
+        "unit_of_measure": "pcs",
+        "cost_per_unit": "15.5000",
+        "notes": null,
+        "Item": {
+          "item_id": 5,
+          "name": "Bottled Juice 330ml",
+          "sku_code": "FG-001",
+          "current_stock": 200
+        }
+      }
+    ],
+    "movements": [
+      {
+        "movement_id": 88,
+        "movement_type": "goods_issue",
+        "quantity": -50,
+        "reference_type": "DO",
+        "reference_id": "1",
+        "notes": "Dispatched 50 pcs to Metro Supermarket (DO-2026-0001)",
+        "created_at": "2026-03-02T09:15:00Z"
+      }
+    ],
+    "creator": { "user_id": 1, "username": "admin" },
+    "confirmer": { "user_id": 2, "username": "manager1" }
+  }
+}
+```
+
+---
+
+### POST /dispatch-orders
+Create a new Dispatch Order (status = `draft`). No stock is deducted at this step.
+
+**Permission**: `do:create`
+
+**Request Body**
+```json
+{
+  "recipient_name": "Metro Supermarket",
+  "recipient_type": "external",
+  "dispatch_date": "2026-03-05",
+  "reference_jo": "JO-2026-0012",
+  "reference_po": null,
+  "notes": "Rush delivery",
+  "lines": [
+    { "item_id": 5, "qty_ordered": 100, "notes": null },
+    { "item_id": 8, "qty_ordered": 50, "notes": "Check expiry first" }
+  ]
+}
+```
+
+**Validation Rules**
+- `recipient_name`: required, max 200 chars
+- `recipient_type`: `external` | `internal`
+- `dispatch_date`: required, valid date
+- `lines`: required, non-empty array; each line must have `item_id` and `qty_ordered > 0`
+
+**Response (201)**
+```json
+{
+  "success": true,
+  "data": { "do_id": 3, "do_number": "DO-2026-0003", "status": "draft", ... },
+  "message": "Dispatch Order DO-2026-0003 created"
+}
+```
+
+---
+
+### PUT /dispatch-orders/:id
+Update a Dispatch Order. Only allowed when status is `draft`.
+
+**Permission**: `do:create`
+
+**Request Body**: Same schema as POST. All fields optional (partial update).
+
+**Response (200)**
+```json
+{ "success": true, "data": { ...updatedDO }, "message": "Dispatch Order updated" }
+```
+
+---
+
+### POST /dispatch-orders/:id/confirm
+Confirm a Dispatch Order: `draft` → `confirmed`. Locks the header; items are reserved for dispatch. No stock change yet.
+
+**Permission**: `do:create`
+
+**Response (200)**
+```json
+{ "success": true, "data": { "status": "confirmed", ... }, "message": "Dispatch Order confirmed" }
+```
+
+---
+
+### POST /dispatch-orders/:id/dispatch
+Execute a dispatch run. Deducts stock from `fifo_batches` and creates `goods_issue` StockMovement records. Transitions status: `confirmed` → `partial` or `completed`.
+
+**Permission**: `do:dispatch`
+
+**Request Body**
+```json
+{
+  "lines": [
+    { "line_id": 1, "qty_to_dispatch": 50 },
+    { "line_id": 2, "qty_to_dispatch": 30 }
+  ]
+}
+```
+
+**Behavior**:
+- FIFO used for non-perishable items (`shelf_life_days = null`)
+- FEFO used for perishable items (`shelf_life_days IS NOT NULL`) — batches sorted by `expiry_date ASC`
+- Partial dispatch: if `qty_to_dispatch < qty_remaining` on all lines, status = `partial`
+- Full dispatch: if all lines are now fully dispatched, status = `completed`
+- Creates one `StockMovement` per line dispatched: `movement_type = 'goods_issue'`, `reference_type = 'DO'`, `reference_id = line_id`
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "do_id": 1,
+    "status": "partial",
+    "lines_dispatched": 2,
+    "movements_created": 2
+  },
+  "message": "Dispatched 2 line(s) successfully"
+}
+```
+
+**Error (400)** — Insufficient stock:
+```json
+{
+  "success": false,
+  "message": "Insufficient stock for Bottled Juice 330ml. Available: 30, Requested: 50"
+}
+```
+
+---
+
+### POST /dispatch-orders/:id/cancel
+Cancel a Dispatch Order. Only allowed from `draft` or `confirmed` status.
+
+**Permission**: `do:delete`
+
+**Request Body**
+```json
+{ "reason": "Customer cancelled order" }
+```
+
+**Response (200)**
+```json
+{ "success": true, "data": { "status": "cancelled" }, "message": "Dispatch Order cancelled" }
+```
+
+---
+
+### POST /dispatch-orders/:id/archive
+Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
+
+**Permission**: `do:delete`
+
+**Response (200)**
+```json
+{ "success": true, "message": "Dispatch Order archived" }
 ```
 
 ---

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Package, CheckCircle, XCircle, Plus, Trash2, AlertTriangle, Search } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
-import { formatNumber } from '../../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../../src/lib/numberUtils.js';
 import { canBeProductPackaging } from '@/components/utils/categoryHelpers';
 
 export default function PackagingLabelingStep({ data, updateData, items }) {
@@ -151,7 +151,7 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
                           <SelectValue placeholder="Select packaging item">
                             {pkg.item_id ? (
                               item ?
-                                `${item.name} (${item.current_stock} ${item.unit_of_measure} available)` :
+                                `${item.name} (${formatQty(item.current_stock)} ${item.unit_of_measure} available)` :
                                 (pkg.item_name || pkg.item_id)
                             ) : null}
                           </SelectValue>
@@ -159,7 +159,7 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
                         <SelectContent>
                           {availablePackagingItems.map(item => (
                             <SelectItem key={item.item_id} value={String(item.item_id)}>
-                              {item.name} ({item.current_stock} {item.unit_of_measure} available)
+                              {item.name} ({formatQty(item.current_stock)} {item.unit_of_measure} available)
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -191,7 +191,7 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                         )}
                         <span className={cn(hasEnough ? 'text-emerald-700' : 'text-amber-700')}>
-                          Need: {totalNeeded} {item.unit_of_measure} • Available: {item.current_stock} {item.unit_of_measure}
+                          Need: {totalNeeded} {item.unit_of_measure} • Available: {formatQty(item.current_stock)} {item.unit_of_measure}
                         </span>
                       </div>
                       <Badge variant="outline" className="bg-white">

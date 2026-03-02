@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Beaker, Package, Info, Search, Calculator } from 'lucide-react';
 import { cn } from "../../../src/lib/utils.js";
-import { formatNumber } from '../../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../../src/lib/numberUtils.js';
 import { canBeProductIngredient } from '@/components/utils/categoryHelpers';
 
 export default function RecipeFormulationStep({ data, updateData, items }) {
@@ -190,7 +190,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
         )}
         <div>
           <p className="font-medium text-slate-900">{item.name}</p>
-          <p className="text-sm text-slate-500">{item.sku_code} • {item.current_stock} {item.unit_of_measure}</p>
+          <p className="text-sm text-slate-500">{item.sku_code} • {formatQty(item.current_stock)} {item.unit_of_measure}</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -362,7 +362,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                           <SelectValue placeholder="Select ingredient">
                             {ing.item_id ? (
                               item ?
-                                `${item.name} (${item.current_stock} ${item.unit_of_measure} available)` :
+                                `${item.name} (${formatQty(item.current_stock)} ${item.unit_of_measure} available)` :
                                 (ing.item_name || ing.item_id)
                             ) : null}
                           </SelectValue>
@@ -376,7 +376,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                                 ) : (
                                   <Beaker className="w-3 h-3 text-emerald-600" />
                                 )}
-                                {item.name} ({item.current_stock} {item.unit_of_measure})
+                                {item.name} ({formatQty(item.current_stock)} {item.unit_of_measure})
                               </div>
                             </SelectItem>
                           ))}
@@ -416,7 +416,7 @@ export default function RecipeFormulationStep({ data, updateData, items }) {
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                         )}
                         <span className={cn(hasEnough ? 'text-emerald-700' : 'text-amber-700')}>
-                          Need: {totalNeeded} {item.unit_of_measure} • Available: {item.current_stock} {item.unit_of_measure}
+                          Need: {totalNeeded} {item.unit_of_measure} • Available: {formatQty(item.current_stock)} {item.unit_of_measure}
                         </span>
                       </div>
                       <Badge variant="outline" className="bg-white">

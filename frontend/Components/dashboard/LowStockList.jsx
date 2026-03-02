@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "../../src/lib/utils.js";
 import { isManufactured, isPurchasable } from '@/components/utils/categoryHelpers';
+import { formatQty } from '../../src/lib/numberUtils.js';
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -90,7 +91,7 @@ export default function LowStockList({ items }) {
                   </span>
                 </div>
                 <span className="text-sm font-medium text-slate-600">
-                  {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
+                  {formatQty(item.current_stock)} / {formatQty(item.max_capacity)} {item.unit_of_measure}
                 </span>
               </div>
               <Progress
@@ -98,10 +99,10 @@ export default function LowStockList({ items }) {
                 className="h-2"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Min threshold: {item.min_threshold} {item.unit_of_measure} • Need to order: {Math.max(
-                  item.purchase_allowance || 0,
-                  (item.min_threshold || 0) - (item.current_stock || 0)
-                )} {item.unit_of_measure}
+                Min threshold: {formatQty(item.min_threshold)} {item.unit_of_measure} • Need to order: {formatQty(Math.max(
+                  parseFloat(item.purchase_allowance) || 0,
+                  (parseFloat(item.min_threshold) || 0) - (parseFloat(item.current_stock) || 0)
+                ))} {item.unit_of_measure}
               </p>
             </div>
           );

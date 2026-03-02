@@ -45,6 +45,17 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- DISPATCH ORDERS ---
+    DISPATCH: {
+        label: "Dispatch Orders",
+        actions: {
+            VIEW_DO: "do:view",         // View Dispatch Order list and details
+            CREATE_DO: "do:create",     // Create and edit draft Dispatch Orders; confirm
+            DISPATCH_DO: "do:dispatch", // Execute dispatch (triggers stock deduction)
+            DELETE_DO: "do:delete",     // Cancel and archive Dispatch Orders
+        }
+    },
+
     // --- STOCK CONTROL ---
     STOCK: {
         label: "Stock Control",
@@ -106,6 +117,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         ...Object.values(PERMISSIONS.INVENTORY.actions),
         ...Object.values(PERMISSIONS.SUPPLIERS.actions),
         ...Object.values(PERMISSIONS.ORDERS.actions),
+        ...Object.values(PERMISSIONS.DISPATCH.actions),
         ...Object.values(PERMISSIONS.STOCK.actions),
         ...Object.values(PERMISSIONS.REPORTS.actions),
         PERMISSIONS.AI.actions.AI_CHAT_VIEW,
@@ -121,6 +133,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SUPPLIERS.actions.VIEW_SUPPLIERS,
         PERMISSIONS.ORDERS.actions.VIEW_PO,
         PERMISSIONS.ORDERS.actions.VIEW_JO,
+        PERMISSIONS.DISPATCH.actions.VIEW_DO,
         PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
         PERMISSIONS.AI.actions.AI_CHAT_VIEW, // Read-only chat
         // Explicitly NO create/edit/delete/approve/action

@@ -1,5 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as itemService from '../services/itemService.js';
+
+// Module-level cache: deduplicates identical concurrent fetches across all hook instances.
+// Key = JSON.stringify(params), value = { promise, data, error, ts }
+// Cache entries expire after 30 seconds so a manual refetch() always gets fresh data.
+const CACHE_TTL_MS = 30_000;
+const cache = new Map();
+
+const getCached = (key) => {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) { cache.delete(key); return null; }
+  return entry;
+};
 
 export const useItems = (params = {}) => {
   const [items, setItems] = useState([]);
@@ -7,25 +20,65 @@ export const useItems = (params = {}) => {
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
   const paramsKey = JSON.stringify(params);
-  const fetchItems = useCallback(async () => {
+  const paramsKeyRef = useRef(paramsKey);
+  paramsKeyRef.current = paramsKey;
+
+  const fetchItems = useCallback(async ({ bust = false } = {}) => {
+    const key = paramsKeyRef.current;
+    const params = JSON.parse(key);
+
+    if (!bust) {
+      const cached = getCached(key);
+      if (cached?.data) {
+        setItems(cached.data.items || []);
+        setPagination(cached.data.pagination);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+      // Deduplicate: if an identical fetch is already in-flight, await it
+      if (cached?.promise) {
+        setLoading(true);
+        try {
+          const data = await cached.promise;
+          setItems(data.items || []);
+          setPagination(data.pagination);
+          setError(null);
+        } catch (err) {
+          setError(err.message || 'Failed to fetch items');
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+    } else {
+      cache.delete(key);
+    }
+
     setLoading(true);
     setError(null);
+
+    const promise = itemService.getItems(params);
+    cache.set(key, { promise, data: null, ts: Date.now() });
+
     try {
-      const data = await itemService.getItems(params);
+      const data = await promise;
+      cache.set(key, { promise: null, data, ts: Date.now() });
       setItems(data.items || []);
       setPagination(data.pagination);
     } catch (err) {
+      cache.delete(key); // don't cache errors — allow next mount to retry
       setError(err.message || 'Failed to fetch items');
     } finally {
       setLoading(false);
     }
-  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchItems();
-  }, [fetchItems]);
+  }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, error, pagination, refetch: fetchItems };
+  return { items, loading, error, pagination, refetch: () => fetchItems({ bust: true }) };
 };
 
 export const useItemById = (itemId) => {

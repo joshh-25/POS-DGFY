@@ -18,7 +18,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
-import { formatNumber } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700", icon: FileEdit },
@@ -36,7 +36,7 @@ export default function PODetailsModal({ po, open, onClose }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto pb-8">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <span className="text-xl">{po.po_number}</span>
@@ -121,14 +121,14 @@ export default function PODetailsModal({ po, open, onClose }) {
                   {(po.items || []).map((item, idx) => (
                     <tr key={idx}>
                       <td className="p-3 font-medium text-slate-900">{item.item_name}</td>
-                      <td className="p-3 text-right text-slate-600">{item.quantity}</td>
+                      <td className="p-3 text-right text-slate-600">{formatQty(item.quantity)}</td>
                       <td className="p-3 text-right">
                         <span className={cn(
                           "font-medium",
                           item.quantity_received === item.quantity ? "text-emerald-600" :
                             item.quantity_received > 0 ? "text-amber-600" : "text-slate-400"
                         )}>
-                          {item.quantity_received}
+                          {formatQty(item.quantity_received)}
                         </span>
                       </td>
                       <td className="p-3 text-right text-slate-600 text-sm">

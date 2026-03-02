@@ -186,104 +186,98 @@ export const detectAnomalies = async (options = {}) => {
 
     if (items.length === 0) return [];
 
-    // Fix 7.1: Batch fetch movements to avoid N+1 queries
-    const itemIds = items.map(i => i.item_id);
-    const allMovements = await StockMovement.findAll({
-        where: {
-            item_id: { [Op.in]: itemIds },
-            timestamp: { [Op.gte]: startDate }
-        },
-        order: [['timestamp', 'ASC']]
-    });
-
-    // Group movements by item_id
-    const movementsByItem = new Map();
-    allMovements.forEach(m => {
-        if (!movementsByItem.has(m.item_id)) {
-            movementsByItem.set(m.item_id, []);
-        }
-        movementsByItem.get(m.item_id).push(m);
-    });
-
+    const CHUNK_SIZE = 500; // Adjust based on memory constraints
     const anomalies = [];
 
-    for (const item of items) {
-        // Get movements from the grouped map
-        const movements = movementsByItem.get(item.item_id) || [];
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunkItems = items.slice(i, i + CHUNK_SIZE);
+        const chunkItemIds = chunkItems.map(it => it.item_id);
 
-        if (movements.length < 5) continue; // Need some history for stats
+        // Batch fetch movements for this chunk
+        const chunkMovements = await StockMovement.findAll({
+            where: {
+                item_id: { [Op.in]: chunkItemIds },
+                timestamp: { [Op.gte]: startDate }
+            },
+            order: [['timestamp', 'ASC']]
+        });
 
-        // --- Check 1: Excessive Loss Events ---
-        // Rule: Any single 'calculated_loss' or 'adjustment' (negative) > 5% of current stock OR > 3x average loss
-        const losses = movements
-            .filter(m => ['calculated_loss', 'waste', 'spoilage', 'damage'].includes(m.movement_type) || (m.movement_type === 'adjustment' && m.quantity < 0))
-            .map(m => ({ ...m.dataValues, qty: Math.abs(parseFloat(m.quantity)) }));
+        // Group movements by item_id within the chunk
+        const movementsByItem = new Map();
+        chunkMovements.forEach(m => {
+            if (!movementsByItem.has(m.item_id)) movementsByItem.set(m.item_id, []);
+            movementsByItem.get(m.item_id).push(m);
+        });
 
-        if (losses.length > 0) {
-            const totalLoss = losses.reduce((sum, m) => sum + m.qty, 0);
-            const avgLoss = totalLoss / losses.length;
+        // Process each item in the current chunk
+        for (const item of chunkItems) {
+            const movements = movementsByItem.get(item.item_id) || [];
+            if (movements.length < 5) continue; // Need some history for stats
 
-            for (const loss of losses) {
-                // Threshold: > 5% of current stock (if stock > 0) OR > 3x average loss (if significant)
-                const percentOfStock = item.current_stock > 0 ? (loss.qty / item.current_stock) : 1;
+            // --- Check 1: Excessive Loss Events ---
+            const losses = movements
+                .filter(m => ['calculated_loss', 'waste', 'spoilage', 'damage'].includes(m.movement_type) || (m.movement_type === 'adjustment' && m.quantity < 0))
+                .map(m => ({ ...m.dataValues, qty: Math.abs(parseFloat(m.quantity)) }));
 
-                if (loss.qty > 0 && (percentOfStock > 0.05 || (losses.length > 2 && loss.qty > avgLoss * 3))) {
-                    anomalies.push({
-                        type: 'HIGH_LOSS_EVENT',
-                        severity: percentOfStock > 0.1 ? 'CRITICAL' : 'WARNING',
-                        item_id: item.item_id,
-                        name: item.name,
-                        details: `Unusual loss of ${loss.qty} units on ${new Date(loss.timestamp).toLocaleDateString()}. Average loss is ${avgLoss.toFixed(2)}.`,
-                        movement_id: loss.movement_id
-                    });
+            if (losses.length > 0) {
+                const totalLoss = losses.reduce((sum, m) => sum + m.qty, 0);
+                const avgLoss = totalLoss / losses.length;
+                for (const loss of losses) {
+                    const percentOfStock = item.current_stock > 0 ? (loss.qty / item.current_stock) : 1;
+                    if (loss.qty > 0 && (percentOfStock > 0.05 || (losses.length > 2 && loss.qty > avgLoss * 3))) {
+                        anomalies.push({
+                            type: 'HIGH_LOSS_EVENT',
+                            severity: percentOfStock > 0.1 ? 'CRITICAL' : 'WARNING',
+                            item_id: item.item_id,
+                            name: item.name,
+                            details: `Unusual loss of ${loss.qty} units on ${new Date(loss.timestamp).toLocaleDateString()}. Average loss is ${avgLoss.toFixed(2)}.`,
+                            movement_id: loss.movement_id
+                        });
+                    }
                 }
             }
-        }
 
-        // --- Check 2: Consumption Spikes ---
-        // Rule: Daily consumption > Mean + 3*SD
-        const consumptionByDay = {};
-        movements
-            .filter(m => m.movement_type === 'production_consumption')
-            .forEach(m => {
-                const day = new Date(m.timestamp).toISOString().split('T')[0];
-                const qty = Math.abs(parseFloat(m.quantity));
-                consumptionByDay[day] = (consumptionByDay[day] || 0) + qty;
-            });
+            // --- Check 2: Consumption Spikes ---
+            const consumptionByDay = {};
+            movements
+                .filter(m => m.movement_type === 'production_consumption')
+                .forEach(m => {
+                    const day = new Date(m.timestamp).toISOString().split('T')[0];
+                    const qty = Math.abs(parseFloat(m.quantity));
+                    consumptionByDay[day] = (consumptionByDay[day] || 0) + qty;
+                });
 
-        const dailyValues = Object.values(consumptionByDay);
-        if (dailyValues.length >= 3) {
-            const mean = dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length;
-            const variance = dailyValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / dailyValues.length;
-            const stdDev = Math.sqrt(variance);
+            const dailyValues = Object.values(consumptionByDay);
+            if (dailyValues.length >= 3) {
+                const mean = dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length;
+                const variance = dailyValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / dailyValues.length;
+                const stdDev = Math.sqrt(variance);
+                Object.entries(consumptionByDay).forEach(([day, qty]) => {
+                    if (qty > 0 && qty > mean + (3 * stdDev)) {
+                        anomalies.push({
+                            type: 'CONSUMPTION_SPIKE',
+                            severity: 'WARNING',
+                            item_id: item.item_id,
+                            name: item.name,
+                            details: `Abnormal consumption of ${qty} units on ${day}. Normal range is up to ${(mean + 2 * stdDev).toFixed(1)}.`,
+                            date: day
+                        });
+                    }
+                });
+            }
 
-            Object.entries(consumptionByDay).forEach(([day, qty]) => {
-                // Z-Score > 3 is a strong anomaly (99.7% confidence)
-                if (qty > 0 && qty > mean + (3 * stdDev)) {
-                    anomalies.push({
-                        type: 'CONSUMPTION_SPIKE',
-                        severity: 'WARNING',
-                        item_id: item.item_id,
-                        name: item.name,
-                        details: `Abnormal consumption of ${qty} units on ${day}. Normal range is up to ${(mean + 2 * stdDev).toFixed(1)}.`,
-                        date: day
-                    });
-                }
-            });
-        }
-
-        // --- Check 3: Frequent Adjustments ---
-        // Rule: > 3 manual adjustments in the period
-        const manualAdjustments = movements.filter(m => m.movement_type === 'adjustment');
-        if (manualAdjustments.length > 3) {
-            anomalies.push({
-                type: 'FREQUENT_ADJUSTMENTS',
-                severity: 'WARNING',
-                item_id: item.item_id,
-                name: item.name,
-                details: `Item has been manually adjusted ${manualAdjustments.length} times in the last ${days} days. This may indicate process issues.`,
-                count: manualAdjustments.length
-            });
+            // --- Check 3: Frequent Adjustments ---
+            const manualAdjustments = movements.filter(m => m.movement_type === 'adjustment');
+            if (manualAdjustments.length > 3) {
+                anomalies.push({
+                    type: 'FREQUENT_ADJUSTMENTS',
+                    severity: 'WARNING',
+                    item_id: item.item_id,
+                    name: item.name,
+                    details: `Item has been manually adjusted ${manualAdjustments.length} times in the last ${days} days. This may indicate process issues.`,
+                    count: manualAdjustments.length
+                });
+            }
         }
     }
 

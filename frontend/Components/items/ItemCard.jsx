@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
-import { formatNumber } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
 import { getCategoryConfig, getCategoryLabel } from '@/components/utils/categoryHelpers';
@@ -180,7 +180,7 @@ export default function ItemCard({
           <div className="flex items-center justify-between text-sm mb-2">
             <span className="text-slate-500">Stock Level</span>
             <span className="font-semibold text-slate-900">
-              {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
+              {formatQty(item.current_stock)} / {formatQty(item.max_capacity)} {item.unit_of_measure}
             </span>
           </div>
           <Progress
@@ -188,7 +188,7 @@ export default function ItemCard({
             className="h-2"
           />
           <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
-            <span>Min: {item.min_threshold}</span>
+            <span>Min: {formatQty(item.min_threshold)}</span>
             <span>{percentage}%</span>
           </div>
         </div>

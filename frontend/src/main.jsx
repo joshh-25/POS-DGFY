@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import api from './services/api.js'
+import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import './index.css'
 
 // Lazy-loaded pages — each page is a separate JS chunk downloaded on first visit
@@ -23,6 +24,7 @@ const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
+const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
@@ -112,6 +114,13 @@ function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        <Route path="/dispatch-orders" element={
+          <ProtectedRoute>
+            <Layout currentPageName={currentPageName}>
+              <DispatchOrders />
+            </Layout>
+          </ProtectedRoute>
+        } />
         <Route path="/reports" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
@@ -159,16 +168,18 @@ function App() {
 const rootElement = document.getElementById('root');
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <PermissionProvider>
-        <App />
-      </PermissionProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
+        <PermissionProvider>
+          <App />
+        </PermissionProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 )
 

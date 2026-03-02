@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { cn } from "../../src/lib/utils.js";
+import { formatQty } from '../../src/lib/numberUtils.js';
 import { useItemSupplierCoverage } from '../../src/hooks/useItems.js';
 
 /**
@@ -186,7 +187,7 @@ export default function ItemCoveragePanel({ onAddSupplier, suppliers }) {
                           </Badge>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {item.sku_code} • Stock: {item.current_stock} {item.unit_of_measure}
+                          {item.sku_code} • Stock: {formatQty(item.current_stock)} {item.unit_of_measure}
                         </p>
                       </div>
                       <Button
@@ -228,7 +229,7 @@ export default function ItemCoveragePanel({ onAddSupplier, suppliers }) {
                           </Badge>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {item.sku_code} • Stock: {item.current_stock} {item.unit_of_measure}
+                          {item.sku_code} • Stock: {formatQty(item.current_stock)} {item.unit_of_measure}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-3">

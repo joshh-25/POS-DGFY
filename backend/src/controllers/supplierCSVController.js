@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import * as supplierCSVService from '../services/supplierCSVService.js';
 
 /**
@@ -66,8 +67,12 @@ export const getTemplate = async (req, res) => {
 /**
  * Preview Import
  * POST /api/v1/suppliers/import/preview
+ *
+ * Fix 4.3/8.3: Upload config uses diskStorage (req.file.path, not req.file.buffer).
+ * Read from disk path with fs.readFile (async), delete temp file in finally block.
  */
 export const previewImport = async (req, res) => {
+    let filePath = null;
     try {
         if (!req.body.csvContent && !req.file) {
             return res.status(400).json({
@@ -78,7 +83,8 @@ export const previewImport = async (req, res) => {
 
         let csvContent;
         if (req.file) {
-            csvContent = req.file.buffer.toString('utf-8');
+            filePath = req.file.path; // disk path set by multer.diskStorage
+            csvContent = await fs.readFile(filePath, 'utf-8'); // async, non-blocking
         } else {
             csvContent = req.body.csvContent;
         }
@@ -104,6 +110,11 @@ export const previewImport = async (req, res) => {
             message: 'Failed to preview import',
             error: error.message
         });
+    } finally {
+        // Fix 8.3: Delete temp file immediately after reading, regardless of outcome
+        if (filePath) {
+            try { await fs.unlink(filePath); } catch { /* ignore */ }
+        }
     }
 };
 

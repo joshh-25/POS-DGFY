@@ -1461,6 +1461,203 @@ export const AI_TOOLS = [
     },
     category: TOOL_CATEGORIES.IMPORT_EXPORT,
     requiresConfirmation: false
+  },
+
+  // ============== DISPATCH ORDERS ==============
+  {
+    type: "function",
+    function: {
+      name: "query_dispatch_orders",
+      description: "Query and list dispatch orders with optional filters. Use this to check dispatch status, find orders for a recipient, or review pending dispatches.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["draft", "confirmed", "partial", "completed", "cancelled"],
+            description: "Filter by dispatch order status"
+          },
+          recipient_name: {
+            type: "string",
+            description: "Filter by recipient name (partial match)"
+          },
+          startDate: {
+            type: "string",
+            format: "date",
+            description: "Filter from this dispatch date (YYYY-MM-DD)"
+          },
+          endDate: {
+            type: "string",
+            format: "date",
+            description: "Filter until this dispatch date (YYYY-MM-DD)"
+          },
+          limit: {
+            type: "integer",
+            description: "Maximum number of results to return (default: 20)"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_dispatch_order_details",
+      description: "Get full details of a specific dispatch order including all line items, quantities, FIFO batch info, and related stock movements.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID"
+          }
+        },
+        required: ["do_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_dispatch_order",
+      description: "Create a new dispatch order (draft) for finished goods. Specify the recipient and line items. Does NOT deduct stock — stock is only deducted when the dispatch is executed. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          recipient_name: {
+            type: "string",
+            description: "Name of the customer or branch receiving the goods"
+          },
+          recipient_type: {
+            type: "string",
+            enum: ["external", "internal"],
+            description: "Whether the recipient is an external customer or internal branch (default: external)"
+          },
+          dispatch_date: {
+            type: "string",
+            format: "date",
+            description: "Planned dispatch date (YYYY-MM-DD)"
+          },
+          reference_jo: {
+            type: "string",
+            description: "Optional: Job Order number this dispatch is linked to"
+          },
+          notes: {
+            type: "string",
+            description: "Optional notes for the dispatch order"
+          },
+          lines: {
+            type: "array",
+            description: "List of items to dispatch",
+            items: {
+              type: "object",
+              properties: {
+                item_id: {
+                  type: "integer",
+                  description: "ID of the finished goods item"
+                },
+                qty_ordered: {
+                  type: "number",
+                  description: "Quantity to dispatch"
+                }
+              },
+              required: ["item_id", "qty_ordered"]
+            }
+          }
+        },
+        required: ["recipient_name", "dispatch_date", "lines"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirm_dispatch_order",
+      description: "Confirm a draft dispatch order, locking in the recipient and line items. Moves status from draft to confirmed. Does NOT deduct stock. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID to confirm"
+          }
+        },
+        required: ["do_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "dispatch_items",
+      description: "Execute a dispatch — deduct stock for one or more lines on a confirmed or partial dispatch order. Applies FIFO/FEFO batch selection automatically. Creates a goods_issue stock movement. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID"
+          },
+          lines: {
+            type: "array",
+            description: "Lines to dispatch in this run",
+            items: {
+              type: "object",
+              properties: {
+                line_id: {
+                  type: "integer",
+                  description: "The dispatch order line ID"
+                },
+                qty_to_dispatch: {
+                  type: "number",
+                  description: "Quantity to dispatch for this line (can be partial)"
+                }
+              },
+              required: ["line_id", "qty_to_dispatch"]
+            }
+          }
+        },
+        required: ["do_id", "lines"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancel_dispatch_order",
+      description: "Cancel a dispatch order. Only allowed for draft, confirmed, or partial orders. Does not auto-void stock movements from partial dispatches — those must be voided separately. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID to cancel"
+          },
+          reason: {
+            type: "string",
+            description: "Reason for cancellation"
+          }
+        },
+        required: ["do_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
   }
 ];
 

@@ -10,7 +10,8 @@ import {
   Calendar,
   DollarSign,
   Loader2,
-  Clock
+  Clock,
+  PackageCheck
 } from 'lucide-react';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AlertBanner from '@/components/dashboard/AlertBanner';
@@ -163,7 +164,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -218,6 +219,24 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 mt-4">
             {displayStats.overStockCount === 0 ? "No items over capacity" : "Items exceeding maximum capacity"}
           </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">Pending Dispatches</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{displayStats.pending_dispatch_orders || 0}</p>
+            </div>
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${(displayStats.pending_dispatch_orders || 0) > 0 ? 'bg-teal-500' : 'bg-slate-300'}`}>
+              <PackageCheck className="w-6 h-6 text-white" />
+            </div>
+          </div>
+          <Link
+            to={createPageUrl("DispatchOrders")}
+            className="inline-flex items-center text-sm text-teal-600 font-medium mt-4 hover:text-teal-700 transition-colors"
+          >
+            View dispatch orders →
+          </Link>
         </div>
       </div>
 

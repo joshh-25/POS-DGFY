@@ -89,7 +89,7 @@ export const getItems = async (queryParams) => {
 
     const rows = await Item.findAll({
       where,
-      attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'current_stock'],
+      attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'status', 'current_stock'],
       order: [['name', 'ASC']],
       limit: parseInt(limit),
     });

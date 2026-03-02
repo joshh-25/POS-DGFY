@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
-import { formatNumber } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { isPurchasable } from '@/components/utils/categoryHelpers';
@@ -481,7 +481,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto pb-8">
           <DialogHeader>
             <DialogTitle>Create Purchase Order</DialogTitle>
           </DialogHeader>
@@ -565,22 +565,31 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                           )}
                         </div>
                         <p className="text-sm text-slate-500">
-                          Current: {item.current_stock} / Min: {item.min_threshold} {item.unit_of_measure}
+                          Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {item.unit_of_measure}
                         </p>
                       </div>
                       {isSelected && (
                         <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-2">
                             <Label className="text-xs">Qty:</Label>
-                            <Input
-                              type="number"
-                              className={cn(
-                                "w-20",
-                                (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                min={0}
+                                step={1}
+                                className={cn(
+                                  "w-20 pr-8",
+                                  (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
+                                )}
+                                value={orderQuantities[item.id] || ''}
+                                onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
+                              />
+                              {item.unit_of_measure && (
+                                <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
+                                  {item.unit_of_measure}
+                                </span>
                               )}
-                              value={orderQuantities[item.id] || ''}
-                              onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
-                            />
+                            </div>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -705,7 +714,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                                         </Badge>
                                       </div>
                                       <p className="text-xs text-slate-500">
-                                        Current: {item.current_stock} / Min: {item.min_threshold} {item.unit_of_measure}
+                                        Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {item.unit_of_measure}
                                         {supplierItem && ` • ₱${supplierItem.price_per_unit}/${item.unit_of_measure}`}
                                       </p>
                                     </div>

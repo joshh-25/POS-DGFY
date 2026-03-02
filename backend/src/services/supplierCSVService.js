@@ -1,4 +1,4 @@
-import { parse } from 'csv-parse/sync';
+import { parse } from 'csv-parse'; // Fix 6.3: async variant, not csv-parse/sync
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createSupplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
@@ -9,21 +9,28 @@ const VALID_STATUSES = ['active', 'inactive', 'draft'];
 
 /**
  * Parse CSV content and transform rows to object format
+ *
+ * Fix 6.3: Previously used csv-parse/sync which blocks the Node.js Event Loop.
+ * Switched to async Promise-based parse() — non-blocking, Event Loop stays responsive.
  */
 export const parseCSV = (csvContent) => {
-    try {
-        const records = parse(csvContent, {
+    return new Promise((resolve, reject) => {
+        parse(csvContent, {
             columns: true,
             skip_empty_lines: true,
             trim: true,
             cast: false, // Keep as strings
-            bom: true // Fix 6.5: Handle UTF-8 Byte Order Mark
+            bom: true   // Fix 6.5: Handle UTF-8 Byte Order Mark
+        }, (err, records) => {
+            if (err) {
+                resolve({ success: false, error: `CSV parsing error: ${err.message}` });
+            } else {
+                resolve({ success: true, records });
+            }
         });
-        return { success: true, records };
-    } catch (error) {
-        return { success: false, error: `CSV parsing error: ${error.message}` };
-    }
+    });
 };
+
 
 /**
  * Transform a CSV row to Supplier data format

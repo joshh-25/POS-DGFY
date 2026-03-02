@@ -624,4 +624,125 @@ DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
   fi
   ```
   `exec` replaces the current shell process with the freshly-pulled script. The `DEPLOY_REEXECED` guard prevents infinite re-execution.
+
+### 38. Reports / Forecast Page Stalls or Times Out
+**Symptoms**:
+- The Reports page (Forecast section) takes 10-30s to load or times out entirely.
+- PM2 logs show hundreds of identical `SELECT ... FROM stock_movements WHERE item_id = X` queries firing in rapid succession.
+- Stalling is proportional to the number of active items (1,000 items = ~1,000 queries).
+
+**Cause**:
+`forecastService.js` originally looped over each active item and fired a separate `StockMovement.findAll()` per item — a classic N+1 query problem. With 1,000 items, this was ~1,000 sequential DB round-trips per page load.
+
+**Solution**:
+- **Fixed in Phase 55**: Replaced the loop with a single batch query using `Op.in` for all item IDs at once, then grouped results by `item_id` in a JS `Map`. Result: ~1,000 queries → 2 queries total.
+- Ensure the `idx_stock_movements_item_id` index exists (created by migration `20260301000000-add-performance-indexes.cjs`).
+- **Verification**: `pm2 logs sku-backend --lines 50` after loading Reports should show exactly 2 SQL queries for the forecast endpoint.
+
+### 39. Sequelize `addIndex` with `ifNotExists: true` Has No Effect on MySQL
+**Symptoms**:
+- Migration using `queryInterface.addIndex(table, fields, { ifNotExists: true })` still throws `ER_DUP_KEYNAME: Duplicate key name` when re-run on MySQL.
+- The option appears to be supported but silently does nothing for the MySQL dialect.
+
+**Cause**:
+Sequelize's MySQL dialect does not pass `IF NOT EXISTS` to the generated `CREATE INDEX` DDL. The option is accepted without error but ignored.
+
+**Solution**:
+Wrap `addIndex` in a try/catch and check the error message:
+```js
+try {
+  await queryInterface.addIndex(table, fields, { name });
+} catch (e) {
+  if (!e.message?.includes('Duplicate key name') && !e.message?.includes('already exists')) {
+    throw e;
+  }
+  // Index already exists — skip silently
+}
+```
+This is the pattern used in `backend/migrations/20260301000000-add-performance-indexes.cjs`.
 - After this fix, any change to `deploy.sh` takes effect on the same deploy run that pulled it.
+
+### 40. Dispatch Order Void Shows Wrong Movement Type ("adjustment" Instead of "return")
+**Symptoms**:
+- Voiding a `goods_issue` stock movement creates a counter-entry with `movement_type = 'adjustment'` instead of `movement_type = 'return'`.
+- The audit trail in Stock Movements shows incorrect types for DO reversals.
+
+**Cause**:
+- `voidMovement()` in `stockMovementService.js` had `if/else if` branches for mapping each movement type to its reversal type, but `goods_issue` was missing — it fell through to the `else` default of `'adjustment'`.
+
+**Solution**:
+- **Fixed in Phase 56**: Added explicit case in `voidMovement()`:
+  ```javascript
+  else if (movement_type === 'goods_issue') reverseType = 'return';
+  ```
+- **Verification**: Void a `goods_issue` movement via Stock Movements page → the new counter-entry should have `movement_type = 'return'`.
+
+### 41. Dispatch Order Lines Show Incorrect qty_dispatched After Void
+**Symptoms**:
+- After voiding a `goods_issue` stock movement, the Dispatch Order line still shows the original `qty_dispatched` value (e.g., still shows "50 dispatched" even though the movement was reversed).
+- DO status does not revert from `completed` or `partial` after voiding.
+
+**Cause**:
+- `reference_id` on `goods_issue` movements stores the `DispatchOrderLine.line_id` (an integer), not the `do_number` string. If this value is incorrect or missing, the void hook cannot find the DO line to decrement.
+- The void hook in `voidMovement()` only runs when `reference_type === 'DO'` — if the movement was somehow created with `reference_type = null`, the hook is skipped.
+
+**Solution**:
+- Verify the `goods_issue` movement has `reference_type = 'DO'` and `reference_id = <line_id>` in the `stock_movements` table.
+- If a movement has incorrect metadata, manually update the DO line in the database:
+  ```sql
+  UPDATE dispatch_order_lines
+  SET qty_dispatched = qty_dispatched - <voided_qty>,
+      qty_voided = qty_voided + <voided_qty>
+  WHERE line_id = <line_id>;
+  ```
+- Then run a status recalculation by re-fetching the DO — the status is computed from line quantities.
+
+### 42. "Item Not Available for Dispatch" — Finished Goods Not Appearing in DOCreateModal
+**Symptoms**:
+- When creating a Dispatch Order, the item picker shows fewer items than expected, or specific finished goods are missing.
+- Items that exist in the system and have stock are not selectable in the Dispatch Order create form.
+
+**Cause**:
+- `DOCreateModal.jsx` filters items using `canBeDispatched(item)` from `categoryHelpers.js`, which returns `true` **only** for items with `category = 'product'` AND `product_type = 'finished_goods'`.
+- Items categorized as `raw_material`, `packaging`, or products with `product_type = 'wip'` (work-in-progress) are deliberately excluded from dispatch.
+
+**Solution**:
+- Check the item's category and product_type in the Items page → Edit → ensure `Category = Product` and `Product Type = Finished Goods`.
+- This restriction is intentional: you dispatch finished goods, not raw materials or packaging. If the item is a finished product that's incorrectly categorized, update it.
+- **Verification**: After updating the item's product_type to `finished_goods`, the item should appear in the DO item picker immediately (no cache to clear).
+
+### 43. Dispatch Order Status Stuck on "Partial" After Full Dispatch
+**Symptoms**:
+- All DO lines show `qty_dispatched >= qty_ordered` but the DO header status remains `partial` instead of updating to `completed`.
+- Refreshing the page does not change the status.
+
+**Cause**:
+- Status recalculation in `dispatchOrderService.js` requires ALL lines to meet `qty_dispatched >= qty_ordered`.
+- If any line has `qty_ordered = 0` (zero-quantity line), or a floating-point precision mismatch (e.g., `qty_ordered = 1.0` vs `qty_dispatched = 0.9999999`), the check fails.
+
+**Solution**:
+- Check all DO lines for any zero-quantity lines and delete them before re-dispatching.
+- For floating-point mismatches, the `qty_ordered` and `qty_dispatched` fields use `DECIMAL(24,12)` — verify no precision corruption occurred at input.
+- **Workaround**: If the DO is functionally complete, you can trigger a re-dispatch of `qty = 0` (handled gracefully by skipping zero-qty lines) which re-triggers the status recalculation.
+
+### 44. New DispatchOrder / DispatchOrderLine Models Return "Model Not Found" for Tenants
+**Symptoms**:
+- GET `/api/v1/dispatch-orders` returns 500.
+- Error log: `Model 'DispatchOrder' not registered for tenant`.
+- Dispatch Orders work on the landlord/main database but not for company tenants.
+
+**Cause**:
+- `DispatchOrder` and `DispatchOrderLine` were not added to the `modelNames` array in `backend/src/utils/tenantModelFactory.js`.
+- This array controls which models are re-bound to each tenant's Sequelize instance. Models not in the list are invisible to tenant requests.
+
+**Solution**:
+- **Fixed in Phase 56**: Both model names are included in `modelNames`.
+- If re-creating the tenant model factory from scratch, ensure both are present:
+  ```javascript
+  const modelNames = [
+    // ...existing models...
+    'DispatchOrder',
+    'DispatchOrderLine',
+  ];
+  ```
+- After adding, restart the backend and run `node backend/scripts/sync-tenant-schemas.js` to create the tables in all tenant databases.

@@ -1,4 +1,4 @@
-import { parse } from 'csv-parse/sync';
+import { parse } from 'csv-parse'; // Fix 4.3/6.3: async variant, not csv-parse/sync
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
@@ -11,21 +11,32 @@ const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'pean
 
 /**
  * Parse CSV content and transform rows to item format
+ *
+ * Fix 4.3/6.3: Previously used csv-parse/sync which blocks the Node.js Event Loop
+ * for the entire duration of the parse. With large files (up to 10MB), this causes
+ * measurable lag for all other concurrent requests.
+ *
+ * Solution: async Promise-based parse() — the parser runs via libuv and yields the
+ * Event Loop immediately. Signature is unchanged: accepts a string, returns a Promise.
  */
 export const parseCSV = (csvContent) => {
-    try {
-        const records = parse(csvContent, {
+    return new Promise((resolve, reject) => {
+        parse(csvContent, {
             columns: true,
             skip_empty_lines: true,
             trim: true,
             cast: false, // Keep as strings, we'll transform manually
-            bom: true // Fix 6.5: Handle UTF-8 Byte Order Mark
+            bom: true   // Fix 6.5: Handle UTF-8 Byte Order Mark (e.g. Excel CSV UTF-8)
+        }, (err, records) => {
+            if (err) {
+                resolve({ success: false, error: `CSV parsing error: ${err.message}` });
+            } else {
+                resolve({ success: true, records });
+            }
         });
-        return { success: true, records };
-    } catch (error) {
-        return { success: false, error: `CSV parsing error: ${error.message}` };
-    }
+    });
 };
+
 
 /**
  * Transform a CSV row to item data format

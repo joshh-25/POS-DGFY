@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "../../src/lib/utils.js";
 import { createPageUrl } from '@/utils.js';
 import { getMovementConfig, isPositiveMovement } from '../utils/movementConfig.js';
+import { formatQty } from '../../src/lib/numberUtils.js';
 
 export default function RecentMovements({ movements = [] }) {
   const recentMovements = movements
@@ -75,7 +76,7 @@ export default function RecentMovements({ movements = [] }) {
                   "text-sm font-semibold",
                   isPositive ? "text-emerald-600" : "text-red-500"
                 )}>
-                  {isPositive ? '+' : '-'}{mov.quantity}
+                  {isPositive ? '+' : '-'}{formatQty(Math.abs(parseFloat(mov.quantity || 0)))}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500">

@@ -5,9 +5,10 @@ export const getDashboardStats = async () => {
   const Item = dbStore.get('Item');
   const PurchaseOrder = dbStore.get('PurchaseOrder');
   const JobOrder = dbStore.get('JobOrder');
+  const DispatchOrder = dbStore.get('DispatchOrder');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  // Run all 7 queries in parallel instead of sequentially
+  // Run all queries in parallel instead of sequentially
   const [
     totalItems,
     lowStockItems,
@@ -15,6 +16,7 @@ export const getDashboardStats = async () => {
     overStockItems,
     pendingPOs,
     activeJOs,
+    pendingDispatchOrders,
     inventoryValueResult
   ] = await Promise.all([
     Item.count({ where: { status: 'active' } }),
@@ -69,6 +71,7 @@ export const getDashboardStats = async () => {
 
     PurchaseOrder.count({ where: { status: 'pending' } }),
     JobOrder.count({ where: { status: 'in_progress' } }),
+    DispatchOrder.count({ where: { status: ['draft', 'confirmed', 'partial'], archived_at: null } }),
 
     // Calculate total inventory value using DB aggregation
     Item.findAll({
@@ -91,7 +94,8 @@ export const getDashboardStats = async () => {
     totalValue,
     // Keep these for backward compatibility
     pending_purchase_orders: pendingPOs,
-    active_job_orders: activeJOs
+    active_job_orders: activeJOs,
+    pending_dispatch_orders: pendingDispatchOrders
   };
 };
 

@@ -5,7 +5,8 @@ import {
     RotateCcw,
     AlertCircle,
     Settings2,
-    Package
+    Package,
+    PackageCheck
 } from 'lucide-react';
 
 /**
@@ -68,6 +69,14 @@ export const movementConfig = {
         label: "Production Output",
         description: "Finished goods from production/job orders",
         isPositive: true
+    },
+    goods_issue: {
+        icon: PackageCheck,
+        color: "text-teal-600",
+        bg: "bg-teal-50 border-teal-200",
+        label: "Goods Issue",
+        description: "Finished goods dispatched to customer or internal branch",
+        isPositive: false
     }
 };
 

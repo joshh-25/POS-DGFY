@@ -1,10 +1,16 @@
+import fs from 'fs/promises';
 import * as csvImportService from '../services/csvImportService.js';
 
 /**
  * Preview CSV import - validate without committing
  * POST /api/v1/items/import/preview
+ *
+ * Fix 4.3/8.3: Upload config uses diskStorage (req.file.path, not req.file.buffer).
+ * We read from disk with fs.readFile (async, non-blocking), then immediately
+ * delete the temp file in a finally block so uploads/temp/ never accumulates.
  */
 export const previewImport = async (req, res) => {
+    let filePath = null;
     try {
         // Check if file was uploaded
         if (!req.body.csvContent && !req.file) {
@@ -15,9 +21,11 @@ export const previewImport = async (req, res) => {
         }
 
         // Get CSV content from body or file
+        // diskStorage writes to disk → req.file.path is set, req.file.buffer is undefined
         let csvContent;
         if (req.file) {
-            csvContent = req.file.buffer.toString('utf-8');
+            filePath = req.file.path; // disk path set by multer.diskStorage
+            csvContent = await fs.readFile(filePath, 'utf-8'); // async disk read
         } else {
             csvContent = req.body.csvContent;
         }
@@ -43,6 +51,12 @@ export const previewImport = async (req, res) => {
             message: 'Failed to preview CSV import',
             error: error.message
         });
+    } finally {
+        // Fix 8.3: Immediately delete the temp file after it has been read.
+        // This prevents disk accumulation regardless of success or error.
+        if (filePath) {
+            try { await fs.unlink(filePath); } catch { /* file may already be gone, ignore */ }
+        }
     }
 };
 

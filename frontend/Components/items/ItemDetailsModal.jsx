@@ -29,7 +29,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
 import FIFOBatchViewer from './FIFOBatchViewer';
-import { formatNumber } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
 import { calculateTotalProductCost } from './details/helpers';
 
@@ -104,7 +104,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
   if (!isProduct) {
     return (
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto pb-8">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", category.color)}>
@@ -138,18 +138,18 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700">Stock Level</span>
                 <span className="text-lg font-bold text-slate-900">
-                  {item.current_stock} / {item.max_capacity} {item.unit_of_measure}
+                  {formatQty(item.current_stock)} / {formatQty(item.max_capacity)} {item.unit_of_measure}
                 </span>
               </div>
               <Progress value={percentage} className="h-3" />
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                   <p className="text-slate-500">Min Threshold</p>
-                  <p className="font-semibold text-slate-900">{item.min_threshold} {item.unit_of_measure}</p>
+                  <p className="font-semibold text-slate-900">{formatQty(item.min_threshold)} {item.unit_of_measure}</p>
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                   <p className="text-slate-500">Purchase Allowance</p>
-                  <p className="font-semibold text-slate-900">{item.purchase_allowance} {item.unit_of_measure}</p>
+                  <p className="font-semibold text-slate-900">{formatQty(item.purchase_allowance)} {item.unit_of_measure}</p>
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                   <p className="text-slate-500">Total Value</p>
@@ -232,7 +232,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-6 pt-8 pb-6 border-t border-slate-200">
+            <div className="flex gap-6 pt-6 pb-4 border-t border-slate-200 mt-4">
               <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
                 <Button variant="outline" className="w-full">
                   <History className="w-4 h-4 mr-2" />

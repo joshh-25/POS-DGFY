@@ -333,7 +333,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto pb-8">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {item ? 'Edit Item' : 'Create New Item'}
@@ -441,21 +441,41 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               </div>
               <div className="space-y-2">
                 <Label htmlFor="capacity">Max Capacity</Label>
-                <Input
-                  id="capacity"
-                  type="number"
-                  value={formData.max_capacity ?? ''}
-                  onChange={(e) => handleChange('max_capacity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                />
+                <div className="relative">
+                  <Input
+                    id="capacity"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={formData.max_capacity ?? ''}
+                    onChange={(e) => handleChange('max_capacity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                    className="pr-10"
+                  />
+                  {formData.unit_of_measure && (
+                    <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
+                      {formData.unit_of_measure}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="stock">Current Stock</Label>
-                <Input
-                  id="stock"
-                  type="number"
-                  value={formData.current_stock ?? ''}
-                  onChange={(e) => handleChange('current_stock', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                />
+                <div className="relative">
+                  <Input
+                    id="stock"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={formData.current_stock ?? ''}
+                    onChange={(e) => handleChange('current_stock', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                    className="pr-10"
+                  />
+                  {formData.unit_of_measure && (
+                    <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
+                      {formData.unit_of_measure}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

@@ -207,6 +207,14 @@ api.interceptors.response.use(
       }
     }
 
+    // Fix 10.3: Dispatch a window event for 5xx server errors so Layout.jsx can
+    // show a global toast without every component needing its own error handler.
+    // We skip 401 (handled above by the refresh logic) and 404 (likely feature-specific).
+    if (error.response?.status >= 500) {
+      const message = error.response?.data?.message || 'Server error. Please try again.';
+      window.dispatchEvent(new CustomEvent('api:server-error', { detail: { message } }));
+    }
+
     return Promise.reject(error);
   }
 );
