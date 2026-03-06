@@ -1,11 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as itemService from '../services/itemService.js';
+import { registerClientCacheResetter } from '../services/cacheRegistry.js';
+import { getAuthEpoch } from '../services/sessionCleanup.js';
 
 // Module-level cache: deduplicates identical concurrent fetches across all hook instances.
-// Key = JSON.stringify(params), value = { promise, data, error, ts }
+// Key = session-scoped params signature, value = { promise, data, error, ts }
 // Cache entries expire after 30 seconds so a manual refetch() always gets fresh data.
 const CACHE_TTL_MS = 30_000;
 const cache = new Map();
+
+export const clearItemsCache = () => cache.clear();
+
+registerClientCacheResetter('useItems', clearItemsCache);
+
+export const buildItemsCacheScope = (params) => JSON.stringify({
+  params,
+  companyToken: localStorage.getItem('companyToken') || '',
+  authEpoch: getAuthEpoch()
+});
 
 const getCached = (key) => {
   const entry = cache.get(key);
@@ -20,12 +32,14 @@ export const useItems = (params = {}) => {
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
   const paramsKey = JSON.stringify(params);
-  const paramsKeyRef = useRef(paramsKey);
-  paramsKeyRef.current = paramsKey;
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
+  const getScopedCacheKey = () => buildItemsCacheScope(paramsRef.current);
 
   const fetchItems = useCallback(async ({ bust = false } = {}) => {
-    const key = paramsKeyRef.current;
-    const params = JSON.parse(key);
+    const key = getScopedCacheKey();
+    const requestParams = paramsRef.current;
 
     if (!bust) {
       const cached = getCached(key);
@@ -58,7 +72,7 @@ export const useItems = (params = {}) => {
     setLoading(true);
     setError(null);
 
-    const promise = itemService.getItems(params);
+    const promise = itemService.getItems(requestParams);
     cache.set(key, { promise, data: null, ts: Date.now() });
 
     try {

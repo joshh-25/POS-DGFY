@@ -5,6 +5,15 @@ import { hashPassword, comparePassword, generateToken, generateRefreshToken } fr
 import * as landlordService from './landlordService.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import * as emailService from './emailService.js';
+import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
+
+const findVisibleUserById = async (User, userId, queryOptions = {}) => {
+  const { where = {}, ...rest } = queryOptions;
+  return User.findOne({
+    ...rest,
+    where: buildVisibleWhere({ ...where, user_id: userId })
+  });
+};
 
 /**
  * Get current user profile by user ID
@@ -13,14 +22,12 @@ import * as emailService from './emailService.js';
  */
 export const getCurrentUser = async (userId) => {
   const User = dbStore.get('User');
-  const user = await User.findByPk(userId, {
+  const user = await findVisibleUserById(User, userId, {
     attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
 
   if (!user) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('User not found');
   }
 
   return {
@@ -44,12 +51,10 @@ export const getCurrentUser = async (userId) => {
  */
 export const updateUserProfile = async (userId, updateData) => {
   const User = dbStore.get('User');
-  const user = await User.findByPk(userId);
+  const user = await findVisibleUserById(User, userId);
 
   if (!user) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('User not found');
   }
 
   // Prevent role and status changes through profile update
@@ -135,12 +140,10 @@ export const updateUserProfile = async (userId, updateData) => {
  */
 export const changePassword = async (userId, currentPassword, newPassword) => {
   const User = dbStore.get('User');
-  const user = await User.findByPk(userId);
+  const user = await findVisibleUserById(User, userId);
 
   if (!user) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('User not found');
   }
 
   // Verify current password
@@ -165,9 +168,7 @@ export const getAllUsers = async () => {
   const User = dbStore.get('User');
   const users = await User.findAll({
     attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin'],
-    where: {
-      deleted_at: null  // Exclude removed users
-    },
+    where: buildVisibleWhere({}), // Exclude removed users
     order: [['created_at', 'DESC']]
   });
 
@@ -200,12 +201,10 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   }
 
   const User = dbStore.get('User');
-  const targetUser = await User.findByPk(targetUserId);
+  const targetUser = await findVisibleUserById(User, targetUserId);
 
   if (!targetUser) {
-    const error = new Error('Target user not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Target user not found');
   }
 
   // Get default permissions for the new role
@@ -255,12 +254,10 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   }
 
   const User = dbStore.get('User');
-  const targetUser = await User.findByPk(targetUserId);
+  const targetUser = await findVisibleUserById(User, targetUserId);
 
   if (!targetUser) {
-    const error = new Error('Target user not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Target user not found');
   }
 
   await targetUser.update({ is_active: isActive });
@@ -313,27 +310,16 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
 
   // Get both users
   const [adminUser, targetUser] = await Promise.all([
-    User.findByPk(adminUserId),
-    User.findByPk(targetUserId)
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
   ]);
 
   if (!adminUser) {
-    const error = new Error('Admin user not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Admin user not found');
   }
 
   if (!targetUser) {
-    const error = new Error('Target user not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  // Check if user is already removed
-  if (targetUser.deleted_at) {
-    const error = new Error('User has already been removed from the company');
-    error.statusCode = 400;
-    throw error;
+    throw notFoundError('Target user not found');
   }
 
   // Master Admin is always protected
@@ -390,18 +376,16 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
 export const updateUserPermissions = async (adminUserId, targetUserId, permissions, isMaster) => {
   // Check if admin is authorized (double check happened in controller, but safe to check here)
   const User = dbStore.get('User');
-  const adminUser = await User.findByPk(adminUserId);
+  const adminUser = await findVisibleUserById(User, adminUserId);
   if (!adminUser || !adminUser.is_master_admin) {
     const error = new Error('Only Master Admins can manage permissions');
     error.statusCode = 403;
     throw error;
   }
 
-  const targetUser = await User.findByPk(targetUserId);
+  const targetUser = await findVisibleUserById(User, targetUserId);
   if (!targetUser) {
-    const error = new Error('Target user not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Target user not found');
   }
 
   // Prevent revoking your own master admin status if you are the one doing it
@@ -488,9 +472,9 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   const User = dbStore.get('User');
 
   // Get admin user details
-  const adminUser = await User.findByPk(adminUserId);
+  const adminUser = await findVisibleUserById(User, adminUserId);
   if (!adminUser) {
-    throw createError('Admin user not found', 404);
+    throw notFoundError('Admin user not found');
   }
 
   // Check admin has users:manage permission (unless Master Admin)
@@ -687,16 +671,16 @@ export const updateUserPermissionsAI = async (adminUserId, targetUserId, permiss
   }
 
   const [adminUser, targetUser] = await Promise.all([
-    User.findByPk(adminUserId),
-    User.findByPk(targetUserId)
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
   ]);
 
   if (!adminUser) {
-    throw createError('Admin user not found', 404);
+    throw notFoundError('Admin user not found');
   }
 
   if (!targetUser) {
-    throw createError('Target user not found', 404);
+    throw notFoundError('Target user not found');
   }
 
   // Check admin has users:manage permission (unless Master Admin)
@@ -735,12 +719,12 @@ export const getUsersForExport = async () => {
 
   const users = await User.findAll({
     attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
-    where: {
+    where: buildVisibleWhere({
       [Op.or]: [
         { invitation_status: null },
         { invitation_status: 'accepted' }
       ]
-    },
+    }),
     order: [['created_at', 'DESC']]
   });
 
@@ -823,7 +807,7 @@ export const importUsersFromCSV = async (userData, adminUserId) => {
 export const getUserByEmail = async (email) => {
   const User = dbStore.get('User');
   return await User.findOne({
-    where: { email }
+    where: buildVisibleWhere({ email })
   });
 };
 
@@ -835,6 +819,6 @@ export const getUserByEmail = async (email) => {
 export const getUserByUsername = async (username) => {
   const User = dbStore.get('User');
   return await User.findOne({
-    where: { username }
+    where: buildVisibleWhere({ username })
   });
 };

@@ -41,9 +41,23 @@ npm run dev:backend     # http://localhost:5000
 # Run migrations (handled automatically by deploy.sh)
 cd backend && npx sequelize-cli db:migrate
 
+# Verify required DB index contract (fails on missing indexes)
+cd backend && npm run audit:indexes
+
 # Sync all tenant schemas (handled automatically by deploy.sh)
 node backend/scripts/sync-tenant-schemas.js
 ```
+
+### PayPal Sandbox Canary (Scheduled)
+```bash
+# Run canary locally (will auto-skip if sandbox env vars are missing)
+cd backend
+npm test -- paypalSandboxCanary.e2e.test.js
+```
+GitHub Actions workflow:
+- `.github/workflows/paypal-sandbox-canary.yml`
+- Runs nightly (`cron: 17 2 * * *`) and on manual dispatch.
+- Verifies live sandbox subscription checks and `/api/v1/payments/upgrade` path.
 
 ### Troubleshooting
 ```bash
@@ -116,6 +130,7 @@ lsof -ti:5000 | xargs kill -9  # Backend
 | Sidebar only shows Dashboard after login | Fixed via auth events - see Permission Loading section below |
 | Login fails with 401 after switching companies | Clear localStorage: `localStorage.removeItem('companyToken')` then retry |
 | Approval email not sent | Check SMTP config in `.env`, verify Gmail App Password |
+| PayPal canary skipped locally | Missing sandbox env vars (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_PLAN_ID`, `PAYPAL_WEBHOOK_ID`) |
 
 ## Permission Loading (Authentication Flow)
 
@@ -155,6 +170,11 @@ The application uses an event-based system to ensure permissions load correctly 
 - ❌ Don't commit without testing both frontend and backend
 
 ## Data Entity Quick Reference
+
+### Soft Delete Contract
+- `items`, `suppliers`, and `users` use manual soft delete (`deleted_at`, `deleted_by`).
+- Default resource behavior for soft-deleted records is `404`.
+- Use `buildVisibleWhere(...)` from `backend/src/utils/softDeletePolicy.js` for service queries.
 
 ### Item
 - **Fields**: `sku_code`, `category`, `current_stock`, `min_threshold` (auto), `purchase_allowance` (auto), `deleted_at`, `deleted_by`, `nesting_level`
@@ -227,6 +247,9 @@ DB_PASSWORD=your_password
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=your_jwt_secret
 CORS_ORIGIN=http://localhost:5173
+SCHEMA_INDEX_AUDIT_ENABLED=true
+SCHEMA_INDEX_AUDIT_INTERVAL_MINUTES=360
+SCHEMA_INDEX_AUDIT_TIMEOUT_MS=5000
 
 # Email Configuration (Gmail SMTP)
 SMTP_HOST=smtp.gmail.com

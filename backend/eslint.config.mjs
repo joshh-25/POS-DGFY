@@ -24,4 +24,20 @@ export default [
             ]
         },
     },
+    {
+        files: ["src/controllers/**/*.js", "src/modules/**/controllers/**/*.js"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [
+                        {
+                            group: ["**/models", "**/models/**"],
+                            message: "Controllers must not import models directly. Use module repositories/use-cases."
+                        }
+                    ]
+                }
+            ]
+        }
+    }
 ];

@@ -131,3 +131,75 @@ All 10 tests pass in ~2.5 seconds.
 
 ## Conclusion
 The system is now **fully stable** and ready for live user traffic. The QR Receive flow is fully functional for both Purchase Orders and Job Orders without requiring user authentication on the mobile scanning page. The token refresh race condition is fully resolved — both single-tab and multi-tab scenarios — with 15 automated tests (9 frontend + 6 backend). The local development environment is clean with a single `sku` database as the source of truth.
+
+---
+
+## 10. Security + Engagement Signal Integrity Addendum (2026-03-03)
+
+### 10.1 Plaintext Tenant DB Credential Surface Removed (Resolved)
+
+**Risk addressed:** Landlord tenant registry previously modeled `db_username` and `db_password` fields, enabling accidental plaintext secret storage.
+
+**Implemented controls:**
+- Removed `db_username` and `db_password` from `Tenant` model.
+- Added migration `20260303000003-remove-tenant-plaintext-db-credentials.cjs` to drop both columns.
+- Added regression test `tenantCredentialSurface.security.test.js` to prevent reintroduction.
+- Updated database documentation to remove those fields.
+
+**Evidence basis:** Runtime tenant DB connectors use environment credentials (`process.env.DB_USER` / `process.env.DB_PASSWORD`), not tenant-table credentials.
+
+### 10.2 Billing Funnel Telemetry Quality Gate (Resolved For Current Scope)
+
+**Problem framing:** A test can pass while measuring only mocked behavior or test harness artifacts, not real billing-funnel behavior and certainly not general product engagement.
+
+**Quality controls now in place:**
+- `subscriptionIntegration.test.js` validates route-level state transitions (`/payments/upgrade`, `/admin/tenants/register`) and persisted DB evidence.
+- Tests now assert exact billing-funnel event pairs (attempt + outcome), not loose `contains` checks.
+- Retry scenarios with same `x-request-id` assert no duplicate billing-funnel events (idempotency guard).
+- Correlation/source contracts are asserted (`source`, `correlation_id`) to reduce instrumentation noise.
+- Runtime billing-funnel integrity audit flags missing `correlation_id`, missing `metadata.outcome`, duplicate event keys, and orphan attempt rows through `GET /health`.
+- Runtime billing-funnel reconciliation now also flags completed PayPal payments without telemetry and success rows that do not match tenant state.
+- Runtime billing-funnel reconciliation also flags processed webhook logs without matching telemetry and uses explicit thresholds for degradation policy.
+- Runtime counterfactual checks now compare billing-route HTTP outcomes against matching success/failure telemetry by request ID.
+- Scriptable billing-funnel integrity gate exists via `npm run audit:billing-funnel` with non-zero exit on drift.
+- CI now runs `npm run audit:billing-funnel` after migrations with explicit zero-drift thresholds so persisted telemetry drift fails pull requests before merge.
+- `paypalSandboxCanary.e2e.test.js` validates live sandbox subscription verification and upgrade-path telemetry contracts.
+- Scheduled workflow `.github/workflows/paypal-sandbox-canary.yml` runs daily and on manual dispatch to detect integration drift early, then runs the same billing-funnel audit against canary-generated data.
+- Selected product workflows now emit backend-observed usage events for dashboard, inventory, purchase orders, job orders, and AI endpoints.
+
+**Interpretation rule:**
+- Unit tests validate logic contracts.
+- Integration tests validate persistence and controller wiring against DB state.
+- Scheduled sandbox canary is the closest automated proxy to live PayPal-backed upgrade-route behavior.
+- These checks do **not** independently prove real webhook ingress through the HTTP edge.
+- These checks do **not** independently prove downstream product engagement (retention, feature adoption, usage depth).
+
+Together, these layers reduce false confidence from syntax-only or mock-only green checks for the current billing funnel scope and provide limited real product-usage evidence at the backend boundary.
+
+**Scope note:** The current `engagement_events` table should be interpreted as **billing funnel telemetry plus limited server-side product-usage telemetry** until broader product instrumentation and production evidence exist. See:
+- `docs/testing/billing-funnel-telemetry-definition.md`
+- `docs/testing/telemetry-event-catalog.md`
+- `docs/testing/billing-funnel-integrity-audit.md`
+- `docs/testing/telemetry-schema-contract.md`
+
+### 10.3 Database Index Drift Guard (11.2 Resolved + Hardened, 2026-03-03)
+
+**Risk addressed:** Query performance regressions from missing indexes or legacy non-indexed filter paths in high-traffic flows.
+
+**Implemented controls:**
+- CSV export folder filtering uses canonical `items.folder_id` path (indexed), with `product_folder` retained only as compatibility metadata.
+- Required index contract is enforced through:
+  - Runtime background audit (startup + every 6 hours)
+  - `/health` degradation (`503`) when required indexes are missing
+  - CI gate via `npm run audit:indexes`
+
+**Validation layers:**
+- Contract logic tests (`schemaIndexAuditService.test.js`)
+- CSV filter path regression tests (`csvExportFolderFilter.test.js`)
+- Health contract tests (`healthSchemaIndexAudit.test.js`, `healthService.test.js`)
+- Script-level exit-code integration (`auditIndexesScript.integration.test.js`)
+
+**Operational interpretation:**
+- A passing unit suite proves contract logic correctness.
+- `npm run audit:indexes` and `/health` schema status prove live-schema compliance.
+- This is a reliability/performance guard, not a direct user engagement metric.

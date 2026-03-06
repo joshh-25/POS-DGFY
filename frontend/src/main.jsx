@@ -8,15 +8,17 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import api from './services/api.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
+import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
+import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
 // Lazy-loaded pages — each page is a separate JS chunk downloaded on first visit
 const Dashboard = lazy(() => import('../Pages/Dashboard.jsx'))
-const Items = lazy(() => import('../Pages/Items.jsx'))
+const Items = lazy(() => import('./features/inventory/pages/ItemsPage.jsx'))
 const Suppliers = lazy(() => import('../Pages/Suppliers.jsx'))
 const PurchaseOrders = lazy(() => import('../Pages/PurchaseOrders.jsx'))
-const JobOrders = lazy(() => import('../Pages/JobOrders.jsx'))
-const StockMovements = lazy(() => import('../Pages/StockMovements.jsx'))
+const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.jsx'))
+const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))
 const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
@@ -176,6 +178,8 @@ ReactDOM.createRoot(rootElement).render(
         }}
       >
         <PermissionProvider>
+          <GlobalApiErrorListener />
+          <Toaster position="top-right" />
           <App />
         </PermissionProvider>
       </BrowserRouter>

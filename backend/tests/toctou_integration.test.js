@@ -12,12 +12,6 @@ jest.unstable_mockModule('../src/services/paypalService.js', () => ({
     }
 }));
 
-// Mock AI Service to avoid real OpenAI calls, but KEEP valid logic for permission checks
-const mockToolExecute = jest.fn();
-jest.unstable_mockModule('../src/services/aiToolExecutor.js', () => ({
-    execute: mockToolExecute
-}));
-
 // Mock Logger to silence output
 jest.unstable_mockModule('../src/config/logger.js', () => ({
     default: {
@@ -42,13 +36,24 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
 
 // 2. Import dependencies
 const { default: app } = await import('../src/server.js');
-const { sequelize, User, PendingAIAction, AIConversation } = await import('../src/models/index.js');
+const { sequelize, User, PendingAIAction, AIConversation, Item } = await import('../src/models/index.js');
 const { generateToken } = await import('../src/services/authService.js');
 
 describe('TOCTOU Integration Test', () => {
     let adminUser;
     let adminToken;
     let conversationId;
+
+    const createDeletableItem = async (nameSuffix) => {
+        return Item.create({
+            sku_code: `TOCTOU-${nameSuffix}-${Date.now()}`,
+            name: `TOCTOU Test Item ${nameSuffix}`,
+            category: 'raw_material',
+            unit_of_measure: 'pcs',
+            current_stock: 10,
+            status: 'active'
+        });
+    };
 
     beforeAll(async () => {
         // No-op, we sync in beforeEach
@@ -61,7 +66,6 @@ describe('TOCTOU Integration Test', () => {
     beforeEach(async () => {
         // Clear mocks
         jest.clearAllMocks();
-        mockToolExecute.mockResolvedValue({ message: 'Tool executed successfully' });
 
         // Reset Database completely for each test
         await sequelize.sync({ force: true });
@@ -94,13 +98,14 @@ describe('TOCTOU Integration Test', () => {
         // 1. Setup: Create a pending action for 'delete_item' (requires admin)
         const actionId = uuidv4();
 
-        const pendingAction = await PendingAIAction.create({
+        const item = await createDeletableItem('block');
+        await PendingAIAction.create({
             action_id: actionId,
             user_id: adminUser.user_id,
             conversation_id: conversationId,
             action_type: 'delete_item',
             description: 'Delete Item 123',
-            action_payload: { item_id: 123, reason: 'Test' },
+            action_payload: { item_id: item.item_id, reason: 'TOCTOU block path test' },
             status: 'pending',
             expires_at: new Date(Date.now() + 300000)
         });
@@ -117,6 +122,7 @@ describe('TOCTOU Integration Test', () => {
         const response = await request(app)
             .post('/api/v1/ai/confirm')
             .set('Authorization', `Bearer ${adminToken}`)
+            .set('x-company-token', 'toctou-block')
             .send({ actionId: actionId });
 
         // 4. Verification
@@ -127,8 +133,6 @@ describe('TOCTOU Integration Test', () => {
         // This error check confirms it was our PERMISSION check that failed
         expect(response.body.message).toMatch(/You don't have permission/i);
         expect(response.body.message).toMatch(/requires admin/i);
-
-        expect(mockToolExecute).not.toHaveBeenCalled();
 
         // Note: The controller currently marks it as 'confirmed' (processed) even if execution failed (returned error result).
         // The important part is that the tool was NOT executed and the response indicated failure.
@@ -145,18 +149,24 @@ describe('TOCTOU Integration Test', () => {
         }
         expect(result).toBeDefined();
         expect(result.type).toBe('error');
+
+        // Item must remain active because execution was blocked by permission check.
+        const itemAfter = await Item.findByPk(item.item_id);
+        expect(itemAfter).toBeDefined();
+        expect(itemAfter.status).toBe('active');
     });
 
     it('should ALLOW the action if the user RETAINS their role', async () => {
         // Control test: User stays admin
+        const item = await createDeletableItem('allow');
         const actionId = uuidv4();
         await PendingAIAction.create({
             action_id: actionId,
             user_id: adminUser.user_id,
             conversation_id: conversationId,
             action_type: 'delete_item',
-            description: 'Delete Item 456',
-            action_payload: { item_id: 456, reason: 'Test' },
+            description: `Delete Item ${item.item_id}`,
+            action_payload: { item_id: item.item_id, reason: 'TOCTOU allow path test' },
             status: 'pending',
             expires_at: new Date(Date.now() + 300000)
         });
@@ -166,13 +176,18 @@ describe('TOCTOU Integration Test', () => {
         const response = await request(app)
             .post('/api/v1/ai/confirm')
             .set('Authorization', `Bearer ${adminToken}`)
+            .set('x-company-token', 'toctou-allow')
             .send({ actionId: actionId });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(mockToolExecute).toHaveBeenCalledWith('delete_item', expect.anything(), expect.anything());
 
         const refreshedAction = await PendingAIAction.findByPk(actionId);
         expect(refreshedAction.status).toBe('confirmed');
+
+        // Action must be applied (soft delete -> inactive)
+        const itemAfter = await Item.findByPk(item.item_id);
+        expect(itemAfter).toBeDefined();
+        expect(itemAfter.status).toBe('inactive');
     });
 });

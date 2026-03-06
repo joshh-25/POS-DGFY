@@ -41,15 +41,11 @@ const fileFilter = (req, file, cb) => {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ];
 
-    // Simple check - in production you might want magic number checking
+    // Fix 8.3: Enforce the allowlist — reject unknown MIME types
     if (allowedTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        // Soft fail - we can decide to reject or just log. 
-        // For now, let's accept but maybe we should be stricter?
-        // Let's rely on frontend validation mostly, but here strictly allow safe types.
-        // Actually, let's be lenient for now as "text/plain" covers code files often sent as unknown.
-        cb(null, true);
+        cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname), false);
     }
 };
 

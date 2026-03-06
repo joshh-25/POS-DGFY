@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { login } from '../src/services/authService.js';
 import api from '../src/services/api.js';
+import { clearClientSession } from '../src/services/sessionCleanup.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,9 +27,14 @@ export default function Login() {
   const [lookupError, setLookupError] = useState('');
 
   // Clear stale company token when landing on login page
-  // This ensures fresh login always uses the looked-up token, not a cached one
+  // and reset any stale in-memory state from a previous user session.
   useEffect(() => {
-    localStorage.removeItem('companyToken');
+    clearClientSession({
+      reason: 'login_entry',
+      broadcast: false,
+      emitAuthEvents: false,
+      redirectTo: null
+    });
   }, []);
 
   // Look up tenant by email when user finishes typing
@@ -286,7 +292,7 @@ export default function Login() {
           {/* Registration Link */}
           <div className="mt-6 text-center space-y-2">
             <p className="text-sm text-slate-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
                 Create one here
               </Link>

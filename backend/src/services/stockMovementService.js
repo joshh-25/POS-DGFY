@@ -1,5 +1,16 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+
+const findVisibleItemById = async (Item, itemId, options = {}) => {
+  return Item.findOne({
+    ...options,
+    where: buildVisibleWhere(
+      { item_id: itemId },
+      { statusField: 'status', excludeInactiveStatus: true }
+    )
+  });
+};
 
 export const getStockMovements = async (queryParams) => {
   const StockMovement = dbStore.get('StockMovement');
@@ -107,7 +118,11 @@ export const createStockMovement = async (movementData, userId, transaction = nu
       return result;
     } catch (err) {
       if (!t.finished) {
-        try { await t.rollback(); } catch (_) { }
+        try {
+          await t.rollback();
+        } catch (rollbackError) {
+          console.warn('[StockMovement] Rollback failed:', rollbackError.message);
+        }
       }
       throw err;
     }
@@ -132,7 +147,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
     lock: transaction.LOCK.UPDATE
   };
 
-  const item = await Item.findByPk(item_id, options);
+  const item = await findVisibleItemById(Item, item_id, options);
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -574,7 +589,12 @@ export const voidMovement = async (movementId, userId, reason) => {
     // ────────────────────────────────────────────────────────────────────────
 
     // Update item stock
-    const item = await Item.findByPk(item_id, { transaction });
+    const item = await findVisibleItemById(Item, item_id, { transaction });
+    if (!item) {
+      const error = new Error('Item not found');
+      error.statusCode = 404;
+      throw error;
+    }
     const newStock = parseFloat(item.current_stock) + reverseQuantity;
 
     if (newStock < 0) {

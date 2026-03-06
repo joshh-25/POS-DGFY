@@ -190,8 +190,6 @@ const Item = sequelize.define('Item', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
-  paranoid: true,
-  deletedAt: 'deleted_at',
   indexes: [
     { fields: ['sku_code'] },
     { fields: ['category'] },

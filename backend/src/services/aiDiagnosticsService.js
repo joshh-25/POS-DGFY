@@ -17,6 +17,7 @@
 
 import dbStore from '../utils/dbStore.js';
 import { Op } from 'sequelize';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 /**
  * Ground-truth map of every system capability vs what AI tool covers it.
@@ -722,9 +723,9 @@ async function fetchTenantData() {
     archivedDOs
   ] = await Promise.all([
     safeCount('Item'),
-    safeCount('Item', { where: { status: 'active' } }),
+    safeCount('Item', { where: buildVisibleWhere({ status: 'active' }) }),
     safeCount('Supplier'),
-    safeCount('Supplier', { where: { status: 'active' } }),
+    safeCount('Supplier', { where: buildVisibleWhere({ status: 'active' }) }),
     safeCount('PurchaseOrder'),
     safeCount('PurchaseOrder', { where: { archived_at: { [Op.ne]: null } } }),
     safeCount('JobOrder'),

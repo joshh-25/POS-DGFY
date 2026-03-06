@@ -17,7 +17,10 @@ const mockCacheService = {
 };
 
 // Mock the module before importing app
-jest.unstable_mockModule('../src/services/cacheService.js', () => mockCacheService);
+jest.unstable_mockModule('../src/services/cacheService.js', () => ({
+    default: mockCacheService,
+    ...mockCacheService
+}));
 
 // Import dependencies AFTER mocking
 // We use dynamic imports because we need the mock to apply first

@@ -111,6 +111,82 @@ const buildRateLimitResponse = (req, options, message, scope, keyType) => {
   };
 };
 
+import RedisStore from 'rate-limit-redis';
+import { getRedisClient, isRedisConnected } from '../config/redis.js';
+
+import { MemoryStore } from 'express-rate-limit';
+
+// A robust DynamicStore that wraps MemoryStore (local) and RedisStore (distributed).
+// It attempts to use Redis if available, falling back seamlessly to MemoryStore
+// if the Redis connection is lost or unavailable.
+class DynamicStore {
+  constructor(prefix) {
+    this.prefix = prefix;
+    this.memoryStore = new MemoryStore();
+    this.redisStore = null;
+    this.options = null;
+  }
+
+  init(options) {
+    this.options = options;
+    this.memoryStore.init?.(options);
+
+    const client = getRedisClient();
+    if (client && client.sendCommand) {
+      try {
+        const ActualRedisStore = (typeof RedisStore === 'function') ? RedisStore : RedisStore.default;
+        this.redisStore = new ActualRedisStore({
+          sendCommand: (...args) => {
+            // Ensure we have a fresh client reference if possible, 
+            // but for now we follow the captured one if it's still alive.
+            const activeClient = getRedisClient();
+            if (activeClient && activeClient.sendCommand) {
+              return activeClient.sendCommand(args);
+            }
+            // Fallback to the one we captured at init if active is null
+            return client.sendCommand(args);
+          },
+          prefix: `rl:${this.prefix}:`
+        });
+        this.redisStore.init?.(options);
+      } catch (err) {
+        logger.error(`[RateLimiter] RedisStore init failed for ${this.prefix}:`, err);
+      }
+    }
+  }
+
+  getStore() {
+    // We only use Redis if both the store is initialized AND we have a live connection.
+    if (this.redisStore && isRedisConnected()) {
+      return this.redisStore;
+    }
+    return this.memoryStore;
+  }
+
+  async increment(key) {
+    const store = this.getStore();
+    try {
+      return await store.increment(key);
+    } catch (e) {
+      if (store === this.redisStore && this.memoryStore) {
+        logger.warn(`[RateLimiter] Redis failed for ${key}, falling back to memory`);
+        return this.memoryStore.increment(key);
+      }
+      throw e;
+    }
+  }
+
+  async decrement(key) {
+    const store = this.getStore();
+    return store.decrement(key);
+  }
+
+  async resetKey(key) {
+    const store = this.getStore();
+    return store.resetKey(key);
+  }
+}
+
 // General API rate limiter
 export const generalLimiter = rateLimit({
   windowMs,
@@ -119,6 +195,8 @@ export const generalLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   validate: { trustProxy: false },
+  store: new DynamicStore('general'),
+  keyGenerator: (req) => firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip',
   handler: (req, res, _next, options) => {
     const scope = getScopeFromRequest(req, 'other');
     const response = buildRateLimitResponse(
@@ -149,8 +227,9 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  store: new DynamicStore('auth'),
   keyGenerator: (req) => {
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
     const email = normalizeEmail(req.body?.email);
     const scope = req.path?.includes('/register') ? 'register' : 'login';
     return email ? `auth:${scope}:${ip}:${email}` : `auth:${scope}:${ip}:unknown-email`;
@@ -168,7 +247,11 @@ export const authLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
 });
 
 // Strictest rate limiter for email lookup to prevent enumeration
@@ -179,6 +262,8 @@ export const lookupLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  store: new DynamicStore('lookup'),
+  keyGenerator: (req) => firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip',
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
       req,
@@ -191,7 +276,11 @@ export const lookupLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
 });
 
 // Strict rate limiter for tenant registration (prevents DoS via auto-provisioning)
@@ -202,6 +291,8 @@ export const tenantRegistrationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  store: new DynamicStore('registration'),
+  keyGenerator: (req) => firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip',
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
       req,
@@ -214,7 +305,11 @@ export const tenantRegistrationLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
 });
 
 export default {

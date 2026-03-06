@@ -35,10 +35,12 @@ import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
+import EngagementEventFactory from './Landlord/EngagementEvent.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
+const EngagementEvent = EngagementEventFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -48,6 +50,8 @@ const AiUsageLog = AiUsageLogFactory(sequelize);
 // Tenant & Payment associations
 Tenant.hasMany(Payment, { foreignKey: 'tenant_id', as: 'payments' });
 Payment.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents' });
+EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -231,6 +235,7 @@ const db = {
   UserTenantMapping,
   Payment,
   WebhookLog,
+  EngagementEvent,
   AiUsageLog
 };
 
@@ -273,6 +278,7 @@ export {
   UserTenantMapping,
   Payment,
   WebhookLog,
+  EngagementEvent,
   AiUsageLog
 };
 

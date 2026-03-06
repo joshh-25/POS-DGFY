@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 /**
  * Analytics Service
@@ -63,7 +64,11 @@ export const calculateReorderPoint = async (itemId) => {
     const Supplier = dbStore.get('Supplier');
 
     // 1. Get Item context (Current Stock, Assigned Suppliers)
-    const item = await Item.findByPk(itemId, {
+    const item = await Item.findOne({
+        where: buildVisibleWhere(
+            { item_id: itemId },
+            { statusField: 'status', excludeInactiveStatus: true }
+        ),
         include: [{
             model: SupplierItem,
             as: 'supplierItems',
@@ -134,7 +139,7 @@ export const calculateReorderPoint = async (itemId) => {
 export const getReorderRecommendations = async (category = null) => {
     const Item = dbStore.get('Item');
 
-    const where = { status: 'active' };
+    const where = buildVisibleWhere({ status: 'active' });
     if (category) where.category = category;
 
     const items = await Item.findAll({
@@ -174,7 +179,7 @@ export const detectAnomalies = async (options = {}) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const where = {};
+    const where = buildVisibleWhere({ status: 'active' });
     if (category) where.category = category;
     if (itemId) where.item_id = itemId;
 
@@ -293,7 +298,12 @@ export const analyzeSupplierPerformance = async (supplierId) => {
     const PurchaseOrder = dbStore.get('PurchaseOrder');
     const Supplier = dbStore.get('Supplier');
 
-    const supplier = await Supplier.findByPk(supplierId);
+    const supplier = await Supplier.findOne({
+        where: buildVisibleWhere(
+            { supplier_id: supplierId },
+            { statusField: 'status', excludeInactiveStatus: true }
+        )
+    });
     if (!supplier) throw new Error('Supplier not found');
 
     const pos = await PurchaseOrder.findAll({

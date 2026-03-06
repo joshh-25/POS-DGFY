@@ -34,7 +34,7 @@ export const useReports = () => {
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message);
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
             console.error('Error fetching expiry report:', err);
         } finally {
             setLoading(false);
@@ -54,7 +54,7 @@ export const useReports = () => {
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message);
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
             console.error('Error fetching stock aging report:', err);
         } finally {
             setLoading(false);
@@ -74,7 +74,7 @@ export const useReports = () => {
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message);
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
             console.error('Error fetching production report:', err);
         } finally {
             setLoading(false);
@@ -94,7 +94,7 @@ export const useReports = () => {
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message);
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
             console.error('Error fetching PO analysis report:', err);
         } finally {
             setLoading(false);
@@ -114,7 +114,7 @@ export const useReports = () => {
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message);
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
             console.error('Error fetching executive summary:', err);
         } finally {
             setLoading(false);

@@ -4,69 +4,87 @@ import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 
 describe('Refresh Token Rotation (RTR) Verification', () => {
-    let rt1;
-    let userData = {
-        username: 'rtruser',
-        email: 'rtr@example.com',
-        password: 'TestPassword123!'
-    };
-
     beforeAll(async () => {
         await sequelize.authenticate();
-        // Clean up
-        await db.User.destroy({ where: { email: userData.email } });
-
-        // Register and get RT1
-        const res = await request(app)
-            .post('/api/v1/auth/register')
-            .send(userData)
-            .expect(201);
-        rt1 = res.body.data.refreshToken;
     });
 
     afterAll(async () => {
-        await db.User.destroy({ where: { email: userData.email } });
         await sequelize.close();
     });
 
-    it('should FAIL if RT1 is used twice (Vulnerability check)', async () => {
-        // First use of RT1
-        const res1 = await request(app)
+    const registerAndLogin = async () => {
+        const stamp = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        const userData = {
+            username: `rtruser-${stamp}`,
+            email: `rtr-${stamp}@example.com`,
+            password: 'TestPassword123!'
+        };
+
+        await request(app)
+            .post('/api/v1/auth/register')
+            .send(userData)
+            .expect(201);
+
+        const loginRes = await request(app)
+            .post('/api/v1/auth/login')
+            .send({
+                email: userData.email,
+                password: userData.password
+            })
+            .expect(200);
+
+        return {
+            email: userData.email,
+            refreshToken: loginRes.body.data?.refreshToken
+        };
+    };
+
+    const cleanupUser = async (email) => {
+        await db.User.destroy({ where: { email } });
+    };
+
+    it('should FAIL if RT1 is used twice (replay blocked after rotation)', async () => {
+        const { email, refreshToken: rt1 } = await registerAndLogin();
+        expect(rt1).toBeDefined();
+
+        const firstRefresh = await request(app)
             .post('/api/v1/auth/refresh-token')
-            .set('x-company-token', 'master-frontend-token')
             .send({ refreshToken: rt1 })
             .expect(200);
 
-        const rt2 = res1.body.data?.refreshToken;
+        const rt2 = firstRefresh.body.data?.refreshToken;
         expect(rt2).toBeDefined();
-        expect(rt2).not.toBe(rt1); // Should be a new token
+        expect(rt2).not.toBe(rt1);
 
-        // Second use of RT1 (Replay Attack)
-        const res2 = await request(app)
+        const replayAttempt = await request(app)
             .post('/api/v1/auth/refresh-token')
-            .set('x-company-token', 'master-frontend-token')
             .send({ refreshToken: rt1 });
 
-        expect(res2.status).toBe(401);
-        console.log('✅ SUCCESS: Refresh token reuse blocked.');
+        expect(replayAttempt.status).toBe(401);
+
+        await cleanupUser(email);
     });
 
-    it('should succeed with the new RT2', async () => {
-        // Get RT2 from a fresh refresh
-        const res1 = await request(app)
-            .post('/api/v1/auth/refresh-token')
-            .set('x-company-token', 'master-frontend-token')
-            .send({ refreshToken: rt1 });
+    it('should succeed with the rotated RT2', async () => {
+        const { email, refreshToken: rt1 } = await registerAndLogin();
+        expect(rt1).toBeDefined();
 
-        const rt2 = res1.body.data?.refreshToken;
+        const firstRefresh = await request(app)
+            .post('/api/v1/auth/refresh-token')
+            .send({ refreshToken: rt1 })
+            .expect(200);
+
+        const rt2 = firstRefresh.body.data?.refreshToken;
         expect(rt2).toBeDefined();
 
-        const res2 = await request(app)
+        const secondRefresh = await request(app)
             .post('/api/v1/auth/refresh-token')
-            .set('x-company-token', 'master-frontend-token')
             .send({ refreshToken: rt2 })
             .expect(200);
 
-        expect(res2.body.data?.token).toBeDefined();
+        expect(secondRefresh.body.data?.token).toBeDefined();
+        expect(secondRefresh.body.data?.refreshToken).toBeDefined();
+
+        await cleanupUser(email);
     });
 });

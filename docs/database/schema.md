@@ -59,17 +59,24 @@ This database identifies each tenant and routes API requests to the correct data
 
 ```sql
 CREATE TABLE tenants (
-    id VARCHAR(50) PRIMARY KEY,
+    id CHAR(36) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     domain VARCHAR(255),
     subdomain VARCHAR(100),
     db_name VARCHAR(100) NOT NULL UNIQUE,
     company_token VARCHAR(255) NOT NULL UNIQUE,
     db_host VARCHAR(255),
-    db_username VARCHAR(255),
-    db_password VARCHAR(255),
-    status ENUM('active', 'inactive', 'pending') DEFAULT 'active',
-    plan VARCHAR(50) DEFAULT 'free',
+    status ENUM('pending', 'active', 'inactive', 'rejected', 'archived') DEFAULT 'pending',
+    plan ENUM('standard', 'premium') DEFAULT 'standard',
+    billing_cycle_anchor INT NULL,
+    subscription_status ENUM('active', 'inactive', 'past_due', 'cancelled', 'pending') DEFAULT 'inactive',
+    paypal_subscription_id VARCHAR(255) NULL,
+    current_period_end DATETIME NULL,
+    trial_ends_at DATETIME NULL,
+    grace_period_end DATETIME NULL,
+    cancelled_at DATETIME NULL,
+    last_expiry_notified_at DATETIME NULL,
+    last_expiry_notification_type VARCHAR(255) NULL,
     settings JSON,
     admin_email VARCHAR(255),
     admin_password_hash VARCHAR(255),
@@ -77,6 +84,10 @@ CREATE TABLE tenants (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 ```
+
+Subscription notes:
+- Tenant DB credentials are environment-driven at runtime (`DB_USER`, `DB_PASSWORD`); tenant-row plaintext credential columns are intentionally removed.
+- `billing_cycle_anchor` backfill migration (`20260303000005-backfill-missing-billing-anchor.cjs`) only updates premium tenants with non-null `current_period_end` and null anchor.
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -320,6 +331,12 @@ Every tenant database follows the **Master Schema** defined below. When a new co
 
 ## Detailed Table Definitions
 
+### Soft Delete Contract (2026-03-03)
+- The system uses **manual soft delete** for `users`, `items`, and `suppliers`.
+- Sequelize `paranoid` is **not** the source of truth for visibility.
+- Service-layer queries enforce visibility using `deleted_at IS NULL` plus entity-specific status rules.
+- Default resource behavior for soft-deleted targets is `404 Not Found`.
+
 ### 1. Users Table
 
 ```sql
@@ -368,32 +385,52 @@ CREATE TABLE users (
 ```sql
 CREATE TABLE items (
     item_id INT PRIMARY KEY AUTO_INCREMENT,
-    sku_code VARCHAR(50) UNIQUE NOT NULL,
+    sku_code VARCHAR(50) NULL,
     name VARCHAR(255) NOT NULL,
-    category ENUM('ingredient', 'product', 'packaging') NOT NULL,
+    category ENUM('raw_material', 'packaging', 'product', 'supplies') NOT NULL,
+    product_type ENUM('work_in_progress', 'finished_goods') NULL,
     product_folder VARCHAR(100),
+    folder_id INT NULL,
     description TEXT,
     current_stock DECIMAL(12, 2) DEFAULT 0,
-    max_capacity DECIMAL(12, 2) NOT NULL,
+    max_capacity DECIMAL(12, 2) NULL,
     min_threshold DECIMAL(12, 2),
     purchase_allowance DECIMAL(12, 2),
-    unit_of_measure VARCHAR(50) NOT NULL,  -- See UOM Standards below
+    unit_of_measure VARCHAR(50) NULL,  -- See UOM Standards below
     cost_per_unit DECIMAL(10, 4),
     fifo_enabled BOOLEAN DEFAULT FALSE,
+    shelf_life_days INT NULL,
+    opened_shelf_life_days INT NULL,
     batch_size DECIMAL(12, 2),
     yield_percentage DECIMAL(5, 2),
     processing_loss DECIMAL(5, 2),
     production_notes TEXT,
+    packaging_specs JSON NULL,
     status ENUM('draft', 'active', 'inactive') DEFAULT 'active',
+    deleted_by INT NULL,
+    deleted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     INDEX idx_sku_code (sku_code),
     INDEX idx_category (category),
-    INDEX idx_name (name),
-    INDEX idx_current_stock (current_stock)
+    INDEX idx_folder_id (folder_id),
+    INDEX idx_deleted_at (deleted_at),
+    INDEX idx_status (status),
+    CONSTRAINT fk_items_folder FOREIGN KEY (folder_id) REFERENCES item_folders(folder_id),
+    CONSTRAINT fk_items_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(user_id)
 );
 ```
+
+**Soft Delete Notes (Items):**
+- Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
+- Default reads and mutations treat soft-deleted items as not found.
+- Visibility is enforced in services, not via model-level paranoid behavior.
+
+**Folder Filtering Canonical Path (2026-03-03 update):**
+- Query filtering must use `items.folder_id` (indexed) instead of the legacy `items.product_folder` string.
+- `product_folder` remains for compatibility/export metadata only and is not the performance path.
+- CSV export filtering was updated to resolve folder name via `item_folders.name` (indexed) then filter by `items.folder_id`.
 
 #### UOM (Unit of Measure) Standards
 
@@ -519,17 +556,25 @@ CREATE TABLE suppliers (
     address TEXT,
     quality_rating DECIMAL(3, 2),
     avg_delivery_days INT,
-    is_active BOOLEAN DEFAULT TRUE,
+    status ENUM('draft', 'active', 'inactive') DEFAULT 'active',
     last_delivery_date DATE,
     notes TEXT,
+    deleted_by INT NULL,
+    deleted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     INDEX idx_name (name),
     INDEX idx_email (email),
-    INDEX idx_is_active (is_active)
+    INDEX idx_status (status),
+    INDEX idx_deleted_at (deleted_at),
+    CONSTRAINT fk_suppliers_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(user_id)
 );
 ```
+
+**Soft Delete Notes (Suppliers):**
+- Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
+- Default list/detail/mutation behavior excludes soft-deleted suppliers.
 
 ### 8. Supplier Items Table
 
@@ -777,6 +822,19 @@ CREATE TABLE system_settings (
 - Foreign keys are indexed for join performance
 - Frequently queried columns are indexed
 
+### Runtime/CI Index Guard (2026-03-03)
+- Backend enforces a required index contract for:
+  - `items`: `sku_code`, `category`, `folder_id`, `deleted_at`, `status`
+  - `stock_movements`: `item_id`, `batch_id`, `movement_type`, `timestamp`, `(item_id,movement_type,timestamp)`
+  - `job_orders`: `product_id`, `status`
+  - `jo_ingredients`: `item_id`, `batch_id`
+- CI command: `npm run audit:indexes` (fails build on missing required indexes).
+- Runtime guard: `/health` includes `services.schemaIndexes`; health becomes `503` when audit is degraded.
+- Audit cadence/config:
+  - `SCHEMA_INDEX_AUDIT_ENABLED`
+  - `SCHEMA_INDEX_AUDIT_INTERVAL_MINUTES` (default `360`)
+  - `SCHEMA_INDEX_AUDIT_TIMEOUT_MS` (default `5000`)
+
 ### Composite Indexes (for optimization)
 ```sql
 -- For finding items by category and stock level
@@ -855,4 +913,3 @@ INSERT INTO system_settings (setting_key, setting_value, data_type, description)
 - Monitor query performance
 - Add additional indexes if needed
 - Optimize slow queries
-

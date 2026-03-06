@@ -93,6 +93,15 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    if (user.deleted_at) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        message: 'User account has been removed from this company',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // Attach user to request
     req.user = {
       user_id: user.user_id,

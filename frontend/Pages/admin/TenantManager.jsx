@@ -19,6 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
+import { toast } from 'sonner';
+import { normalizeApiError } from '@/src/utils/errorHandler.js';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -91,8 +93,12 @@ export default function TenantManager() {
         try {
             await adminService.approveTenant(tenantId);
             loadTenants();
+            toast.success('Tenant approved successfully');
         } catch (err) {
-            alert('Failed to approve: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to approve: ${normalized.message}`);
+            }
         } finally {
             setActionLoading(null);
         }
@@ -106,8 +112,12 @@ export default function TenantManager() {
         try {
             await adminService.rejectTenant(tenantId, reason);
             loadTenants();
+            toast.success('Tenant rejected successfully');
         } catch (err) {
-            alert('Failed to reject: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to reject: ${normalized.message}`);
+            }
         } finally {
             setActionLoading(null);
         }
@@ -127,9 +137,12 @@ export default function TenantManager() {
                 subscriptionId: ''
             });
             loadTenants();
-            alert('Tenant created successfully!');
+            toast.success('Tenant created successfully');
         } catch (err) {
-            alert('Failed to create tenant: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to create tenant: ${normalized.message}`);
+            }
         } finally {
             setAddLoading(false);
         }
@@ -155,9 +168,12 @@ export default function TenantManager() {
             });
             setShowEditModal(false);
             loadTenants();
-            alert('Tenant updated successfully');
+            toast.success('Tenant updated successfully');
         } catch (err) {
-            alert('Failed to update tenant: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to update tenant: ${normalized.message}`);
+            }
         } finally {
             setEditLoading(false);
         }
@@ -183,9 +199,12 @@ export default function TenantManager() {
             await adminService.deleteTenant(deleteForm.id);
             setShowDeleteModal(false);
             loadTenants();
-            alert('Tenant permanently deleted');
+            toast.success('Tenant permanently deleted');
         } catch (err) {
-            alert('Failed to delete tenant: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to delete tenant: ${normalized.message}`);
+            }
         } finally {
             setDeleteLoading(false);
         }

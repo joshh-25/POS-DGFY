@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 export const getDashboardStats = async () => {
   const Item = dbStore.get('Item');
@@ -19,10 +20,10 @@ export const getDashboardStats = async () => {
     pendingDispatchOrders,
     inventoryValueResult
   ] = await Promise.all([
-    Item.count({ where: { status: 'active' } }),
+    Item.count({ where: buildVisibleWhere({ status: 'active' }) }),
 
     Item.count({
-      where: {
+      where: buildVisibleWhere({
         status: 'active',
         min_threshold: { [Op.ne]: null },
         [Op.and]: [
@@ -32,12 +33,12 @@ export const getDashboardStats = async () => {
             sequelize.col('min_threshold')
           )
         ]
-      }
+      })
     }),
 
     // Calculate healthy stock (items with stock between min threshold and max capacity)
     Item.count({
-      where: {
+      where: buildVisibleWhere({
         status: 'active',
         min_threshold: { [Op.ne]: null },
         [Op.and]: [
@@ -52,12 +53,12 @@ export const getDashboardStats = async () => {
             sequelize.col('max_capacity')
           )
         ]
-      }
+      })
     }),
 
     // Calculate overstock (items exceeding max capacity)
     Item.count({
-      where: {
+      where: buildVisibleWhere({
         status: 'active',
         [Op.and]: [
           sequelize.where(
@@ -66,7 +67,7 @@ export const getDashboardStats = async () => {
             sequelize.col('max_capacity')
           )
         ]
-      }
+      })
     }),
 
     PurchaseOrder.count({ where: { status: 'pending' } }),
@@ -75,7 +76,7 @@ export const getDashboardStats = async () => {
 
     // Calculate total inventory value using DB aggregation
     Item.findAll({
-      where: { status: 'active' },
+      where: buildVisibleWhere({ status: 'active' }),
       attributes: [
         [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
       ],
@@ -104,7 +105,7 @@ export const getLowStockItems = async () => {
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const items = await Item.findAll({
-    where: {
+    where: buildVisibleWhere({
       status: 'active',
       min_threshold: { [Op.ne]: null }, // Only include items with thresholds set
       [Op.and]: [
@@ -114,7 +115,7 @@ export const getLowStockItems = async () => {
           sequelize.col('min_threshold')
         )
       ]
-    },
+    }),
     order: [['current_stock', 'ASC']],
     limit: 20
   });

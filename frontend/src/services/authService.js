@@ -1,4 +1,5 @@
 import api from './api.js';
+import { clearClientSession } from './sessionCleanup.js';
 
 export const register = async (userData, companyToken) => {
   // Pass company token in header for the registration request (to route to correct DB)
@@ -50,13 +51,23 @@ export const login = async (credentials) => {
 };
 
 export const logout = async () => {
-  await api.post('/auth/logout');
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('companyToken');
+  let logoutError = null;
+  try {
+    await api.post('/auth/logout');
+  } catch (error) {
+    logoutError = error;
+  } finally {
+    clearClientSession({
+      reason: 'logout',
+      broadcast: true,
+      emitAuthEvents: true,
+      redirectTo: '/login'
+    });
+  }
 
-  // Dispatch custom event to notify PermissionContext to clear permissions
-  window.dispatchEvent(new CustomEvent('auth:logout'));
+  if (logoutError) {
+    console.warn('[Auth] Backend logout failed; local session still cleared.', logoutError);
+  }
 };
 
 export const refreshToken = async () => {

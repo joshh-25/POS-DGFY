@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { clearClientSession } from './sessionCleanup.js';
+import { emitGlobalApiError } from '../utils/errorHandler.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -60,8 +62,14 @@ if (authChannel) {
     }
     if (data.type === 'session-expired' || data.type === 'auth:logout') {
       // Another tab's refresh failed, or the user logged out in another tab.
-      // Show a banner in this tab so the user can choose to re-login.
+      // Clear local state and lock this tab immediately.
       window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      clearClientSession({
+        reason: 'session_expired',
+        broadcast: false,
+        emitAuthEvents: false,
+        redirectTo: '/login?reason=session_expired'
+      });
     }
   };
 }
@@ -69,7 +77,8 @@ if (authChannel) {
 // Re-broadcast deliberate logout to other tabs.
 // authService.js dispatches 'auth:logout' locally; we forward it via BroadcastChannel
 // so other open tabs can show the session-expired banner.
-window.addEventListener('auth:logout', () => {
+window.addEventListener('auth:logout', (event) => {
+  if (event?.detail?.broadcast === false) return;
   authChannel?.postMessage({ type: 'auth:logout' });
 });
 
@@ -104,9 +113,13 @@ api.interceptors.response.use(
 
       // No refresh token at all — immediate logout, no attempt
       if (!storedRefreshToken) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('companyToken');
-        window.location.href = '/login?reason=session_expired';
+        authChannel?.postMessage({ type: 'session-expired' });
+        clearClientSession({
+          reason: 'session_expired',
+          broadcast: false,
+          emitAuthEvents: false,
+          redirectTo: '/login?reason=session_expired'
+        });
         return Promise.reject(error);
       }
 
@@ -171,11 +184,13 @@ api.interceptors.response.use(
           .catch(err => {
             console.error('❌ [Auth] Token refresh failed:', err);
             processQueue(err, null); // fail all queued requests in this tab
-            authChannel?.postMessage({ type: 'session-expired' }); // show banner in other tabs
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('companyToken');
-            window.location.href = '/login?reason=session_expired'; // this tab hard-redirects
+            authChannel?.postMessage({ type: 'session-expired' }); // lock other tabs as well
+            clearClientSession({
+              reason: 'session_expired',
+              broadcast: false,
+              emitAuthEvents: false,
+              redirectTo: '/login?reason=session_expired'
+            });
             reject(err);
           })
           .finally(() => {
@@ -207,12 +222,10 @@ api.interceptors.response.use(
       }
     }
 
-    // Fix 10.3: Dispatch a window event for 5xx server errors so Layout.jsx can
-    // show a global toast without every component needing its own error handler.
-    // We skip 401 (handled above by the refresh logic) and 404 (likely feature-specific).
-    if (error.response?.status >= 500) {
-      const message = error.response?.data?.message || 'Server error. Please try again.';
-      window.dispatchEvent(new CustomEvent('api:server-error', { detail: { message } }));
+    // Global error notification path for 5xx and network/no-response failures.
+    // Components can opt out on a request-by-request basis using skipGlobalErrorToast.
+    if (!error?.config?.skipGlobalErrorToast) {
+      emitGlobalApiError({ error, source: 'tenant-api' });
     }
 
     return Promise.reject(error);

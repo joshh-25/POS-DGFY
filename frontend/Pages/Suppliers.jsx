@@ -25,6 +25,7 @@ import { useItemSupplierCoverage } from '@/hooks/useItems.js';
 import { getCurrentUser } from '../src/services/authService.js';
 import { toast } from 'sonner';
 import { usePermission } from '../src/hooks/usePermission';
+import { normalizeApiError } from '../src/utils/errorHandler.js';
 
 export default function Suppliers() {
   const { suppliers, loading, error, refetch } = useSuppliers();
@@ -126,7 +127,9 @@ export default function Suppliers() {
         error.response?.data?.message ||
         error.message ||
         'Failed to save supplier';
-      toast.error(errorMessage);
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -138,7 +141,9 @@ export default function Suppliers() {
       setShowFormModal(false);
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save draft';
-      toast.error(errorMessage);
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -197,7 +202,9 @@ export default function Suppliers() {
       if (errorDetails && Array.isArray(errorDetails)) {
         setDeleteErrors(errorDetails);
       } else {
-        toast.error(error.response?.data?.message || error.message);
+        if (!normalizeApiError(error).isGlobalCandidate) {
+          toast.error(error.response?.data?.message || error.message);
+        }
         setShowDeleteDialog(false);
         setSupplierToDelete(null);
       }

@@ -25,7 +25,9 @@ import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { initializeRedis, isRedisConnected, closeRedis } from '../src/config/redis.js';
 
-describe('Token Refresh Race Condition — Integration (Real Redis)', () => {
+const runSuite = process.env.TEST_TYPE === 'integration' ? describe : describe.skip;
+
+runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
   const COMPANY_TOKEN = 'token-testbox4236-175692e6';
   const EMAIL = `race-int-${Date.now()}@example.com`;
   const USERNAME = `raceint${Date.now()}`;
@@ -165,3 +167,4 @@ describe('Token Refresh Race Condition — Integration (Real Redis)', () => {
     expect(reuseRes.body.success).toBe(false);
   });
 });
+

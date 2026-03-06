@@ -90,6 +90,13 @@ All responses follow a consistent JSON structure:
 | 422 | Unprocessable Entity - Validation failed |
 | 500 | Internal Server Error |
 
+### Soft Delete Contract (Manual-Only)
+- Applies to `items`, `suppliers`, and `users`.
+- Records are retained with audit fields (`deleted_at`, `deleted_by`), not physically removed.
+- Default API resource behavior for soft-deleted targets is `404 Not Found`.
+- `410 Gone` is reserved for future privileged admin/audit endpoints and is not used by default routes.
+- Authentication/session checks for removed users may return `401` (account no longer allowed to authenticate).
+
 ---
 
 ## Authentication & Multi-Tenancy
@@ -325,9 +332,9 @@ x-company-token: <company-token>
 ```
 
 **Error Responses:**
-- `400` - Cannot remove yourself / User already removed
+- `400` - Cannot remove yourself
 - `403` - Cannot remove Master Admin / Insufficient hierarchy level
-- `404` - User not found
+- `404` - User not found (including already removed users)
 
 ---
 
@@ -379,6 +386,10 @@ Get all items with pagination and filtering
   }
 }
 ```
+
+**Notes:**
+- Default listing excludes soft-deleted rows (`deleted_at IS NULL`).
+- Inactive items are excluded by default unless explicitly queried by status where permitted.
 
 > **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint returns a lightweight projection (6 fields, no JOINs) intended for populating dropdowns. The full pagination wrapper is preserved but `total` reflects only the returned count. Do not use `fields=dropdown` when you need `ProductComposition`, `ItemFolder`, or any join data.
 
@@ -515,6 +526,8 @@ Delete item (soft delete)
 **Notes:**
 - Sets `status` to 'inactive'
 - Sets `deleted_at` timestamp and `deleted_by` user ID
+- Subsequent detail/update/delete calls for that item return `404`
+- `410` is not returned by default item endpoints
 
 ### GET /items/:item_id/stock-history
 Get stock movement history for an item
@@ -720,6 +733,10 @@ Get all suppliers
   }
 }
 ```
+
+**Notes:**
+- Default listing excludes soft-deleted/inactive suppliers.
+- Detail or mutation requests on soft-deleted suppliers return `404`.
 
 ### GET /suppliers/:supplier_id
 Get supplier details with items and pricing

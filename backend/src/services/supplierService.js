@@ -1,5 +1,26 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
+
+const findVisibleSupplierById = async (Supplier, supplierId, queryOptions = {}) => {
+  const { where = {}, ...rest } = queryOptions;
+  return Supplier.findOne({
+    ...rest,
+    where: buildVisibleWhere(
+      { ...where, supplier_id: supplierId },
+      { statusField: 'status', excludeInactiveStatus: true }
+    )
+  });
+};
+
+const findVisibleItemById = async (Item, itemId) => {
+  return Item.findOne({
+    where: buildVisibleWhere(
+      { item_id: itemId },
+      { statusField: 'status', excludeInactiveStatus: true }
+    )
+  });
+};
 
 export const getSuppliers = async (queryParams) => {
   const Supplier = dbStore.get('Supplier');
@@ -17,15 +38,15 @@ export const getSuppliers = async (queryParams) => {
   } = queryParams;
 
   const offset = (page - 1) * limit;
-  const where = {};
+  const where = buildVisibleWhere({}, {
+    statusField: 'status',
+    excludeInactiveStatus: true
+  });
 
   // Filter by status
   if (status) {
     where.status = status;
   }
-
-  // Always exclude soft-deleted records unless specifically requested (though currently we don't have a view for them)
-  where.deleted_at = null;
 
   if (search) {
     where[Op.or] = [
@@ -46,7 +67,15 @@ export const getSuppliers = async (queryParams) => {
       {
         model: SupplierItem,
         as: 'supplierItems',
-        include: [{ model: Item, as: 'item', required: false }]
+        include: [{
+          model: Item,
+          as: 'item',
+          required: false,
+          where: buildVisibleWhere({}, {
+            statusField: 'status',
+            excludeInactiveStatus: true
+          })
+        }]
       },
       {
         model: BulkDiscount,
@@ -90,7 +119,7 @@ export const getSupplierById = async (supplierId) => {
   const BulkDiscount = dbStore.get('BulkDiscount');
   const Item = dbStore.get('Item');
 
-  const supplier = await Supplier.findByPk(supplierId, {
+  const supplier = await findVisibleSupplierById(Supplier, supplierId, {
     include: [
       {
         model: SupplierItem,
@@ -99,7 +128,11 @@ export const getSupplierById = async (supplierId) => {
           {
             model: Item,
             as: 'item',
-            required: false
+            required: false,
+            where: buildVisibleWhere({}, {
+              statusField: 'status',
+              excludeInactiveStatus: true
+            })
           }
         ]
       },
@@ -111,9 +144,7 @@ export const getSupplierById = async (supplierId) => {
   });
 
   if (!supplier) {
-    const error = new Error('Supplier not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Supplier not found');
   }
 
   const formatted = supplier.toJSON();
@@ -178,11 +209,9 @@ export const updateSupplier = async (supplierId, supplierData, userId = null) =>
   const SupplierItem = dbStore.get('SupplierItem');
   const BulkDiscount = dbStore.get('BulkDiscount');
 
-  const supplier = await Supplier.findByPk(supplierId);
+  const supplier = await findVisibleSupplierById(Supplier, supplierId);
   if (!supplier) {
-    const error = new Error('Supplier not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Supplier not found');
   }
 
   // Extract items_supplied and bulk_discounts before updating supplier
@@ -239,12 +268,10 @@ export const updateSupplier = async (supplierId, supplierData, userId = null) =>
 export const finalizeSupplier = async (supplierId, userId = null) => {
   const Supplier = dbStore.get('Supplier');
 
-  const supplier = await Supplier.findByPk(supplierId);
+  const supplier = await findVisibleSupplierById(Supplier, supplierId);
 
   if (!supplier) {
-    const error = new Error('Supplier not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Supplier not found');
   }
 
   if (supplier.status !== 'draft') {
@@ -271,17 +298,22 @@ export const finalizeSupplier = async (supplierId, userId = null) => {
 };
 
 export const addSupplierItem = async (supplierId, itemData) => {
+  const Supplier = dbStore.get('Supplier');
   const Item = dbStore.get('Item');
   const SupplierItem = dbStore.get('SupplierItem');
 
   const { item_id, moq, price_per_unit } = itemData;
 
+  // Ensure supplier exists and is not soft-deleted
+  const supplier = await findVisibleSupplierById(Supplier, supplierId);
+  if (!supplier) {
+    throw notFoundError('Supplier not found');
+  }
+
   // Check if item exists
-  const item = await Item.findByPk(item_id);
+  const item = await findVisibleItemById(Item, item_id);
   if (!item) {
-    const error = new Error('Item not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Item not found');
   }
 
   // Check if supplier-item relationship already exists
@@ -309,11 +341,9 @@ export const deleteSupplier = async (supplierId, userId) => {
   const Supplier = dbStore.get('Supplier');
   const PurchaseOrder = dbStore.get('PurchaseOrder');
 
-  const supplier = await Supplier.findByPk(supplierId);
+  const supplier = await findVisibleSupplierById(Supplier, supplierId);
   if (!supplier) {
-    const error = new Error('Supplier not found');
-    error.statusCode = 404;
-    throw error;
+    throw notFoundError('Supplier not found');
   }
 
   // Check for ACTIVE purchase orders only (pending, partial, draft)

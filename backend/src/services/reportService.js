@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 // ============================================
 // EXPIRY REPORT (P0 Priority)
@@ -56,7 +57,7 @@ export const getExpiryReport = async (filters = {}) => {
     include: [{
       model: Item,
       as: 'item',
-      where: { status: 'active' },
+      where: buildVisibleWhere({ status: 'active' }),
       attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
     }],
     order: [['expiry_date', 'ASC']]
@@ -173,7 +174,7 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
     include: [{
       model: Item,
       as: 'item',
-      where: { status: 'active' },
+      where: buildVisibleWhere({ status: 'active' }),
       attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
     }],
     order: [['received_date', 'ASC']]
@@ -628,7 +629,7 @@ export const getExecutiveSummary = async (filters = {}) => {
 
   // Get low stock items count
   const lowStockItems = await Item.findAll({
-    where: {
+    where: buildVisibleWhere({
       status: 'active',
       min_threshold: { [Op.ne]: null },
       [Op.and]: [
@@ -638,7 +639,7 @@ export const getExecutiveSummary = async (filters = {}) => {
           sequelize.col('min_threshold')
         )
       ]
-    },
+    }),
     attributes: ['item_id', 'name', 'sku_code', 'current_stock', 'min_threshold']
   });
 
@@ -743,7 +744,7 @@ export const getStockAgingReport = async () => {
   const FIFOBatch = dbStore.get('FIFOBatch');
 
   const items = await Item.findAll({
-    where: { is_active: true },
+    where: buildVisibleWhere({ status: 'active' }),
     include: [
       {
         model: FIFOBatch,
@@ -782,7 +783,7 @@ export const getSurplusShortageReport = async () => {
   const Item = dbStore.get('Item');
 
   const items = await Item.findAll({
-    where: { is_active: true }
+    where: buildVisibleWhere({ status: 'active' })
   });
 
   const report = items.map(item => {
@@ -813,7 +814,7 @@ export const getFinancialSummary = async () => {
   const Item = dbStore.get('Item');
 
   const items = await Item.findAll({
-    where: { status: 'active' },
+    where: buildVisibleWhere({ status: 'active' }),
     attributes: ['current_stock', 'cost_per_unit']
   });
 
@@ -837,6 +838,9 @@ export const getFinancialSummary = async () => {
 };
 
 export const getSupplierPerformanceReport = async () => {
+  const Supplier = dbStore.get('Supplier');
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+
   const suppliers = await Supplier.findAll({
     include: [
       {

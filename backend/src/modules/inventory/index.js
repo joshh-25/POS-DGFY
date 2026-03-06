@@ -1,0 +1,33 @@
+import { itemRepository } from './repositories/itemRepository.js';
+import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
+import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
+import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
+import { buildUpdateItemUseCase } from './usecases/updateItemUseCase.js';
+import { buildFinalizeItemUseCase } from './usecases/finalizeItemUseCase.js';
+import { buildDeleteItemUseCase } from './usecases/deleteItemUseCase.js';
+import { buildGetItemStockHistoryUseCase } from './usecases/getItemStockHistoryUseCase.js';
+import { buildGetItemBatchesUseCase } from './usecases/getItemBatchesUseCase.js';
+import { buildGetItemMovementsUseCase } from './usecases/getItemMovementsUseCase.js';
+import { buildValidateCompositionUseCase } from './usecases/validateCompositionUseCase.js';
+import { buildGetItemSupplierCoverageUseCase } from './usecases/getItemSupplierCoverageUseCase.js';
+import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
+import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
+import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
+
+export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
+export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
+export const createItemUseCase = buildCreateItemUseCase({ itemRepository });
+export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository });
+export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository });
+export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
+export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
+export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository });
+export const getItemMovementsUseCase = buildGetItemMovementsUseCase({ itemRepository });
+export const validateCompositionUseCase = buildValidateCompositionUseCase({ itemRepository });
+export const getItemSupplierCoverageUseCase = buildGetItemSupplierCoverageUseCase({ itemRepository });
+export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
+export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
+export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
+
+export * from './contracts/itemRepository.contract.js';
+export * from './repositories/itemRepository.js';

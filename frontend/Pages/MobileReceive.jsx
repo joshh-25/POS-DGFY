@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { validateReceiveToken, receiveViaToken } from '../src/services/receiveTokenService.js';
 import { cn } from "../src/lib/utils.js";
 import { format, addDays } from 'date-fns';
+import { normalizeApiError } from '../src/utils/errorHandler.js';
 
 export default function MobileReceive() {
     const { token } = useParams();
@@ -215,7 +216,10 @@ export default function MobileReceive() {
                 ? 'Purchase Order received successfully!'
                 : 'Job Order updated successfully!');
         } catch (err) {
-            toast.error(err.response?.data?.message || err.message || 'Failed to complete operation');
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(normalized.message || 'Failed to complete operation');
+            }
         } finally {
             setSubmitting(false);
         }

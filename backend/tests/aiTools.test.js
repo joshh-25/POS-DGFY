@@ -128,10 +128,14 @@ describe('AI Tools Configuration', () => {
 
     beforeAll(() => {
       const executorPath = path.join(__dirname, '../src/services/aiToolExecutor.js');
-      executorContent = fs.readFileSync(executorPath, 'utf8');
+      const executeUseCasePath = path.join(__dirname, '../src/modules/ai/usecases/executeAiToolUseCase.js');
+      executorContent = [
+        fs.readFileSync(executorPath, 'utf8'),
+        fs.readFileSync(executeUseCasePath, 'utf8')
+      ].join('\n');
     });
 
-    test('every defined tool should have a handler in aiToolExecutor.js', () => {
+    test('every defined tool should have a handler in AI execution coverage', () => {
       const missingHandlers = [];
 
       for (const tool of AI_TOOLS) {

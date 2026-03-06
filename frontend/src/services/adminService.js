@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { emitGlobalApiError } from '../utils/errorHandler.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 const ADMIN_TOKEN_KEY = 'admin_token';
@@ -31,9 +32,16 @@ adminApi.interceptors.response.use(
                 authFailureCallback();
             }
         }
+
+        // Global handling for server and network errors (with request-level opt-out).
+        if (!error?.config?.skipGlobalErrorToast) {
+            emitGlobalApiError({ error, source: 'admin-api' });
+        }
         return Promise.reject(error);
     }
 );
+
+export { adminApi };
 
 /**
  * Admin login

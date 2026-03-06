@@ -1,3 +1,12 @@
+---
+status: reference
+authority_level: reference
+owner: ai_platform
+last_reviewed: 2026-03-06
+applies_to: ai_feature_rollout
+topic: ai_implementation_checklist
+---
+
 # OpenAI Integration - Implementation Checklist
 
 > **Started:** January 29, 2026

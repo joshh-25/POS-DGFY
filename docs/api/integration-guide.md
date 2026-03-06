@@ -806,73 +806,95 @@ export const useWebSocketAlerts = () => {
 
 ## Part 5: Error Handling & Retry Logic
 
+### Implementation Status Update (2026-03-03)
+
+The production implementation now uses a root-level global API error notification flow:
+
+- Canonical browser event: `api:error`
+- Event payload:
+  - `kind`: `server | network`
+  - `status`: `number | null`
+  - `message`: `string`
+  - `source`: `tenant-api | admin-api`
+  - `url`: request URL
+  - `method`: HTTP method
+  - `timestamp`: ISO timestamp
+- Request-level opt-out flag: `skipGlobalErrorToast`
+- Temporary compatibility event for legacy listeners: `api:server-error` (server class only)
+
+Current implementation files:
+- `frontend/src/utils/errorHandler.js`
+- `frontend/src/components/common/GlobalApiErrorListener.jsx`
+- `frontend/src/utils/errorToastDedupe.js`
+- `frontend/src/services/api.js`
+- `frontend/src/services/adminService.js`
+- `frontend/src/main.jsx`
+
+Handling rules:
+- Use local toasts for 4xx/domain-specific guidance (for example validation and permission messaging).
+- Let global handling own 5xx and network/no-response errors to avoid duplication.
+- If a flow intentionally handles an error locally, pass `skipGlobalErrorToast: true` in the request config.
+
 ### Error Handling Utility
 
 **File: `src/utils/errorHandler.js`**
 
 ```javascript
-export const handleApiError = (error) => {
-  if (error.response) {
-    // Server responded with error status
-    const { status, data } = error.response;
+export const normalizeApiError = (error) => {
+  const status = error?.response?.status ?? null;
+  const hasResponse = status !== null;
+  const isNetwork = !hasResponse && Boolean(error?.request);
+  const isServer = hasResponse && status >= 500;
+  const validationErrors = Array.isArray(error?.response?.data?.errors)
+    ? error.response.data.errors
+    : null;
 
-    switch (status) {
-      case 400:
-        return {
-          message: data.message || 'Invalid request',
-          errors: data.errors,
-        };
-      case 401:
-        return {
-          message: 'Unauthorized. Please login again.',
-          type: 'auth',
-        };
-      case 403:
-        return {
-          message: 'You do not have permission to perform this action.',
-          type: 'permission',
-        };
-      case 404:
-        return {
-          message: 'Resource not found.',
-          type: 'notfound',
-        };
-      case 422:
-        return {
-          message: 'Validation failed',
-          errors: data.errors,
-        };
-      case 500:
-        return {
-          message: 'Server error. Please try again later.',
-          type: 'server',
-        };
-      default:
-        return {
-          message: data.message || 'An error occurred',
-        };
-    }
-  } else if (error.request) {
-    // Request made but no response
-    return {
-      message: 'No response from server. Check your connection.',
-      type: 'network',
-    };
-  } else {
-    // Error in request setup
-    return {
-      message: error.message || 'An unexpected error occurred',
-    };
+  const message =
+    error?.response?.data?.message ||
+    (isNetwork ? 'No response from server. Check your connection.' : null) ||
+    error?.message ||
+    'An unexpected error occurred.';
+
+  return {
+    status,
+    message,
+    kind: isNetwork ? 'network' : (isServer ? 'server' : 'http'),
+    validationErrors,
+    isGlobalCandidate: isNetwork || isServer
+  };
+};
+
+export const emitGlobalApiError = ({ error, source }) => {
+  const normalized = normalizeApiError(error);
+  if (!normalized.isGlobalCandidate) return;
+
+  const detail = {
+    kind: normalized.kind === 'network' ? 'network' : 'server',
+    status: normalized.status,
+    message: normalized.message,
+    source: source || 'tenant-api',
+    url: error?.config?.url,
+    method: error?.config?.method?.toUpperCase(),
+    timestamp: new Date().toISOString()
+  };
+
+  window.dispatchEvent(new CustomEvent('api:error', { detail }));
+  if (detail.kind === 'server') {
+    window.dispatchEvent(new CustomEvent('api:server-error', { detail }));
   }
 };
-
-export const isRetryableError = (error) => {
-  if (!error.response) return true; // Network errors are retryable
-
-  const retryableStatuses = [408, 429, 500, 502, 503, 504];
-  return retryableStatuses.includes(error.response.status);
-};
 ```
+
+Current automated coverage for this flow:
+- `frontend/src/utils/__tests__/errorHandler.test.js`
+- `frontend/src/utils/__tests__/errorToastDedupe.test.js`
+- `frontend/src/components/common/__tests__/GlobalApiErrorListener.test.js`
+- `frontend/src/services/__tests__/api.globalErrors.test.js`
+- `frontend/src/services/__tests__/adminService.interceptor.test.js`
+
+Verification snapshot (2026-03-03):
+- `npm test` (frontend): passed (9 test files, 34 tests)
+- `npm run build` (frontend): passed
 
 ### Retry Hook
 

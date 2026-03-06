@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 export const forecastStockLevels = async (daysAhead = 30) => {
   const Item = dbStore.get('Item');
@@ -7,7 +8,7 @@ export const forecastStockLevels = async (daysAhead = 30) => {
 
   // Query 1: all active items
   const items = await Item.findAll({
-    where: { status: 'active' }
+    where: buildVisibleWhere({ status: 'active' })
   });
 
   if (items.length === 0) return [];

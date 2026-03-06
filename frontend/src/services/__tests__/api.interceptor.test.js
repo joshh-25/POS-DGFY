@@ -15,7 +15,7 @@
  *          spy asserts timeout: 15000 is actually passed to axios.post (contract test)
  *   2.7 — Network error: ECONNREFUSED-style error drains queue and resets isRefreshing
  *   2.8 — Cross-tab: receiving token-refresh-success from another tab drains local queue
- *   2.9 — Cross-tab: receiving session-expired from another tab fires auth:session-expired event
+ *   2.9 — Cross-tab: receiving session-expired from another tab clears local auth and redirects
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -412,24 +412,36 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
   // Test 2.9 — Cross-tab: another tab broadcasts session-expired (refresh failed)
   //            or auth:logout (deliberate logout).
   //
-  //            This tab must dispatch the 'auth:session-expired' CustomEvent on
-  //            window so that Layout.jsx can show the "Session Expired" banner.
-  //            The tab must NOT hard-redirect — only the originating tab does that.
+  //            This tab must clear tokens and hard-redirect immediately to login.
+  //            We still emit auth:session-expired for compatibility listeners.
   // -------------------------------------------------------------------------
-  it('2.9 — receiving session-expired from another tab fires auth:session-expired on window', async () => {
+  it('2.9 — receiving session-expired from another tab clears auth and redirects to login', async () => {
     const handler = vi.fn();
     window.addEventListener('auth:session-expired', handler);
+
+    localStorage.setItem('authToken', 'token-a');
+    localStorage.setItem('refreshToken', 'refresh-a');
+    localStorage.setItem('companyToken', 'company-a');
 
     // Simulate another tab broadcasting session-expired
     globalThis.__bcInstance.onmessage({ data: { type: 'session-expired' } });
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('companyToken')).toBeNull();
+    expect(window.location.href).toBe('/login?reason=session_expired');
 
     // auth:logout from another tab must also trigger the banner (deliberate logout)
+    window.location.href = '';
+    localStorage.setItem('authToken', 'token-b');
+    localStorage.setItem('refreshToken', 'refresh-b');
+    localStorage.setItem('companyToken', 'company-b');
     globalThis.__bcInstance.onmessage({ data: { type: 'auth:logout' } });
     expect(handler).toHaveBeenCalledTimes(2);
-
-    // The hard-redirect must NOT have fired in this tab
-    expect(window.location.href).toBe('');
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('companyToken')).toBeNull();
+    expect(window.location.href).toBe('/login?reason=session_expired');
 
     window.removeEventListener('auth:session-expired', handler);
   });

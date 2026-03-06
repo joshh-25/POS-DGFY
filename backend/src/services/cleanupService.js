@@ -14,6 +14,11 @@ const UPLOAD_DIR = 'uploads/temp';
 export const initCleanupJob = () => {
     logger.info('Initializing file cleanup service...');
 
+    // Fix 8.3: Run once immediately to clear files leaked before a restart
+    cleanupTempFiles().catch(err =>
+        logger.warn('Startup cleanup failed:', err.message)
+    );
+
     // Run every 15 minutes
     cron.schedule('*/15 * * * *', async () => {
         logger.info('Running scheduled file cleanup...');

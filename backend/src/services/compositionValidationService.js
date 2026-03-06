@@ -1,8 +1,10 @@
 import dbStore from '../utils/dbStore.js';
 import { getRedisClient, isRedisConnected } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 const MAX_NESTING_DEPTH = 3;
+const CACHE_TTL = 300;
 const getCacheKey = () => {
     const store = dbStore.getStore();
     const tenantId = store?.tenantId || 'global';
@@ -134,7 +136,10 @@ export const calculateNestingLevel = async (productId, ingredientIds) => {
     // Get all ingredients with their categories and nesting levels
     const Item = dbStore.get('Item');
     const ingredients = await Item.findAll({
-        where: { item_id: ingredientIds },
+        where: buildVisibleWhere(
+            { item_id: ingredientIds },
+            { statusField: 'status', excludeInactiveStatus: true }
+        ),
         attributes: ['item_id', 'category', 'nesting_level']
     });
 
@@ -171,6 +176,25 @@ export const validateComposition = async (productId, ingredientIds) => {
 
     if (validIngredientIds.length === 0) {
         return { valid: true, errors: [], nestingLevel: 0 };
+    }
+
+    // Validate all ingredient IDs exist and are visible.
+    const Item = dbStore.get('Item');
+    const ingredientRecords = await Item.findAll({
+        where: buildVisibleWhere(
+            { item_id: validIngredientIds },
+            { statusField: 'status', excludeInactiveStatus: true }
+        ),
+        attributes: ['item_id']
+    });
+    const visibleIngredientIds = new Set(ingredientRecords.map(i => i.item_id));
+    const missingIngredientIds = validIngredientIds.filter(id => !visibleIngredientIds.has(id));
+    if (missingIngredientIds.length > 0) {
+        errors.push({
+            type: 'INGREDIENT_NOT_FOUND',
+            message: `Ingredient item(s) not found or inactive: ${missingIngredientIds.join(', ')}`
+        });
+        return { valid: false, errors, nestingLevel: 0 };
     }
 
     // Check for direct self-reference

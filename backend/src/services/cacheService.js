@@ -18,6 +18,7 @@ const getScopedKey = (key) => {
   // If global context (system jobs without tenant), leave as is or prefix global?
   // Finding 8.1 is about collision. Global keys might collide with tenant keys if not careful.
   // Best practice: If no tenant, assume it's a SYSTEM key.
+  logger.debug(`[CacheService] No tenant context for key "${key}" — using system scope`);
   return `system:${key}`;
 };
 
@@ -143,7 +144,8 @@ export const clear = async (pattern) => {
       return 0;
     }
 
-    const keys = await client.keys(pattern);
+    const scopedPattern = getScopedKey(pattern);
+    const keys = await client.keys(scopedPattern);
     if (keys.length === 0) {
       return 0;
     }

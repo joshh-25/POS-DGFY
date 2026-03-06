@@ -21,9 +21,6 @@ jest.unstable_mockModule('../src/services/authService.js', () => ({
     blacklistToken: jest.fn(),
 }));
 
-// UNMOCK Redis 
-jest.unmock('../src/config/redis.js');
-
 // Helper placeholders
 let app;
 let sequelize;

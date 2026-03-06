@@ -1,0 +1,4 @@
+export const CONTROLLER_MODEL_IMPORT_ALLOWLIST = Object.freeze([
+]);
+
+export default CONTROLLER_MODEL_IMPORT_ALLOWLIST;

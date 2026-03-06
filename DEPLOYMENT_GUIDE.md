@@ -43,6 +43,20 @@ chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
 
+For strict commit targeting (recommended), pin the expected remote SHA:
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$BRANCH"
+EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
+bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+Evidence generated per run:
+- `logs/deploy/deploy_<timestamp>.log`
+- `logs/deploy/deploy_<timestamp>.changed_files.txt`
+- `logs/deploy/deploy_<timestamp>.summary.txt`
+- `.deploy-state/last_deployed_commit`
+
 > [!NOTE]
 > **Multi-Tenancy Updates**: The `deploy.sh` script now automatically runs `backend/scripts/sync-tenant-schemas.js`. This ensures that if you add new columns or tables to the database, **ALL** existing tenant databases will be updated to match the new schema automatically. You do not need to run this manually.
 

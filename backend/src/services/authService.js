@@ -9,6 +9,7 @@ dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import * as cacheService from './cacheService.js';
@@ -62,7 +63,8 @@ export const generateToken = (user) => {
 export const generateRefreshToken = (user) => {
   const payload = {
     user_id: user.user_id,
-    type: 'refresh'
+    type: 'refresh',
+    jti: randomUUID()
   };
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
 };
@@ -211,7 +213,7 @@ export const refreshUserToken = async (refreshToken) => {
     const User = dbStore.get('User');
     const user = await User.findByPk(decoded.user_id);
 
-    if (!user || !user.is_active) {
+    if (!user || !user.is_active || user.deleted_at) {
       const error = new Error('User not found or inactive');
       error.statusCode = 401;
       throw error;

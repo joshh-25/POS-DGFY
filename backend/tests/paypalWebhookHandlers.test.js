@@ -126,9 +126,10 @@ beforeAll(async () => {
 // ── 5. Shared test utilities ──────────────────────────────────────────────────
 
 /** Build a minimal Express req for handleWebhook */
-function makeWebhookReq(eventType, resource = {}) {
+function makeWebhookReq(eventType, resource = {}, eventId = null) {
     return {
         body: {
+            id: eventId || `WH-${Date.now()}`,
             event_type: eventType,
             resource,
         },
@@ -388,6 +389,22 @@ describe('Gap 4 — syncWithPayPal: plan must be set to premium when PayPal stat
         expect(updatePayload.plan).toBeUndefined();
         expect(updatePayload.subscription_status).toBe('inactive');
     });
+
+    it('4f. does NOT move period_end backward when PayPal next_billing_time is older than current', async () => {
+        const currentFutureEnd = new Date('2026-06-20T00:00:00Z');
+        const olderPayPalTime = '2026-05-20T00:00:00Z';
+        const tenant = makeTenant({ current_period_end: currentFutureEnd, billing_cycle_anchor: 20 });
+        mockDb.Tenant.findByPk.mockResolvedValue(tenant);
+        mockGetSubscriptionDetails.mockResolvedValue({
+            status: 'ACTIVE',
+            billing_info: { next_billing_time: olderPayPalTime }
+        });
+
+        await syncWithPayPal(makeSyncReq(), makeRes());
+
+        const updatePayload = mockTenantUpdate.mock.calls[0][0];
+        expect(updatePayload.current_period_end.getTime()).toBe(currentFutureEnd.getTime());
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -472,5 +489,50 @@ describe('Gap 1 — handlePaymentCompleted: period_end idempotency', () => {
         const newEnd = tenant.current_period_end;
         expect(newEnd).toBeInstanceOf(Date);
         expect(newEnd.getTime()).toBe(new Date(paypalNextBillingDate).getTime());
+    });
+
+    it('1e. does NOT move period_end backward when authoritative next_billing_date is older than current', async () => {
+        const existingFutureEnd = new Date('2026-06-20T00:00:00Z');
+        const tenant = makeTenant({ current_period_end: existingFutureEnd, billing_cycle_anchor: 20 });
+        mockDb.Tenant.findOne.mockResolvedValue(tenant);
+
+        const olderAuthoritativeDate = '2026-05-20T00:00:00Z';
+        const req = makeWebhookReq('PAYMENT.SALE.COMPLETED', makePaymentResource({
+            next_billing_date: olderAuthoritativeDate,
+        }));
+
+        await handleWebhook(req, makeRes());
+
+        expect(mockTenantSave).toHaveBeenCalled();
+        expect(tenant.current_period_end.getTime()).toBe(existingFutureEnd.getTime());
+    });
+
+    it('1f. duplicate transaction_id is treated as idempotent success and skips tenant mutation', async () => {
+        const tenant = makeTenant({ current_period_end: new Date('2026-06-20T00:00:00Z') });
+        mockDb.Tenant.findOne.mockResolvedValue(tenant);
+        mockPaymentCreate.mockRejectedValue({ name: 'SequelizeUniqueConstraintError' });
+        const res = makeRes();
+
+        await handleWebhook(
+            makeWebhookReq('PAYMENT.SALE.COMPLETED', makePaymentResource()),
+            res
+        );
+
+        expect(mockTenantSave).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.send).toHaveBeenCalledWith('OK');
+    });
+
+    it('1g. idempotency uses webhook event id when present (not transmission id)', async () => {
+        const tenant = makeTenant();
+        mockDb.Tenant.findOne.mockResolvedValue(tenant);
+
+        const eventId = 'WH-EVENT-999';
+        const req = makeWebhookReq('PAYMENT.SALE.COMPLETED', makePaymentResource(), eventId);
+        req.headers['paypal-transmission-id'] = 'tx-should-not-be-primary';
+
+        await handleWebhook(req, makeRes());
+
+        expect(mockWebhookLogFindOne).toHaveBeenCalledWith({ where: { webhook_id: eventId } });
     });
 });

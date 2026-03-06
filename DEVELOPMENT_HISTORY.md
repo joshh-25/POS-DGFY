@@ -1,4 +1,4 @@
-# Development History
+﻿# Development History
 
 ## Table of Contents
 
@@ -4119,66 +4119,6 @@ Ran automated Playwright tests (`verify_ai.js`) confirming:
 | `backend/src/controllers/aiController.js` | Added user-friendly confirmation message |
 | `frontend/Pages/AiChat.jsx` | Added optional chaining for safety |
 
- 
- - - - 
- 
- 
- 
- # #   P h a s e   1 8 :   A I   C h a t   I m p r o v e m e n t s 
- 
- * * S t a t u s * * :   � S&   C O M P L E T E     
- 
- * * D a t e * * :   2 0 2 6 - 0 1 - 3 0 
- 
- 
- 
- # # #   I s s u e :   D e l e t e   C o n v e r s a t i o n   F a i l e d 
- 
- * * I s s u e * * :   D e l e t i n g   a   c o n v e r s a t i o n   r e s u l t e d   i n   a   4 0 0   B a d   R e q u e s t   e r r o r   ( ` D E L E T E   / a p i / v 1 / a i / c o n v e r s a t i o n s / u n d e f i n e d ` ) . 
- 
- * * R o o t   C a u s e * * :   P r o p e r t y   n a m e   m i s m a t c h   b e t w e e n   b a c k e n d   a n d   f r o n t e n d . 
- 
- -   B a c k e n d   A P I   ( ` g e t C o n v e r s a t i o n s ` )   r e t u r n e d   ` i d `   ( m a p p e d   f r o m   ` c o n v e r s a t i o n _ i d ` ) . 
- 
- -   F r o n t e n d   ( ` A i C h a t . j s x ` )   e x p e c t e d   ` c o n v e r s a t i o n _ i d `   d i r e c t l y   o n   t h e   o b j e c t . 
- 
- -   R e s u l t :   ` c o n v . c o n v e r s a t i o n _ i d `   w a s   ` u n d e f i n e d ` . 
- 
- 
- 
- * * F i x * * : 
- 
- -   U p d a t e d   ` A i C h a t . j s x `   t o   u s e   ` c o n v . i d `   i n : 
- 
-     -   D e l e t e   h a n d l e r 
- 
-     -   S e l e c t i o n   l o g i c 
- 
-     -   F i l t e r i n g   l o g i c 
- 
- 
- 
- # # #   F e a t u r e :   D e l e t e   C o n f i r m a t i o n   D i a l o g 
- 
- * * I s s u e * * :   C o n v e r s a t i o n s   w e r e   d e l e t e d   i m m e d i a t e l y   u p o n   c l i c k i n g   t h e   t r a s h   i c o n ,   r i s k i n g   a c c i d e n t a l   d a t a   l o s s . 
- 
- * * I m p l e m e n t a t i o n * * : 
- 
- -   I m p o r t e d   r e u s e a b l e   ` D e l e t e C o n f i r m D i a l o g `   c o m p o n e n t . 
- 
- -   A d d e d   ` c o n v e r s a t i o n T o D e l e t e `   s t a t e   t o   t r a c k   s e l e c t i o n . 
- 
- -   U p d a t e d   ` d e l e t e C o n v e r s a t i o n `   t o   o p e n   d i a l o g   i n s t e a d   o f   i m m e d i a t e   d e l e t e . 
- 
- -   I m p l e m e n t e d   ` h a n d l e C o n f i r m D e l e t e `   t o   e x e c u t e   t h e   a c t u a l   A P I   c a l l . 
- 
- 
- 
- # # #   F i l e s   M o d i f i e d 
- 
- -   ` f r o n t e n d / P a g e s / A i C h a t . j s x ` 
- 
- 
 ### [2026-01-30] Implemented Drag and Drop File Upload for AI Chat
 - Added 'multer' backend dependency for file handling.
 - Configured file upload middleware in 'backend/src/config/uploadConfig.js'.
@@ -6484,12 +6424,16 @@ Following a comprehensive system audit, 5 items were marked as "partially resolv
    - *Fix*: Implemented a `finally { await fs.unlink(filePath) }` block in both controllers to guarantee absolute atomic cleanup immediately after parsing.
 
 #### 2. Inconsistent API Error Handling (Audit 10.3)
-**Bug Fixed:** Deep render-tree errors or unhandled global 500 exceptions would result in a stark "white screen of death" for the user, requiring a manual F5 to recover.
-- *Fix*: 
-  - Created a robust class-based `ErrorBoundary.jsx` native React component.
-  - Wrapped the entire application tree at `main.jsx`.
-  - Added a global `api:server-error` CustomEvent dispatcher to `api.js` for all 5xx responses.
-  - Added a global event listener to `Layout.jsx` that triggers a friendly `sonner` toast notification.
+**Status**: FULLY RESOLVED (2026-03-03)
+- *Final fix path*:
+  - Root-scoped global listener and toaster are mounted in `frontend/src/main.jsx` (covers public + admin + tenant routes).
+  - Added canonical global event `api:error` with normalized payload (`kind`, `status`, `message`, `source`, `url`, `method`, `timestamp`) in `frontend/src/utils/errorHandler.js`.
+  - Kept legacy `api:server-error` temporarily for compatibility during migration.
+  - Standardized both API clients (`frontend/src/services/api.js`, `frontend/src/services/adminService.js`) to emit global events for 5xx + network/no-response, with request-level opt-out `skipGlobalErrorToast`.
+  - Removed layout-scoped global listener ownership from `frontend/Layout.jsx`.
+  - Replaced admin API action failure `alert()` usage with toast UX while preserving inline load errors.
+  - Added dedupe logic and tests so duplicate legacy+canonical emissions within cooldown do not spam users.
+  - Verification: `npm test` (frontend) passed with 9 test files / 34 tests; `npm run build` passed.
 
 #### 3. Frontend Stale Company Token (Audit 1.7)
 **Status**: CONFIRMED RESOLVED
@@ -6502,7 +6446,66 @@ Following a comprehensive system audit, 5 items were marked as "partially resolv
 #### 5. Missing `validate-token` Route Implementation
 **Status**: CONFIRMED RESOLVED
 - *Evidence*: Discovered that the missing controller reported in earlier phases was a false alarm. The route `GET /api/v1/auth/validate-token/:token` is correctly registered in `auth.js`, implemented via `authController.validateToken()`, and delegates to `landlordService.findTenantByToken()`. Verified functionally via raw `curl`.
-# # #   5 .   A n o m a l y   D e t e c t i o n   O O M   V u l n e r a b i l i t y   ( A u d i t   7 . 1 ) 
- * * S t a t u s * * :   C O N F I R M E D   R E S O L V E D 
- -   * F i x * :   T h e   \ d e t e c t A n o m a l i e s \   f u n c t i o n   i n   \  n a l y t i c s S e r v i c e . j s \   p r e v i o u s l y   l o a d e d   a l l   \ S t o c k M o v e m e n t s \   i n t o   m e m o r y   a t   o n c e ,   c a u s i n g   O u t - O f - M e m o r y   c r a s h e s   o n   l a r g e   d a t a s e t s .   R e f a c t o r e d   i t   t o   u s e   c h u n k e d   b a t c h - f e t c h i n g   ( \ C H U N K _ S I Z E = 5 0 0 \ ) ,   b o u n d i n g   m e m o r y   u s a g e   w h i l e   r e t a i n i n g   t h e   N + 1   q u e r y   f i x .  
- 
+
+#### 6. Anomaly Detection OOM Vulnerability (Audit 7.1)
+**Status**: CONFIRMED RESOLVED
+- *Fix*: The `detectAnomalies` function in `analyticsService.js` previously loaded all `StockMovements` into memory at once, causing Out-of-Memory crashes on large datasets. Refactored it to use chunked batch-fetching (`CHUNK_SIZE=500`), bounding memory usage while retaining the N+1 query fix.
+
+#### 7. Reports Unlimited Date Range — DoS Risk (Audit 7.2)
+**Status**: CONFIRMED RESOLVED
+- *Evidence*: The `extractDateFilters` helper in `reportController.js` (Lines 4-48) already implements all prescribed protections:
+  1. **Date validation**: Invalid dates are nullified via `isNaN(getTime())` check.
+  2. **Default range**: When no dates are provided, defaults to `now - 30 days` to `now`.
+  3. **Start ≤ End enforcement**: Auto-swaps inverted ranges.
+  4. **Max range cap (365 days)**: Silently caps `end` to `start + 365` if exceeded.
+- All 5 new report endpoints (`expiry`, `stock-aging-enhanced`, `production`, `po-analysis`, `executive-summary`) and the CSV export endpoint use `extractDateFilters`.
+- The 4 legacy endpoints (`stock-aging`, `surplus-shortage`, `financial-summary`, `supplier-performance`) are safe by design — they query current inventory status (bounded by existing stock), not historical data.
+- **Design choice**: The implementation silently caps the range instead of returning a 400 error (as originally proposed). This provides better UX — users still receive data rather than an error.
+
+#### 8. Cache Key Collision Risk (Multi-Tenancy) (Audit 8.1)
+**Status**: CONFIRMED RESOLVED
+- *Fix*: The underlying token scoping architecture (`const scopedKey = tenantId ? \`tenant:${tenantId}:${key}\` : \`system:${key}\``) natively prevents all cross-tenant token pollution in Redis. Tested vigorously utilizing a native `node:test` integration harness against an active Redis cluster.
+- *Additions*: Added `getScopedKey(pattern)` into the `cacheService.clear()` definition so `clear('session:*')` safely transforms into `clear('tenant:1:session:*')`, sealing an unscoped wildcard wipe vulnerability.
+
+#### 9. Temp File Leak on Server Restart (Audit 8.3)
+**Status**: CONFIRMED RESOLVED
+- *Fix*: Implemented strict atomic cleanup for all file uploads.
+  1. **AI Controller Leak**: Added a tracking array `uploadedPaths` to `aiController.js` and a `finally { await fs.unlink() }` block to guarantee 100% deletion of AI chat file uploads regardless of processing success or failure.
+  2. **Startup Cleanup Gap**: Modified `cleanupService.js` to execute `cleanupTempFiles()` synchronously upon server initialization, instantly purging any files left behind by unexpected crashes before the 15-minute cron job starts.
+  3. **Multer Filter Bypass**: Fixed a dead-code bug in `uploadConfig.js` where the `fileFilter` incorrectly evaluated `cb(null, true)` on the reject branch. It now strictly enforces the MIME allowlist with a proper `MulterError`.
+
+#### 10. Auth Rate Limiting Disabled (Audit 9.1)
+**Status**: CONFIRMED RESOLVED & HARDENED
+- *Evidence*: `authLimiter` was indeed fixed and correctly applied to `/login` and `/register`. 
+- *Hardening*: We updated the limiter configuration to consistently honor `DISABLE_RATE_LIMIT=true` in development across all auth-related limiters (`authLimiter`, `lookupLimiter`, `tenantRegistrationLimiter`).
+- *E2E Validation*: We created `tests/auth.ratelimit.e2e.test.js` to assert via `supertest` that the full integrated `express` app correctly intercepts and returns `429 Too Many Requests` when brute-force attacked over network paths. Confidence score raised to 10/10.
+
+---
+
+## Phase 59: Distributed Rate Limiting & Auth State Synchronization
+**Status**: ✅ COMPLETE & HARDENED
+**Date**: 2026-03-03
+
+### Features & Hardening
+
+#### 1. Distributed Rate Limiting (Audit 9.1 Upgrade)
+**Status**: UPGRADED TO 10/10 STANDARD
+- **Distributed State**: Integrated `rate-limit-redis` via a new `DynamicStore` wrapper. Counters are now synchronized across all Node.js instances in a cluster, preventing attackers from bypassing limits by rotating across server nodes.
+- **Fail-Safe Mechanism**: Implemented seamless fallback to `MemoryStore` if Redis becomes unavailable, ensuring that the system remains protected even during caching infrastructure outages.
+- **Proxy Hardening**: Configured `app.set('trust proxy', 1)` and implemented `firstForwardedIp` extraction. This ensures that the rate limiter identifies the *real* client IP behind reverse proxies (Nginx/Cloudflare) rather than blocking the internal proxy's interface.
+- **E2E Network Validation**: Refactored `backend/tests/auth.ratelimit.e2e.test.js` to spawn a real HTTP port. This verifies the true network-layer behavior of proxy parsing and distributed throttling, achieving a real-world 10/10 protection standard.
+
+#### 2. Cross-Tab Refresh Token Sync (Audit 10.1)
+**Status**: RESOLVED
+- **BroadcastChannel API**: Implemented cross-tab communication in `frontend/src/services/api.js`. When one tab refreshes the token, it broadcasts the new token to all other open tabs, preventing race conditions that traditionally led to forced logouts during simultaneous 401 triggers.
+- **Single-Tab Mutex**: Retained the `isRefreshing` / `failedQueue` logic for single-tab concurrency.
+
+#### 3. Stale State Cleanup on Logout (Audit 10.2)
+**Status**: RESOLVED
+- **Centralized Session Cleanup**: Introduced `frontend/src/services/sessionCleanup.js` as the canonical client-side cleanup path for logout/session-expired flows.
+- **Cross-Tab Lockout**: `frontend/src/services/api.js` now handles `auth:logout` and `session-expired` broadcasts by immediately clearing local auth/session artifacts and redirecting to login.
+- **Cache Isolation Hardening**: `frontend/src/hooks/useItems.js` now keys cached data with `authEpoch` + `companyToken`; session transitions invalidate old cache scope.
+- **Store Reset Canonicalization**: `frontend/src/store/useStore.js` now resets via canonical initial state and is invoked by cleanup flow.
+- **Real Browser Validation**: Added `backend/tests/frontend.sessionIsolation.e2e.test.js` (Playwright) to verify multi-tab logout behavior, token wipe, epoch bump, and protected-route denial after logout.
+
+---

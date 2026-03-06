@@ -15,7 +15,7 @@ The initial assessment correctly identified that the verification process was in
 *   **Resolution:** The code was updated to use `token_type`, aligning the Service, Model, and Database.
 
 ### 2. Verification Methodology
-To bridge the gap between "Static Analysis" and "Real World Engagement," a custom integration script was developed to simulate the full user journey without relying on the potentially unstable frontend test environment.
+To bridge the gap between static analysis and service-level workflow verification, a custom integration script was developed to simulate the full user journey without relying on the potentially unstable frontend test environment.
 
 **Script Actions:**
 1.  **Bypass Authentication:** Forged a valid JWT for an admin user (ID: ~122) to bypass login UI issues.
@@ -24,7 +24,7 @@ To bridge the gap between "Static Analysis" and "Real World Engagement," a custo
 4.  **Simulate Scanning:** Validated the generated token.
 5.  **Simulate Receiving:** Called `purchaseOrderService.receivePurchaseOrder` with variable quantities.
 
-### 3. Test Results (Engagement Logic)
+### 3. Test Results (Business Logic)
 The user's specific requirement ("I want to confirm receiving quantity could go higher or lower") was explicitly tested.
 
 #### Scenario 1: Under-Receiving
@@ -43,3 +43,5 @@ Tests confirmed that the running API process was using stale code (causing `Unkn
 
 ## Conclusion
 The feature is now **functionally verified**. The codebase is aligned with the database schema, and the business logic correctly handles the specified real-world scenarios.
+
+This verification is strong evidence for service/integration correctness. It is **not** a measurement of user engagement, adoption, or retention.

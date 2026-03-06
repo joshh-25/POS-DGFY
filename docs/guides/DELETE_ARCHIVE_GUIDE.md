@@ -3,7 +3,7 @@
 ## Overview
 
 The SKU Inventory Manager implements two distinct patterns for removing records:
-1. **Soft Delete** - For Items and Suppliers
+1. **Soft Delete (Manual-Only)** - For Items, Suppliers, and Users
 2. **Archive Pattern** - For Purchase Orders and Job Orders
 3. **Permanent Database Deletion** - For Tenants (Admin only)
 
@@ -11,13 +11,20 @@ The SKU Inventory Manager implements two distinct patterns for removing records:
 
 ## Soft Delete Pattern
 
-### Applies To: Items, Suppliers
+### Applies To: Items, Suppliers, Users (Remove from Company)
 
 **Behavior:**
-- Record status set to `inactive`
-- Record remains in database
-- Audit trail: `deleted_by`, `deleted_at` fields
-- Cannot be restored through UI (requires database update)
+- Record remains in database (no hard delete)
+- Audit trail fields are written: `deleted_by`, `deleted_at`
+- Item and Supplier also set `status = inactive`
+- User removal also sets `is_active = false`
+- Default resource endpoints return `404 Not Found` when the target is soft-deleted
+- `410 Gone` is reserved for future admin/audit use-cases (not default API behavior today)
+
+**Visibility Contract:**
+- Service-layer queries must enforce `deleted_at IS NULL`.
+- For Item/Supplier business reads, services also exclude inactive status.
+- Policy is centralized through `backend/src/utils/softDeletePolicy.js` (`buildVisibleWhere`, `notFoundError`).
 
 ### Pre-Delete Validation
 
@@ -31,16 +38,24 @@ The SKU Inventory Manager implements two distinct patterns for removing records:
 - Cannot delete if has active Purchase Orders (draft, pending, partial status)
 - Error shows count of active POs
 
+**Users (Remove from Company):**
+- Cannot remove yourself
+- Cannot remove Master Admin
+- Enforces role hierarchy (Admin/Manager restrictions)
+
 ### Access Control
-- **Admin only** for Items and Suppliers
+- **Items/Suppliers**: Admin only
+- **Users (Remove from Company)**: Admin or Manager (hierarchy enforced)
 
 ### Implementation Files
 
 **Backend:**
 - Routes: `backend/src/routes/items.js`, `backend/src/routes/suppliers.js`
-- Controllers: `backend/src/controllers/itemController.js`, `backend/src/controllers/supplierController.js`
-- Services: `backend/src/services/itemService.js`, `backend/src/services/supplierService.js`
-- Models: `backend/src/models/Item.js`, `backend/src/models/Supplier.js`
+- Controllers: `backend/src/controllers/itemController.js`, `backend/src/controllers/supplierController.js`, `backend/src/controllers/userController.js`
+- Services: `backend/src/services/itemService.js`, `backend/src/services/supplierService.js`, `backend/src/services/userService.js`
+- Middleware: `backend/src/middleware/auth.js`
+- Policy utility: `backend/src/utils/softDeletePolicy.js`
+- Models: `backend/src/models/Item.js`, `backend/src/models/Supplier.js`, `backend/src/models/User.js`
 
 **Frontend:**
 - Services: `frontend/src/services/itemService.js`, `frontend/src/services/supplierService.js`
@@ -113,6 +128,9 @@ Archive is separate from workflow, allowing:
 ### Suppliers
 - `DELETE /api/v1/suppliers/:supplier_id` - Soft delete supplier (admin only)
 
+### Users
+- `DELETE /api/v1/users/:user_id` - Remove user from company (soft delete, admin/manager with hierarchy rules)
+
 ### Purchase Orders
 - `POST /api/v1/purchase-orders/:po_id/archive` - Archive PO (admin/manager)
 - `POST /api/v1/purchase-orders/:po_id/restore` - Restore PO (admin/manager)
@@ -178,6 +196,13 @@ ALTER TABLE job_orders ADD CONSTRAINT fk_job_orders_archived_by
 - [ ] Delete fails for suppliers with active POs (shows count)
 - [ ] Error dialog displays blocking reason
 
+### Users Remove
+- [ ] Admin/Manager can remove users within hierarchy rules
+- [ ] Cannot remove yourself
+- [ ] Cannot remove master admin
+- [ ] Removed users are excluded from default list/export endpoints
+- [ ] Mutating removed users returns `404`
+
 ### Purchase Orders Archive
 - [ ] Admin can archive POs
 - [ ] Manager can archive POs
@@ -209,6 +234,10 @@ ALTER TABLE job_orders ADD CONSTRAINT fk_job_orders_archived_by
 ### "Cannot delete supplier" error
 - Check if supplier has Purchase Orders with status: draft, pending, or partial
 - Complete or cancel active POs before deleting supplier
+
+### "User not found" during update/role change
+- The target user may already be soft-deleted (`deleted_at` set)
+- Default behavior is `404` for removed users on normal resource endpoints
 
 ### Archive button not visible
 - Verify user role is Admin or Manager

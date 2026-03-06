@@ -1,15 +1,16 @@
-import * as alertService from '../services/alertService.js';
+/**
+ * Alert Controller (Compatibility Facade)
+ */
 
-export const generateAlerts = async (req, res, next) => {
-  try {
-    const alerts = await alertService.generateAlerts();
-    res.status(200).json({
-      success: true,
-      data: { alerts },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
+export {
+  generateAlerts
+} from '../modules/alerts/controllers/alertHandlers.js';
+
+import {
+  generateAlerts
+} from '../modules/alerts/controllers/alertHandlers.js';
+
+export default {
+  generateAlerts
 };
 

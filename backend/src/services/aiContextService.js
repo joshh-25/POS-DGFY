@@ -8,6 +8,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 /**
  * Build complete context for AI conversation
@@ -51,7 +52,8 @@ export const buildContext = async (userId) => {
 export const getUserContext = async (userId) => {
   try {
     const User = dbStore.get('User');
-    const user = await User.findByPk(userId, {
+    const user = await User.findOne({
+      where: buildVisibleWhere({ user_id: userId }),
       attributes: ['user_id', 'username', 'email', 'role']
     });
 
@@ -85,32 +87,32 @@ export const getInventoryStats = async () => {
     // Get item counts
     const [totalItems, lowStockItems, healthyItems, overstockItems] = await Promise.all([
       Item.count({
-        where: { status: 'active' }
+        where: buildVisibleWhere({ status: 'active' })
       }),
       Item.count({
-        where: {
+        where: buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.lte]: sequelize.col('min_threshold')
           }
-        }
+        })
       }),
       Item.count({
-        where: {
+        where: buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.gt]: sequelize.col('min_threshold'),
             [Op.lte]: sequelize.col('max_capacity')
           }
-        }
+        })
       }),
       Item.count({
-        where: {
+        where: buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.gt]: sequelize.col('max_capacity')
           }
-        }
+        })
       })
     ]);
 
@@ -132,7 +134,7 @@ export const getInventoryStats = async () => {
 
     // Calculate total inventory value
     const items = await Item.findAll({
-      where: { status: 'active' },
+      where: buildVisibleWhere({ status: 'active' }),
       attributes: ['current_stock', 'cost_per_unit']
     });
 

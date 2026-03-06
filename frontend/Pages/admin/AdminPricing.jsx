@@ -4,7 +4,6 @@ import {
     Save,
     RefreshCw,
     AlertCircle,
-    CheckCircle,
     Info,
     CreditCard
 } from 'lucide-react';
@@ -12,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
+import { toast } from 'sonner';
+import { normalizeApiError } from '@/src/utils/errorHandler.js';
 
 export default function AdminPricing() {
     const [settings, setSettings] = useState({
@@ -22,7 +23,6 @@ export default function AdminPricing() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
 
     useEffect(() => {
         loadSettings();
@@ -48,14 +48,15 @@ export default function AdminPricing() {
         e.preventDefault();
         setSaving(true);
         setError('');
-        setSuccess('');
 
         try {
             await adminService.updatePricing(settings);
-            setSuccess('Pricing settings updated successfully');
-            setTimeout(() => setSuccess(''), 3000);
+            toast.success('Pricing settings updated successfully');
         } catch (err) {
-            setError('Failed to save changes: ' + (err.response?.data?.message || err.message));
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to save changes: ${normalized.message}`);
+            }
         } finally {
             setSaving(false);
         }
@@ -113,13 +114,6 @@ export default function AdminPricing() {
                                 {error}
                             </div>
                         )}
-                        {success && (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-2 text-green-800">
-                                <CheckCircle className="w-5 h-5 shrink-0" />
-                                {success}
-                            </div>
-                        )}
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">

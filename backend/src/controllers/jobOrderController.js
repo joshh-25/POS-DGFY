@@ -1,119 +1,33 @@
-import * as jobOrderService from '../services/jobOrderService.js';
+/**
+ * Job Order Controller (Compatibility Facade)
+ */
 
-export const getJobOrders = async (req, res, next) => {
-  try {
-    const result = await jobOrderService.getJobOrders(req.query);
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+export {
+  getJobOrders,
+  getJobOrderById,
+  createJobOrder,
+  finalizeJobOrder,
+  completeJobOrder,
+  archiveJobOrder,
+  restoreJobOrder
+} from '../modules/jobOrders/controllers/jobOrderHandlers.js';
 
-export const getJobOrderById = async (req, res, next) => {
-  try {
-    const jo = await jobOrderService.getJobOrderById(req.params.jo_id);
-    res.status(200).json({
-      success: true,
-      data: jo,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+import {
+  getJobOrders,
+  getJobOrderById,
+  createJobOrder,
+  finalizeJobOrder,
+  completeJobOrder,
+  archiveJobOrder,
+  restoreJobOrder
+} from '../modules/jobOrders/controllers/jobOrderHandlers.js';
 
-export const createJobOrder = async (req, res, next) => {
-  try {
-    const joData = req.validatedData;
-    const userId = req.user.user_id;
-    const jo = await jobOrderService.createJobOrder(joData, userId);
-
-    const message = jo.status === 'draft' ? 'Job order draft saved successfully' : 'Job order created successfully';
-
-    res.status(201).json({
-      success: true,
-      data: jo,
-      message,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const finalizeJobOrder = async (req, res, next) => {
-  try {
-    const { jo_id } = req.params;
-    const userId = req.user.user_id;
-    const jo = await jobOrderService.finalizeJobOrder(jo_id, userId);
-
-    res.status(200).json({
-      success: true,
-      data: jo,
-      message: 'Job order finalized successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const completeJobOrder = async (req, res, next) => {
-  try {
-    const jo = await jobOrderService.completeJobOrder(
-      req.params.jo_id,
-      req.user.user_id,
-      req.body.expiry_date,
-      req.body.notes,
-      req.body.quantity_produced,
-      req.body.quality_check
-    );
-    res.status(200).json({
-      success: true,
-      data: jo,
-      message: 'Job order completed successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const archiveJobOrder = async (req, res, next) => {
-  try {
-    const { jo_id } = req.params;
-    const userId = req.user.user_id;
-
-    const jo = await jobOrderService.archiveJobOrder(jo_id, userId);
-
-    res.status(200).json({
-      success: true,
-      data: jo,
-      message: 'Job Order archived successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const restoreJobOrder = async (req, res, next) => {
-  try {
-    const { jo_id } = req.params;
-
-    const jo = await jobOrderService.restoreJobOrder(jo_id);
-
-    res.status(200).json({
-      success: true,
-      data: jo,
-      message: 'Job Order restored successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
+export default {
+  getJobOrders,
+  getJobOrderById,
+  createJobOrder,
+  finalizeJobOrder,
+  completeJobOrder,
+  archiveJobOrder,
+  restoreJobOrder
 };

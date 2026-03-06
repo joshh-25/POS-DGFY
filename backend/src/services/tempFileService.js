@@ -6,32 +6,11 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import fs from 'fs/promises';
 import logger from '../config/logger.js';
+import cacheService from './cacheService.js';
 
-// In-memory store for temporary files (in production, use Redis)
-const tempFiles = new Map();
-
-// Directory for temp files
-const TEMP_DIR = path.join(process.cwd(), 'temp', 'ai-exports');
-
-// File expiry time in milliseconds (1 hour)
-const FILE_EXPIRY_MS = 60 * 60 * 1000;
-
-/**
- * Initialize temp directory
- */
-const initTempDir = async () => {
-  try {
-    await fs.mkdir(TEMP_DIR, { recursive: true });
-  } catch (error) {
-    logger.error('Failed to create temp directory:', error);
-  }
-};
-
-// Initialize on module load
-initTempDir();
+// File expiry time in seconds (1 hour)
+const FILE_EXPIRY_SECONDS = 60 * 60;
 
 /**
  * Store CSV content temporarily
@@ -42,7 +21,7 @@ initTempDir();
  */
 export const storeTemporaryFile = async (content, filename, userId) => {
   const fileId = uuidv4();
-  const expiresAt = new Date(Date.now() + FILE_EXPIRY_MS);
+  const expiresAt = new Date(Date.now() + FILE_EXPIRY_SECONDS * 1000);
 
   const fileInfo = {
     id: fileId,
@@ -54,12 +33,8 @@ export const storeTemporaryFile = async (content, filename, userId) => {
     accessCount: 0
   };
 
-  tempFiles.set(fileId, fileInfo);
-
-  // Schedule cleanup
-  setTimeout(() => {
-    cleanupFile(fileId);
-  }, FILE_EXPIRY_MS);
+  const redisKey = `temp_file:${fileId}`;
+  await cacheService.set(redisKey, JSON.stringify(fileInfo), FILE_EXPIRY_SECONDS);
 
   logger.info(`Created temp file: ${fileId} for user ${userId}`);
 
@@ -79,29 +54,21 @@ export const storeTemporaryFile = async (content, filename, userId) => {
  * @returns {Object|null} File content and info
  */
 export const getTemporaryFile = async (fileId, userId) => {
-  const fileInfo = tempFiles.get(fileId);
+  const redisKey = `temp_file:${fileId}`;
+  const fileData = await cacheService.get(redisKey);
 
-  if (!fileInfo) {
+  if (!fileData) {
     return null;
   }
 
-  // Check expiry
-  if (new Date() > fileInfo.expiresAt) {
-    cleanupFile(fileId);
-    return null;
-  }
-
-  // Optional: Check user ownership
-  // For now, allow any authenticated user to access
-
-  fileInfo.accessCount++;
+  const fileInfo = JSON.parse(fileData);
 
   return {
     content: fileInfo.content,
     filename: fileInfo.filename,
     contentType: 'text/csv',
-    createdAt: fileInfo.createdAt,
-    expiresAt: fileInfo.expiresAt
+    createdAt: new Date(fileInfo.createdAt),
+    expiresAt: new Date(fileInfo.expiresAt)
   };
 };
 
@@ -110,39 +77,19 @@ export const getTemporaryFile = async (fileId, userId) => {
  * @param {string} fileId - File ID
  */
 export const deleteTemporaryFile = async (fileId) => {
-  cleanupFile(fileId);
-};
-
-/**
- * Cleanup expired file
- * @param {string} fileId - File ID to cleanup
- */
-const cleanupFile = (fileId) => {
-  if (tempFiles.has(fileId)) {
-    tempFiles.delete(fileId);
-    logger.info(`Cleaned up temp file: ${fileId}`);
-  }
+  const redisKey = `temp_file:${fileId}`;
+  await cacheService.del(redisKey);
+  logger.info(`Cleaned up temp file manually: ${fileId}`);
 };
 
 /**
  * Cleanup all expired files
+ * Note: Handled natively by Redis TTL, this function is a no-op implementation 
+ * for backwards compatibility with any potential scheduled tasks.
  */
 export const cleanupExpiredFiles = () => {
-  const now = new Date();
-  let cleaned = 0;
-
-  for (const [fileId, fileInfo] of tempFiles.entries()) {
-    if (now > fileInfo.expiresAt) {
-      tempFiles.delete(fileId);
-      cleaned++;
-    }
-  }
-
-  if (cleaned > 0) {
-    logger.info(`Cleaned up ${cleaned} expired temp files`);
-  }
-
-  return cleaned;
+  // No-op - Redis handles TTL
+  return 0;
 };
 
 /**

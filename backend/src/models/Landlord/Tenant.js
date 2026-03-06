@@ -38,14 +38,6 @@ export default (sequelize) => {
             type: DataTypes.STRING,
             defaultValue: 'localhost'
         },
-        db_username: {
-            type: DataTypes.STRING,
-            allowNull: true // If null, use default app user
-        },
-        db_password: {
-            type: DataTypes.STRING,
-            allowNull: true
-        },
         status: {
             type: DataTypes.ENUM('pending', 'active', 'inactive', 'rejected', 'archived'),
             defaultValue: 'pending'

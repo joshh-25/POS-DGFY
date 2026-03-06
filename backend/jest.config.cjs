@@ -7,7 +7,9 @@ module.exports = {
     moduleFileExtensions: ['js', 'mjs', 'cjs', 'jsx', 'json', 'node'],
     testTimeout: 30000,
     verbose: true,
+    openHandlesTimeout: 10000,
     roots: ['<rootDir>/tests'],
     setupFilesAfterEnv: process.env.TEST_TYPE === 'integration' ? [] : ['<rootDir>/tests/setup.js'],
+    globalTeardown: '<rootDir>/tests/globalTeardown.cjs',
     collectCoverageFrom: ['src/**/*.js', '!src/config/*.js', '!src/seeders/*.js'],
 };

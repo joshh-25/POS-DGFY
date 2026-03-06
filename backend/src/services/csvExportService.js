@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import archiver from 'archiver';
 import { PassThrough } from 'stream';
 import dbStore from '../utils/dbStore.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import {
     getTemplateHeaders,
     ITEMS_HEADERS,
@@ -315,10 +316,10 @@ const separateItems = (items) => {
 /**
  * Build filter conditions from query parameters
  */
-const buildFilterConditions = (filters) => {
-    const where = {
+export const buildFilterConditions = async (filters) => {
+    const where = buildVisibleWhere({
         status: { [Op.in]: ['active', 'draft'] }
-    };
+    });
 
     if (filters.category && filters.category !== 'all') {
         if (filters.category === 'finished_goods' || filters.category === 'work_in_progress') {
@@ -346,7 +347,28 @@ const buildFilterConditions = (filters) => {
     }
 
     if (filters.folder && filters.folder !== 'all') {
-        where.product_folder = filters.folder;
+        const ItemFolder = dbStore.get('ItemFolder');
+        const folderName = String(filters.folder).trim();
+        if (folderName) {
+            if (!ItemFolder || typeof ItemFolder.findOne !== 'function') {
+                // Fail-safe: avoid falling back to legacy product_folder filtering.
+                where.item_id = -1;
+                return where;
+            }
+
+            const folder = await ItemFolder.findOne({
+                where: { name: folderName },
+                attributes: ['folder_id']
+            });
+
+            const resolvedFolderId = folder?.folder_id ?? folder?.get?.('folder_id');
+            if (resolvedFolderId !== undefined && resolvedFolderId !== null) {
+                where.folder_id = resolvedFolderId;
+            } else {
+                // Force an empty result when a folder name does not exist.
+                where.item_id = -1;
+            }
+        }
     }
 
     return where;
@@ -358,7 +380,7 @@ const buildFilterConditions = (filters) => {
  */
 export const exportFiltered = async (filters = {}) => {
     try {
-        const where = buildFilterConditions(filters);
+        const where = await buildFilterConditions(filters);
         // Include related tables for complete product data export
         const Item = dbStore.get('Item');
         const items = await Item.findAll({
@@ -416,10 +438,10 @@ export const exportByIds = async (itemIds) => {
         // Include related tables for complete product data export
         const Item = dbStore.get('Item');
         const items = await Item.findAll({
-            where: {
+            where: buildVisibleWhere({
                 item_id: { [Op.in]: itemIds },
                 status: { [Op.in]: ['active', 'draft'] }
-            },
+            }),
             order: [['name', 'ASC']],
             include: getProductExportIncludes()
         });
@@ -469,7 +491,7 @@ export const exportAll = async () => {
         // Include related tables for complete product data export
         const Item = dbStore.get('Item');
         const items = await Item.findAll({
-            where: { status: { [Op.in]: ['active', 'draft'] } },
+            where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } }),
             order: [['name', 'ASC']],
             include: getProductExportIncludes()
         });

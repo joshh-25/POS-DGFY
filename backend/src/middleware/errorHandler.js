@@ -1,11 +1,13 @@
-import fs from 'fs';
-import path from 'path';
 import logger from '../config/logger.js';
+import { mapDomainErrorToHttp } from '../modules/shared/contracts/domainErrorMapper.js';
 
 export const errorHandler = (err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  const errors = err.errors || null;
+  const mappedDomainError = mapDomainErrorToHttp(err);
+  const statusCode = mappedDomainError?.statusCode || err.statusCode || 500;
+  const message = mappedDomainError?.payload?.message || err.message || 'Internal Server Error';
+  const errors = mappedDomainError?.payload?.details || err.errors || null;
+  const errorCode = mappedDomainError?.payload?.code || err.code || null;
+  const requestId = req.requestId || res.locals.requestId || null;
 
   // Log error with Winston
   const logData = {
@@ -16,6 +18,8 @@ export const errorHandler = (err, req, res, next) => {
     path: req.path,
     user_id: req.user?.user_id || null,
     ip: req.ip || req.connection.remoteAddress,
+    request_id: requestId,
+    error_code: errorCode
   };
 
   // FORCE LOG STACK TRACE TO CONSOLE
@@ -40,10 +44,12 @@ export const errorHandler = (err, req, res, next) => {
       success: false,
       data: null,
       message,
+      error_code: errorCode,
       insufficientIngredients: err.insufficientIngredients.map(ing => ({
         item: ing.item_name,
         message: `Required: ${ing.required} ${ing.unit}, Available: ${ing.available} ${ing.unit}, Shortage: ${ing.shortage} ${ing.unit}`
       })),
+      request_id: requestId,
       timestamp: new Date().toISOString()
     });
   }
@@ -52,7 +58,9 @@ export const errorHandler = (err, req, res, next) => {
     success: false,
     data: null,
     message,
+    error_code: errorCode,
     errors,
+    request_id: requestId,
     timestamp: new Date().toISOString()
   });
 };

@@ -32,6 +32,7 @@ import { getCurrentUser } from '../src/services/authService.js';
 import { usePermission } from '../src/hooks/usePermission';
 import QRCodeModal from '@/components/common/QRCodeModal';
 import { generateReceiveToken } from '../src/services/receiveTokenService.js';
+import { normalizeApiError } from '../src/utils/errorHandler.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -137,7 +138,9 @@ export default function PurchaseOrders() {
       });
       setShowDetailsModal(true);
     } catch (error) {
-      toast.error('Failed to load purchase order details');
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error('Failed to load purchase order details');
+      }
     }
   };
 
@@ -178,7 +181,9 @@ export default function PurchaseOrders() {
       });
       setShowReceiptModal(true);
     } catch (error) {
-      toast.error('Failed to load purchase order details');
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error('Failed to load purchase order details');
+      }
     }
   };
 
@@ -192,7 +197,9 @@ export default function PurchaseOrders() {
       if (error.response?.status === 403) {
         toast.error("You do not have permission to create Purchase Orders.");
       } else {
-        toast.error(error.message || 'Failed to create purchase order');
+        if (!normalizeApiError(error).isGlobalCandidate) {
+          toast.error(error.message || 'Failed to create purchase order');
+        }
       }
     }
   };
@@ -227,7 +234,9 @@ export default function PurchaseOrders() {
       if (error.response?.status === 403) {
         toast.error("You do not have permission to receive Purchase Orders.");
       } else {
-        toast.error(error.message || 'Failed to receive purchase order');
+        if (!normalizeApiError(error).isGlobalCandidate) {
+          toast.error(error.message || 'Failed to receive purchase order');
+        }
       }
     }
   };
@@ -247,7 +256,9 @@ export default function PurchaseOrders() {
       setPoToArchive(null);
       refetch();
     } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error(error.response?.data?.message || error.message);
+      }
       setShowArchiveDialog(false);
       setPoToArchive(null);
     }
@@ -259,7 +270,9 @@ export default function PurchaseOrders() {
       toast.success('Purchase Order restored successfully');
       refetch();
     } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
+      if (!normalizeApiError(error).isGlobalCandidate) {
+        toast.error(error.response?.data?.message || error.message);
+      }
     }
   };
 

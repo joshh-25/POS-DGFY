@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 /**
  * List all inventory folders with item counts
@@ -18,7 +19,12 @@ export const listFolders = async () => {
                 {
                     model: Item,
                     as: 'items',
-                    attributes: ['item_id']
+                    attributes: ['item_id'],
+                    required: false,
+                    where: buildVisibleWhere(
+                        {},
+                        { statusField: 'status', excludeInactiveStatus: true }
+                    )
                 }
             ]
         });
@@ -89,7 +95,10 @@ export const assignItemsToFolder = async (folderName, itemIds) => {
             },
             {
                 where: {
-                    item_id: { [Op.in]: itemIds }
+                    ...buildVisibleWhere(
+                        { item_id: { [Op.in]: itemIds } },
+                        { statusField: 'status', excludeInactiveStatus: true }
+                    )
                 }
             }
         );
@@ -121,7 +130,12 @@ export const getFolderDetails = async (folderName) => {
                 {
                     model: Item,
                     as: 'items',
-                    attributes: ['item_id', 'sku_code', 'name', 'category', 'current_stock', 'unit_of_measure']
+                    attributes: ['item_id', 'sku_code', 'name', 'category', 'current_stock', 'unit_of_measure'],
+                    required: false,
+                    where: buildVisibleWhere(
+                        {},
+                        { statusField: 'status', excludeInactiveStatus: true }
+                    )
                 }
             ]
         });
@@ -167,7 +181,12 @@ export const deleteFolder = async (folderId) => {
     // Unassign all items in this folder
     const [unassignedCount] = await Item.update(
         { folder_id: null, product_folder: null },
-        { where: { folder_id: folderId } }
+        {
+            where: buildVisibleWhere(
+                { folder_id: folderId },
+                { statusField: 'status', excludeInactiveStatus: true }
+            )
+        }
     );
 
     await folder.destroy();

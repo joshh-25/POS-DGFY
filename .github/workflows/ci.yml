@@ -7,6 +7,17 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  lint-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Lint governed documentation
+        run: npm run lint:docs
+
   test-backend:
     runs-on: ubuntu-latest
     defaults:
@@ -33,6 +44,12 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+
+      - name: Enforce modular architecture guardrails
+        run: npm run check:architecture-guardrails
+
+      - name: Enforce controller architecture boundaries
+        run: npm run check:controller-boundaries
       
       - name: Run tests
         run: npm test
@@ -43,11 +60,59 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
+      - name: Run open handle diagnostics
+        run: npm test -- --detectOpenHandles
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+
+      - name: Run migrations for schema audit
+        run: npm run migrate
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+
+      - name: Audit required indexes
+        run: npm run audit:indexes
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+
+      - name: Audit billing-funnel telemetry integrity
+        run: npm run audit:billing-funnel
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          BILLING_FUNNEL_AUDIT_LOOKBACK_HOURS: 24
+          BILLING_FUNNEL_AUDIT_ATTEMPT_GRACE_MINUTES: 15
+          BILLING_FUNNEL_THRESHOLD_MISSING_CORRELATION: 0
+          BILLING_FUNNEL_THRESHOLD_MISSING_OUTCOME: 0
+          BILLING_FUNNEL_THRESHOLD_ORPHAN_ATTEMPTS: 0
+          BILLING_FUNNEL_THRESHOLD_DUPLICATE_EVENTS: 0
+          BILLING_FUNNEL_THRESHOLD_PAYMENT_WITHOUT_TELEMETRY: 0
+          BILLING_FUNNEL_THRESHOLD_TENANT_STATE_MISMATCH: 0
+          BILLING_FUNNEL_THRESHOLD_WEBHOOK_WITHOUT_TELEMETRY: 0
+          BILLING_FUNNEL_THRESHOLD_ROUTE_OUTCOME_MISMATCH: 0
+          BILLING_FUNNEL_THRESHOLD_WRITE_FAILURES: 0
+          BILLING_FUNNEL_THRESHOLD_SKIPS: 0
+
   test-frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: .
+        working-directory: ./frontend
 
     steps:
       - uses: actions/checkout@v3
@@ -59,12 +124,15 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+
+      - name: Run tests
+        run: npm test
       
       - name: Build
         run: npm run build
 
   build:
-    needs: [test-backend, test-frontend]
+    needs: [lint-docs, test-backend, test-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     

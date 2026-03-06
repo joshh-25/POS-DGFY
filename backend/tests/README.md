@@ -23,6 +23,71 @@ The project uses **Native ES Modules** (defined by `"type": "module"` in package
 
 ---
 
+### Schema Index Guard Test Pack (11.2 hardening)
+
+**Purpose**: Verifies index-drift protections and canonical CSV folder filtering path.
+
+**How to run only this pack**:
+```bash
+cd backend
+npm test -- --runInBand --testPathPattern="tests/(schemaIndexAuditService|csvExportFolderFilter|healthSchemaIndexAudit|healthService|auditIndexesScript\\.integration)\\.test\\.js"
+```
+
+**Included suites**:
+- `schemaIndexAuditService.test.js` — missing single/composite detection + tenant fallback behavior
+- `csvExportFolderFilter.test.js` — ensures folder filtering uses `folder_id` path (never `product_folder`)
+- `healthSchemaIndexAudit.test.js` — schema index health payload + degrade helper behavior
+- `healthService.test.js` — `/health` response contract logic with `schemaIndexes` + `503` degradation
+- `auditIndexesScript.integration.test.js` — script exit-code contract (`0` healthy, non-zero degraded)
+
+**CI/runtime companion check**:
+```bash
+cd backend
+npm run audit:indexes
+```
+
+---
+
+### PayPal Sandbox Canary (`paypalSandboxCanary.e2e.test.js`)
+
+**Purpose**: Scheduled end-to-end canary that validates live PayPal sandbox subscription verification plus `/api/v1/payments/upgrade` billing-funnel telemetry persistence against real external endpoints.
+
+**How to run locally**:
+```bash
+cd backend
+npm test -- paypalSandboxCanary.e2e.test.js
+```
+
+**Required environment variables**:
+- `PAYPAL_CLIENT_ID`
+- `PAYPAL_CLIENT_SECRET`
+- `PAYPAL_WEBHOOK_ID`
+- `PAYPAL_SANDBOX_ACTIVE_SUBSCRIPTION_ID`
+- `PAYPAL_SANDBOX_NONACTIVE_SUBSCRIPTION_ID` (optional; if omitted, an invalid ID is used for the blocked-path assertion)
+- `PAYPAL_MODE=sandbox` (recommended; the test defaults to sandbox mode when unset)
+
+**Behavior contract**:
+- Local runs: test auto-skips if required sandbox variables are missing.
+- CI scheduled canary (`.github/workflows/paypal-sandbox-canary.yml`): runs in strict mode and fails when variables are missing or flow validation fails.
+
+**What it validates**:
+1. OAuth token retrieval from PayPal sandbox.
+2. Live subscription verification against sandbox APIs.
+3. `/api/v1/payments/upgrade` accepts an ACTIVE subscription and rejects a non-active/invalid one.
+4. Upgrade-route billing-funnel telemetry rows are persisted with the expected `event_type`, `source`, and `correlation_id`.
+
+**What it does not validate**:
+1. Real webhook delivery into `/api/v1/payments/webhook`.
+2. Webhook signature verification through the HTTP ingress path.
+3. Persistence of `paypal_payment_sale_completed`.
+4. Product engagement, retention, or feature adoption.
+
+See:
+- `docs/testing/billing-funnel-telemetry-definition.md`
+- `docs/testing/telemetry-event-catalog.md`
+
+---
+
 
 ## Manual Verification Scripts
 

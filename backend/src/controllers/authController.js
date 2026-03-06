@@ -1,236 +1,36 @@
-import * as authService from '../services/authService.js';
-import * as landlordService from '../services/landlordService.js';
-import * as userService from '../services/userService.js';
-
-export const register = async (req, res, next) => {
-  try {
-    const userData = req.validatedData;
-    const result = await authService.registerUser(userData);
-
-    res.status(201).json({
-      success: true,
-      data: result,
-      message: 'User registered successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const login = async (req, res, next) => {
-  try {
-    const { email, password } = req.validatedData;
-    const result = await authService.loginUser(email, password);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-      message: 'Login successful',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const refreshToken = async (req, res, next) => {
-  try {
-    const { refreshToken } = req.validatedData;
-    const result = await authService.refreshUserToken(refreshToken);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-      message: 'Token refreshed successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const logout = async (req, res, next) => {
-  try {
-    // Get token from authorization header
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-
-    if (token) {
-      // Blacklist the token
-      await authService.blacklistToken(token);
-    }
-
-    res.status(200).json({
-      success: true,
-      data: null,
-      message: 'Logout successful',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 /**
- * Look up which tenant(s) an email belongs to
- * Used by frontend to determine if token is needed for login
+ * Auth Controller (Compatibility Facade)
  */
-export const lookupEmail = async (req, res, next) => {
-  try {
-    const { email } = req.validatedData;
-    const tenants = await landlordService.findTenantsByEmail(email);
 
-    if (tenants.length === 0) {
-      return res.status(404).json({
-        success: false,
-        data: null,
-        message: 'Email not registered in any company',
-        timestamp: new Date().toISOString()
-      });
-    }
+export {
+  register,
+  login,
+  refreshToken,
+  logout,
+  lookupEmail,
+  validateToken,
+  validateInviteToken,
+  acceptInvitation
+} from '../modules/auth/controllers/authHandlers.js';
 
-    if (tenants.length === 1) {
-      // Single tenant - return token for auto-fill
-      return res.status(200).json({
-        success: true,
-        data: {
-          company_token: tenants[0].company_token,
-          company_name: tenants[0].name,
-          tenant_id: tenants[0].id,
-          status: tenants[0].status
-        },
-        message: 'Tenant found',
-        timestamp: new Date().toISOString()
-      });
-    }
+import {
+  register,
+  login,
+  refreshToken,
+  logout,
+  lookupEmail,
+  validateToken,
+  validateInviteToken,
+  acceptInvitation
+} from '../modules/auth/controllers/authHandlers.js';
 
-    // Multiple tenants - return list for user selection
-    return res.status(200).json({
-      success: true,
-      data: {
-        multiple: true,
-        tenants: tenants.map(t => ({
-          id: t.id,
-          name: t.name,
-          company_token: t.company_token,
-          status: t.status
-        }))
-      },
-      message: 'Multiple tenants found',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
+export default {
+  register,
+  login,
+  refreshToken,
+  logout,
+  lookupEmail,
+  validateToken,
+  validateInviteToken,
+  acceptInvitation
 };
-
-/**
- * Validate a company token and return company info
- * Used by frontend during registration to show company name
- */
-export const validateToken = async (req, res, next) => {
-  try {
-    const { token } = req.params;
-
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        message: 'Token is required',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    const tenant = await landlordService.findTenantByToken(token);
-
-    if (!tenant) {
-      return res.status(404).json({
-        success: false,
-        data: null,
-        message: 'Invalid or expired company token',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        company_name: tenant.name,
-        tenant_id: tenant.id
-      },
-      message: 'Token is valid',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Validate an invitation token
- * Used by frontend to check if token is valid before showing the form
- */
-export const validateInviteToken = async (req, res, next) => {
-  try {
-    const { token } = req.validatedData;
-
-    const result = await userService.validateInvitationToken(token);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-      message: 'Invitation token is valid',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    // Return 400 for invalid/expired tokens instead of 500
-    if (error.message.includes('expired') || error.message.includes('Invalid') || error.message.includes('not found')) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        message: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
-    next(error);
-  }
-};
-
-/**
- * Accept an invitation and create user account
- */
-export const acceptInvitation = async (req, res, next) => {
-  try {
-    const { token, username, password } = req.validatedData;
-
-    const result = await userService.acceptInvitation(token, { username, password });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        user: {
-          user_id: result.user_id,
-          username: result.username,
-          email: result.email,
-          role: result.role
-        }
-      },
-      message: 'Account created successfully. You are now logged in.',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    // Return 400 for validation errors instead of 500
-    if (error.message.includes('expired') || error.message.includes('Invalid') ||
-      error.message.includes('not found') || error.message.includes('already')) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        message: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
-    next(error);
-  }
-};
-

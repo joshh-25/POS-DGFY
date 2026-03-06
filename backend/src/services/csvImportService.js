@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
 import { createItem, updateItem } from './itemService.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
@@ -283,7 +284,7 @@ export const previewImport = async (csvContent) => {
     const Item = dbStore.get('Item');
     const existingItems = await Item.findAll({
         attributes: ['item_id', 'sku_code'],
-        where: { status: { [Op.in]: ['active', 'draft'] } }
+        where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
     const existingSkus = new Map(existingItems.map(i => [i.sku_code, i.item_id]));
 
@@ -361,7 +362,7 @@ export const confirmImport = async (rows, userId) => {
     const Item = dbStore.get('Item');
     const existingItems = await Item.findAll({
         attributes: ['item_id', 'sku_code'],
-        where: { status: { [Op.in]: ['active', 'draft'] } }
+        where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
     const existingSkus = new Map(existingItems.map(i => [i.sku_code, i.item_id]));
 
@@ -453,7 +454,10 @@ export const confirmImport = async (rows, userId) => {
                     const transaction = await sequelize.transaction();
                     try {
                         await Item.update(row.data, {
-                            where: { item_id: row.existingItemId },
+                            where: buildVisibleWhere({
+                                item_id: row.existingItemId,
+                                status: { [Op.in]: ['active', 'draft'] }
+                            }),
                             transaction,
                             validate: true // Ensure updates are also validated
                         });

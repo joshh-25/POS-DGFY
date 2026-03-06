@@ -2,6 +2,14 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
 import { convertQuantity, areCompatible, normalizeUom, getUomLabel } from '../utils/uomConverter.js';
+import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+
+const visibleItemWhere = (where = {}) => {
+  return buildVisibleWhere(where, {
+    statusField: 'status',
+    excludeInactiveStatus: true
+  });
+};
 
 export const getJobOrders = async (queryParams) => {
   const JobOrder = dbStore.get('JobOrder');
@@ -125,7 +133,8 @@ export const createJobOrder = async (joData, userId) => {
 
     for (const ing of ingredients) {
       // Fetch current stock from database
-      const item = await Item.findByPk(ing.item_id, {
+      const item = await Item.findOne({
+        where: visibleItemWhere({ item_id: ing.item_id }),
         attributes: ['item_id', 'name', 'current_stock', 'unit_of_measure']
       });
 
@@ -620,7 +629,8 @@ export const checkProductionFeasibility = async (productId, quantity = 1, includ
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   // 1. Fetch Product with Ingredients manually via ProductComposition
-  const product = await Item.findByPk(productId, {
+  const product = await Item.findOne({
+    where: visibleItemWhere({ item_id: productId }),
     attributes: ['item_id', 'name', 'unit_of_measure', 'current_stock', 'cost_per_unit'],
     include: [{
       model: sequelize.models.ProductComposition, // Use the model name string or object if available
