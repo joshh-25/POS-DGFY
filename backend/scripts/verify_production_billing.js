@@ -33,11 +33,12 @@ async function runVerification() {
         // 2. Verify Idempotency (Requires MOCK_PAYPAL=true or real ID)
         console.log('\nStep 2: Verifying Idempotency...');
         const mockWebhookId = 'test_webhook_' + Date.now();
+        const mockWebhookEventType = 'TEST.IDEMPOTENCY.CHECK';
 
         // Manual log insertion to simulate prior processing
         await WebhookLog.create({
             webhook_id: mockWebhookId,
-            event_type: 'PAYMENT.SALE.COMPLETED',
+            event_type: mockWebhookEventType,
             status: 'processed'
         });
 
@@ -50,6 +51,9 @@ async function runVerification() {
         } else {
             console.log('❌ Error: Webhook entry not found.');
         }
+
+        // Cleanup synthetic verification row to avoid polluting billing telemetry audits.
+        await WebhookLog.destroy({ where: { webhook_id: mockWebhookId } });
 
         // 3. Test Grace Period Calculation
         console.log('\nStep 3: Verifying Grace Period Logic...');
