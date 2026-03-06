@@ -37,6 +37,10 @@ mysqldump -u [user] -p [database_name] > backup_$(date +%F_%H-%M).sql
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
 
+Notes:
+- `deploy.sh` skips legacy maintenance hooks by default. Use `--run-legacy-hooks` only for intentional legacy recovery.
+- The script now runs a required-index self-heal pass before the strict index audit gate.
+
 The deployment script now handles:
 - pull (fast-forward only)
 - deterministic `npm ci` installs

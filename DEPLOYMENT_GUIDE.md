@@ -51,6 +51,13 @@ EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
 
+`deploy.sh` now skips legacy maintenance hooks by default (precision/surgical legacy scripts).  
+Only run them for targeted recovery work:
+```bash
+bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --run-legacy-hooks
+```
+Also note: the pipeline performs a required-index self-heal pass before the strict schema audit gate.
+
 Evidence generated per run:
 - `logs/deploy/deploy_<timestamp>.log`
 - `logs/deploy/deploy_<timestamp>.changed_files.txt`

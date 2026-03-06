@@ -16,6 +16,7 @@ LOCK_FILE="/tmp/skupervisor_deploy.lock"
 BRANCH_OVERRIDE=""
 EXPECTED_COMMIT=""
 SKIP_DB_BACKUP="0"
+RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,9 +32,13 @@ while [[ $# -gt 0 ]]; do
             SKIP_DB_BACKUP="1"
             shift
             ;;
+        --run-legacy-hooks)
+            RUN_LEGACY_HOOKS="1"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: bash scripts/deploy.sh [--branch <name>] [--expect-commit <sha>] [--skip-db-backup]"
+            echo "Usage: bash scripts/deploy.sh [--branch <name>] [--expect-commit <sha>] [--skip-db-backup] [--run-legacy-hooks]"
             exit 1
             ;;
     esac
@@ -160,6 +165,9 @@ if [[ "${DEPLOY_REEXECED:-0}" != "1" ]]; then
     if [[ "$SKIP_DB_BACKUP" == "1" ]]; then
         reexec_args+=(--skip-db-backup)
     fi
+    if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
+        reexec_args+=(--run-legacy-hooks)
+    fi
     exec bash "$PROJECT_ROOT/scripts/deploy.sh" "${reexec_args[@]}"
 fi
 
@@ -241,11 +249,20 @@ log "Building frontend production artifacts..."
 log "Running database migrations..."
 (cd "$BACKEND_DIR" && npx sequelize-cli db:migrate)
 
-log "Running optional maintenance hooks (if present)..."
-run_optional_node_script "$BACKEND_DIR" "scripts/deploy_fix_precision.js" "precision hotfix v1"
-run_optional_node_script "$BACKEND_DIR" "scripts/surgical_migrate.js" "surgical migration patch"
-run_optional_node_script "$BACKEND_DIR" "scripts/deploy_fix_precision_v2.js" "precision hotfix v2"
-run_optional_node_script "$BACKEND_DIR" "scripts/register_legacy_tenant.js" "legacy tenant registration"
+if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
+    log "Running optional maintenance hooks (enabled)..."
+    run_optional_node_script "$BACKEND_DIR" "scripts/deploy_fix_precision.js" "precision hotfix v1"
+    run_optional_node_script "$BACKEND_DIR" "scripts/surgical_migrate.js" "surgical migration patch"
+    run_optional_node_script "$BACKEND_DIR" "scripts/deploy_fix_precision_v2.js" "precision hotfix v2"
+    run_optional_node_script "$BACKEND_DIR" "scripts/register_legacy_tenant.js" "legacy tenant registration"
+else
+    warn "Skipping legacy maintenance hooks by default. Use --run-legacy-hooks (or DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS=1) only for targeted recovery."
+fi
+
+log "Repairing required schema indexes (self-heal pass)..."
+if ! (cd "$BACKEND_DIR" && npm run repair:indexes); then
+    warn "Index self-heal did not fully converge. Continuing to strict schema/index audit gate."
+fi
 
 log "Running schema/index audit..."
 (cd "$BACKEND_DIR" && npm run audit:indexes)
