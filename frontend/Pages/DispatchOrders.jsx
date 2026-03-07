@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
   Plus, Search, Eye, CheckCircle, XCircle, Clock, Activity,
-  FileEdit, PackageCheck, Download, Loader2, AlertTriangle
+  FileEdit, PackageCheck, Download, Loader2, AlertTriangle, TrendingUp
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import * as dispatchOrderService from '../src/services/dispatchOrderService.js';
 import DOCreateModal from '@/components/dispatch/DOCreateModal';
 import DODetailsModal from '@/components/dispatch/DODetailsModal';
 import DODispatchModal from '@/components/dispatch/DODispatchModal';
+import DOEarningsPanel from '@/components/dispatch/DOEarningsPanel';
 
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-slate-100 text-slate-700 border-slate-200', icon: FileEdit },
@@ -52,6 +53,7 @@ const StatusBadge = ({ status }) => {
 };
 
 export default function DispatchOrders() {
+  const [activeView, setActiveView] = useState('orders'); // 'orders' | 'earnings'
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -156,13 +158,41 @@ export default function DispatchOrders() {
           <p className="text-slate-500 mt-1">Manage outbound finished goods dispatch</p>
         </div>
         <div className="flex items-center gap-2">
-          {can('do:view') && (
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setActiveView('orders')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-colors',
+                activeView === 'orders'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-white text-slate-600 hover:bg-slate-50'
+              )}
+            >
+              <PackageCheck className="w-3.5 h-3.5" />
+              Orders
+            </button>
+            <button
+              onClick={() => setActiveView('earnings')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-colors border-l border-slate-200',
+                activeView === 'earnings'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-white text-slate-600 hover:bg-slate-50'
+              )}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              Earnings
+            </button>
+          </div>
+
+          {activeView === 'orders' && can('do:view') && (
             <Button variant="outline" size="sm" onClick={handleExportCSV}>
               <Download className="w-4 h-4 mr-2" />
               Export CSV
             </Button>
           )}
-          {can('do:create') && (
+          {activeView === 'orders' && can('do:create') && (
             <Button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700">
               <Plus className="w-4 h-4 mr-2" />
               New Dispatch Order
@@ -171,8 +201,11 @@ export default function DispatchOrders() {
         </div>
       </div>
 
-      {/* Stats cards */}
-      {stats && (
+      {/* Earnings view */}
+      {activeView === 'earnings' && <DOEarningsPanel />}
+
+      {/* Orders view */}
+      {activeView === 'orders' && stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
             { label: 'Draft', value: stats.draft || 0, color: 'text-slate-600', bg: 'bg-slate-50 border-slate-200' },
@@ -189,6 +222,7 @@ export default function DispatchOrders() {
         </div>
       )}
 
+      {activeView === 'orders' && <>
       {/* Filters */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -290,7 +324,7 @@ export default function DispatchOrders() {
           </table>
         </div>
       )}
-
+      </>}
 
       {/* Modals */}
       <DOCreateModal

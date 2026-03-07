@@ -4,7 +4,9 @@ import {
     validateCreateDispatchOrder,
     validateUpdateDispatchOrder,
     validateDispatchLines,
-    validateCancelDispatchOrder
+    validateCancelDispatchOrder,
+    validateGetEarnings,
+    validateUpdateLineSalePrice
 } from '../validators/dispatchOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -15,6 +17,7 @@ router.use(authenticate);
 // Read operations — any authenticated user with do:view
 router.get('/stats', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), dispatchOrderController.getDispatchStats);
 router.get('/export', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), dispatchOrderController.exportDispatchOrders);
+router.get('/earnings', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), validateGetEarnings, dispatchOrderController.getEarningsReport);
 router.get('/', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), dispatchOrderController.getDispatchOrders);
 router.get('/:id', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), dispatchOrderController.getDispatchOrderById);
 
@@ -25,6 +28,9 @@ router.post('/:id/confirm', checkPermission(PERMISSIONS.DISPATCH.actions.CREATE_
 
 // Execute dispatch — do:dispatch (stock deduction)
 router.post('/:id/dispatch', checkPermission(PERMISSIONS.DISPATCH.actions.DISPATCH_DO), validateDispatchLines, dispatchOrderController.dispatchLines);
+
+// Retroactive sale price update on a single line — do:dispatch (financial write, same sensitivity)
+router.patch('/:id/lines/:lineId/sale-price', checkPermission(PERMISSIONS.DISPATCH.actions.DISPATCH_DO), validateUpdateLineSalePrice, dispatchOrderController.updateLineSalePrice);
 
 // Cancel and archive — do:delete
 router.post('/:id/cancel', checkPermission(PERMISSIONS.DISPATCH.actions.DELETE_DO), validateCancelDispatchOrder, dispatchOrderController.cancelDispatchOrder);

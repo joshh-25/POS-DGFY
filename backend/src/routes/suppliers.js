@@ -4,6 +4,7 @@ import * as supplierCSVController from '../controllers/supplierCSVController.js'
 import { validateCreateSupplier, validateUpdateSupplier, validateCreateSupplierDraft } from '../validators/supplierValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { upload } from '../config/uploadConfig.js';
 
 const router = express.Router();
 router.use(authenticate);

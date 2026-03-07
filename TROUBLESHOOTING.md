@@ -746,3 +746,44 @@ This is the pattern used in `backend/migrations/20260301000000-add-performance-i
   ];
   ```
 - After adding, restart the backend and run `node backend/scripts/sync-tenant-schemas.js` to create the tables in all tenant databases.
+
+### 45. `deploy.sh` Fails With "Another deployment appears to be running" But No Deploy Is Active
+**Symptoms**:
+- Deploy exits early with:
+  `Another deployment appears to be running (lock: /tmp/skupervisor_deploy.lock)`
+- `ps -ef | grep deploy.sh | grep -v grep` shows no active deploy process.
+
+**Cause**:
+- A stale lock file remained after an interrupted run.
+- This can happen around script re-exec timing or network/SSH disconnects.
+
+**Solution**:
+```bash
+cd /var/www/skupervisor
+ps -ef | grep deploy.sh | grep -v grep
+rm -f /tmp/skupervisor_deploy.lock
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$BRANCH"
+EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
+DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+### 46. Billing-Funnel Audit Degraded Because of `test_webhook_*` Rows
+**Symptoms**:
+- `npm run audit:billing-funnel` returns degraded
+- Issue includes:
+  `type=webhook_without_telemetry event_type=PAYMENT.SALE.COMPLETED correlation_id=test_webhook_...`
+
+**Cause**:
+- Synthetic webhook test rows were written to `webhook_logs` with handled PayPal event types.
+- Strict telemetry audit treats them as real webhook records and expects matching telemetry events.
+
+**Solution**:
+```bash
+mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
+cd backend
+npm run audit:billing-funnel
+```
+
+**Prevention**:
+- Keep synthetic verification events out of handled production webhook event types.

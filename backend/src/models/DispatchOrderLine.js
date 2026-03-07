@@ -39,6 +39,11 @@ const DispatchOrderLine = sequelize.define('DispatchOrderLine', {
         allowNull: true,
         comment: 'Snapshot of cost at dispatch time for COGS tracking'
     },
+    sale_price_per_unit: {
+        type: DataTypes.DECIMAL(10, 4),
+        allowNull: true,
+        comment: 'Snapshot of selling price at time of DO creation. Null for internal transfers.'
+    },
     batch_id: {
         type: DataTypes.INTEGER,
         allowNull: true,

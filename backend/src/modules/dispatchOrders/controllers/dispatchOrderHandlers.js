@@ -8,7 +8,9 @@ import {
   confirmDispatchOrderUseCase,
   dispatchLinesUseCase,
   cancelDispatchOrderUseCase,
-  archiveDispatchOrderUseCase
+  archiveDispatchOrderUseCase,
+  getEarningsReportUseCase,
+  updateLineSalePriceUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -301,6 +303,44 @@ export const archiveDispatchOrder = async (req, res, next) => {
   }
 };
 
+export const getEarningsReport = async (req, res, next) => {
+  try {
+    const result = await getEarningsReportUseCase({ query: req.validatedQuery || req.query });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateLineSalePrice = async (req, res, next) => {
+  try {
+    const result = await updateLineSalePriceUseCase({
+      doId:      req.params.id,
+      lineId:    req.params.lineId,
+      salePrice: req.validatedData?.sale_price_per_unit ?? null
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getDispatchOrders,
   getDispatchOrderById,
@@ -311,5 +351,7 @@ export default {
   confirmDispatchOrder,
   dispatchLines,
   cancelDispatchOrder,
-  archiveDispatchOrder
+  archiveDispatchOrder,
+  getEarningsReport,
+  updateLineSalePrice
 };

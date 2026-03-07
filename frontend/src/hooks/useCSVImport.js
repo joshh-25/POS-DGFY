@@ -9,12 +9,19 @@ export const useCSVImport = () => {
     /**
      * Preview CSV content - validate and return preview data
      */
-    const previewCSV = async (csvContent) => {
+    const previewCSV = async (file) => {
         setLoading(true);
         setError(null);
         setPreviewData(null);
 
         try {
+            const csvContent = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+
             const response = await api.post('/items/import/preview', { csvContent });
             setPreviewData(response.data.data);
             return { success: true, data: response.data.data };

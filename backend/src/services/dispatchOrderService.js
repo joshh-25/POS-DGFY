@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
@@ -278,6 +278,11 @@ export const createDispatchOrder = async (data, userId) => {
 
         for (const line of lines) {
             const item = await findVisibleItemById(Item, line.item_id);
+            // Sale price: use provided value, else fall back to item's last-known sale price,
+            // else fall back to cost_per_unit (so earnings can still be computed on first use)
+            const salePrice = line.sale_price_per_unit != null
+                ? line.sale_price_per_unit
+                : (item.default_sale_price != null ? item.default_sale_price : (item.cost_per_unit || null));
             await DispatchOrderLine.create({
                 do_id: dispatchOrder.do_id,
                 item_id: line.item_id,
@@ -286,6 +291,7 @@ export const createDispatchOrder = async (data, userId) => {
                 qty_voided: 0,
                 unit_of_measure: item.unit_of_measure,
                 cost_per_unit: item.cost_per_unit || null,
+                sale_price_per_unit: salePrice,
                 notes: line.notes || null
             }, { transaction });
         }
@@ -348,6 +354,9 @@ export const updateDispatchOrder = async (doId, data, userId) => {
             await DispatchOrderLine.destroy({ where: { do_id: doId }, transaction });
             for (const line of lines) {
                 const item = await findVisibleItemById(Item, line.item_id);
+                const salePrice = line.sale_price_per_unit != null
+                    ? line.sale_price_per_unit
+                    : (item.default_sale_price != null ? item.default_sale_price : (item.cost_per_unit || null));
                 await DispatchOrderLine.create({
                     do_id: doId,
                     item_id: line.item_id,
@@ -356,6 +365,7 @@ export const updateDispatchOrder = async (doId, data, userId) => {
                     qty_voided: 0,
                     unit_of_measure: item.unit_of_measure,
                     cost_per_unit: item.cost_per_unit || null,
+                    sale_price_per_unit: salePrice,
                     notes: line.notes || null
                 }, { transaction });
             }
@@ -483,6 +493,14 @@ export const dispatchLines = async (doId, lineDispatches, userId) => {
                 batch_id: movement.batch_id || line.batch_id,
                 cost_per_unit: line.cost_per_unit || (parseFloat(movement.weighted_average_cost) || item.cost_per_unit)
             }, { transaction });
+
+            // Persist the sale price as the item's default for future DOs
+            if (line.sale_price_per_unit != null) {
+                await Item.update(
+                    { default_sale_price: parseFloat(line.sale_price_per_unit) },
+                    { where: { item_id: item.item_id }, transaction }
+                );
+            }
         }
 
         // Recalculate DO status based on all lines
@@ -562,6 +580,16 @@ export const exportDispatchOrders = async (params = {}) => {
     const rows = [];
     for (const doRecord of dispatchOrders) {
         for (const line of (doRecord.lines || [])) {
+            const effectiveQty = parseFloat(line.qty_dispatched) - parseFloat(line.qty_voided);
+            const salePrice = line.sale_price_per_unit != null ? parseFloat(line.sale_price_per_unit) : null;
+            const costPrice = line.cost_per_unit != null ? parseFloat(line.cost_per_unit) : null;
+            const revenue = salePrice != null ? salePrice * effectiveQty : null;
+            const cogs = costPrice != null ? costPrice * effectiveQty : null;
+            const grossProfit = revenue != null && cogs != null ? revenue - cogs : null;
+            const marginPct = revenue != null && revenue > 0 && grossProfit != null
+                ? ((grossProfit / revenue) * 100).toFixed(2)
+                : null;
+
             rows.push({
                 do_number: doRecord.do_number,
                 status: doRecord.status,
@@ -576,7 +604,11 @@ export const exportDispatchOrders = async (params = {}) => {
                 qty_dispatched: line.qty_dispatched,
                 qty_voided: line.qty_voided,
                 unit: line.unit_of_measure || '',
-                cost_per_unit: line.cost_per_unit || '',
+                cost_per_unit: costPrice != null ? costPrice : '',
+                sale_price_per_unit: salePrice != null ? salePrice : '',
+                revenue: revenue != null ? revenue.toFixed(4) : '',
+                gross_profit: grossProfit != null ? grossProfit.toFixed(4) : '',
+                margin_pct: marginPct != null ? marginPct : '',
                 created_by: doRecord.creator?.username || '',
                 notes: doRecord.notes || ''
             });
@@ -586,7 +618,8 @@ export const exportDispatchOrders = async (params = {}) => {
     const headers = [
         'DO Number', 'Status', 'Recipient', 'Recipient Type', 'Dispatch Date',
         'Ref JO', 'Ref PO', 'SKU', 'Item Name', 'Qty Ordered', 'Qty Dispatched',
-        'Qty Voided', 'UOM', 'Cost/Unit', 'Created By', 'Notes'
+        'Qty Voided', 'UOM', 'Cost/Unit', 'Sale Price/Unit', 'Revenue',
+        'Gross Profit', 'Margin %', 'Created By', 'Notes'
     ];
 
     const csvLines = [headers.join(',')];
@@ -606,10 +639,315 @@ export const exportDispatchOrders = async (params = {}) => {
             row.qty_voided,
             escapeCSVCell(row.unit),
             row.cost_per_unit,
+            row.sale_price_per_unit,
+            row.revenue,
+            row.gross_profit,
+            row.margin_pct,
             escapeCSVCell(row.created_by),
             escapeCSVCell(row.notes)
         ].join(','));
     }
 
     return csvLines.join('\n');
+};
+
+// ─────────────────────────────────────────────────────────────
+// Earnings Report
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Builds the shared WHERE clause and positional replacements array
+ * for earnings queries (applied to the dispatch_orders table alias `do`).
+ */
+const buildEarningsWhere = (params) => {
+    const conditions = [];
+    const replacements = [];
+
+    conditions.push('`do`.archived_at IS NULL');
+
+    const validStatuses = ['partial', 'completed'];
+    const rawStatus = params.status || 'completed';
+    const statuses = rawStatus.split(',').map(s => s.trim()).filter(s => validStatuses.includes(s));
+    if (!statuses.length) statuses.push('completed');
+    conditions.push(`\`do\`.status IN (${statuses.map(() => '?').join(',')})`);
+    replacements.push(...statuses);
+
+    // Normalize to plain YYYY-MM-DD string — Joi.date().iso() converts inputs to Date objects,
+    // and serializing a Date object carries UTC offset which can shift boundaries on non-UTC servers.
+    const toDateStr = (val) => val instanceof Date ? val.toISOString().slice(0, 10) : String(val);
+    if (params.date_from) { conditions.push('`do`.dispatch_date >= ?'); replacements.push(toDateStr(params.date_from)); }
+    if (params.date_to)   { conditions.push('`do`.dispatch_date <= ?'); replacements.push(toDateStr(params.date_to)); }
+    if (params.recipient_type) { conditions.push('`do`.recipient_type = ?'); replacements.push(params.recipient_type); }
+
+    return { conditions, replacements };
+};
+
+/**
+ * Aggregated gross earnings report for dispatched orders.
+ * Only lines with sale_price_per_unit != null contribute to revenue.
+ * Effective qty = GREATEST(qty_dispatched - qty_voided, 0) — guards against over-voiding.
+ * Runs 6 parallel SQL queries instead of loading all rows into memory.
+ *
+ * @param {object} params - { date_from, date_to, recipient_type, item_id, period, status }
+ */
+export const getEarningsReport = async (params = {}) => {
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+    const { item_id, period = 'month' } = params;
+
+    const { conditions: baseConditions, replacements: baseReplacements } = buildEarningsWhere(params);
+    const baseWhere = baseConditions.join(' AND ');
+
+    // Applied to dispatch_order_lines in all breakdowns except the excluded count
+    const lineFilter = `
+      AND dol.sale_price_per_unit IS NOT NULL
+      AND GREATEST(dol.qty_dispatched - dol.qty_voided, 0) > 0`;
+
+    const itemFilter = item_id ? ' AND dol.item_id = ?' : '';
+    const itemReplacements = item_id ? [parseInt(item_id)] : [];
+
+    // Shared replacements for summary / by_item / by_order / by_recipient queries
+    const sharedReplacements = [...baseReplacements, ...itemReplacements];
+
+    // DATE_FORMAT string for by_period grouping
+    const formatStr = period === 'day' ? '%Y-%m-%d' : period === 'week' ? '%x-W%v' : '%Y-%m';
+
+    // ── SQL Queries ───────────────────────────────────────────────────────────
+
+    const summarySQL = `
+        SELECT
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * dol.sale_price_per_unit), 0) AS revenue,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * COALESCE(dol.cost_per_unit, 0)), 0) AS cogs,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0)), 0) AS units_dispatched,
+          COUNT(DISTINCT \`do\`.do_id) AS orders_counted
+        FROM dispatch_orders \`do\`
+        INNER JOIN dispatch_order_lines dol ON dol.do_id = \`do\`.do_id
+        WHERE ${baseWhere}${lineFilter}${itemFilter}`;
+
+    // Counts DOs in the filtered period that have NO priced+dispatched lines
+    const excludedSQL = `
+        SELECT COUNT(*) AS excluded_count
+        FROM dispatch_orders \`do\`
+        WHERE ${baseWhere}
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch_order_lines dol
+            WHERE dol.do_id = \`do\`.do_id
+              AND dol.sale_price_per_unit IS NOT NULL
+              AND GREATEST(dol.qty_dispatched - dol.qty_voided, 0) > 0
+          )`;
+
+    const byItemSQL = `
+        SELECT
+          dol.item_id,
+          i.sku_code, i.name, i.unit_of_measure,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0)), 0) AS units_dispatched,
+          COALESCE(AVG(dol.sale_price_per_unit), 0) AS avg_sale_price,
+          COALESCE(AVG(dol.cost_per_unit), 0) AS avg_cost_price,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * dol.sale_price_per_unit), 0) AS revenue,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * COALESCE(dol.cost_per_unit, 0)), 0) AS cogs
+        FROM dispatch_order_lines dol
+        INNER JOIN dispatch_orders \`do\` ON \`do\`.do_id = dol.do_id
+        INNER JOIN items i ON i.item_id = dol.item_id
+        WHERE ${baseWhere}${lineFilter}${itemFilter}
+        GROUP BY dol.item_id, i.sku_code, i.name, i.unit_of_measure
+        ORDER BY revenue DESC
+        LIMIT 50`;
+
+    const byOrderSQL = `
+        SELECT
+          \`do\`.do_id, \`do\`.do_number, \`do\`.recipient_name, \`do\`.recipient_type, \`do\`.dispatch_date,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * dol.sale_price_per_unit), 0) AS revenue,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * COALESCE(dol.cost_per_unit, 0)), 0) AS cogs
+        FROM dispatch_orders \`do\`
+        INNER JOIN dispatch_order_lines dol ON dol.do_id = \`do\`.do_id
+        WHERE ${baseWhere}${lineFilter}${itemFilter}
+        GROUP BY \`do\`.do_id, \`do\`.do_number, \`do\`.recipient_name, \`do\`.recipient_type, \`do\`.dispatch_date
+        ORDER BY \`do\`.dispatch_date DESC
+        LIMIT 100`;
+
+    const byRecipientSQL = `
+        SELECT
+          \`do\`.recipient_name, \`do\`.recipient_type,
+          COUNT(DISTINCT \`do\`.do_id) AS order_count,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * dol.sale_price_per_unit), 0) AS revenue,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * COALESCE(dol.cost_per_unit, 0)), 0) AS cogs
+        FROM dispatch_orders \`do\`
+        INNER JOIN dispatch_order_lines dol ON dol.do_id = \`do\`.do_id
+        WHERE ${baseWhere}${lineFilter}${itemFilter}
+        GROUP BY \`do\`.recipient_name, \`do\`.recipient_type
+        ORDER BY revenue DESC
+        LIMIT 100`;
+
+    // DATE_FORMAT(?) placeholder appears before the WHERE clause, so formatStr goes first
+    const byPeriodSQL = `
+        SELECT
+          DATE_FORMAT(\`do\`.dispatch_date, ?) AS period_label,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * dol.sale_price_per_unit), 0) AS revenue,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0) * COALESCE(dol.cost_per_unit, 0)), 0) AS cogs,
+          COALESCE(SUM(GREATEST(dol.qty_dispatched - dol.qty_voided, 0)), 0) AS units_dispatched
+        FROM dispatch_orders \`do\`
+        INNER JOIN dispatch_order_lines dol ON dol.do_id = \`do\`.do_id
+        WHERE ${baseWhere}${lineFilter}${itemFilter}
+        GROUP BY period_label
+        ORDER BY period_label ASC`;
+
+    // ── Execute in parallel ───────────────────────────────────────────────────
+
+    // When item_id is specified, excluded count is meaningless (it's order-level, not item-level).
+    // Skip the query entirely and return 0 to avoid a misleading banner in the UI.
+    const excludedPromise = item_id
+        ? Promise.resolve([{ excluded_count: 0 }])
+        : sequelize.query(excludedSQL, { type: QueryTypes.SELECT, replacements: baseReplacements });
+
+    const [summaryRows, excludedRows, byItemRows, byOrderRows, byRecipientRows, byPeriodRows] = await Promise.all([
+        sequelize.query(summarySQL,     { type: QueryTypes.SELECT, replacements: sharedReplacements }),
+        excludedPromise,
+        sequelize.query(byItemSQL,      { type: QueryTypes.SELECT, replacements: sharedReplacements }),
+        sequelize.query(byOrderSQL,     { type: QueryTypes.SELECT, replacements: sharedReplacements }),
+        sequelize.query(byRecipientSQL, { type: QueryTypes.SELECT, replacements: sharedReplacements }),
+        sequelize.query(byPeriodSQL,    { type: QueryTypes.SELECT, replacements: [formatStr, ...sharedReplacements] }),
+    ]);
+
+    // ── Post-process ──────────────────────────────────────────────────────────
+
+    const round4 = (n) => Math.round(parseFloat(n || 0) * 10000) / 10000;
+    const round2 = (n) => Math.round(parseFloat(n || 0) * 100) / 100;
+
+    const s = summaryRows[0] || {};
+    const revenue = round4(s.revenue);
+    const cogs    = round4(s.cogs);
+    const gross_profit = round4(revenue - cogs);
+
+    const summary = {
+        revenue,
+        cogs,
+        gross_profit,
+        margin_pct:           revenue > 0 ? round2((gross_profit / revenue) * 100) : 0,
+        orders_counted:       parseInt(s.orders_counted || 0),
+        units_dispatched:     round4(s.units_dispatched),
+        excluded_orders_count: parseInt(excludedRows[0]?.excluded_count || 0)
+    };
+
+    const by_item = byItemRows.map(row => {
+        const rev = round4(row.revenue);
+        const c   = round4(row.cogs);
+        const gp  = round4(rev - c);
+        return {
+            item_id:          row.item_id,
+            sku_code:         row.sku_code,
+            name:             row.name,
+            unit_of_measure:  row.unit_of_measure,
+            units_dispatched: round4(row.units_dispatched),
+            avg_sale_price:   round4(row.avg_sale_price),
+            avg_cost_price:   round4(row.avg_cost_price),
+            revenue:          rev,
+            cogs:             c,
+            gross_profit:     gp,
+            margin_pct:       rev > 0 ? round2((gp / rev) * 100) : 0
+        };
+    });
+
+    const by_order = byOrderRows.map(row => {
+        const rev = round4(row.revenue);
+        const c   = round4(row.cogs);
+        const gp  = round4(rev - c);
+        return {
+            do_id:          row.do_id,
+            do_number:      row.do_number,
+            recipient_name: row.recipient_name,
+            recipient_type: row.recipient_type,
+            dispatch_date:  row.dispatch_date,
+            revenue:        rev,
+            cogs:           c,
+            gross_profit:   gp,
+            margin_pct:     rev > 0 ? round2((gp / rev) * 100) : 0
+        };
+    });
+
+    const by_recipient = byRecipientRows.map(row => {
+        const rev = round4(row.revenue);
+        const c   = round4(row.cogs);
+        const gp  = round4(rev - c);
+        return {
+            recipient_name: row.recipient_name,
+            recipient_type: row.recipient_type,
+            order_count:    parseInt(row.order_count || 0),
+            revenue:        rev,
+            cogs:           c,
+            gross_profit:   gp,
+            margin_pct:     rev > 0 ? round2((gp / rev) * 100) : 0
+        };
+    });
+
+    const by_period = byPeriodRows.map(row => {
+        const rev = round4(row.revenue);
+        const c   = round4(row.cogs);
+        const gp  = round4(rev - c);
+        return {
+            period_label:     row.period_label,
+            units_dispatched: round4(row.units_dispatched),
+            revenue:          rev,
+            cogs:             c,
+            gross_profit:     gp,
+            margin_pct:       rev > 0 ? round2((gp / rev) * 100) : 0
+        };
+    });
+
+    return { summary, by_item, by_order, by_recipient, by_period };
+};
+
+// ─────────────────────────────────────────────────────────────
+// Retroactive Sale Price Update
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Updates the sale_price_per_unit on a single DO line (non-draft only).
+ * Also propagates the new price to item.default_sale_price so future DOs are pre-filled.
+ *
+ * @param {number} doId
+ * @param {number} lineId
+ * @param {number|null} salePrice
+ */
+export const updateLineSalePrice = async (doId, lineId, salePrice) => {
+    const DispatchOrder = dbStore.get('DispatchOrder');
+    const DispatchOrderLine = dbStore.get('DispatchOrderLine');
+    const Item = dbStore.get('Item');
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+    const dispatchOrder = await DispatchOrder.findByPk(doId);
+    if (!dispatchOrder) {
+        const error = new Error('Dispatch Order not found');
+        error.statusCode = 404;
+        throw error;
+    }
+    if (dispatchOrder.status === 'draft') {
+        const error = new Error('Use the edit order flow to modify draft orders');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const line = await DispatchOrderLine.findOne({ where: { line_id: lineId, do_id: doId } });
+    if (!line) {
+        const error = new Error('Line not found on this Dispatch Order');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const transaction = await sequelize.transaction();
+    try {
+        await line.update({ sale_price_per_unit: salePrice }, { transaction });
+
+        // Propagate to item's default_sale_price so future DOs are pre-filled
+        if (salePrice != null) {
+            await Item.update(
+                { default_sale_price: parseFloat(salePrice) },
+                { where: { item_id: line.item_id }, transaction }
+            );
+        }
+
+        await transaction.commit();
+        return getDispatchOrderById(doId);
+    } catch (err) {
+        await transaction.rollback();
+        throw err;
+    }
 };

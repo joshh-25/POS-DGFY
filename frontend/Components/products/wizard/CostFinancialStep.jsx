@@ -13,6 +13,9 @@ export default function CostFinancialStep({ data, updateData, items }) {
   const [overheadCost, setOverheadCost] = React.useState(data.overhead_cost || wizardData.overhead_cost || 0);
   const [additionalPackagingCost, setAdditionalPackagingCost] = React.useState(data.additional_packaging_cost || wizardData.additional_packaging_cost || 0);
   const [desiredMargin, setDesiredMargin] = React.useState(30);
+  const [defaultSalePrice, setDefaultSalePrice] = React.useState(
+    data.default_sale_price != null ? String(data.default_sale_price) : ''
+  );
 
   const ingredientItems = items?.filter(item => canBeProductIngredient(item)) || [];
   const packagingItemsList = items?.filter(item => item.category === 'packaging') || [];
@@ -250,6 +253,41 @@ export default function CostFinancialStep({ data, updateData, items }) {
             <p className="text-sm text-teal-600">per unit</p>
           </div>
         </div>
+      </div>
+
+      {/* Default Sale Price */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Default Sale Price (₱)</Label>
+          {suggestedPrice > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const val = String(parseFloat(suggestedPrice.toFixed(4)));
+                setDefaultSalePrice(val);
+                updateData({ default_sale_price: parseFloat(suggestedPrice.toFixed(4)) });
+              }}
+              className="text-xs text-teal-600 hover:text-teal-800 underline"
+            >
+              Use suggested (₱{formatNumber(suggestedPrice, 2)})
+            </button>
+          )}
+        </div>
+        <Input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder={suggestedPrice > 0 ? `e.g. ${formatNumber(suggestedPrice, 2)}` : 'e.g. 150.00'}
+          value={defaultSalePrice}
+          onChange={(e) => {
+            setDefaultSalePrice(e.target.value);
+            const parsed = e.target.value === '' ? null : parseFloat(e.target.value);
+            updateData({ default_sale_price: (parsed != null && !isNaN(parsed)) ? parsed : null });
+          }}
+        />
+        <p className="text-xs text-slate-500">
+          Pre-fills the sale price when creating a Dispatch Order. Auto-updated after each dispatch.
+        </p>
       </div>
     </div>
   );

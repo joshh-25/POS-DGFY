@@ -17,11 +17,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, Check, ChevronsUpDown } from 'lucide-react';
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { toast } from 'sonner';
 import { canBeDispatched } from '../utils/categoryHelpers.js';
+import { cn } from '../../src/lib/utils.js';
 
-const emptyLine = () => ({ item_id: '', qty_ordered: '', notes: '' });
+const emptyLine = () => ({ item_id: '', qty_ordered: '', sale_price_per_unit: '', notes: '' });
 
 /**
  * DOCreateModal — create a new draft DO or edit an existing draft.
@@ -51,6 +65,7 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
       ? existingDO.lines.map(l => ({
         item_id: String(l.item_id),
         qty_ordered: String(l.qty_ordered),
+        sale_price_per_unit: l.sale_price_per_unit != null ? String(l.sale_price_per_unit) : '',
         notes: l.notes || ''
       }))
       : [emptyLine()]
@@ -75,6 +90,7 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
           ? existingDO.lines.map(l => ({
             item_id: String(l.item_id),
             qty_ordered: String(l.qty_ordered),
+            sale_price_per_unit: l.sale_price_per_unit != null ? String(l.sale_price_per_unit) : '',
             notes: l.notes || ''
           }))
           : [emptyLine()]
@@ -107,7 +123,21 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
   };
 
   const updateLine = (idx, field, value) => {
-    setLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+    setLines(prev => prev.map((l, i) => {
+      if (i !== idx) return l;
+      const updated = { ...l, [field]: value };
+      // Auto-fill sale price when item is selected and price is not yet set
+      if (field === 'item_id' && !l.sale_price_per_unit) {
+        const selectedItem = items.find(it => String(it.item_id) === String(value));
+        if (selectedItem) {
+          const suggested = selectedItem.default_sale_price != null
+            ? selectedItem.default_sale_price
+            : selectedItem.cost_per_unit;
+          if (suggested != null) updated.sale_price_per_unit = String(suggested);
+        }
+      }
+      return updated;
+    }));
   };
 
   const validate = () => {
@@ -136,6 +166,7 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
         lines: lines.map(l => ({
           item_id: parseInt(l.item_id),
           qty_ordered: parseFloat(l.qty_ordered),
+          sale_price_per_unit: l.sale_price_per_unit !== '' ? parseFloat(l.sale_price_per_unit) : null,
           notes: l.notes.trim() || null
         }))
       };
@@ -247,66 +278,16 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
             )}
 
             {lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-start p-3 border border-slate-200 rounded-lg bg-slate-50">
-                <div className="col-span-5 space-y-1">
-                  {idx === 0 && <Label className="text-xs text-slate-500">Item</Label>}
-                  <Select value={line.item_id} onValueChange={v => updateLine(idx, 'item_id', v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select item…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dispatchableItems.map(item => (
-                        <SelectItem key={item.item_id} value={String(item.item_id)}>
-                          {item.name} ({item.sku_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="col-span-2 space-y-1 relative">
-                  {idx === 0 && <Label className="text-xs text-slate-500">Qty</Label>}
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="1"
-                      placeholder="Qty"
-                      value={line.qty_ordered}
-                      onChange={e => updateLine(idx, 'qty_ordered', e.target.value)}
-                      className="pr-10"
-                    />
-                    {line.item_id && (
-                      <div className="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <span className="text-sm text-slate-400 font-medium uppercase">
-                          {dispatchableItems.find(i => String(i.item_id) === line.item_id)?.unit_of_measure}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="col-span-4 space-y-1">
-                  {idx === 0 && <Label className="text-xs text-slate-500">Notes</Label>}
-                  <Input
-                    placeholder="Optional"
-                    value={line.notes}
-                    onChange={e => updateLine(idx, 'notes', e.target.value)}
-                  />
-                </div>
-
-                <div className={`col-span-1 flex ${idx === 0 ? 'mt-5' : 'items-center'}`}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeLine(idx)}
-                    disabled={lines.length === 1}
-                    className="text-slate-400 hover:text-red-500"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
+              <ItemRow
+                key={idx}
+                idx={idx}
+                line={line}
+                items={items}
+                dispatchableItems={dispatchableItems}
+                updateLine={updateLine}
+                removeLine={removeLine}
+                linesCount={lines.length}
+              />
             ))}
           </div>
         </div>
@@ -322,5 +303,162 @@ export default function DOCreateModal({ open, onClose, onSave, items = [], exist
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * ItemRow — separate row component to manage internal popover state for each line.
+ */
+function ItemRow({ idx, line, items, dispatchableItems, updateLine, removeLine, linesCount }) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const selectedItem = line.item_id
+    ? items.find(i => String(i.item_id) === line.item_id)
+    : null;
+
+  const filteredItems = useMemo(() => {
+    if (!searchTerm.trim()) return dispatchableItems;
+    const s = searchTerm.toLowerCase();
+    return dispatchableItems.filter(it =>
+      it.name.toLowerCase().includes(s) ||
+      it.sku_code.toLowerCase().includes(s)
+    );
+  }, [dispatchableItems, searchTerm]);
+
+  const priceHint = selectedItem
+    ? selectedItem.default_sale_price != null
+      ? `Last: ₱${parseFloat(selectedItem.default_sale_price).toFixed(2)}`
+      : selectedItem.cost_per_unit != null
+        ? `Cost: ₱${parseFloat(selectedItem.cost_per_unit).toFixed(2)}`
+        : null
+    : null;
+
+  return (
+    <div className="grid grid-cols-12 gap-2 items-start p-3 border border-slate-200 rounded-lg bg-slate-50">
+      <div className="col-span-3 space-y-1">
+        {idx === 0 && <Label className="text-xs text-slate-500">Item</Label>}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className={cn(
+                "w-full justify-between font-normal bg-white",
+                !line.item_id && "text-slate-500"
+              )}
+            >
+              <span className="truncate">
+                {selectedItem ? selectedItem.name : "Select item..."}
+              </span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput
+                placeholder="Search item..."
+                value={searchTerm}
+                onValueChange={setSearchTerm}
+              />
+              <CommandList>
+                {filteredItems.length === 0 && <CommandEmpty>No item found.</CommandEmpty>}
+                <CommandGroup>
+                  {filteredItems.map((item) => (
+                    <CommandItem
+                      key={item.item_id}
+                      value={`${item.name} ${item.sku_code} ${item.item_id}`}
+                      onSelect={() => {
+                        updateLine(idx, 'item_id', String(item.item_id));
+                        setOpen(false);
+                        setSearchTerm("");
+                      }}
+                      className="flex flex-col items-start gap-1"
+                    >
+                      <div className="flex items-center w-full">
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4 shrink-0",
+                            line.item_id === String(item.item_id) ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="font-medium text-slate-900">{item.name}</span>
+                      </div>
+                      <span className="text-xs text-slate-400 ml-6">{item.sku_code}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div className="col-span-2 space-y-1">
+        {idx === 0 && <Label className="text-xs text-slate-500">Qty</Label>}
+        <div className="relative">
+          <Input
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Qty"
+            value={line.qty_ordered}
+            onChange={e => updateLine(idx, 'qty_ordered', e.target.value)}
+            className="bg-white"
+          />
+          {line.item_id && (
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none uppercase">
+              {selectedItem?.unit_of_measure}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="col-span-4 space-y-1">
+        {idx === 0 && (
+          <Label className="text-xs text-slate-500 whitespace-nowrap">
+            Sale Price/Unit
+          </Label>
+        )}
+        <div className="relative">
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">₱</span>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Price per unit"
+            value={line.sale_price_per_unit}
+            onChange={e => updateLine(idx, 'sale_price_per_unit', e.target.value)}
+            className="pl-5 bg-white"
+          />
+        </div>
+        {priceHint && !line.sale_price_per_unit && (
+          <p className="text-xs text-slate-400">{priceHint}</p>
+        )}
+      </div>
+
+      <div className="col-span-2 space-y-1">
+        {idx === 0 && <Label className="text-xs text-slate-500">Notes</Label>}
+        <Input
+          placeholder="Optional"
+          value={line.notes}
+          onChange={e => updateLine(idx, 'notes', e.target.value)}
+          className="bg-white"
+        />
+      </div>
+
+      <div className={`col-span-1 flex ${idx === 0 ? 'mt-5' : 'items-center pt-1'}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => removeLine(idx)}
+          disabled={linesCount === 1}
+          className="text-slate-400 hover:text-red-500"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
   );
 }

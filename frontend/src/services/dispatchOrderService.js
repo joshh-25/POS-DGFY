@@ -57,3 +57,13 @@ export const exportDispatchOrdersCSV = async (params = {}) => {
   });
   return response.data;
 };
+
+export const getEarningsReport = async (params = {}) => {
+  const response = await api.get('/dispatch-orders/earnings', { params });
+  return response.data.data;
+};
+
+export const updateLineSalePrice = async (doId, lineId, salePrice) => {
+  const response = await api.patch(`/dispatch-orders/${doId}/lines/${lineId}/sale-price`, { sale_price_per_unit: salePrice });
+  return response.data.data;
+};

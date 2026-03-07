@@ -8,14 +8,24 @@ import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js'
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 
 const readCsvContentFromRequest = async (req) => {
+  console.log('DEBUG CSV UPLOAD - req.body:', Object.keys(req.body));
+  console.log('DEBUG CSV UPLOAD - req.file:', req.file);
+
   if (!req.body.csvContent && !req.file) {
     const error = new Error('No CSV content provided. Send csvContent in body or upload a file.');
     error.statusCode = 400;
     throw error;
   }
 
-  if (req.file?.path) {
-    return fs.readFile(req.file.path, 'utf-8');
+  if (req.file) {
+    // Multer diskStorage saves to req.file.path
+    if (req.file.path) {
+      return fs.readFile(req.file.path, 'utf-8');
+    }
+    // Multer memoryStorage saves to req.file.buffer
+    if (req.file.buffer) {
+      return req.file.buffer.toString('utf-8');
+    }
   }
 
   return req.body.csvContent;

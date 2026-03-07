@@ -15,8 +15,15 @@ const readCsvContentFromRequest = async (req) => {
     throw error;
   }
 
-  if (req.file?.path) {
-    return fs.readFile(req.file.path, 'utf-8');
+  if (req.file) {
+    // Multer diskStorage saves to req.file.path
+    if (req.file.path) {
+      return fs.readFile(req.file.path, 'utf-8');
+    }
+    // Multer memoryStorage saves to req.file.buffer
+    if (req.file.buffer) {
+      return req.file.buffer.toString('utf-8');
+    }
   }
 
   return req.body.csvContent;

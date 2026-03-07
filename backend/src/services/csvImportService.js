@@ -266,7 +266,7 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
  */
 export const previewImport = async (csvContent) => {
     // Parse CSV
-    const parseResult = parseCSV(csvContent);
+    const parseResult = await parseCSV(csvContent);
     if (!parseResult.success) {
         return { success: false, error: parseResult.error };
     }

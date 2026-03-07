@@ -286,7 +286,7 @@ export const itemRepository = {
 
             const rows = await Item.findAll({
                 where,
-                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'status', 'current_stock'],
+                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'status', 'current_stock', 'cost_per_unit', 'default_sale_price'],
                 order: [['name', 'ASC']],
                 limit: parseInt(limit, 10)
             });

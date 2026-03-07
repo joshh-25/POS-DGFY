@@ -18,11 +18,11 @@ const Command = ({ className, children, ...props }) => {
 
 const CommandInput = ({ className, value, onValueChange, placeholder, ...props }) => {
   return (
-    <div className="flex items-center border-b px-3">
-      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+    <div className="flex items-center border-b px-4">
+      <Search className="mr-2 h-4 w-4 shrink-0 opacity-40" />
       <input
         className={cn(
-          "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         value={value}
@@ -48,7 +48,7 @@ const CommandList = ({ className, children, ...props }) => {
 const CommandEmpty = ({ className, children, ...props }) => {
   return (
     <div
-      className={cn("py-6 text-center text-sm text-slate-500", className)}
+      className={cn("py-10 text-center text-sm text-slate-400", className)}
       {...props}
     >
       {children}
@@ -79,7 +79,7 @@ const CommandItem = ({ className, selected, onSelect, children, ...props }) => {
   return (
     <div
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 text-sm outline-none transition-colors hover:bg-slate-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         selected && "bg-slate-100",
         className
       )}

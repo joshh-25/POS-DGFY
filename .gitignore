@@ -67,3 +67,4 @@ nul
 /provision-log*.txt
 /*.txt
 /*.log
+pixel-agents/

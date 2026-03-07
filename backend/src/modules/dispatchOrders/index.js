@@ -9,7 +9,9 @@ import {
   buildConfirmDispatchOrderUseCase,
   buildDispatchLinesUseCase,
   buildCancelDispatchOrderUseCase,
-  buildArchiveDispatchOrderUseCase
+  buildArchiveDispatchOrderUseCase,
+  buildGetEarningsReportUseCase,
+  buildUpdateLineSalePriceUseCase
 } from './usecases/dispatchOrderUseCases.js';
 
 export const getDispatchOrdersUseCase = buildGetDispatchOrdersUseCase({ dispatchOrderService });
@@ -22,3 +24,5 @@ export const confirmDispatchOrderUseCase = buildConfirmDispatchOrderUseCase({ di
 export const dispatchLinesUseCase = buildDispatchLinesUseCase({ dispatchOrderService });
 export const cancelDispatchOrderUseCase = buildCancelDispatchOrderUseCase({ dispatchOrderService });
 export const archiveDispatchOrderUseCase = buildArchiveDispatchOrderUseCase({ dispatchOrderService });
+export const getEarningsReportUseCase = buildGetEarningsReportUseCase({ dispatchOrderService });
+export const updateLineSalePriceUseCase = buildUpdateLineSalePriceUseCase({ dispatchOrderService });

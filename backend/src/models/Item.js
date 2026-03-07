@@ -85,6 +85,14 @@ const Item = sequelize.define('Item', {
       min: 0
     }
   },
+  default_sale_price: {
+    type: DataTypes.DECIMAL(10, 4),
+    allowNull: true,
+    validate: {
+      min: 0
+    },
+    comment: 'Last-used sale price. Auto-updated from DO dispatches. Defaults to cost_per_unit on first use.'
+  },
   fifo_enabled: {
     type: DataTypes.BOOLEAN,
     defaultValue: false

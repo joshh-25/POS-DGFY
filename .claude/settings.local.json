@@ -100,7 +100,10 @@
       "Bash(wc:*)",
       "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" fetch origin master)",
       "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" log --oneline HEAD...origin/master)",
-      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" status --short)"
+      "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" status --short)",
+      "Bash(pm2 delete sku-frontend)",
+      "Bash(pm2 start ecosystem.config.cjs --only sku-frontend)",
+      "Bash(TaskOutput bgk5c4c9p)"
     ]
   }
 }

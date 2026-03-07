@@ -93,3 +93,16 @@ Use this audit before user testing and during rollout to catch telemetry drift e
 2. Hit billing/register flows
 3. Check `GET /health`
 4. Investigate any degraded counters before trusting the telemetry
+
+## Synthetic Webhook Caution
+
+Do not write synthetic verification records into `webhook_logs` using handled PayPal event types
+(for example `PAYMENT.SALE.COMPLETED`) unless matching telemetry events are also produced.
+
+Otherwise the audit will report:
+- `webhook_without_telemetry`
+
+If old synthetic rows exist:
+```bash
+mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
+```

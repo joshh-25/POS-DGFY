@@ -110,7 +110,7 @@ const validateSupplier = async (supplierData, rowIndex, existingSuppliersMap) =>
  * Preview CSV import
  */
 export const previewImport = async (csvContent) => {
-    const parseResult = parseCSV(csvContent);
+    const parseResult = await parseCSV(csvContent);
     if (!parseResult.success) {
         return { success: false, error: parseResult.error };
     }

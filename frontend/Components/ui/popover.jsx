@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { cn } from '../../src/lib/utils.js'
 
-const Popover = ({ children }) => {
-  const [open, setOpen] = useState(false)
+const Popover = ({ open: controlledOpen, onOpenChange, children }) => {
+  const [internalOpen, setInternalOpen] = useState(false)
+
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setOpen = (val) => {
+    if (onOpenChange) onOpenChange(val)
+    setInternalOpen(val)
+  }
 
   return (
     <PopoverContext.Provider value={{ open, setOpen }}>

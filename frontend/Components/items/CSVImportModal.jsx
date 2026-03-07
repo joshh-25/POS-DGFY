@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 
 export default function CSVImportModal({ open, onClose, onSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
-    const [csvContent, setCsvContent] = useState('');
+    const [file, setFile] = useState(null);
     const [fileName, setFileName] = useState('');
     const [importResult, setImportResult] = useState(null);
 
@@ -42,7 +42,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
 
     const handleClose = () => {
         setStep(1);
-        setCsvContent('');
+        setFile(null);
         setFileName('');
         setImportResult(null);
         reset();
@@ -50,43 +50,30 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
     };
 
     const handleFileSelect = useCallback((event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+        const selectedFile = event.target.files?.[0];
+        if (!selectedFile) return;
 
-        if (!file.name.endsWith('.csv')) {
+        if (!selectedFile.name.endsWith('.csv')) {
             toast.error('Please select a CSV file');
             return;
         }
 
-        setFileName(file.name);
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            setCsvContent(e.target.result);
-        };
-        reader.onerror = () => {
-            toast.error('Failed to read file');
-        };
-        reader.readAsText(file);
+        setFileName(selectedFile.name);
+        setFile(selectedFile);
     }, []);
 
     const handleDrop = useCallback((event) => {
         event.preventDefault();
-        const file = event.dataTransfer.files?.[0];
-        if (!file) return;
+        const droppedFile = event.dataTransfer.files?.[0];
+        if (!droppedFile) return;
 
-        if (!file.name.endsWith('.csv')) {
+        if (!droppedFile.name.endsWith('.csv')) {
             toast.error('Please select a CSV file');
             return;
         }
 
-        setFileName(file.name);
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            setCsvContent(e.target.result);
-        };
-        reader.readAsText(file);
+        setFileName(droppedFile.name);
+        setFile(droppedFile);
     }, []);
 
     const handleDragOver = useCallback((event) => {
@@ -94,12 +81,12 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
     }, []);
 
     const handlePreview = async () => {
-        if (!csvContent) {
+        if (!file) {
             toast.error('Please select a CSV file first');
             return;
         }
 
-        const result = await previewCSV(csvContent);
+        const result = await previewCSV(file);
         if (result.success) {
             setStep(2);
         } else {
@@ -138,7 +125,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
 
     const handleStartOver = () => {
         setStep(1);
-        setCsvContent('');
+        setFile(null);
         setFileName('');
         setImportResult(null);
         reset();
@@ -385,7 +372,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                             </Button>
                             <Button
                                 onClick={handlePreview}
-                                disabled={!csvContent || loading}
+                                disabled={!file || loading}
                                 className="bg-teal-600 hover:bg-teal-700"
                             >
                                 {loading ? (

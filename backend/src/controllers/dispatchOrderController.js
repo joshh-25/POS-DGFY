@@ -12,7 +12,9 @@ export {
   confirmDispatchOrder,
   dispatchLines,
   cancelDispatchOrder,
-  archiveDispatchOrder
+  archiveDispatchOrder,
+  getEarningsReport,
+  updateLineSalePrice
 } from '../modules/dispatchOrders/controllers/dispatchOrderHandlers.js';
 
 import {
@@ -25,7 +27,9 @@ import {
   confirmDispatchOrder,
   dispatchLines,
   cancelDispatchOrder,
-  archiveDispatchOrder
+  archiveDispatchOrder,
+  getEarningsReport,
+  updateLineSalePrice
 } from '../modules/dispatchOrders/controllers/dispatchOrderHandlers.js';
 
 export default {
@@ -38,5 +42,7 @@ export default {
   confirmDispatchOrder,
   dispatchLines,
   cancelDispatchOrder,
-  archiveDispatchOrder
+  archiveDispatchOrder,
+  getEarningsReport,
+  updateLineSalePrice
 };

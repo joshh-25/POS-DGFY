@@ -19,7 +19,9 @@ import {
   User,
   Calendar,
   Package,
-  Hash
+  Hash,
+  AlertTriangle,
+  Pencil
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
@@ -75,6 +77,8 @@ export default function DODetailsModal({
   const [doOrder, setDoOrder] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
+  const [editingPrice, setEditingPrice] = useState(null); // { lineId, value: string } | null
+  const [savingPrice, setSavingPrice] = useState(false);
   const { can } = usePermission();
 
   useEffect(() => {
@@ -125,7 +129,29 @@ export default function DODetailsModal({
 
   const handleClose = () => {
     setDoOrder(null);
+    setEditingPrice(null);
     onClose();
+  };
+
+  const handleSaveLinePrice = async (lineId) => {
+    const raw = editingPrice?.value?.trim();
+    const parsed = raw === '' ? null : parseFloat(raw);
+    if (raw !== '' && (isNaN(parsed) || parsed < 0)) {
+      toast.error('Enter a valid price or leave blank to clear');
+      return;
+    }
+    setSavingPrice(true);
+    try {
+      const updated = await dispatchOrderService.updateLineSalePrice(doId, lineId, parsed);
+      setDoOrder(updated);
+      setEditingPrice(null);
+      onRefresh?.();
+      toast.success('Sale price updated');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update sale price');
+    } finally {
+      setSavingPrice(false);
+    }
   };
 
   const formatDate = (d) => {
@@ -223,6 +249,12 @@ export default function DODetailsModal({
                   const progress = getLineProgress(line);
                   const itemName = line.item?.name || `Item #${line.item_id}`;
                   const voided = parseFloat(line.qty_voided || 0);
+                  const effectiveQty = parseFloat(line.qty_dispatched || 0) - voided;
+                  const salePrice = line.sale_price_per_unit != null ? parseFloat(line.sale_price_per_unit) : null;
+                  const costPrice = line.cost_per_unit != null ? parseFloat(line.cost_per_unit) : null;
+                  const lineRevenue = salePrice != null && effectiveQty > 0 ? salePrice * effectiveQty : null;
+                  const lineCogs = costPrice != null && effectiveQty > 0 ? costPrice * effectiveQty : null;
+                  const lineProfit = lineRevenue != null && lineCogs != null ? lineRevenue - lineCogs : null;
                   return (
                     <div key={line.line_id} className="border border-slate-200 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-3">
@@ -253,6 +285,62 @@ export default function DODetailsModal({
                           />
                         </div>
                       </div>
+                      {/* Pricing row */}
+                      {(salePrice != null || costPrice != null || (doOrder.status !== 'draft' && can('do:dispatch'))) && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+                          {costPrice != null && (
+                            <span>Cost/unit: <span className="font-medium text-slate-800">₱{costPrice.toFixed(2)}</span></span>
+                          )}
+                          {doOrder.status !== 'draft' && can('do:dispatch') ? (
+                            editingPrice?.lineId === line.line_id ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="text-slate-500">Sale/unit:</span>
+                                <span className="relative">
+                                  <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">₱</span>
+                                  <input
+                                    type="number" min="0" step="0.01" autoFocus
+                                    value={editingPrice.value}
+                                    onChange={e => setEditingPrice(prev => ({ ...prev, value: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveLinePrice(line.line_id); if (e.key === 'Escape') setEditingPrice(null); }}
+                                    className="w-24 pl-4 pr-1 py-0.5 text-xs border border-teal-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                  />
+                                </span>
+                                <button onClick={() => handleSaveLinePrice(line.line_id)} disabled={savingPrice}
+                                  className="text-xs font-medium text-teal-700 hover:text-teal-900 disabled:opacity-50">
+                                  {savingPrice ? '…' : 'Save'}
+                                </button>
+                                <button onClick={() => setEditingPrice(null)}
+                                  className="text-xs text-slate-400 hover:text-slate-600">
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : salePrice != null ? (
+                              <span className="flex items-center gap-1">
+                                Sale/unit: <span className="font-medium text-teal-700">₱{salePrice.toFixed(2)}</span>
+                                <button onClick={() => setEditingPrice({ lineId: line.line_id, value: String(salePrice) })}
+                                  className="text-slate-300 hover:text-slate-500 ml-0.5">
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ) : (
+                              <button onClick={() => setEditingPrice({ lineId: line.line_id, value: '' })}
+                                className="text-xs text-amber-600 hover:text-amber-800 font-medium">
+                                + Add sale price
+                              </button>
+                            )
+                          ) : salePrice != null ? (
+                            <span>Sale/unit: <span className="font-medium text-teal-700">₱{salePrice.toFixed(2)}</span></span>
+                          ) : null}
+                          {lineRevenue != null && (
+                            <span>Revenue: <span className="font-medium text-teal-700">₱{lineRevenue.toFixed(2)}</span></span>
+                          )}
+                          {lineProfit != null && (
+                            <span>Gross Profit: <span className={cn('font-medium', lineProfit >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                              ₱{lineProfit.toFixed(2)}
+                            </span></span>
+                          )}
+                        </div>
+                      )}
                       {line.notes && (
                         <p className="text-xs text-slate-500 mt-2 italic">{line.notes}</p>
                       )}
@@ -260,6 +348,53 @@ export default function DODetailsModal({
                   );
                 })}
               </div>
+
+              {/* Earnings summary for completed/partial DOs */}
+              {['completed', 'partial'].includes(doOrder.status) && (() => {
+                let totalRevenue = 0;
+                let totalCogs = 0;
+                let hasPrice = false;
+                let linesWithoutPrice = 0;
+                for (const line of (doOrder.lines || [])) {
+                  const effectiveQty = parseFloat(line.qty_dispatched || 0) - parseFloat(line.qty_voided || 0);
+                  if (effectiveQty <= 0) continue;
+                  const sp = line.sale_price_per_unit != null ? parseFloat(line.sale_price_per_unit) : null;
+                  const cp = line.cost_per_unit != null ? parseFloat(line.cost_per_unit) : 0;
+                  if (sp != null) {
+                    hasPrice = true;
+                    totalRevenue += sp * effectiveQty;
+                    totalCogs += cp * effectiveQty;
+                  } else {
+                    linesWithoutPrice++;
+                  }
+                }
+                if (!hasPrice) return null;
+                const grossProfit = totalRevenue - totalCogs;
+                const marginPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+                return (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Revenue', value: `₱${totalRevenue.toFixed(2)}`, color: 'text-teal-700 bg-teal-50 border-teal-200' },
+                        { label: 'COGS', value: `₱${totalCogs.toFixed(2)}`, color: 'text-slate-700 bg-slate-50 border-slate-200' },
+                        { label: 'Gross Profit', value: `₱${grossProfit.toFixed(2)}`, color: grossProfit >= 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200' },
+                        { label: 'Margin', value: `${marginPct.toFixed(1)}%`, color: marginPct >= 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200' },
+                      ].map(({ label, value, color }) => (
+                        <div key={label} className={cn('border rounded-lg px-4 py-3 text-center', color)}>
+                          <p className="text-xs font-medium opacity-70">{label}</p>
+                          <p className="text-sm font-bold mt-0.5">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {linesWithoutPrice > 0 && (
+                      <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        {linesWithoutPrice} line{linesWithoutPrice !== 1 ? 's' : ''} {linesWithoutPrice !== 1 ? 'have' : 'has'} no sale price — use "Add sale price" above to set {linesWithoutPrice !== 1 ? 'them' : 'it'} retroactively.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Stock movements */}

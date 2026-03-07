@@ -1,267 +1,131 @@
 # Deployment Guide - SKU Inventory Manager
 
-## Overview
-This guide covers the deployment process for the SKU Inventory Manager (SKUpervisor) application. The system consists of:
-- **Frontend**: React + Vite preview server (Port 5173/80)
-- **Backend**: Node.js + Express (Port 5001)
-- **Database**: MySQL
-- **Process Manager**: PM2
+## Purpose
+Canonical production deployment runbook for `/var/www/skupervisor`.
+
+Use this guide for:
+1. Standard deploys via `scripts/deploy.sh`
+2. Recovery from deploy gate failures
+3. Post-deploy verification
 
 ## Prerequisites
-- **Node.js**: v18+ installed
-- **MySQL**: v8.0+ installed and running
-- **PM2**: Installed globally (`npm install -g pm2`)
-- **Git**: For pulling updates
+- SSH access to server (`root@192.53.116.33 -p 64428`)
+- Clean local git state for the commit you intend to deploy
+- Required backend env vars present on server in `backend/.env`:
+  - `PAYPAL_CLIENT_ID`
+  - `PAYPAL_CLIENT_SECRET`
+  - `PAYPAL_MODE`
+  - `PAYPAL_WEBHOOK_ID`
+  - `DB_HOST`
+  - `DB_USER`
+  - `DB_NAME`
 
----
-
-## 🤖 Automated Deployment (Antigravity Only)
-
-If you are using the Antigravity AI assistant, you can automate this entire guide using a single command:
-
-```bash
-/deploy
-```
-
-This will autonomously handle SSH, git pulling, dependency installation, database migrations, frontend building, and PM2 restarts.
-
----
-
-## Deployment Steps
-### 1. Auto-Deployment (Recommended)
-We have implemented an automated script `deploy.sh` that handles the entire process safely (pulling code, installing dependencies, building frontend, migrating DB, and restarting services). This script defaults to `NODE_ENV=production`.
-
-Run this on your server:
+## Standard Deployment (Recommended)
+Run on the production server:
 
 ```bash
 cd /var/www/skupervisor
-
-# First time setup (if permission denied):
-chmod +x scripts/deploy.sh
-
-# Deploy
-./scripts/deploy.sh
-```
-
-For strict commit targeting (recommended), pin the expected remote SHA:
-```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
 
-`deploy.sh` now skips legacy maintenance hooks by default (precision/surgical legacy scripts).  
-Only run them for targeted recovery work:
-```bash
-bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --run-legacy-hooks
-```
-Also note: the pipeline performs a required-index self-heal pass before the strict schema audit gate.
+What `deploy.sh` does:
+1. Validates env requirements
+2. Pulls fast-forward only
+3. Installs deterministic dependencies (`npm ci`)
+4. Runs docs lint and architecture gates
+5. Builds frontend
+6. Runs DB migrations
+7. Skips legacy maintenance hooks by default
+8. Runs required-index self-heal (`npm run repair:indexes`)
+9. Runs strict index audit (`npm run audit:indexes`)
+10. Runs strict billing-funnel audit (`npm run audit:billing-funnel`)
+11. Runs tenant schema sync
+12. Reloads PM2 and verifies backend/frontend health
 
-Evidence generated per run:
+Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.log`
 - `logs/deploy/deploy_<timestamp>.changed_files.txt`
 - `logs/deploy/deploy_<timestamp>.summary.txt`
 - `.deploy-state/last_deployed_commit`
 
-> [!NOTE]
-> **Multi-Tenancy Updates**: The `deploy.sh` script now automatically runs `backend/scripts/sync-tenant-schemas.js`. This ensures that if you add new columns or tables to the database, **ALL** existing tenant databases will be updated to match the new schema automatically. You do not need to run this manually.
+## Legacy Hook Mode (Recovery Only)
+Legacy hooks are intentionally disabled by default.
 
-
-### 3. Local Development vs. Production
-**Important**: Deployment script only restarts the **production** server. If you fixed a backend bug (e.g., Model definition), you **must restart your local backend server** manually to see the fix locally.
+Enable only for targeted recovery:
 
 ```bash
-# Local development restart
-pm2 restart all
-# or use Ctrl+C and npm run dev
+bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --run-legacy-hooks
 ```
 
----
+## If Deploy Stops on Lock Error
+Symptom:
+- `Another deployment appears to be running (lock: /tmp/skupervisor_deploy.lock)`
 
-### 2. Multi-Tenancy Onboarding (One-time)
-When upgrading an existing production database to Multi-Tenancy for the first time, you **must** run the onboarding script to register your company and map your users:
+Recovery:
 
-```bash
-node backend/scripts/onboard-production-tenant.js
-```
-This script will:
-- Create a primary tenant record in the central Landlord DB.
-- Map all current active users to this tenant so they can log in.
-- Generate your `x-company-token`.
-
----
-
-### 2. Manual Deployment (Fallback)
-If the auto-deployment script fails, you can fall back to manual steps:
-
-#### Step 1: Update Code
 ```bash
 cd /var/www/skupervisor
-# Note: Requires Personal Access Token (PAT) or SSH Key if password auth fails.
-git pull origin master
+ps -ef | grep deploy.sh | grep -v grep
 ```
 
-#### Step 2: Backend Setup
+If no deploy process exists:
+
 ```bash
+rm -f /tmp/skupervisor_deploy.lock
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$BRANCH"
+EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
+DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+## If Billing-Funnel Audit Fails With `webhook_without_telemetry`
+Common cause:
+- synthetic rows in `webhook_logs` (for example `test_webhook_*` from old verification flow)
+
+Cleanup:
+
+```bash
+mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
 cd backend
-npm install
-npx sequelize-cli db:migrate
-cd ..
+npm run audit:billing-funnel
 ```
 
-#### Step 3: Frontend Build (CRITICAL)
-The frontend is a static site build. **You must rebuild it whenever frontend code changes.**
+Audit must return healthy (`exit 0`) before deploy can complete.
+
+## Local-to-Production Safety Rules
+1. Push your commit to GitHub first. Server deploy pulls from remote only.
+2. Do not rely on uncommitted local files.
+3. Prefer commit-pinned deploys (`--expect-commit`) to avoid drift.
+4. Use `tail -f` on latest deploy log if terminal seems idle:
 
 ```bash
-cd frontend
-npm install
-npm run build
-cd ..
+cd /var/www/skupervisor
+LOG=$(ls -1t logs/deploy/deploy_*.log | head -1)
+tail -f "$LOG"
 ```
 
-#### Step 4: Restart Services
-```bash
-pm2 restart all
-```
+## PM2 Notes
+Use ecosystem reload flow (already handled by deploy script):
 
-## Environment Configuration
-
-### Backend (.env)
-Located in `backend/.env`:
-```env
-PORT=5001
-DB_HOST=localhost
-DB_USER=root
-DB_PASS=your_password
-DB_NAME=sku_inventory_manager
-JWT_SECRET=your_jwt_secret
-NODE_ENV=production
-TRUST_PROXY=true # Required when running behind Nginx/Apache
-
-# Rate Limiting (auto-injected by deploy.sh if missing)
-RATE_LIMIT_MAX_REQUESTS=500    # Per real client IP per 15 minutes (default 100 is too low)
-RATE_LIMIT_MIN_PROD_REQUESTS=300 # Safety floor for production general limiter
-RATE_LIMIT_ALERT_THRESHOLD=50    # Emit "Rate limit spike alert" every N 429 events
-RATE_LIMIT_WINDOW_MS=900000    # 15 minutes
-
-OPENAI_API_KEY=your_openai_key # Optional: AI features will be disabled if missing
-FRONTEND_URL=https://skupervisor.surebizcorp.com
-
-# Email Configuration (Brevo - required for company/user emails)
-SMTP_HOST=smtp-relay.brevo.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-brevo-account-email
-SMTP_PASS=your-brevo-smtp-key
-EMAIL_FROM=skupervisor@gmail.com
-EMAIL_FROM_NAME="SKU Inventory Manager"
-APP_URL=https://skupervisor.surebizcorp.com
-```
-
-> [!NOTE]
-> **Gmail SMTP Won't Work**: Most VPS providers block SMTP ports (587/465). Use [Brevo](https://www.brevo.com) (free tier: 300 emails/day) instead. See TROUBLESHOOTING.md for setup guide.
-
-> [!IMPORTANT]
-> **Production Safety Checks**: The backend will perform a critical check on startup when `NODE_ENV=production`. If `DB_HOST`, `DB_USER`, `DB_NAME`, or `JWT_SECRET` are missing, a CRITICAL error will be logged. Unlike development mode, there are **no fallbacks** (like `root` or empty passwords) for security reasons.
-
-### Frontend
-Frontend environment variables are baked into the build. To change them, modify `frontend/.env` and **rebuild the frontend**.
-
-## Troubleshooting
-
-### Changes Not Showing?
-If you updated the frontend but don't see changes:
-1. **Rebuild**: Ensure you ran `npm run build` in the `frontend` directory.
-2. **Hard Refresh**: Press `Ctrl + Shift + R` (Windows) or `Cmd + Shift + R` (Mac) in your browser.
-3. **Cache**: Clear Cloudflare or Nginx cache if applicable.
-
-### 502 Bad Gateway
-Usually means the backend crashed. Check logs:
-```bash
-pm2 logs sku-backend --lines 50
-```
-
-### Database Connection Errors
-Check your `.env` credentials and ensure MySQL is running:
-```bash
-systemctl status mysql
-```
-
-
----
-
-## Quick One-Liner Deployment (From Local Machine)
-
-As of **2026-02-23**, there are two ways to trigger a remote deployment without manually SSH-ing for every command:
-
-### Option A: The Automated Trigger (Recommended)
-We have provided a dedicated script in your local development environment that handles the git push and remote execution in one go.
-
-```bash
-# Run from your local root directory
-bash scripts/deploy-remote.sh
-```
-This script will confirm the deployment, push your local `master` branch to GitHub, and then SSH into the production server to run the full `./scripts/deploy.sh` pipeline.
-
-### Option B: Deploy Directly on the Server
-If you're already SSH'd into the server, run `deploy.sh` directly — no push needed (the script pulls from GitHub itself):
-```bash
-cd /var/www/skupervisor && bash scripts/deploy.sh
-```
-
-> [!CAUTION]
-> **Data Safety First**: Always ensure you have a fresh database backup before major deployments. You can run `mysqldump skupervisor_prod > /var/backups/manual_pre_deploy.sql` on the server before starting.
-
----
-
-## Server Details
-
-| Property | Value |
-|----------|-------|
-| IP Address | 192.53.116.33 |
-| SSH Port | 64428 |
-| User | root |
-| Deploy Path | /var/www/skupervisor |
-| Frontend URL | https://skupervisor.surebizcorp.com |
-
----
-
-## ecosystem.config.cjs
-
-The project uses `ecosystem.config.cjs` (CommonJS format) in the root directory. This file:
-- Defines `sku-backend` and `sku-frontend` processes
-- Sets `env_production` variables (`NODE_ENV=production`)
-- Configures restart protections: `max_memory_restart: '512M'`, `max_restarts: 10`, `min_uptime: '10s'`, `restart_delay: 5000`
-
-**Frontend process** (`sku-frontend`) runs **Vite's preview server** (not the dev server), which serves the pre-built `dist/` directory:
-```javascript
-{
-    name: 'sku-frontend',
-    script: './node_modules/.bin/vite',
-    args: 'preview --host --port 5173',
-    cwd: './frontend',
-    env: { NODE_ENV: 'production' },
-}
-```
-> [!CAUTION]
-> Do NOT use `vite --host` (dev mode) or `npm run preview` (npm intercepts `--host` as npm config). Always use the direct binary path shown above.
-
-`deploy.sh` automatically detects and uses this file. Manual usage:
 ```bash
 pm2 startOrReload ecosystem.config.cjs --env production --update-env
-pm2 save  # persist so processes survive server reboots
+pm2 save
 ```
 
-> [!IMPORTANT]
-> Always use the ecosystem file for PM2 commands — not `pm2 restart all` — to ensure production env vars and restart protections are applied correctly.
+Do not use `pm2 restart all` as primary deployment strategy.
 
-> [!NOTE]
-> **One-time step when changing the `script` property**: PM2's `startOrReload` caches the process definition and will NOT pick up a change to the `script` path. If you ever change which binary `sku-frontend` runs, you must manually re-register it once:
-> ```bash
-> pm2 delete sku-frontend
-> pm2 start ecosystem.config.cjs --only sku-frontend --env production
-> pm2 save
-> ```
-> After this one-time step, subsequent `pm2 startOrReload` calls will work normally.
+## Manual Fallback (Last Resort)
+Use only if deploy script itself is broken:
 
+```bash
+cd /var/www/skupervisor
+git pull --ff-only origin master
+npm ci --no-audit --no-fund
+cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && npm run audit:billing-funnel && cd ..
+cd frontend && npm ci --no-audit --no-fund && npm run build && cd ..
+pm2 startOrReload ecosystem.config.cjs --env production --update-env
+pm2 save
+```

@@ -96,6 +96,10 @@ api.interceptors.request.use(
     if (companyToken && !config.headers['x-company-token']) {
       config.headers['x-company-token'] = companyToken;
     }
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

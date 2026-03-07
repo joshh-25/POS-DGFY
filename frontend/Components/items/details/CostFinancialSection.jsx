@@ -75,6 +75,28 @@ export default function CostFinancialSection({ item }) {
         </div>
       )}
 
+      {/* Default Sale Price */}
+      {item.category === 'product' && item.product_type === 'finished_goods' && (
+        <div className="bg-teal-50 rounded-lg p-4 border border-teal-200">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-teal-600" />
+            <label className="text-sm font-medium text-teal-700">Default Sale Price</label>
+          </div>
+          {item.default_sale_price != null ? (
+            <>
+              <p className="text-2xl font-bold text-teal-900">
+                ₱{formatNumber(item.default_sale_price, 2)}
+              </p>
+              <p className="text-xs text-teal-600 mt-1">per {item.unit_of_measure} — pre-fills Dispatch Order sale price</p>
+            </>
+          ) : (
+            <p className="text-sm text-teal-700">
+              Not set — will default to cost per unit (₱{formatNumber(totalCost, 2)}) on first dispatch
+            </p>
+          )}
+        </div>
+      )}
+
       {!item.cost_per_unit && !hasCostBreakdown && (
         <p className="text-slate-500 text-center py-4">No cost information available</p>
       )}

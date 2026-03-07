@@ -50,6 +50,7 @@ export const createItemSchema = Joi.object({
   cost_per_unit: Joi.number().min(0).allow(null).messages({
     'number.min': 'Cost per unit must be 0 or greater'
   }),
+  default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -165,6 +166,7 @@ export const createItemDraftSchema = Joi.object({
   purchase_allowance: Joi.number().min(0).allow(null, ''),
   unit_of_measure: Joi.string().min(1).max(50).allow(null, ''),
   cost_per_unit: Joi.number().min(0).allow(null, ''),
+  default_sale_price: Joi.number().min(0).precision(4).allow(null, '').optional(),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -270,6 +272,7 @@ export const updateItemSchema = Joi.object({
   purchase_allowance: Joi.number().min(0).allow(null),
   unit_of_measure: Joi.string().min(1).max(50),
   cost_per_unit: Joi.number().min(0).allow(null),
+  default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),

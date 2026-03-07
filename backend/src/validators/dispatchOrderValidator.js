@@ -9,6 +9,9 @@ const dispatchLineSchema = Joi.object({
         'any.required': 'Quantity ordered is required per line',
         'number.positive': 'Quantity ordered must be positive'
     }),
+    sale_price_per_unit: Joi.number().min(0).precision(4).allow(null).optional().messages({
+        'number.min': 'Sale price must be 0 or greater'
+    }),
     notes: Joi.string().max(500).allow(null, '').messages({
         'string.max': 'Line notes must not exceed 500 characters'
     })
@@ -119,3 +122,42 @@ export const validateCreateDispatchOrder = makeValidator(createDispatchOrderSche
 export const validateUpdateDispatchOrder = makeValidator(updateDispatchOrderSchema);
 export const validateDispatchLines = makeValidator(dispatchLinesSchema);
 export const validateCancelDispatchOrder = makeValidator(cancelDispatchOrderSchema);
+
+export const getEarningsSchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    recipient_type: Joi.string().valid('external', 'internal').optional(),
+    item_id: Joi.number().integer().positive().optional(),
+    period: Joi.string().valid('day', 'week', 'month').default('month'),
+    status: Joi.string().valid('partial', 'completed', 'partial,completed', 'completed,partial').default('completed')
+});
+
+export const validateGetEarnings = (req, res, next) => {
+    const { error, value } = getEarningsSchema.validate(req.query, {
+        abortEarly: false,
+        stripUnknown: true
+    });
+
+    if (error) {
+        const errors = error.details.map(detail => ({
+            field: detail.path.join('.'),
+            message: detail.message
+        }));
+        return res.status(422).json({
+            success: false,
+            data: null,
+            message: 'Validation failed',
+            errors,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    req.validatedQuery = value;
+    next();
+};
+
+const updateLineSalePriceSchema = Joi.object({
+    sale_price_per_unit: Joi.number().min(0).precision(4).allow(null).required()
+});
+
+export const validateUpdateLineSalePrice = makeValidator(updateLineSalePriceSchema);

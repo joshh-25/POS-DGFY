@@ -92,8 +92,13 @@ require_command npx
 require_command bash
 
 if command -v flock >/dev/null 2>&1; then
-    exec 9>"$LOCK_FILE"
-    flock -n 9 || fatal "Another deployment appears to be running (lock: $LOCK_FILE)"
+    if [[ "${DEPLOY_LOCK_ACQUIRED:-0}" != "1" ]]; then
+        exec 9>"$LOCK_FILE"
+        flock -n 9 || fatal "Another deployment appears to be running (lock: $LOCK_FILE)"
+        export DEPLOY_LOCK_ACQUIRED=1
+    else
+        log "Deployment lock inherited from prior script exec."
+    fi
 else
     warn "flock is not available. Concurrent deploy protection is limited."
 fi

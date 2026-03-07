@@ -61,6 +61,9 @@
 - [Phase 56: Dispatch Order (DO) Feature — Finished Goods Stock-Out](#phase-56-dispatch-order-do-feature--finished-goods-stock-out)
 - [Phase 57: 500 Error Bug Fixes (Development Proxy & Dispatch Orders)](#phase-57-500-error-bug-fixes-development-proxy--dispatch-orders)
 - [Phase 58: Partially Resolved Audit Items Hardening](#phase-58-partially-resolved-audit-items-hardening)
+- [Phase 59: Distributed Rate Limiting & Auth State Synchronization](#phase-59-distributed-rate-limiting--auth-state-synchronization)
+- [Phase 60: Dispatch Order Sales Pricing & Earnings Reports](#phase-60-dispatch-order-sales-pricing--earnings-reports)
+- [Phase 61: CSV Import — Asynchronous Parsing & JSON Payload Fix](#phase-61-csv-import--asynchronous-parsing--json-payload-fix)
 
 ---
 
@@ -6509,3 +6512,106 @@ Following a comprehensive system audit, 5 items were marked as "partially resolv
 - **Real Browser Validation**: Added `backend/tests/frontend.sessionIsolation.e2e.test.js` (Playwright) to verify multi-tab logout behavior, token wipe, epoch bump, and protected-route denial after logout.
 
 ---
+
+## Phase 57 — Dispatch Order Sales Pricing & Earnings Reports (2026-03-06)
+
+### Problem
+Dispatch Orders tracked inventory cost (COGS) but had no concept of sale price or revenue, making it impossible to track earnings from dispatches.
+
+### Solution
+Added a complete sales pricing layer to Dispatch Orders with a gross earnings report.
+
+### Key Changes
+
+**Database:**
+- `dispatch_order_lines.sale_price_per_unit` (DECIMAL 10,4, nullable) — selling price snapshot at DO creation time
+- `items.default_sale_price` (DECIMAL 10,4, nullable) — last-used sale price; auto-updated on dispatch; defaults to COGS on first use
+- Migration: `backend/migrations/20260306000001-add-sale-price-to-dispatch-and-items.cjs`
+
+**Backend:**
+- `dispatchOrderService.js`: `createDispatchOrder`/`updateDispatchOrder` now accept and store `sale_price_per_unit` per line (falls back to `item.default_sale_price` → `cost_per_unit`). `dispatchLines` updates `item.default_sale_price` after each dispatch. New `getEarningsReport()` function aggregates revenue, COGS, gross profit by item/order/recipient/period.
+- `exportDispatchOrders` CSV: added Sale Price/Unit, Revenue, Gross Profit, Margin % columns
+- New endpoint: `GET /api/v1/dispatch-orders/earnings` (do:view permission)
+- Full module chain updated: useCases → handlers → controller facade → route
+
+**Frontend:**
+- `DOCreateModal.jsx`: Sale Price/Unit input per line; auto-fills from item's last sale price or COGS with hint text
+- `DODetailsModal.jsx`: Shows per-line pricing (cost, sale, revenue, gross profit) + 4-card summary (Revenue, COGS, Gross Profit, Margin %) for completed/partial DOs
+- `DOEarningsPanel.jsx` (new): Full earnings report panel with filters, summary cards, Recharts bar chart, and 4 breakdown tabs (By Item, By Order, By Recipient, By Period) + CSV export
+- `DispatchOrders.jsx`: Added Orders ↔ Earnings view toggle in header
+
+### Design Decisions
+- "Gross Profit" terminology used explicitly (not "net profit") — net profit requires full expense tracking not available in this system
+- `sale_price_per_unit` is nullable; null lines are excluded from earnings (internal transfers with no sale)
+- Effective quantity = `qty_dispatched - qty_voided` (respects existing void logic)
+- `default_sale_price` is global per-item (not per-customer) for simplicity; can be refined later
+- First-use default is `cost_per_unit` so earnings are computable even without explicit price input
+
+---
+
+## Phase 61: CSV Import — Asynchronous Parsing & JSON Payload Fix (2026-03-07)
+
+### Problem
+CSV imports for both Items and Suppliers were failing with a persistent "400 Bad Request" error.
+
+### Root Causes
+1. **Asynchronous Bug (Primary)**: A previous refactor made `parseCSV` in the CSV services asynchronous (returning a Promise), but the callsites in `previewImport` were not updated with `await`. The backend was checking for `.success` on a Promise object, which always failed.
+2. **Axios Payload Corruption**: An Axios interceptor was incorrectly deleting the `Content-Type` header for `FormData`, leading to malformed multipart boundaries that the backend middleware (Multer) could not parse.
+
+### Solution
+Fixed the asynchronous logic and simplified the communication protocol to be more robust.
+
+### Key Changes
+
+**Backend:**
+- **Service Fixes**: Added `await` to `parseCSV()` calls in `csvImportService.js` and `supplierCSVService.js`.
+- **Route Optimization**: Removed `multer` middleware from preview endpoints (`/import/preview`) as they now accept JSON payloads directly.
+- **Cleanup**: Removed all diagnostic logging added during the investigation.
+
+**Frontend:**
+- **Protocol Shift**: Switched from `multipart/form-data` (FormData) to sending CSV content as a JSON payload (`{ csvContent: "..." }`) in both `useCSVImport.js` and `useSupplierCSV.js`.
+- **Payload Handling**: Updated the hooks to read the file as a text string before sending, which is more reliable and bypasses Axios multipart header issues.
+
+### Verification
+- Verified Items import preview functionality.
+- Verified Suppliers import preview functionality.
+- Confirmed fix isolates the root cause in the backend service layer.
+
+---
+
+## Phase 57 — Addendum: Bidirectional Default Sale Price Sync (2026-03-07)
+
+### Problem
+Two gaps in Phase 57's DO pricing feature:
+1. **Bug**: The DO create modal's sale price auto-fill never fired because the dropdown fast path (`GET /items?fields=dropdown`) omitted `cost_per_unit` and `default_sale_price` from its `attributes` array.
+2. **Missing feature**: `default_sale_price` was auto-managed only (updated on dispatch) but had no UI for direct user input. Users couldn't set a standard selling price from the Item side.
+
+### Solution
+Completed the bidirectional sync: Item ↔ Dispatch Order sale price.
+
+### Key Changes
+
+**Backend:**
+- `itemRepository.js` (dropdown fast path, line 289): Added `cost_per_unit` and `default_sale_price` to `attributes` array — fixes DO auto-fill
+- `itemValidator.js`: Added `default_sale_price: Joi.number().min(0).precision(4).allow(null).optional()` to all three schemas (`createItemSchema`, `createItemDraftSchema`, `updateItemSchema`) — field was being silently stripped by `stripUnknown: true`
+
+**Frontend:**
+- `CostFinancialStep.jsx` (product wizard, Step 9): Added editable "Default Sale Price (₱)" input field with "Use suggested" shortcut that populates from the margin-based suggested price. Syncs to `productData` via `updateData`.
+- `CostFinancialSection.jsx` (item details): Added teal "Default Sale Price" display card for finished goods items. Shows current value or "Not set — will default to cost per unit" if null.
+
+### Data Flow (Complete)
+```
+Item wizard (set default_sale_price)
+        ↓ save via PUT /items/:id
+item.default_sale_price  ←──── DO dispatch (auto-updates)
+        ↓ auto-fill on item select
+DOCreateModal sale_price_per_unit field
+        ↓ dispatch
+item.default_sale_price updated (if non-null price)
+```
+
+### Design Decisions
+- DO dispatch → Item update was already implemented in Phase 57; this addendum adds the Item → DO direction
+- `default_sale_price` is deliberately NOT auto-derived from `cost_per_unit` changes — it's user-controlled to prevent accidental price resets
+- The "Use suggested" button in the wizard bridges COGS → sale price without forcing it
+- `ItemFormModal` (for raw_material/packaging/supplies) intentionally excluded — only finished goods products can be dispatched

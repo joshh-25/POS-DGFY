@@ -230,6 +230,23 @@ export const buildCancelDispatchOrderUseCase = ({ dispatchOrderService }) => {
   };
 };
 
+export const buildGetEarningsReportUseCase = ({ dispatchOrderService }) => {
+  return async ({ query }) => {
+    if (query !== undefined && !isPlainObject(query)) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'query must be an object',
+        { statusCode: 400 }
+      ));
+    }
+
+    return withServiceExecution(
+      () => dispatchOrderService.getEarningsReport(query || {}),
+      'Failed to retrieve earnings report'
+    );
+  };
+};
+
 export const buildArchiveDispatchOrderUseCase = ({ dispatchOrderService }) => {
   return async ({ dispatchOrderId, userId }) => {
     const normalizedDispatchOrderId = parsePositiveInt(dispatchOrderId);
@@ -246,6 +263,26 @@ export const buildArchiveDispatchOrderUseCase = ({ dispatchOrderService }) => {
     return withServiceExecution(
       () => dispatchOrderService.archiveDispatchOrder(normalizedDispatchOrderId, normalizedUserId),
       'Failed to archive dispatch order'
+    );
+  };
+};
+
+export const buildUpdateLineSalePriceUseCase = ({ dispatchOrderService }) => {
+  return async ({ doId, lineId, salePrice }) => {
+    const parsedDoId   = parseInt(doId, 10);
+    const parsedLineId = parseInt(lineId, 10);
+
+    if (isNaN(parsedDoId) || parsedDoId <= 0 || isNaN(parsedLineId) || parsedLineId <= 0) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'doId and lineId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    return withServiceExecution(
+      () => dispatchOrderService.updateLineSalePrice(parsedDoId, parsedLineId, salePrice ?? null),
+      'Failed to update line sale price'
     );
   };
 };

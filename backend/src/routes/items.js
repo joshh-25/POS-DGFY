@@ -5,6 +5,7 @@ import * as csvExportController from '../controllers/csvExportController.js';
 import { validateCreateItem, validateUpdateItem, validateCreateItemDraft } from '../validators/itemValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { upload } from '../config/uploadConfig.js';
 
 const router = express.Router();
 
