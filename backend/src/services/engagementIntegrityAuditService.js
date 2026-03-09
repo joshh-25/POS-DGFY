@@ -359,17 +359,10 @@ export const auditBillingFunnelIntegrity = async ({
                     }
                 }
 
-                if (row.event_type === 'company_registration_succeeded') {
-                    const expectedStatus = normalizeString(row.metadata?.status);
-                    if (expectedStatus && tenant.status !== expectedStatus) {
-                        issuesForRow.push({
-                            type: 'registration_status_mismatch',
-                            tenant_id: row.tenant_id,
-                            correlation_id: row.correlation_id || null,
-                            event_type: row.event_type
-                        });
-                    }
-                }
+                // Removed flawed company_registration_succeeded status mismatch check.
+                // Tenant status is explicitly mutable (e.g. pending -> active via admin approval),
+                // so comparing current tenant.status to immutable event metadata is guaranteed to fail
+                // if an admin reviews the tenant within the 24h audit window.
 
                 return issuesForRow;
             });
