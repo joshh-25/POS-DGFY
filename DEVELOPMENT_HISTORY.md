@@ -6733,3 +6733,58 @@ Two targeted changes to `frontend/src/features/inventory/pages/ItemsPage.jsx` on
 - `showMoveModal` is intentionally included — it is opened from the bar itself; hiding the bar while the move dialog is active is correct
 - No new state variables, no new props, no API calls
 - Applies to all 9 modal types uniformly — no loopholes for edge-case modals
+
+## Phase 64: Permission System Audit & Sync (2026-03-09)
+
+### Problem
+Three distinct gaps existed between `frontend/src/config/permissions_frontend.js` and `backend/src/config/permissions.js`, all pre-dating Phase 56. The frontend config drifted from the backend during the Dispatch Orders build and was never reconciled.
+
+**Gap 1 — DISPATCH group entirely absent from frontend (CRITICAL)**
+- Backend had a full `DISPATCH` group (`do:view`, `do:create`, `do:dispatch`, `do:delete`) seeded since Phase 56
+- Frontend `PERMISSION_GROUPS` had only 7 groups — no `DISPATCH` entry
+- Result: Admins could not grant/revoke any DO permission via the Manage Permissions UI
+
+**Gap 2 — STOCK strings mismatched (MEDIUM)**
+- Frontend had `stock:transfer` and `stock:movements` — orphan strings not in backend config or any backend route
+- Frontend was missing `batches:view` and `batches:edit` — which backend defines and seeds into manager/admin defaults
+- `stock:movements` also appeared in `PERMISSION_TEMPLATES` hardcoded arrays
+
+**Gap 3 — SYSTEM strings incomplete (CRITICAL/MEDIUM)**
+- Frontend had `logs:view` — a string that appears only as an npm script in `backend/package.json`, never as a permission in any route
+- Missing `users:view` (enforced on `GET /users`, `users.js:22`), `users:delete` (enforced on `DELETE /:user_id`, `users.js:32`), and `audit:view` (in manager defaults)
+- Result: Admins could not grant/revoke the "view user list" or "remove user" permissions from UI — these only worked through role-reset defaults
+
+### Root Cause
+`permissions_frontend.js` was written before the backend `permissions.js` was finalized. The DISPATCH group was added to the backend in Phase 56 but the frontend config was not updated. The STOCK and SYSTEM mismatches predate Phase 56 and were likely caused by different developers working on each side without cross-referencing.
+
+### Solution
+
+**`frontend/src/config/permissions_frontend.js`** — both `PERMISSIONS` and `PERMISSION_GROUPS` objects:
+- Added `DISPATCH` group between ORDERS and STOCK: `do:view`, `do:create`, `do:dispatch`, `do:delete`
+- STOCK: replaced `stock:transfer`/`stock:movements` with `batches:view`/`batches:edit`
+- SYSTEM: replaced `logs:view` with `users:view`, `users:delete`, `audit:view`
+
+**`frontend/Components/users/UserManagementModal.jsx`** — `PERMISSION_TEMPLATES`:
+- Manager: replaced `stock:movements` → `batches:view`, `batches:edit`; added `users:view`, `users:delete`, `audit:view`, `settings:view`, `settings:edit`
+- Staff: removed `stock:movements`
+
+**`docs/ai/AI_GUIDELINES.md`**:
+- Added DISPATCH row to permission categories table
+- Fixed STOCK row (`batches:edit` added)
+- Fixed SYSTEM row (`users:view`, `users:delete` added)
+- Corrected role permission counts: Staff 6→7, Manager 35→41, Admin 38→42
+
+### Permission Count Breakdown (Post-Fix)
+| Group | Permissions | Count |
+|---|---|---|
+| INVENTORY | items:view/create/edit/delete/export/import | 6 |
+| SUPPLIERS | suppliers:view/create/edit/delete/export/import | 6 |
+| ORDERS | po:view/create/edit/approve/receive/delete + jo:view/create/edit/approve/complete/delete | 12 |
+| DISPATCH | do:view/create/dispatch/delete | 4 |
+| STOCK | stock:view/adjust + batches:view/edit | 4 |
+| REPORTS | reports:view/export | 2 |
+| AI | ai:chat/action | 2 |
+| SYSTEM | users:manage/view/delete + settings:view/edit + audit:view | 6 |
+| **Total** | | **42** |
+
+Staff defaults: 7 | Manager defaults: 41 | Admin: 42

@@ -37,13 +37,23 @@ export const PERMISSIONS = {
             DELETE_JO: "jo:delete"
         }
     },
+    // --- DISPATCH ORDERS ---
+    DISPATCH: {
+        label: "Dispatch Orders",
+        actions: {
+            VIEW_DO: "do:view",
+            CREATE_DO: "do:create",
+            DISPATCH_DO: "do:dispatch",
+            DELETE_DO: "do:delete"
+        }
+    },
     STOCK: {
         label: "Stock Control",
         actions: {
             VIEW_STOCK: "stock:view",
             ADJUST_STOCK: "stock:adjust",
-            TRANSFER_STOCK: "stock:transfer",
-            VIEW_MOVEMENTS: "stock:movements"
+            VIEW_BATCHES: "batches:view",
+            EDIT_BATCHES: "batches:edit"
         }
     },
     REPORTS: {
@@ -66,7 +76,9 @@ export const PERMISSIONS = {
             MANAGE_USERS: "users:manage",
             VIEW_SETTINGS: "settings:view",
             EDIT_SETTINGS: "settings:edit",
-            VIEW_LOGS: "logs:view"
+            VIEW_USERS: "users:view",
+            DELETE_USERS: "users:delete",
+            VIEW_AUDIT: "audit:view"
         }
     }
 };
@@ -112,13 +124,22 @@ export const PERMISSION_GROUPS = {
             DELETE_JO: "jo:delete"
         }
     },
+    DISPATCH: {
+        label: "Dispatch Orders",
+        permissions: {
+            VIEW_DO: "do:view",
+            CREATE_DO: "do:create",
+            DISPATCH_DO: "do:dispatch",
+            DELETE_DO: "do:delete"
+        }
+    },
     STOCK: {
         label: "Stock Control",
         permissions: {
             VIEW_STOCK: "stock:view",
             ADJUST_STOCK: "stock:adjust",
-            TRANSFER_STOCK: "stock:transfer",
-            VIEW_MOVEMENTS: "stock:movements"
+            VIEW_BATCHES: "batches:view",
+            EDIT_BATCHES: "batches:edit"
         }
     },
     REPORTS: {
@@ -141,7 +162,9 @@ export const PERMISSION_GROUPS = {
             MANAGE_USERS: "users:manage",
             VIEW_SETTINGS: "settings:view",
             EDIT_SETTINGS: "settings:edit",
-            VIEW_LOGS: "logs:view"
+            VIEW_USERS: "users:view",
+            DELETE_USERS: "users:delete",
+            VIEW_AUDIT: "audit:view"
         }
     }
 };

@@ -333,6 +333,16 @@ export default function ConfirmActionDialog({
     }
 
     // ── User Management ──────────────────────────────────────────
+    if (action.toolName === 'create_user_invitation') {
+      return (
+        <div className="mt-4 space-y-2">
+          <Field label="Email" value={details.email} />
+          <Field label="Role" value={details.role} />
+          <Note text={details.note || 'An email invitation will be sent with a link to set up their account. The invitation expires in 7 days.'} />
+        </div>
+      );
+    }
+
     if (action.toolName === 'update_user_role') {
       return (
         <div className="mt-4 space-y-2">

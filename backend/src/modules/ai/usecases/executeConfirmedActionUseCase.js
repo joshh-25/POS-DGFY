@@ -264,6 +264,27 @@ const createUiResultFormatter = (logger) => {
           break;
         }
 
+        case 'create_user_invitation':
+          uiResult.summary = result.message || `Invitation sent to ${args.email}`;
+          uiResult.impact = {
+            Invited: args.email,
+            Role: args.role ? args.role.charAt(0).toUpperCase() + args.role.slice(1) : 'Staff',
+            Expires: '7 days',
+            Status: result.invitation?.email_sent ? 'Email Sent' : 'Pending (no email configured)'
+          };
+          uiResult.details = result.details || {};
+          uiResult.related_entity = result.related_entity || null;
+          break;
+
+        case 'update_user_role':
+        case 'toggle_user_status':
+        case 'remove_user_from_company':
+        case 'update_user_permissions':
+          uiResult.summary = result.message || 'User updated';
+          uiResult.details = result.details || {};
+          uiResult.related_entity = result.related_entity || null;
+          break;
+
         default:
           uiResult.details = result.details || args;
       }

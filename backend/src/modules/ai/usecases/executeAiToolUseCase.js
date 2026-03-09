@@ -45,6 +45,7 @@ export const buildExecuteAiToolUseCase = ({
         case 'remove_user_from_company':
         case 'update_user_permissions':
         case 'create_user_invitation':
+        case 'get_company_join_link':
         case 'export_users_csv':
         case 'import_users_csv':
         case 'get_available_permissions':
@@ -73,6 +74,12 @@ export const buildExecuteAiToolUseCase = ({
         case 'get_items_in_inventory_folder':
         case 'delete_inventory_folder':
         case 'bulk_delete_inventory_folders':
+        case 'get_dispatch_stats':
+        case 'get_dispatch_earnings':
+        case 'update_dispatch_order':
+        case 'archive_dispatch_order':
+        case 'update_dispatch_line_sale_price':
+        case 'export_dispatch_orders':
           result = await executeRegistryTool(toolName, args, user);
           break;
 

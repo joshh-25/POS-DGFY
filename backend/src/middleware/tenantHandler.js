@@ -88,6 +88,7 @@ export const tenantHandler = async (req, res, next) => {
         const context = {
             sequelize: sequelizeInstance,
             tenantId: tenant.id,
+            tenantToken: companyToken,
             tenantName: tenant.name,
             tenantPlan: tenant.plan,
             ...tenantModels

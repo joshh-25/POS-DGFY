@@ -326,8 +326,8 @@ The system uses a **two-tier access control** model:
 Staff (Level 1) < Manager (Level 2) < Admin (Level 3)
 ```
 
-- **Staff**: Read-only access (6 view permissions)
-- **Manager**: Full operational access (35 permissions including create/edit/approve)
+- **Staff**: Read-only access (7 view permissions)
+- **Manager**: Full operational access (41 permissions including create/edit/approve/dispatch)
 - **Admin**: Everything + user management + system settings
 
 ### Permission Categories
@@ -337,10 +337,11 @@ Staff (Level 1) < Manager (Level 2) < Admin (Level 3)
 | **Inventory** | `items:view`, `items:create`, `items:edit`, `items:delete` | SKU/item management |
 | **Suppliers** | `suppliers:view`, `suppliers:create`, `suppliers:edit` | Supplier CRUD |
 | **Orders** | `po:view`, `po:create`, `po:approve`, `jo:complete` | PO and JO workflows |
-| **Stock** | `stock:view`, `stock:adjust`, `batches:view` | Stock movements and FIFO batches |
+| **Dispatch** | `do:view`, `do:create`, `do:dispatch`, `do:delete` | Dispatch Order workflows |
+| **Stock** | `stock:view`, `stock:adjust`, `batches:view`, `batches:edit` | Stock movements and FIFO batches |
 | **Reports** | `reports:view`, `reports:export` | Analytics access |
 | **AI** | `ai:chat`, `ai:action` | AI chat and action execution |
-| **System** | `settings:view`, `users:manage`, `audit:view` | Admin functions |
+| **System** | `settings:view`, `users:manage`, `users:view`, `users:delete`, `audit:view` | Admin functions |
 
 ### Role Change Behavior
 
@@ -348,29 +349,29 @@ Staff (Level 1) < Manager (Level 2) < Admin (Level 3)
 
 **Workflow:**
 1. Admin changes user role from "Staff" to "Manager"
-2. Backend fetches `DEFAULT_ROLE_PERMISSIONS['manager']` (35 permissions)
+2. Backend fetches `DEFAULT_ROLE_PERMISSIONS['manager']` (41 permissions)
 3. User's `permissions` field is overwritten with the new default set
 4. If role changed FROM admin, `is_master_admin` is reset to `false`
 5. Custom permission edits made AFTER this point will persist until the next role change
 
 **Example:**
 ```
-User: John (Staff, 6 permissions)
+User: John (Staff, 7 permissions)
     ↓ Role changed to Manager
-User: John (Manager, 35 permissions)  ← Auto-applied defaults
+User: John (Manager, 41 permissions)  ← Auto-applied defaults
     ↓ Admin removes "po:approve" permission
-User: John (Manager, 34 permissions)  ← Custom edit persists
+User: John (Manager, 40 permissions)  ← Custom edit persists
     ↓ Role changed to Staff
-User: John (Staff, 6 permissions)     ← Reset to Staff defaults
+User: John (Staff, 7 permissions)     ← Reset to Staff defaults
 ```
 
 ### Default Role Permissions
 
 | Role | Permission Count | Includes |
 |------|------------------|----------|
-| **Staff** | 6 | View-only: items, suppliers, POs, JOs, movements, AI chat |
-| **Manager** | 35 | All of Staff + create/edit/approve for orders, stock adjustments, settings |
-| **Admin** | All (38) | Everything including `users:manage`, `settings:edit`, `audit:view` |
+| **Staff** | 7 | View-only: items, suppliers, POs, JOs, dispatch orders, movements, AI chat |
+| **Manager** | 41 | All of Staff + create/edit/approve/dispatch for orders, DOs, stock, batches, settings, user management |
+| **Admin** | All (42) | Everything including `users:manage`, `settings:edit`, `audit:view` |
 
 ### Master Admin
 

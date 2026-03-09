@@ -1,0 +1,144 @@
+﻿
+> sku-inventory-manager-backend@1.0.0 test
+> node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/aiTools.test.js
+
+  console.error
+    Missing handlers for: [
+      'get_dispatch_stats',
+      'get_dispatch_earnings',
+      'update_dispatch_order',
+      'archive_dispatch_order',
+      'update_dispatch_line_sale_price',
+      'export_dispatch_orders'
+    ]
+
+    [0m [90m 150 |[39m
+     [90m 151 |[39m       [36mif[39m (missingHandlers[33m.[39mlength [33m>[39m [35m0[39m) {
+    [31m[1m>[22m[39m[90m 152 |[39m         console[33m.[39merror([32m'Missing handlers for:'[39m[33m,[39m missingHandlers)[33m;[39m
+     [90m     |[39m                 [31m[1m^[22m[39m
+     [90m 153 |[39m       }
+     [90m 154 |[39m
+     [90m 155 |[39m       expect(missingHandlers)[33m.[39mtoHaveLength([35m0[39m)[33m;[39m[0m
+
+      at Object.<anonymous> (tests/aiTools.test.js:152:17)
+
+  console.log
+    Tool counts by category: {
+      file_management: 3,
+      inventory_grouping: 7,
+      read: 20,
+      write: 26,
+      analysis: 7,
+      import_export: 3
+    }
+
+      at Object.<anonymous> (tests/aiTools.test.js:201:15)
+
+  console.log
+    Total tools: 66
+
+      at Object.<anonymous> (tests/aiTools.test.js:202:15)
+
+node.exe : (node:19804) ExperimentalWarning: VM Modules is an 
+experimental feature and might change at any time
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:19804) Ex. 
+   ..nge at any time:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning 
+was created)
+FAIL tests/aiTools.test.js
+  AI Tools Configuration
+    Tool Definitions
+      ΓêÜ should have at least 30 tools defined (2 ms)
+      ΓêÜ every tool should have a unique name (1 ms)
+      ΓêÜ every tool should have required fields (18 ms)
+      ΓêÜ every tool should have a valid category (4 ms)
+      ΓêÜ write tools should require confirmation (1 ms)
+      ΓêÜ read tools should not require confirmation (1 ms)
+      ΓêÜ import tools should require confirmation
+      ΓêÜ tools with requiredRole should have valid roles (1 
+ms)
+    Tool Parameters
+      ΓêÜ all parameters should have descriptions (11 ms)
+      ├ù all parameters should have types (12 ms)
+      ΓêÜ required parameters should be listed in required 
+array (2 ms)
+    Tool Handler Coverage
+      ├ù every defined tool should have a handler in AI 
+execution coverage (15 ms)
+    Tool Categories
+      ΓêÜ TOOL_CATEGORIES should have all required categories
+    Tool Permissions
+      ΓêÜ TOOL_PERMISSIONS should define access for all roles 
+(1 ms)
+      ΓêÜ staff should only have read and analysis access
+      ΓêÜ manager and admin should have full access
+    Tool Statistics
+      ΓêÜ should report correct tool counts by category (2 ms)
+
+  ΓùÅ AI Tools Configuration ΓÇ║ Tool Parameters ΓÇ║ all 
+parameters should have types
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected value: ["number", "null"]
+    Received array: ["string", "integer", "number", 
+"boolean", "array", "object"]
+
+    [0m [90m 106 |[39m         [36mfor[39m 
+([36mconst[39m [paramName[33m,[39m paramSchema] 
+[36mof[39m [33mObject[39m[33m.[39mentries(params)) {
+     [90m 107 |[39m           expect(paramSchema)[33m.[39m
+toHaveProperty([32m'type'[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 108 |[39m           
+expect([[32m'string'[39m[33m,[39m 
+[32m'integer'[39m[33m,[39m [32m'number'[39m[33m,[39m 
+[32m'boolean'[39m[33m,[39m [32m'array'[39m[33m,[39m [
+32m'object'[39m])[33m.[39mtoContain(paramSchema[33m.[39mt
+ype)[33m;[39m
+     [90m     |[39m                                         
+                                        [31m[1m^[22m[39m
+     [90m 109 |[39m         }
+     [90m 110 |[39m       }
+     [90m 111 |[39m     })[33m;[39m[0m
+
+      at Object.<anonymous> (tests/aiTools.test.js:108:81)
+
+  ΓùÅ AI Tools Configuration ΓÇ║ Tool Handler Coverage ΓÇ║ 
+every defined tool should have a handler in AI execution 
+coverage
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 6
+    Received array:  ["get_dispatch_stats", 
+"get_dispatch_earnings", "update_dispatch_order", 
+"archive_dispatch_order", "update_dispatch_line_sale_price", 
+"export_dispatch_orders"]
+
+    [0m [90m 153 |[39m       }
+     [90m 154 |[39m
+    [31m[1m>[22m[39m[90m 155 |[39m       expect(missingH
+andlers)[33m.[39mtoHaveLength([35m0[39m)[33m;[39m
+     [90m     |[39m                               
+[31m[1m^[22m[39m
+     [90m 156 |[39m     })[33m;[39m
+     [90m 157 |[39m   })[33m;[39m
+     [90m 158 |[39m[0m
+
+      at Object.<anonymous> (tests/aiTools.test.js:155:31)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 15 passed, 17 total
+Snapshots:   0 total
+Time:        0.333 s, estimated 1 s
+Ran all test suites matching /tests\\aiTools.test.js/i.
+2026-03-09 12:43:35:4335 [32minfo[39m: [32mClosing all tenant connections (0 active)...[39m
+2026-03-09 12:43:35:4335 [32minfo[39m: [32mAll tenant connections closed[39m

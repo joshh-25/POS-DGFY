@@ -37,9 +37,12 @@ const PERMISSION_TEMPLATES = {
       'suppliers:view', 'suppliers:create', 'suppliers:edit',
       'po:view', 'po:create', 'po:approve', 'po:receive',
       'jo:view', 'jo:create', 'jo:approve', 'jo:complete',
-      'stock:view', 'stock:adjust', 'stock:movements',
+      'do:view', 'do:create', 'do:dispatch', 'do:delete',
+      'stock:view', 'stock:adjust', 'batches:view', 'batches:edit',
       'reports:view',
-      'ai:chat', 'ai:action'
+      'ai:chat', 'ai:action',
+      'settings:view', 'settings:edit',
+      'users:view', 'users:delete', 'audit:view'
     ]
   },
   staff: {
@@ -49,7 +52,8 @@ const PERMISSION_TEMPLATES = {
       'suppliers:view',
       'po:view', 'po:receive',
       'jo:view', 'jo:complete',
-      'stock:view', 'stock:movements'
+      'do:view',
+      'stock:view'
     ]
   },
   viewer: {

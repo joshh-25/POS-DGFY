@@ -383,13 +383,13 @@ export default function AiChat() {
                 content: response.data.message,
                 timestamp: new Date().toISOString(),
                 isResult: true,
-                resultData: response.data.result
+                resultData: response.data.data?.result
             };
             setMessages(prev => [...prev, resultMessage]);
 
         } catch (err) {
             console.error('Confirm action error:', err);
-            setError(err.response?.data?.error || 'Failed to confirm action');
+            setError(err.response?.data?.message || 'Failed to confirm action');
         } finally {
             setPendingAction(null);
             setIsTyping(false);

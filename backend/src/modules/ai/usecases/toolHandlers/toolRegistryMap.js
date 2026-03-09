@@ -23,6 +23,7 @@ import { unwrapApplicationResultOrThrow } from '../../../shared/contracts/applic
 import { buildStorageAndGroupingToolRegistry } from './storageAndGroupingToolRegistry.js';
 import { buildAnalysisToolRegistry } from './analysisToolRegistry.js';
 import { buildUserManagementToolRegistry } from './userManagementToolRegistry.js';
+import dbStore from '../../../../utils/dbStore.js';
 import { buildDashboardAndInsightsToolRegistry } from './dashboardAndInsightsToolRegistry.js';
 import { buildDispatchOrderToolRegistry } from './dispatchOrderToolRegistry.js';
 import { buildJobOrderToolRegistry } from './jobOrderToolRegistry.js';
@@ -47,7 +48,8 @@ const userManagementToolRegistry = buildUserManagementToolRegistry({
   tempFileService,
   logger,
   permissions: PERMISSIONS,
-  appUrlProvider: () => process.env.APP_URL || 'http://localhost:5173'
+  appUrlProvider: () => process.env.APP_URL || 'http://localhost:5173',
+  companyTokenProvider: () => dbStore.getStore()?.tenantToken
 });
 
 const aiSettingsService = {
