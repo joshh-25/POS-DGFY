@@ -93,7 +93,7 @@ export const summarizeIntegrityIssuesForHealth = (issues = [], maxItems = DEFAUL
 const loadThresholds = () => ({
     missingCorrelationCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_MISSING_CORRELATION, 0),
     missingOutcomeCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_MISSING_OUTCOME, 0),
-    orphanAttemptCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_ORPHAN_ATTEMPTS, 0),
+    orphanAttemptCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_ORPHAN_ATTEMPTS, 5),
     duplicateEventCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_DUPLICATE_EVENTS, 0),
     paymentWithoutTelemetryCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_PAYMENT_WITHOUT_TELEMETRY, 0),
     tenantStateMismatchCount: parseNonNegativeInt(process.env.BILLING_FUNNEL_THRESHOLD_TENANT_STATE_MISMATCH, 0),
