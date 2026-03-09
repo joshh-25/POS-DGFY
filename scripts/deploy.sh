@@ -13,6 +13,18 @@ DEPLOY_LOG_DIR="$PROJECT_ROOT/logs/deploy"
 DEPLOY_STATE_DIR="$PROJECT_ROOT/.deploy-state"
 LOCK_FILE="/tmp/skupervisor_deploy.lock"
 
+# ANSI Colors for high-visibility terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Force color output for sub-processes (npm, vite, git) even when piped thru tee
+export FORCE_COLOR=1
+export NPM_CONFIG_COLOR=always
+export CLICOLOR_FORCE=1
+
 BRANCH_OVERRIDE=""
 EXPECTED_COMMIT=""
 SKIP_DB_BACKUP="0"
@@ -53,15 +65,15 @@ SUMMARY_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.summary.txt"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [INFO] $1"
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [${GREEN}INFO${NC}] $1"
 }
 
 warn() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [WARN] $1"
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [${YELLOW}WARN${NC}] $1"
 }
 
 fatal() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [ERROR] $1"
+    echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [${RED}ERROR${NC}] $1"
     exit 1
 }
 
