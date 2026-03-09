@@ -40,6 +40,16 @@ const sequelize = new Sequelize(
   }
 );
 
+// CRITICAL PRODUCTION GUARDRAIL
+// Intercept all sync calls and prevent drop-table sweeps on the production database
+const originalSync = sequelize.sync.bind(sequelize);
+sequelize.sync = async (options = {}) => {
+  if (options.force && !dbName.includes('test')) {
+    throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test database: ${dbName}. Production DB wipes are permanently blocked.`);
+  }
+  return originalSync(options);
+};
+
 // Test database connection
 export const testConnection = async () => {
   try {

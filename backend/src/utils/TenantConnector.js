@@ -98,6 +98,16 @@ class TenantConnector {
             // Test connection
             await sequelize.authenticate();
 
+            // CRITICAL PRODUCTION GUARDRAIL
+            // Intercept sync calls to prevent drop-table sweeps on individual tenant databases
+            const originalSync = sequelize.sync.bind(sequelize);
+            sequelize.sync = async (options = {}) => {
+                if (options.force && !tenant.db_name.includes('test')) {
+                    throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test tenant database: ${tenant.db_name}. Production DB wipes are permanently blocked.`);
+                }
+                return originalSync(options);
+            };
+
             // Cache it
             this.connections.set(tenantId, {
                 sequelize,
