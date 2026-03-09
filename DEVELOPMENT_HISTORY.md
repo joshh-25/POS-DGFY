@@ -6615,3 +6615,121 @@ item.default_sale_price updated (if non-null price)
 - `default_sale_price` is deliberately NOT auto-derived from `cost_per_unit` changes — it's user-controlled to prevent accidental price resets
 - The "Use suggested" button in the wizard bridges COGS → sale price without forcing it
 - `ItemFormModal` (for raw_material/packaging/supplies) intentionally excluded — only finished goods products can be dispatched
+
+---
+
+## Phase 62: Dispatch Orders — Full AI Integration & UI Consistency (2026-03-07)
+
+### Context
+Dispatch Orders (DO) were implemented in Phase 56/57 with 6 basic AI tool stubs registered, but the AI had zero knowledge of DOs in its system prompt, 6 backend operations had no tools, and all confirmation dialogs for unmapped actions showed raw JSON dumps.
+
+---
+
+### Part 1 — DO AI Knowledge & Tool Coverage
+
+#### Problem
+- System prompt had no mention of DOs — AI couldn't discover or describe DO capabilities
+- `aiContextService.js` had no DO count in the live context header
+- 6 DO operations missing tools: `get_dispatch_stats`, `get_dispatch_earnings`, `update_dispatch_order`, `archive_dispatch_order`, `update_dispatch_line_sale_price`, `export_dispatch_orders`
+- 3 existing tools had missing parameters: `query_dispatch_orders` (no `archived` filter), `create_dispatch_order` (missing `reference_po`, `sale_price_per_unit` per line), `dispatch_items` (missing `batch_id` per line)
+
+#### Solution
+Updated 5 files to give the AI complete DO awareness and tool coverage.
+
+#### Key Changes
+
+**`backend/src/services/aiContextService.js`**
+- Added `DispatchOrder` model via `dbStore.get('DispatchOrder')`
+- Added `activeDOCount` to parallel `Promise.all` query (draft+confirmed+partial, non-archived)
+- Returns `activeDOCount` in stats object
+
+**`backend/src/config/aiSystemPrompt.js`**
+- Added `- Active DOs: ${activeDOCount}` to current context header
+- Added 5 DO read capabilities and 7 DO write capabilities to capabilities section
+- Added full `## Dispatch Orders (IMPORTANT)` behavioral guidance block covering: finished-goods-only constraint, 3-step workflow (draft→confirm→dispatch), cancel≠void, earnings null logic, archive rules, sale price update restriction, FIFO/FEFO auto-selection
+
+**`backend/src/config/aiTools.js`**
+- **Improved** `query_dispatch_orders`: added `archived` boolean parameter
+- **Improved** `create_dispatch_order`: added `reference_po` top-level param; `sale_price_per_unit` and `notes` per line
+- **Improved** `dispatch_items`: added optional `batch_id` per line (override FIFO/FEFO auto-selection)
+- **Added** 6 new tools: `get_dispatch_stats` (READ), `get_dispatch_earnings` (ANALYSIS), `update_dispatch_order` (WRITE), `archive_dispatch_order` (WRITE), `update_dispatch_line_sale_price` (WRITE), `export_dispatch_orders` (IMPORT_EXPORT)
+- Total: 52 → **64 tools**; DO tools: 6 → **12 tools**
+
+**`backend/src/modules/ai/usecases/toolHandlers/dispatchOrderToolRegistry.js`**
+- Added 6 new handlers matching the 6 new tools
+- Fixed `query_dispatch_orders` to extract and pass `archived` (was excluded from destructure, silently ignored)
+- Fixed `create_dispatch_order` to pass `reference_po` to service (was missing from explicit field list)
+
+**`docs/ai/AI_GUIDELINES.md`**
+- Version: 2.0.0 → 2.1.0
+- Tool count: 52 → 64
+- Added full Dispatch Orders section: status workflow table, 12-tool reference, earnings rules, 4 caveats, 10 example prompts
+
+---
+
+### Part 2 — UI Consistency (Confirmation Dialogs & Result Cards)
+
+#### Problem
+- Confirmation dialogs for all unmapped actions showed raw `JSON.stringify` output — unreadable by users
+- `ActionResultCard` showed `[object Object]` chips for DOs (no formatter in `executeConfirmedActionUseCase`)
+- No navigation button on result cards for DOs (missing from `ENTITY_PATHS`/`ENTITY_ICONS`)
+- `₱` currency symbol corrupted in PO and supplier result cards
+
+#### Solution
+Rewrote the confirmation dialog renderers and added DO support to all result card layers.
+
+#### Key Changes
+
+**`backend/src/modules/ai/usecases/executeConfirmedActionUseCase.js`**
+- Fixed `₱` currency (was corrupted) in `create_purchase_order` and `add_supplier_item`
+- Added `related_entity` to `create_purchase_order` and `create_job_order` (enables navigation buttons)
+- Added 7 DO switch cases: `create_dispatch_order`, `update_dispatch_order`, `confirm_dispatch_order`, `dispatch_items`, `cancel_dispatch_order`, `archive_dispatch_order`, `update_dispatch_line_sale_price` — each with structured `summary`, `impact`, `details`, and `related_entity`
+
+**`frontend/Components/ai/ConfirmActionDialog.jsx`**
+- Added icons for DO operations (`Send`, `Ban`, `Archive`, `DollarSign`)
+- Added DO entries to `ACTION_ICONS` and `ACTION_COLORS` maps
+- Added user management entries to `ACTION_ICONS`/`ACTION_COLORS`
+- Completely rewrote `renderDetails()`:
+  - 4 helper sub-components: `Warning` (amber), `Note` (slate), `Field` (labeled row), `ItemBox` (scrollable list)
+  - Typed renderers for: PO, receive_PO, JO, complete_JO, create/update/delete item, stock adjustment, create/update/delete supplier, add_supplier_item, user management (5 types), all folder operations, all 7 DO operations
+  - **Smart generic fallback**: renders key-value rows for all unmapped actions (no more raw JSON)
+
+**`frontend/Components/ai/ActionResultCard.jsx`**
+- Added `Send` icon import
+- Added `dispatch_order: Send` to `ENTITY_ICONS`
+- Added `dispatch_order: '/dispatch-orders'` to `ENTITY_PATHS`
+- Added `do_id`/`do_number` legacy fallback for navigation button
+
+#### Bug Fixes Found During Audit
+| Bug | Location | Fix |
+|-----|----------|-----|
+| `reference_po` silently dropped | `dispatchOrderToolRegistry.js` L74-81 | Added `reference_po: args.reference_po` to service call |
+| `update_dispatch_line_sale_price` schema rejected null | `aiTools.js` | Changed `type: "number"` → `type: ["number", "null"]` |
+| `archived` filter ignored in query | `dispatchOrderToolRegistry.js` | Added `archived` to destructure + `archived ? 'true' : undefined` conversion |
+| Unused `RefreshCw` import | `ConfirmActionDialog.jsx` | Removed import |
+
+---
+
+### Confidence Rating
+**9.6 / 10** — All 12 DO tools verified, all 4 bugs fixed, UI consistent across all action types. Remaining 0.4: `onViewDetails(path)` navigates to list page, not specific record (pre-existing architectural limitation affecting PO/JO equally).
+
+---
+
+## Phase 63: Items Page — Selection Widget UX Hardening (2026-03-09)
+
+### Problem
+The "1 Selected | Move to Folder" bulk-action bar persisted visually when the user opened the View Details or Edit Item modal, layering an active UI element beneath an overlay and causing visual clutter. There was also no keyboard shortcut to dismiss the selection bar.
+
+### Solution
+Two targeted changes to `frontend/src/features/inventory/pages/ItemsPage.jsx` only:
+
+1. **`isAnyModalOpen` derived constant** — aggregates all 9 modal state booleans (`showDetailsModal`, `showFormModal`, `showProductWizard`, `showMoveModal`, `showDeleteDialog`, `showFolderDeleteDialog`, `showImportModal`, `showExportModal`, `showImportExportModal`) into a single flag.
+
+2. **Escape key `useEffect`** — attaches a `keydown` listener only when `selectedCount > 0 && !isAnyModalOpen`. Pressing Escape calls `clearSelection()`. Listener is removed on cleanup and re-created on next render cycle. Shadcn Dialog's native Escape handler is unaffected because the listener is never attached while a modal is open.
+
+3. **Widget condition** — changed from `{selectedCount > 0 && (` to `{selectedCount > 0 && !isAnyModalOpen && (`.
+
+### Design Decisions
+- `showMoveModal` is intentionally included — it is opened from the bar itself; hiding the bar while the move dialog is active is correct
+- No new state variables, no new props, no API calls
+- Applies to all 9 modal types uniformly — no loopholes for edge-case modals

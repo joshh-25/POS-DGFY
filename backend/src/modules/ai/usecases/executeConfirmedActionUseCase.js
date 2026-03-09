@@ -31,17 +31,18 @@ const createUiResultFormatter = (logger) => {
         case 'create_purchase_order': {
           uiResult.summary = `Purchase Order #${result.po_number} created`;
           const totalAmount = typeof result.total_amount === 'number' && !Number.isNaN(result.total_amount)
-            ? `$${result.total_amount.toFixed(2)}`
-            : '$0.00';
+            ? `₱${result.total_amount.toFixed(2)}`
+            : '₱0.00';
           uiResult.impact = {
             'Total Cost': totalAmount,
-            'Items Ordered': String(args.items.length),
+            'Items Ordered': String(args.items?.length || 0),
             Status: 'Pending'
           };
           uiResult.details = {
             Supplier: result.details?.Supplier || 'Unknown',
             Delivery: result.details?.['Expected Delivery'] || 'N/A'
           };
+          uiResult.related_entity = { type: 'purchase_order', label: `PO #${result.po_number}` };
           break;
         }
 
@@ -55,15 +56,18 @@ const createUiResultFormatter = (logger) => {
           break;
 
         case 'create_job_order':
-          uiResult.summary = 'Job order created';
+          uiResult.summary = result.jo_number ? `Job Order #${result.jo_number} created` : 'Job order created';
           uiResult.impact = {
             'To Produce': `${args.quantity_to_produce} units`,
             Ingredients: 'Reserved',
-            Status: 'In Progress'
+            Status: 'Draft'
           };
           uiResult.details = {
             Product: `ID: ${args.product_id}`
           };
+          if (result.jo_id) {
+            uiResult.related_entity = { type: 'job_order', label: `JO #${result.jo_number || result.jo_id}` };
+          }
           break;
 
         case 'complete_job_order':
@@ -104,8 +108,8 @@ const createUiResultFormatter = (logger) => {
         case 'add_supplier_item':
           uiResult.summary = 'Item linked to supplier';
           uiResult.impact = {
-            Price: `$${args.price_per_unit}/unit`,
-            MOQ: args.moq
+            Price: `₱${args.price_per_unit}/unit`,
+            MOQ: String(args.moq || 1)
           };
           break;
 
@@ -184,6 +188,81 @@ const createUiResultFormatter = (logger) => {
             };
           }
           break;
+
+        case 'create_dispatch_order':
+          uiResult.summary = `Dispatch Order ${result.do_number} created`;
+          uiResult.impact = {
+            Status: 'Draft',
+            Recipient: args.recipient_name,
+            'Dispatch Date': args.dispatch_date,
+            Lines: String(args.lines?.length || 0)
+          };
+          uiResult.details = {
+            'Recipient Type': args.recipient_type || 'external',
+            ...(args.reference_jo ? { 'Ref JO': args.reference_jo } : {}),
+            ...(args.reference_po ? { 'Ref PO': args.reference_po } : {})
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'update_dispatch_order':
+          uiResult.summary = `Dispatch Order ${result.do_number} updated`;
+          uiResult.impact = {
+            Status: result.status,
+            ...(args.lines ? { 'Lines Replaced': String(args.lines.length) } : {})
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'confirm_dispatch_order':
+          uiResult.summary = `Dispatch Order ${result.do_number} confirmed`;
+          uiResult.impact = {
+            Status: 'Confirmed',
+            'Next Step': 'Execute dispatch to deduct stock'
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'dispatch_items':
+          uiResult.summary = `Goods dispatched on ${result.do_number}`;
+          uiResult.impact = {
+            Status: result.status,
+            'Lines Dispatched': String(args.lines?.length || 0),
+            'Stock': 'Deducted'
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'cancel_dispatch_order':
+          uiResult.summary = `Dispatch Order ${result.do_number} cancelled`;
+          uiResult.impact = {
+            Status: 'Cancelled',
+            ...(args.reason ? { Reason: args.reason } : {})
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'archive_dispatch_order':
+          uiResult.summary = `Dispatch Order ${result.do_number} archived`;
+          uiResult.impact = {
+            Status: 'Archived',
+            'Archived At': result.archived_at ? new Date(result.archived_at).toLocaleDateString() : 'Now'
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+
+        case 'update_dispatch_line_sale_price': {
+          const priceDisplay = args.sale_price_per_unit !== null && args.sale_price_per_unit !== undefined
+            ? `₱${args.sale_price_per_unit}/unit`
+            : 'null (internal transfer)';
+          uiResult.summary = `Sale price updated on ${result.do_number}`;
+          uiResult.impact = {
+            'New Sale Price': priceDisplay,
+            'Line ID': String(args.line_id)
+          };
+          uiResult.related_entity = { type: 'dispatch_order', label: result.do_number };
+          break;
+        }
 
         default:
           uiResult.details = result.details || args;

@@ -262,6 +262,22 @@ export default function Items() {
     clearSelection();
   }, [searchQuery, categoryFilter, statusFilter, folderFilter, currentFolder, clearSelection]);
 
+  // Hide the selection bar and suppress Escape handler whenever any modal is open
+  const isAnyModalOpen =
+    showDetailsModal || showFormModal || showProductWizard || showMoveModal ||
+    showDeleteDialog || showFolderDeleteDialog ||
+    showImportModal || showExportModal || showImportExportModal;
+
+  // Escape key clears selection when the bar is visible and no modal is open
+  useEffect(() => {
+    if (selectedCount === 0 || isAnyModalOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCount, isAnyModalOpen, clearSelection]);
+
   const handleView = async (item) => {
     try {
       // Fetch complete item data with all associations for ALL item categories
@@ -1048,8 +1064,8 @@ export default function Items() {
           filteredCount={filteredItems.length}
         />
 
-        {/* Bulk Actions Bar */}
-        {selectedCount > 0 && (
+        {/* Bulk Actions Bar — hidden when any modal is open */}
+        {selectedCount > 0 && !isAnyModalOpen && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
             <div className="flex items-center gap-3">
               <span className="bg-white/20 text-white px-2.5 py-0.5 rounded-md text-sm font-medium">

@@ -10,7 +10,8 @@ import {
   FileText,
   Users,
   Settings,
-  ArrowRight
+  ArrowRight,
+  Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -53,7 +54,8 @@ const ENTITY_ICONS = {
   job_order: Clipboard,
   stock_movement: FileText,
   settings: Settings,
-  inventory_folder: Package
+  inventory_folder: Package,
+  dispatch_order: Send
 };
 
 const ENTITY_PATHS = {
@@ -63,7 +65,8 @@ const ENTITY_PATHS = {
   job_order: '/job-orders',
   stock_movement: '/stock-movements',
   settings: '/settings',
-  inventory_folder: '/items'
+  inventory_folder: '/items',
+  dispatch_order: '/dispatch-orders'
 };
 
 export default function ActionResultCard({ result, onViewDetails }) {
@@ -87,10 +90,12 @@ export default function ActionResultCard({ result, onViewDetails }) {
     }
   } else {
     // Legacy Handlers (Backward Compatibility)
-    if (result.po_id || result.po_number) {
-      actionLink = { path: '/purchase-orders', label: 'View Purchase Order', icon: ShoppingCart };
+    if (result.do_id || result.do_number) {
+      actionLink = { path: '/dispatch-orders', label: `View ${result.do_number || 'Dispatch Order'}`, icon: Send };
+    } else if (result.po_id || result.po_number) {
+      actionLink = { path: '/purchase-orders', label: `View ${result.po_number || 'Purchase Order'}`, icon: ShoppingCart };
     } else if (result.jo_id || result.jo_number) {
-      actionLink = { path: '/job-orders', label: 'View Job Order', icon: Clipboard };
+      actionLink = { path: '/job-orders', label: `View ${result.jo_number || 'Job Order'}`, icon: Clipboard };
     } else if (result.item_id || result.item) {
       actionLink = { path: '/items', label: 'View Item', icon: Package };
     } else if (result.movement_id) {

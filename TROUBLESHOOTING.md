@@ -751,22 +751,34 @@ This is the pattern used in `backend/migrations/20260301000000-add-performance-i
 **Symptoms**:
 - Deploy exits early with:
   `Another deployment appears to be running (lock: /tmp/skupervisor_deploy.lock)`
-- `ps -ef | grep deploy.sh | grep -v grep` shows no active deploy process.
+- `ps aux | grep deploy.sh` shows no active deploy process.
+- The shell prompt appears between the "Re-executing deploy.sh" line and the lock error, e.g.:
+  ```
+  [INFO] Re-executing deploy.sh to ensure the latest script version is active...
+  root@hermes-cloud:/var/www/skupervisor# [ERROR] Another deployment appears to be running
+  ```
 
 **Cause**:
-- A stale lock file remained after an interrupted run.
-- This can happen around script re-exec timing or network/SSH disconnects.
+- `deploy.sh` uses a lock handshake: it opens fd 9 (`flock -n 9`) and exports `DEPLOY_LOCK_ACQUIRED=1`, which the re-exec'd child is expected to inherit.
+- If `deploy.sh` itself was **changed in the same `git pull`** (i.e., the old version re-executed the new version), a version mismatch in the lock handshake can cause the re-exec'd process to see a stale lock and fail.
+- Also triggered by SSH disconnects or any other interruption that killed the holding process before `exec` completed, leaving the lock file on disk.
+- The lock file is at `/tmp/skupervisor_deploy.lock`. Unlike PID files, the flock is released automatically when the holding process exits — but if the process was killed mid-exec, the file can persist without a holder.
 
 **Solution**:
 ```bash
-cd /var/www/skupervisor
-ps -ef | grep deploy.sh | grep -v grep
+# 1. Confirm no deployment is actually running
+ps aux | grep deploy.sh
+
+# 2. If nothing is running, clear the stale lock and re-run
 rm -f /tmp/skupervisor_deploy.lock
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git fetch origin "$BRANCH"
-EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
-DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+bash scripts/deploy.sh
 ```
+
+> **Note**: The `git pull` already succeeded before the lock error. Re-running `bash scripts/deploy.sh` is safe and idempotent — it will re-pull (no-op if already up-to-date), then proceed with `npm ci`, build, migrations, and PM2 restart.
+
+**Prevention**:
+- This cannot be fully prevented when `deploy.sh` changes in the same pull (inherent to the self-re-exec design).
+- If this recurs frequently, consider pinning the lock acquisition to a wrapper script that never changes.
 
 ### 46. Billing-Funnel Audit Degraded Because of `test_webhook_*` Rows
 **Symptoms**:

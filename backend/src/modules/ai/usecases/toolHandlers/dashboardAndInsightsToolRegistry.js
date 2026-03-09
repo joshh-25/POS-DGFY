@@ -15,9 +15,31 @@ export const buildDashboardAndInsightsToolRegistry = ({
         overstock_count: stats.overStockCount,
         pending_purchase_orders: stats.pending_purchase_orders,
         active_job_orders: stats.active_job_orders,
-        total_inventory_value: stats.totalValue
+        total_inventory_value: stats.totalValue,
+        data_quality: stats.dataQuality || null
       };
     },
+
+    get_inventory_value_breakdown: async ({ args }) => {
+      const { limit, page, sort } = args;
+      const breakdown = await dashboardService.getInventoryValueBreakdown({ limit, page, sort });
+      return {
+        grand_total: breakdown.grand_total,
+        item_count: breakdown.items.length,
+        items: breakdown.items.map((item) => ({
+          sku_code: item.sku_code,
+          name: item.name,
+          category: item.category,
+          current_stock: item.current_stock,
+          unit: item.unit,
+          cost_per_unit: item.cost_per_unit,
+          total_value: item.total_value
+        })),
+        pagination: breakdown.pagination,
+        data_quality: breakdown.data_quality
+      };
+    },
+
 
     get_low_stock_items: async ({ args }) => {
       const { limit = 20 } = args;

@@ -28,6 +28,7 @@ export const buildContext = async (userId) => {
       lowStockCount: stats.lowStockCount || 0,
       pendingPOCount: stats.pendingPOCount || 0,
       activeJOCount: stats.activeJOCount || 0,
+      activeDOCount: stats.activeDOCount || 0,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
@@ -39,6 +40,7 @@ export const buildContext = async (userId) => {
       lowStockCount: 0,
       pendingPOCount: 0,
       activeJOCount: 0,
+      activeDOCount: 0,
       timestamp: new Date().toISOString()
     };
   }
@@ -75,6 +77,7 @@ export const getUserContext = async (userId) => {
 
 /**
  * Get current inventory statistics
+ * Delegates to dashboardService to ensure a single source of truth for value calculations.
  * @returns {Promise<Object>} Inventory stats
  */
 export const getInventoryStats = async () => {
@@ -82,6 +85,7 @@ export const getInventoryStats = async () => {
     const Item = dbStore.get('Item');
     const PurchaseOrder = dbStore.get('PurchaseOrder');
     const JobOrder = dbStore.get('JobOrder');
+    const DispatchOrder = dbStore.get('DispatchOrder');
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
     // Get item counts
@@ -116,8 +120,8 @@ export const getInventoryStats = async () => {
       })
     ]);
 
-    // Get PO and JO counts
-    const [pendingPOCount, activeJOCount] = await Promise.all([
+    // Get PO, JO, and DO counts
+    const [pendingPOCount, activeJOCount, activeDOCount] = await Promise.all([
       PurchaseOrder.count({
         where: {
           status: { [Op.in]: ['pending', 'partial'] },
@@ -129,20 +133,24 @@ export const getInventoryStats = async () => {
           status: { [Op.in]: ['draft', 'in_progress'] },
           archived_at: null
         }
+      }),
+      DispatchOrder.count({
+        where: {
+          status: { [Op.in]: ['draft', 'confirmed', 'partial'] },
+          archived_at: null
+        }
       })
     ]);
 
-    // Calculate total inventory value
-    const items = await Item.findAll({
+    // Calculate total inventory value using DB aggregation (single source of truth)
+    const inventoryValueResult = await Item.findAll({
       where: buildVisibleWhere({ status: 'active' }),
-      attributes: ['current_stock', 'cost_per_unit']
+      attributes: [
+        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
+      ],
+      raw: true
     });
-
-    const totalValue = items.reduce((sum, item) => {
-      const stock = parseFloat(item.current_stock) || 0;
-      const cost = parseFloat(item.cost_per_unit) || 0;
-      return sum + (stock * cost);
-    }, 0);
+    const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
 
     return {
       totalItems,
@@ -151,6 +159,7 @@ export const getInventoryStats = async () => {
       overstockCount: overstockItems,
       pendingPOCount,
       activeJOCount,
+      activeDOCount,
       totalValue: Math.round(totalValue * 100) / 100
     };
   } catch (error) {
@@ -162,6 +171,7 @@ export const getInventoryStats = async () => {
       overstockCount: 0,
       pendingPOCount: 0,
       activeJOCount: 0,
+      activeDOCount: 0,
       totalValue: 0
     };
   }

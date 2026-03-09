@@ -1,6 +1,6 @@
-> **Version:** 2.0.0
-> **Last Updated:** February 19, 2026
-> **Tool Count:** 52
+> **Version:** 2.1.0
+> **Last Updated:** March 2026
+> **Tool Count:** 64
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
@@ -42,6 +42,13 @@ The SKUpervisor AI Assistant is powered by OpenAI's GPT-4 model and provides nat
 | **Receive PO** | Manager+ | Mark PO as received, update stock |
 | **Create JO** | Manager+ | Create production job orders |
 | **Complete JO** | Manager+ | Finish job, update inventory |
+| **Create DO** | Manager+ | Create dispatch orders for finished goods |
+| **Edit Draft DO** | Manager+ | Replace lines / update recipient on draft DOs |
+| **Confirm DO** | Manager+ | Lock in DO details (draft → confirmed) |
+| **Dispatch Items** | Manager+ | Execute stock deduction (confirmed/partial → completed) |
+| **Cancel DO** | Manager+ | Cancel draft, confirmed, or partial DOs |
+| **Archive DO** | Manager+ | Archive completed or cancelled DOs |
+| **Update DO Sale Price** | Manager+ | Retroactively adjust sale price on a dispatched line |
 | **Stock Adjustment** | Manager+ | Manual stock corrections |
 | **Create Folder** | Manager+ | Create inventory folder |
 | **Bulk Create Folders** | Manager+ | Create multiple folders in one operation |
@@ -104,6 +111,83 @@ The assistant can search project documentation (`search_documentation`) to answe
 | **Export POs** | Export purchase orders to CSV | `export_to_csv` |
 | **Export JOs** | Export job orders to CSV | `export_to_csv` |
 | **Export Movements** | Export stock movements to CSV | `export_to_csv` |
+| **Export DOs** | Export dispatch orders + line items to CSV | `export_dispatch_orders` |
+
+---
+
+## Dispatch Orders
+
+Dispatch Orders (DOs) track the outbound shipment of **finished goods** to customers or internal branches. They are the primary mechanism for recording sales and goods issue movements.
+
+### Eligibility Constraint
+
+Only items with `category=product` **and** `product_type=finished_goods` can be added to a dispatch order. The AI will refuse to dispatch raw materials or packaging items and will explain why.
+
+### DO Status Workflow
+
+```
+draft → confirmed → partial → completed
+                ↑
+           (dispatch runs)
+
+cancelled ← (from draft / confirmed / partial only)
+archived  ← (completed or cancelled only)
+```
+
+| Status | Meaning |
+|--------|---------|
+| `draft` | Created, not yet locked in. Lines can be edited. Stock NOT deducted. |
+| `confirmed` | Locked in. Cannot edit lines. Stock NOT yet deducted. |
+| `partial` | At least one line has been dispatched, but not all. Stock being deducted. |
+| `completed` | All lines fully dispatched. |
+| `cancelled` | Cancelled. Already-dispatched stock must be voided separately. |
+
+### Tool Reference
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `query_dispatch_orders` | `do:view` | List DOs with status/recipient/date filters; set `archived=true` for archived view |
+| `get_dispatch_order_details` | `do:view` | Full DO details with line items, cost snapshots, and stock movement history |
+| `get_dispatch_stats` | `do:view` | Summary count by status (draft, confirmed, partial, completed, cancelled) |
+| `get_dispatch_earnings` | `do:view` | Revenue, COGS, gross profit by item / order / recipient / period |
+| `export_dispatch_orders` | `do:view` | Export DOs to CSV (one row per line item) |
+| `create_dispatch_order` | `do:create` | Create a draft DO with recipient, date, and line items |
+| `update_dispatch_order` | `do:create` | Edit a draft DO (replaces all lines if `lines` is provided) |
+| `confirm_dispatch_order` | `do:create` | Move draft → confirmed (locks in recipient & lines) |
+| `dispatch_items` | `do:dispatch` | Execute dispatch — deducts stock via `goods_issue` movement |
+| `cancel_dispatch_order` | `do:delete` | Cancel a DO (does NOT auto-void dispatched stock) |
+| `archive_dispatch_order` | `do:delete` | Archive completed or cancelled DOs |
+| `update_dispatch_line_sale_price` | `do:dispatch` | Retroactively update sale price on a dispatched line |
+
+### Earnings & Revenue Tracking
+
+- Lines with `sale_price_per_unit` set → contribute to **revenue** and **gross profit**
+- Lines with `sale_price_per_unit = null` → **internal transfers**, excluded from earnings
+- Effective dispatched quantity = `qty_dispatched - qty_voided` (voids are respected)
+- `get_dispatch_earnings` returns breakdowns by: **item**, **order**, **recipient**, and **time period** (day/week/month)
+- To get current month's earnings, call with no date parameters (defaults to current month)
+
+### Important Caveats
+
+1. **Cancel ≠ void**: Cancelling a partial DO does **not** auto-reverse the stock already deducted. Users must void those `goods_issue` movements separately via the stock movements section.
+2. **FIFO/FEFO auto-selection**: The system picks the correct batch automatically. FEFO (earliest expiry first) is used for items with `shelf_life_days` set. Users can override with a specific `batch_id`.
+3. **Sale price propagation**: After dispatching (or after `update_dispatch_line_sale_price`), the item's `default_sale_price` is updated to reflect the new price for future DOs.
+4. **Draft-only edits**: `update_dispatch_order` only works on `draft` status. For `confirmed`+ DOs, cancel and recreate, or use `update_dispatch_line_sale_price` for price-only changes.
+
+### Example Prompts
+
+| User Says | AI Action |
+|-----------|-----------|
+| "How many DOs are pending?" | `get_dispatch_stats` |
+| "Show DOs for ABC Corp this week" | `query_dispatch_orders` with recipient + date filter |
+| "Create a DO for 100 units of Syrup A for Jollibee" | `get_items` → `create_dispatch_order` |
+| "Confirm DO-2026-001" | `get_dispatch_order_details` → `confirm_dispatch_order` |
+| "Dispatch all items on DO-2026-001" | `get_dispatch_order_details` → `dispatch_items` (all lines) |
+| "Show last month's earnings" | `get_dispatch_earnings` (period=month) |
+| "Which items have the best profit margin?" | `get_dispatch_earnings` → formats `by_item` by margin % |
+| "Export all completed DOs to CSV" | `export_dispatch_orders` (status=completed) |
+| "Archive DO-2026-001" | `get_dispatch_order_details` → `archive_dispatch_order` |
+| "Update sale price on line 5 to ₱250" | `update_dispatch_line_sale_price` |
 
 ---
 
@@ -188,12 +272,12 @@ All write operations follow a strict confirmation workflow to prevent accidental
 
 | Limitation | Description |
 |------------|-------------|
-| **Batch Selection** | Cannot manually select specific FIFO batches (uses oldest first) |
+| **Batch Selection** | Manual batch selection only supported for `dispatch_items` (via optional `batch_id` per line). FIFO/FEFO still auto-selected for JO completions. |
 | **File Processing** | Can process text, CSV, PDF, DOCX, and Images (Vision API) |
 | **Real-time Updates** | Data may be slightly stale during high-activity periods |
 | **Complex Calculations** | May need multiple queries for complex analytics |
 | **Historical Trends** | Limited to 90 days of movement history |
-| **Archived Records** | Cannot query archived POs or JOs (archive filter not exposed to AI tools) |
+| **Archived Records** | Archived DOs are queryable via `archived=true` on `query_dispatch_orders`. Archived POs and JOs cannot be queried (archive filter not exposed). |
 | **Soft-Delete Reversal** | Cannot restore soft-deleted items or suppliers |
 | **Recipe Management** | Cannot add/remove product composition ingredients after item creation |
 | **Stock Movement Void** | Cannot void/reverse existing stock movements |
@@ -510,6 +594,32 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 ---
 
 ## Changelog
+
+### v2.1.0 (March 7, 2026) - Dispatch Orders Full AI Integration & UI Consistency
+
+**Tool Count**: 52 → **64 tools** (12 new DO tools)
+
+#### Dispatch Orders — Full AI Coverage
+- **6 new tools**: `get_dispatch_stats`, `get_dispatch_earnings`, `update_dispatch_order`, `archive_dispatch_order`, `update_dispatch_line_sale_price`, `export_dispatch_orders`
+- **3 improved tools**: `query_dispatch_orders` (added `archived` filter), `create_dispatch_order` (added `reference_po`, `sale_price_per_unit` per line), `dispatch_items` (added optional `batch_id` per line)
+- **System prompt**: Full DO capabilities listed; `## Dispatch Orders (IMPORTANT)` behavioral guidance block added (workflow, constraints, cancel≠void, earnings rules)
+- **Context header**: Added `Active DOs:` count (draft+confirmed+partial, non-archived)
+- **`aiContextService.js`**: Added `DispatchOrder.count()` parallel query for `activeDOCount`
+
+#### UI Consistency — Confirmation Dialogs
+- **`ConfirmActionDialog.jsx`**: Rewrote `renderDetails()` — replaced raw `JSON.stringify` fallback with typed per-action renderers for all major action types (PO, JO, items, suppliers, user management, folders, all 7 DO operations) plus a **smart generic fallback** that renders clean key-value rows for any action without a specific renderer
+- **Helper sub-components added**: `Warning` (amber alert), `Note` (slate info), `Field` (labeled row), `ItemBox` (scrollable list)
+- **DO-specific confirmation content**: Shows recipient, lines with ₱ pricing, workflow-appropriate warnings (e.g., "stock deducted immediately" for dispatch, "cancel ≠ void" for cancel)
+
+#### UI Consistency — Result Cards
+- **`executeConfirmedActionUseCase.js`**: Added 7 DO switch cases with structured `summary`, `impact`, `details`, and `related_entity`; fixed `₱` currency symbol (was corrupted in PO/supplier cases); added `related_entity` to `create_purchase_order` and `create_job_order`
+- **`ActionResultCard.jsx`**: Added `dispatch_order` to `ENTITY_ICONS` and `ENTITY_PATHS`; PO, JO, and all DO write operations now show a "View …" navigation button on the result card
+
+#### Bug Fixes
+- **`reference_po` silently dropped**: `create_dispatch_order` handler was not passing `reference_po` to the service — fixed
+- **Null rejection on `update_dispatch_line_sale_price`**: Tool schema used `type: "number"` which rejects null (internal transfers) — fixed to `type: ["number", "null"]`
+- **Archived filter ignored**: `query_dispatch_orders` handler destructured args but excluded `archived` — fixed
+- **Unused import removed**: `RefreshCw` was imported but unused in `ConfirmActionDialog.jsx` — removed
 
 ### v2.0.0 (February 19, 2026) - AI Capability Gap Checker
 - **New Feature**: `GET /api/v1/ai/diagnostics` — stateless, read-only diagnostic endpoint that returns a structured gap report for the current tenant

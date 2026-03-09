@@ -16,6 +16,7 @@ export const buildExecuteAiToolUseCase = ({
         // ============== DASHBOARD & STATS ==============
         case 'get_dashboard_stats':
         case 'get_low_stock_items':
+        case 'get_inventory_value_breakdown':
         case 'get_items':
         case 'get_item_details':
         case 'create_item':

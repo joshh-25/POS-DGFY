@@ -111,6 +111,16 @@ export default function AiChat() {
         scrollToBottom();
     }, [messages, scrollToBottom]);
 
+    // Auto-focus input when AI finishes typing or chat is opened
+    useEffect(() => {
+        if (!isTyping) {
+            // Small timeout ensures the disabled attribute is removed from the DOM first
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 50);
+        }
+    }, [isTyping]);
+
     const loadConversation = async (convId) => {
         try {
             setIsTyping(true);
@@ -132,6 +142,7 @@ export default function AiChat() {
             setError('Failed to load conversation');
         } finally {
             setIsTyping(false);
+            setTimeout(() => inputRef.current?.focus(), 10);
         }
     };
 
@@ -340,6 +351,7 @@ export default function AiChat() {
             setMessages(prev => [...prev, errorAssistantMessage]);
         } finally {
             setIsTyping(false);
+            setTimeout(() => inputRef.current?.focus(), 10);
         }
     };
 
@@ -756,9 +768,8 @@ export default function AiChat() {
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyPress}
                                 placeholder="Ask me anything about your inventory..."
-                                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2.5 px-4 text-base text-slate-900 placeholder:text-slate-500 font-medium"
+                                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2.5 px-4 text-base text-slate-900 placeholder:text-slate-500 font-medium disabled:cursor-not-allowed disabled:bg-slate-100 rounded-lg"
                                 rows={1}
-                                disabled={isTyping}
                             />
 
                             <div className="pb-1 pr-1">

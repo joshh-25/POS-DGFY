@@ -109,6 +109,7 @@ export const TOOL_REGISTRY_BY_NAME = Object.freeze({
   // Dashboard and insights
   get_dashboard_stats: dashboardAndInsightsToolRegistry,
   get_low_stock_items: dashboardAndInsightsToolRegistry,
+  get_inventory_value_breakdown: dashboardAndInsightsToolRegistry,
   get_system_settings: dashboardAndInsightsToolRegistry,
   update_system_settings: dashboardAndInsightsToolRegistry,
   generate_executive_summary: dashboardAndInsightsToolRegistry,

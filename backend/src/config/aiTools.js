@@ -259,7 +259,7 @@ export const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_dashboard_stats",
-      description: "Get overall inventory statistics including total items, low stock count, healthy stock count, overstock count, pending POs, active JOs, and total inventory value.",
+      description: "Get overall inventory statistics including total items, low stock count, healthy stock count, overstock count, pending POs, active JOs, total inventory value, and data quality metrics (how many items are missing cost data). Use this for quick summary stats.",
       parameters: {
         type: "object",
         properties: {},
@@ -288,8 +288,37 @@ export const AI_TOOLS = [
     category: TOOL_CATEGORIES.READ,
     requiresConfirmation: false
   },
+  {
+    type: "function",
+    function: {
+      name: "get_inventory_value_breakdown",
+      description: "Get inventory value breakdown showing items that have both stock > 0 AND cost_per_unit > 0. Returns per-item value (stock × cost), an accurate grand total across ALL qualifying items, and pagination info. USE THIS when user asks about total inventory value, value per item, value breakdowns, or 'highest value items'. NEVER use get_items for value calculations — it is paginated differently and will produce incorrect totals. When user says 'next 100' or 'show more', call again with the next page number.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            description: "Number of items per page (default: 100, max: 200)"
+          },
+          page: {
+            type: "integer",
+            description: "Page number (default: 1). Use page 2, 3, etc. when user asks for 'next' or 'more' items"
+          },
+          sort: {
+            type: "string",
+            description: "Sort order: 'value_desc' (highest value first, default), 'value_asc' (lowest value first), 'name_asc' (alphabetical), 'stock_desc' (highest stock first)",
+            enum: ["value_desc", "value_asc", "name_asc", "stock_desc"]
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false
+  },
 
   // ============== ITEMS ==============
+
   {
     type: "function",
     function: {
@@ -1494,6 +1523,10 @@ export const AI_TOOLS = [
           limit: {
             type: "integer",
             description: "Maximum number of results to return (default: 20)"
+          },
+          archived: {
+            type: "boolean",
+            description: "Set to true to query archived dispatch orders (completed/cancelled that were archived). Default: false (active orders only)"
           }
         },
         required: []
@@ -1547,6 +1580,10 @@ export const AI_TOOLS = [
             type: "string",
             description: "Optional: Job Order number this dispatch is linked to"
           },
+          reference_po: {
+            type: "string",
+            description: "Optional: Purchase Order number this dispatch is linked to"
+          },
           notes: {
             type: "string",
             description: "Optional notes for the dispatch order"
@@ -1559,11 +1596,19 @@ export const AI_TOOLS = [
               properties: {
                 item_id: {
                   type: "integer",
-                  description: "ID of the finished goods item"
+                  description: "ID of the finished goods item (must be category=product, product_type=finished_goods)"
                 },
                 qty_ordered: {
                   type: "number",
                   description: "Quantity to dispatch"
+                },
+                sale_price_per_unit: {
+                  type: "number",
+                  description: "Selling price per unit in ₱. Leave null for internal transfers (excluded from earnings). If omitted, defaults to the item's default_sale_price."
+                },
+                notes: {
+                  type: "string",
+                  description: "Optional line-level notes"
                 }
               },
               required: ["item_id", "qty_ordered"]
@@ -1621,7 +1666,11 @@ export const AI_TOOLS = [
                 },
                 qty_to_dispatch: {
                   type: "number",
-                  description: "Quantity to dispatch for this line (can be partial)"
+                  description: "Quantity to dispatch for this line (can be partial, must not exceed qty_ordered - qty_dispatched)"
+                },
+                batch_id: {
+                  type: "integer",
+                  description: "Optional: specific FIFO/FEFO batch ID to consume. If omitted, the system auto-selects using FIFO (or FEFO for perishable items)."
                 }
               },
               required: ["line_id", "qty_to_dispatch"]
@@ -1658,6 +1707,235 @@ export const AI_TOOLS = [
     category: TOOL_CATEGORIES.WRITE,
     requiresConfirmation: true,
     requiredRole: "manager"
+  },
+
+  // ---- Additional DO tools ----
+  {
+    type: "function",
+    function: {
+      name: "get_dispatch_stats",
+      description: "Get a summary count of dispatch orders by status (draft, confirmed, partial, completed, cancelled, pending). Use this to give the user an overview of their dispatch pipeline. Optionally filter by date range.",
+      parameters: {
+        type: "object",
+        properties: {
+          startDate: {
+            type: "string",
+            format: "date",
+            description: "Count DOs with dispatch_date on or after this date (YYYY-MM-DD)"
+          },
+          endDate: {
+            type: "string",
+            format: "date",
+            description: "Count DOs with dispatch_date on or before this date (YYYY-MM-DD)"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.READ,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_dispatch_earnings",
+      description: "Get a detailed earnings report for dispatch orders: revenue, COGS, and gross profit broken down by item, order, recipient, and time period. Only lines with a sale_price_per_unit contribute to revenue — internal transfers (null price) are excluded. Use this when the user asks about sales, earnings, profit, or revenue from dispatched goods.",
+      parameters: {
+        type: "object",
+        properties: {
+          date_from: {
+            type: "string",
+            format: "date",
+            description: "Start of the reporting period (YYYY-MM-DD). Defaults to start of the current month if omitted."
+          },
+          date_to: {
+            type: "string",
+            format: "date",
+            description: "End of the reporting period (YYYY-MM-DD). Defaults to today if omitted."
+          },
+          recipient_type: {
+            type: "string",
+            enum: ["external", "internal"],
+            description: "Filter to only external customer sales or internal branch transfers"
+          },
+          item_id: {
+            type: "integer",
+            description: "Filter earnings to a single item"
+          },
+          period: {
+            type: "string",
+            enum: ["day", "week", "month"],
+            description: "Time grouping for the by_period breakdown (default: month)"
+          },
+          status: {
+            type: "string",
+            enum: ["completed", "partial", "completed,partial"],
+            description: "Which DO statuses to include (default: completed)"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.ANALYSIS,
+    requiresConfirmation: false
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_dispatch_order",
+      description: "Edit a dispatch order that is still in draft status. Providing a lines array REPLACES all existing lines. Only draft orders can be edited — if the order is already confirmed, you must cancel it first or proceed with the existing lines. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID to update (must be in draft status)"
+          },
+          recipient_name: {
+            type: "string",
+            description: "Updated recipient name"
+          },
+          recipient_type: {
+            type: "string",
+            enum: ["external", "internal"],
+            description: "Updated recipient type"
+          },
+          dispatch_date: {
+            type: "string",
+            format: "date",
+            description: "Updated planned dispatch date (YYYY-MM-DD)"
+          },
+          reference_jo: {
+            type: "string",
+            description: "Updated linked Job Order number"
+          },
+          reference_po: {
+            type: "string",
+            description: "Updated linked Purchase Order number"
+          },
+          notes: {
+            type: "string",
+            description: "Updated notes"
+          },
+          lines: {
+            type: "array",
+            description: "New line items — REPLACES all existing lines if provided",
+            items: {
+              type: "object",
+              properties: {
+                item_id: {
+                  type: "integer",
+                  description: "ID of the finished goods item"
+                },
+                qty_ordered: {
+                  type: "number",
+                  description: "Quantity to dispatch"
+                },
+                sale_price_per_unit: {
+                  type: "number",
+                  description: "Selling price per unit in ₱. Null for internal transfers."
+                },
+                notes: {
+                  type: "string",
+                  description: "Optional line-level notes"
+                }
+              },
+              required: ["item_id", "qty_ordered"]
+            }
+          }
+        },
+        required: ["do_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "archive_dispatch_order",
+      description: "Archive a completed or cancelled dispatch order to hide it from active views. Only completed or cancelled DOs can be archived. Archived orders can still be viewed by setting archived=true in query_dispatch_orders. Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID to archive (must be completed or cancelled)"
+          }
+        },
+        required: ["do_id"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_dispatch_line_sale_price",
+      description: "Retroactively update the sale price on an already-dispatched line item. Cannot be used on draft orders (use update_dispatch_order instead). Also updates the item's default_sale_price for future dispatches. Set to null to mark the line as an internal transfer (excluded from earnings). Requires manager or admin role.",
+      parameters: {
+        type: "object",
+        properties: {
+          do_id: {
+            type: "integer",
+            description: "The dispatch order ID"
+          },
+          line_id: {
+            type: "integer",
+            description: "The specific line ID to update"
+          },
+          sale_price_per_unit: {
+            type: ["number", "null"],
+            description: "New selling price per unit in ₱ (must be ≥ 0), or null to mark as an internal transfer (excluded from earnings)."
+          }
+        },
+        required: ["do_id", "line_id", "sale_price_per_unit"]
+      }
+    },
+    category: TOOL_CATEGORIES.WRITE,
+    requiresConfirmation: true,
+    requiredRole: "manager"
+  },
+  {
+    type: "function",
+    function: {
+      name: "export_dispatch_orders",
+      description: "Export dispatch orders and their line items to a CSV file. Each row represents one line item. Includes DO number, status, recipient, SKU, quantities, costs, sale price, revenue, gross profit, and margin %. Use this when the user wants to download or save dispatch data.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["draft", "confirmed", "partial", "completed", "cancelled"],
+            description: "Filter by dispatch order status"
+          },
+          recipient_name: {
+            type: "string",
+            description: "Filter by recipient name (partial match)"
+          },
+          startDate: {
+            type: "string",
+            format: "date",
+            description: "Filter from this dispatch date (YYYY-MM-DD)"
+          },
+          endDate: {
+            type: "string",
+            format: "date",
+            description: "Filter until this dispatch date (YYYY-MM-DD)"
+          },
+          archived: {
+            type: "boolean",
+            description: "Include archived orders (default: false)"
+          }
+        },
+        required: []
+      }
+    },
+    category: TOOL_CATEGORIES.IMPORT_EXPORT,
+    requiresConfirmation: false
   }
 ];
 

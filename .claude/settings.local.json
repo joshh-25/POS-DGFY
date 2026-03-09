@@ -103,7 +103,8 @@
       "Bash(git -C \"c:/xampp/htdocs/SKU-Inventory-Manager\" status --short)",
       "Bash(pm2 delete sku-frontend)",
       "Bash(pm2 start ecosystem.config.cjs --only sku-frontend)",
-      "Bash(TaskOutput bgk5c4c9p)"
+      "Bash(TaskOutput bgk5c4c9p)",
+      "Bash(\"c:/xampp/htdocs/SKU-Inventory-Manager/DEVELOPMENT_HISTORY.md\":*)"
     ]
   }
 }

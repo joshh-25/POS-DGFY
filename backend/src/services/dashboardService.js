@@ -18,7 +18,9 @@ export const getDashboardStats = async () => {
     pendingPOs,
     activeJOs,
     pendingDispatchOrders,
-    inventoryValueResult
+    inventoryValueResult,
+    itemsMissingCost,
+    itemsWithZeroStock
   ] = await Promise.all([
     Item.count({ where: buildVisibleWhere({ status: 'active' }) }),
 
@@ -81,6 +83,22 @@ export const getDashboardStats = async () => {
         [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
       ],
       raw: true
+    }),
+
+    // Data quality: items missing cost_per_unit
+    Item.count({
+      where: buildVisibleWhere({
+        status: 'active',
+        [Op.or]: [{ cost_per_unit: null }, { cost_per_unit: 0 }]
+      })
+    }),
+
+    // Data quality: items with zero stock
+    Item.count({
+      where: buildVisibleWhere({
+        status: 'active',
+        current_stock: 0
+      })
     })
   ]);
 
@@ -96,7 +114,13 @@ export const getDashboardStats = async () => {
     // Keep these for backward compatibility
     pending_purchase_orders: pendingPOs,
     active_job_orders: activeJOs,
-    pending_dispatch_orders: pendingDispatchOrders
+    pending_dispatch_orders: pendingDispatchOrders,
+    // Data quality metrics
+    dataQuality: {
+      items_missing_cost: itemsMissingCost,
+      items_with_zero_stock: itemsWithZeroStock,
+      items_with_cost_data: totalItems - itemsMissingCost
+    }
   };
 };
 
@@ -157,3 +181,104 @@ export const getRecentMovements = async (limit = 10) => {
   }));
 };
 
+export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort = 'value_desc' } = {}) => {
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+  const parsedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 100;
+  const cappedLimit = Math.min(parsedLimit, 200);
+  const parsedPage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
+  const offset = (parsedPage - 1) * cappedLimit;
+
+  const valueItemWhere = buildVisibleWhere({
+    status: 'active',
+    current_stock: { [Op.gt]: 0 },
+    cost_per_unit: { [Op.gt]: 0 }
+  });
+
+  // Always compute the accurate grand total from ALL qualifying items (not paginated)
+  const [grandTotalResult, totalMatchingItems] = await Promise.all([
+    Item.findAll({
+      where: valueItemWhere,
+      attributes: [
+        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
+      ],
+      raw: true
+    }),
+    Item.count({ where: valueItemWhere })
+  ]);
+  const grandTotal = parseFloat(grandTotalResult[0]?.total_value || 0);
+
+  // Determine sort order
+  const orderMap = {
+    value_desc: [[sequelize.literal('current_stock * cost_per_unit'), 'DESC']],
+    value_asc: [[sequelize.literal('current_stock * cost_per_unit'), 'ASC']],
+    name_asc: [['name', 'ASC']],
+    stock_desc: [['current_stock', 'DESC']]
+  };
+  const orderClause = orderMap[sort] || orderMap.value_desc;
+
+  // Fetch the paginated slice
+  const items = await Item.findAll({
+    where: valueItemWhere,
+    attributes: ['item_id', 'sku_code', 'name', 'category', 'current_stock',
+      'unit_of_measure', 'cost_per_unit'],
+    order: orderClause,
+    limit: cappedLimit,
+    offset
+  });
+
+  const rows = items.map(item => {
+    const stock = parseFloat(item.current_stock) || 0;
+    const cost = parseFloat(item.cost_per_unit) || 0;
+    const value = Math.round(stock * cost * 100) / 100;
+    return {
+      item_id: item.item_id,
+      sku_code: item.sku_code,
+      name: item.name,
+      category: item.category,
+      current_stock: stock,
+      unit: item.unit_of_measure,
+      cost_per_unit: cost,
+      total_value: value
+    };
+  });
+
+  // Data quality counts for transparency
+  const [totalActive, missingCost, zeroStock] = await Promise.all([
+    Item.count({ where: buildVisibleWhere({ status: 'active' }) }),
+    Item.count({
+      where: buildVisibleWhere({
+        status: 'active',
+        [Op.or]: [{ cost_per_unit: null }, { cost_per_unit: 0 }]
+      })
+    }),
+    Item.count({
+      where: buildVisibleWhere({
+        status: 'active',
+        current_stock: 0
+      })
+    })
+  ]);
+
+  const totalPages = Math.ceil(totalMatchingItems / cappedLimit);
+
+  return {
+    items: rows,
+    grand_total: Math.round(grandTotal * 100) / 100,
+    pagination: {
+      page: safePage,
+      limit: cappedLimit,
+      total_items: totalMatchingItems,
+      total_pages: totalPages,
+      has_next: safePage < totalPages,
+      has_previous: safePage > 1
+    },
+    data_quality: {
+      total_active_items: totalActive,
+      items_missing_cost: missingCost,
+      items_with_zero_stock: zeroStock,
+      items_included_in_total: totalMatchingItems
+    }
+  };
+};

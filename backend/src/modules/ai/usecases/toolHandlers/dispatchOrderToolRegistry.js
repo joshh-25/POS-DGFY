@@ -7,7 +7,8 @@ export const buildDispatchOrderToolRegistry = ({ dispatchOrderService }) => {
         startDate,
         endDate,
         limit = 20,
-        page = 1
+        page = 1,
+        archived = false
       } = args;
 
       const result = await dispatchOrderService.getDispatchOrders({
@@ -16,7 +17,8 @@ export const buildDispatchOrderToolRegistry = ({ dispatchOrderService }) => {
         startDate,
         endDate,
         limit,
-        page
+        page,
+        archived: archived ? 'true' : undefined
       });
 
       const dispatchOrders = result.dispatchOrders || [];
@@ -74,6 +76,7 @@ export const buildDispatchOrderToolRegistry = ({ dispatchOrderService }) => {
         recipient_type: args.recipient_type,
         dispatch_date: args.dispatch_date,
         reference_jo: args.reference_jo,
+        reference_po: args.reference_po,
         notes: args.notes,
         lines: args.lines
       }, user.user_id);
@@ -121,6 +124,55 @@ export const buildDispatchOrderToolRegistry = ({ dispatchOrderService }) => {
         do_number: dispatchOrder.do_number,
         status: dispatchOrder.status
       };
+    },
+
+    get_dispatch_stats: async ({ args }) => {
+      const stats = await dispatchOrderService.getDispatchStats(args);
+      return stats;
+    },
+
+    get_dispatch_earnings: async ({ args }) => {
+      const earnings = await dispatchOrderService.getEarningsReport(args);
+      return earnings;
+    },
+
+    update_dispatch_order: async ({ args, user }) => {
+      const { do_id, ...data } = args;
+      const dispatchOrder = await dispatchOrderService.updateDispatchOrder(do_id, data, user.user_id);
+      return {
+        success: true,
+        message: `Dispatch Order ${dispatchOrder.do_number} updated`,
+        do_id: dispatchOrder.do_id,
+        do_number: dispatchOrder.do_number,
+        status: dispatchOrder.status
+      };
+    },
+
+    archive_dispatch_order: async ({ args, user }) => {
+      const dispatchOrder = await dispatchOrderService.archiveDispatchOrder(args.do_id, user.user_id);
+      return {
+        success: true,
+        message: `Dispatch Order ${dispatchOrder.do_number} archived`,
+        do_id: dispatchOrder.do_id,
+        do_number: dispatchOrder.do_number,
+        archived_at: dispatchOrder.archived_at
+      };
+    },
+
+    update_dispatch_line_sale_price: async ({ args }) => {
+      const { do_id, line_id, sale_price_per_unit } = args;
+      const dispatchOrder = await dispatchOrderService.updateLineSalePrice(do_id, line_id, sale_price_per_unit);
+      return {
+        success: true,
+        message: `Sale price updated on line ${line_id} of ${dispatchOrder.do_number}`,
+        do_id: dispatchOrder.do_id,
+        do_number: dispatchOrder.do_number
+      };
+    },
+
+    export_dispatch_orders: async ({ args }) => {
+      const csv = await dispatchOrderService.exportDispatchOrders(args);
+      return { format: 'csv', data: csv };
     }
   };
 
