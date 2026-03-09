@@ -9,7 +9,7 @@ const DEFAULT_ISSUE_LIMIT = 20;
 const DEFAULT_THRESHOLDS = {
     missingCorrelationCount: 0,
     missingOutcomeCount: 0,
-    orphanAttemptCount: 0,
+    orphanAttemptCount: 5,   // allow up to 5 abandoned/incomplete registrations within the lookback window
     duplicateEventCount: 0,
     paymentWithoutTelemetryCount: 0,
     tenantStateMismatchCount: 0,
