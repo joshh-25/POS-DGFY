@@ -258,7 +258,10 @@ export default function RegisterCompany() {
                                 {formData.adminPassword && (
                                     <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-1">
                                         <ValidationItem valid={passwordValidations.minLength} text="At least 8 characters" />
-                                        <ValidationItem valid={passwordValidations.hasUppercase} text="One uppercase one lowercase" />
+                                        <ValidationItem valid={passwordValidations.hasUppercase} text="One uppercase letter" />
+                                        <ValidationItem valid={passwordValidations.hasLowercase} text="One lowercase letter" />
+                                        <ValidationItem valid={passwordValidations.hasNumber} text="One number" />
+                                        <ValidationItem valid={passwordValidations.hasSpecial} text="One special character (@$!%*?&)" />
                                     </div>
                                 )}
                             </div>
