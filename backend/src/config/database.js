@@ -9,7 +9,9 @@ const __dirname = dirname(__filename);
 
 dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 
-const dbName = process.env.DB_NAME || (process.env.NODE_ENV === 'test' ? 'sku_inventory_manager_test' : 'sku_inventory_manager');
+const dbName = process.env.NODE_ENV === 'test'
+  ? 'sku_test'
+  : (process.env.DB_NAME || 'sku_inventory_manager');
 
 const sequelize = new Sequelize(
   dbName,
