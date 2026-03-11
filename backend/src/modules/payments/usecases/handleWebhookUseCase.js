@@ -12,6 +12,7 @@ export const buildHandleWebhookUseCase = ({
     paymentRepository,
     paypalService,
     trackEngagementEvent,
+    emailService,
     logger
 }) => {
     const emitWebhookEvent = (eventType, options = {}) => emitBillingFunnelEvent({
@@ -112,7 +113,29 @@ export const buildHandleWebhookUseCase = ({
                 throw new Error('Unable to resolve next billing date');
             }
 
-            tenant.plan = 'premium';
+            // Apply deferred plan change if one was queued and approved on PayPal
+            if (tenant.pending_plan && tenant.pending_plan_approved) {
+                const oldPlan = tenant.plan;
+                tenant.plan = tenant.pending_plan;
+                tenant.pending_plan = null;
+                tenant.pending_plan_approved = false;
+                tenant.pending_plan_change_date = null;
+                logger.info(`Applying deferred plan change for tenant ${tenant.name}: ${oldPlan} → ${tenant.plan}`);
+                if (emailService?.isEmailConfigured?.()) {
+                    emailService.sendPlanChangeAppliedEmail({
+                        email: tenant.admin_email,
+                        companyName: tenant.name,
+                        oldPlan,
+                        newPlan: tenant.plan
+                    }).catch(err => logger.warn('Email send failed (plan change applied webhook):', err.message));
+                }
+            } else {
+                // Keep plan aligned with the subscription unless a pending change is waiting
+                if (!tenant.pending_plan) {
+                    tenant.plan = tenant.plan || 'standard';
+                }
+            }
+
             tenant.subscription_status = 'active';
             tenant.current_period_end = nextBillingDate;
 
@@ -140,7 +163,17 @@ export const buildHandleWebhookUseCase = ({
 
     async function handleSubscriptionActivated(resource) {
         const subscriptionId = resource?.id;
-        const tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+
+        // Try active subscription ID first, then admin-initiated pending subscription
+        let tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+        let wasAdminInitiated = false;
+
+        if (!tenant) {
+            tenant = await paymentRepository.findTenantByPendingSubscriptionId(subscriptionId);
+            if (tenant) {
+                wasAdminInitiated = true;
+            }
+        }
 
         if (!tenant) {
             logger.warn(`Subscription activated for unknown tenant: ${subscriptionId}`);
@@ -157,21 +190,83 @@ export const buildHandleWebhookUseCase = ({
             return;
         }
 
-        tenant.plan = 'premium';
-        tenant.subscription_status = 'active';
-        if (!tenant.billing_cycle_anchor) {
-            tenant.billing_cycle_anchor = new Date().getDate();
+        // Resolve plan from PayPal plan_id (supports both Standard and Premium)
+        const paypalPlanId = resource?.plan_id;
+        let resolvedPlan = tenant.plan; // default: keep existing
+        if (paypalPlanId) {
+            if (paypalPlanId === process.env.PAYPAL_PREMIUM_PLAN_ID) {
+                resolvedPlan = 'premium';
+            } else if (paypalPlanId === process.env.PAYPAL_STANDARD_PLAN_ID) {
+                resolvedPlan = 'standard';
+            }
         }
 
-        await tenant.save();
-        logger.info(`Subscription activated for tenant ${tenant.name}`);
+        const updates = {
+            plan: resolvedPlan,
+            subscription_status: 'active',
+            billing_cycle_anchor: tenant.billing_cycle_anchor || new Date().getDate()
+        };
+
+        if (wasAdminInitiated) {
+            // Promote the pending subscription to the active one
+            updates.paypal_subscription_id = subscriptionId;
+            updates.payment_method = 'paypal';
+            updates.pending_paypal_subscription_id = null;
+            updates.paypal_setup_initiated_at = null;
+            logger.info(`Admin-initiated PayPal subscription activated for tenant ${tenant.name}`);
+        }
+
+        await tenant.update(updates);
+        logger.info(`Subscription activated for tenant ${tenant.name} (plan: ${resolvedPlan})`);
+
         await emitWebhookEvent('paypal_subscription_activated', {
             tenantId: tenant.id,
             subscriptionId,
             correlationId: subscriptionId,
             outcome: 'succeeded',
             metadata: {
-                paypal_event_type: 'BILLING.SUBSCRIPTION.ACTIVATED'
+                paypal_event_type: 'BILLING.SUBSCRIPTION.ACTIVATED',
+                was_admin_initiated: wasAdminInitiated,
+                plan: resolvedPlan
+            }
+        });
+    }
+
+    async function handleSubscriptionUpdated(resource) {
+        const subscriptionId = resource?.id;
+        const paypalPlanId = resource?.plan_id;
+
+        // Try to find by active subscription, then by pending
+        let tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+        if (!tenant) {
+            tenant = await paymentRepository.findTenantByPendingSubscriptionId(subscriptionId);
+        }
+
+        if (!tenant) {
+            logger.warn(`Subscription updated event for unknown subscription: ${subscriptionId}`);
+            return;
+        }
+
+        // If tenant has a pending_plan, check if PayPal confirms the plan change
+        if (tenant.pending_plan && paypalPlanId) {
+            const targetPlanId = tenant.pending_plan === 'premium'
+                ? process.env.PAYPAL_PREMIUM_PLAN_ID
+                : process.env.PAYPAL_STANDARD_PLAN_ID;
+
+            if (targetPlanId && paypalPlanId === targetPlanId) {
+                await tenant.update({ pending_plan_approved: true });
+                logger.info(`Plan revision approved for tenant ${tenant.name}: pending_plan=${tenant.pending_plan}`);
+            }
+        }
+
+        await emitWebhookEvent('paypal_subscription_updated', {
+            tenantId: tenant.id,
+            subscriptionId,
+            correlationId: subscriptionId,
+            outcome: 'succeeded',
+            metadata: {
+                paypal_event_type: 'BILLING.SUBSCRIPTION.UPDATED',
+                plan_id: paypalPlanId
             }
         });
     }
@@ -299,6 +394,9 @@ export const buildHandleWebhookUseCase = ({
                     break;
                 case 'BILLING.SUBSCRIPTION.ACTIVATED':
                     await handleSubscriptionActivated(resource);
+                    break;
+                case 'BILLING.SUBSCRIPTION.UPDATED':
+                    await handleSubscriptionUpdated(resource);
                     break;
                 default:
                     logger.info(`Unhandled Webhook Event: ${eventType}`);

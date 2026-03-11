@@ -77,6 +77,15 @@ CREATE TABLE tenants (
     cancelled_at DATETIME NULL,
     last_expiry_notified_at DATETIME NULL,
     last_expiry_notification_type VARCHAR(255) NULL,
+    -- Subscription management fields (Phase 65)
+    pending_plan ENUM('standard', 'premium') NULL,
+    pending_plan_change_date DATE NULL,
+    pending_plan_approved BOOLEAN DEFAULT false,
+    pending_paypal_subscription_id VARCHAR(255) NULL,
+    paypal_setup_initiated_at DATE NULL,
+    payment_method ENUM('manual', 'paypal') DEFAULT 'manual',
+    reactivation_requested_at DATE NULL,
+    rejection_reason VARCHAR(500) NULL,
     settings JSON,
     admin_email VARCHAR(255),
     admin_password_hash VARCHAR(255),
@@ -88,6 +97,12 @@ CREATE TABLE tenants (
 Subscription notes:
 - Tenant DB credentials are environment-driven at runtime (`DB_USER`, `DB_PASSWORD`); tenant-row plaintext credential columns are intentionally removed.
 - `billing_cycle_anchor` backfill migration (`20260303000005-backfill-missing-billing-anchor.cjs`) only updates premium tenants with non-null `current_period_end` and null anchor.
+- Phase 65 fields added via `20260309000001-extend-tenant-subscription-fields.cjs` (idempotent `describeTable` guard):
+  - `payment_method`: `'manual'` = admin-invoiced; `'paypal'` = PayPal recurring
+  - `pending_plan*` fields: track a queued plan change awaiting PayPal user re-consent
+  - `pending_paypal_subscription_id` / `paypal_setup_initiated_at`: track admin-initiated PayPal setup links (72h TTL)
+  - `reactivation_requested_at`: set when an inactive tenant requests reactivation
+  - `rejection_reason`: populated by `rejectTenantUseCase`; surfaced in email lookup response
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`

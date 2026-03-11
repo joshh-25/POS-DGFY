@@ -603,6 +603,171 @@ export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEn
 </html>`.trim();
 };
 
+// ─── Subscription Lifecycle Templates (Phase 2) ──────────────────────────────
+
+const emailWrap = (headerBg, headerText, bodyContent) => `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f3f4f6;line-height:1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;">
+          <tr>
+            <td style="background:${headerBg};padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;">SKUpervisor</h1>
+              ${headerText ? `<p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">${headerText}</p>` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#ffffff;padding:40px;border-radius:0 0 12px 12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+              ${bodyContent}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px;text-align:center;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+
+/** Admin-initiated PayPal setup invitation */
+export const getPayPalSetupTemplate = ({ companyName, approvalUrl, expiresAt, planName, amount }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Set Up PayPal Recurring Billing</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      Your SKUpervisor administrator has initiated PayPal recurring billing for <strong>${companyName}</strong>.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#166534;font-size:14px;"><strong>Plan:</strong> ${planName}</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>Amount:</strong> ₱${amount}/month</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>Link expires:</strong> ${expiresAt}</p>
+    </div>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      Click the button below to log in to PayPal and authorize the recurring payment.
+    </p>
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${approvalUrl}" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0891b2 100%);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
+        Authorize on PayPal
+      </a>
+    </div>
+    <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:0 8px 8px 0;">
+      <p style="margin:0;color:#92400e;font-size:13px;">This link expires in 72 hours. If it has expired, please contact your administrator.</p>
+    </div>`;
+  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Billing Setup', body);
+};
+
+/** Admin notified when PayPal setup link expired */
+export const getPayPalSetupExpiredTemplate = ({ companyName }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#b91c1c;font-size:22px;">PayPal Setup Link Expired</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      The PayPal recurring billing setup link you sent to <strong>${companyName}</strong> has expired without being approved.
+    </p>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      You can re-initiate the setup from the admin panel on the tenant's detail page.
+    </p>`;
+  return emailWrap('#991b1b', 'Setup Expired', body);
+};
+
+/** Plan change queued (pending user re-consent on PayPal) */
+export const getPlanChangePendingTemplate = ({ companyName, currentPlan, newPlan, approvalUrl }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Plan Change Pending Your Approval</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      A plan change has been initiated for <strong>${companyName}</strong>.
+    </p>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#1d4ed8;font-size:14px;"><strong>Current plan:</strong> ${currentPlan}</p>
+      <p style="margin:4px 0 0;color:#1d4ed8;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
+    </div>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      Please approve this change on PayPal. The new pricing will take effect on your next billing cycle.
+    </p>
+    ${approvalUrl ? `<div style="text-align:center;margin-bottom:16px;">
+      <a href="${approvalUrl}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
+        Approve on PayPal
+      </a>
+    </div>` : ''}`;
+  return emailWrap('#1d4ed8', 'Plan Change', body);
+};
+
+/** Plan change successfully applied */
+export const getPlanChangeAppliedTemplate = ({ companyName, oldPlan, newPlan }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#166534;font-size:22px;">Your Plan Has Been Updated</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      The plan for <strong>${companyName}</strong> has been successfully changed.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#166534;font-size:14px;"><strong>Previous plan:</strong> ${oldPlan}</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
+    </div>
+    <p style="margin:0;color:#4b5563;font-size:16px;">Your new billing amount will be reflected on your next invoice.</p>`;
+  return emailWrap('#166534', 'Plan Updated', body);
+};
+
+/** Sent to the SKUpervisor admin when an inactive user requests reactivation */
+export const getReactivationRequestTemplate = ({ companyName, requestedAt }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Reactivation Request Received</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      <strong>${companyName}</strong> has submitted a reactivation request.
+    </p>
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#92400e;font-size:14px;"><strong>Requested at:</strong> ${requestedAt}</p>
+    </div>
+    <p style="margin:0;color:#4b5563;font-size:16px;">
+      Please review this request in the admin panel and approve after confirming payment.
+    </p>`;
+  return emailWrap('#d97706', 'Reactivation Request', body);
+};
+
+/** Sent to the user when admin approves their reactivation */
+export const getReactivationApprovedTemplate = ({ companyName, companyToken, loginUrl }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#166534;font-size:22px;">Your Account Has Been Reactivated!</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      Great news! Your <strong>${companyName}</strong> account is now active again.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#166534;font-size:13px;">Your company token:</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:18px;font-weight:700;letter-spacing:1px;">${companyToken}</p>
+    </div>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">All your existing data is intact. Log in to continue where you left off.</p>
+    <div style="text-align:center;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0891b2 100%);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
+        Log In Now
+      </a>
+    </div>`;
+  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Account Reactivated', body);
+};
+
+/** Sent to user when their rejected registration is re-submitted */
+export const getResubmissionConfirmationTemplate = ({ companyName }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Registration Re-submitted</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      Your registration request for <strong>${companyName}</strong> has been re-submitted for review.
+    </p>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      You will receive an email once our team has reviewed your request. This typically takes 1–2 business days.
+    </p>
+    <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:0 8px 8px 0;">
+      <p style="margin:0;color:#1d4ed8;font-size:13px;">If you have any questions, please contact our support team.</p>
+    </div>`;
+  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Registration Re-submitted', body);
+};
+
 export default {
   getInvitationTemplate,
   getWelcomeTemplate,
@@ -611,6 +776,13 @@ export default {
   getSubscriptionExpiringTemplate,
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
-  getPaymentFailedGracePeriodTemplate
+  getPaymentFailedGracePeriodTemplate,
+  getPayPalSetupTemplate,
+  getPayPalSetupExpiredTemplate,
+  getPlanChangePendingTemplate,
+  getPlanChangeAppliedTemplate,
+  getReactivationRequestTemplate,
+  getReactivationApprovedTemplate,
+  getResubmissionConfirmationTemplate
 };
 

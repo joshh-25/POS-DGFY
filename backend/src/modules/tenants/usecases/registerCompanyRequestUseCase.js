@@ -82,25 +82,16 @@ export const buildRegisterCompanyRequestUseCase = ({
             let subscriptionStatus = 'inactive';
             let currentPeriodEnd = null;
             let billingCycleAnchor = null;
+            let paymentMethod = 'manual';
 
-            if (plan === 'premium') {
-                if (!subscriptionId) {
-                    await tracker.blocked('missing_subscription', {
-                        httpStatus: 400
-                    });
-
-                    return fail(new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'Premium plan requires a valid PayPal subscription ID',
-                        { statusCode: 400 }
-                    ));
-                }
-
+            // Both Standard and Premium support PayPal (if subscriptionId provided) OR manual path.
+            if (subscriptionId) {
                 try {
                     const subDetails = await paypalService.verifySubscription(subscriptionId);
                     if (subDetails && subDetails.status === 'ACTIVE') {
                         initialStatus = 'active';
                         subscriptionStatus = 'active';
+                        paymentMethod = 'paypal';
                         validatedSubscriptionId = subscriptionId;
 
                         const paypalNextBillingTime = toValidDate(subDetails.billing_info?.next_billing_time);
@@ -135,6 +126,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                     ));
                 }
             }
+            // No subscriptionId → manual path (pending, requires admin approval) for any plan.
 
             const uuid = idGenerator();
             const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -156,7 +148,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                 subscription_status: subscriptionStatus,
                 paypal_subscription_id: validatedSubscriptionId,
                 current_period_end: currentPeriodEnd,
-                billing_cycle_anchor: billingCycleAnchor
+                billing_cycle_anchor: billingCycleAnchor,
+                payment_method: paymentMethod
             });
 
             try {
@@ -168,7 +161,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             }
 
             if (initialStatus === 'active') {
-                logger?.info?.(`Auto-provisioning Premium Tenant: ${name}`);
+                logger?.info?.(`Auto-provisioning ${plan} Tenant via PayPal: ${name}`);
                 await provisionTenant({
                     tenantId: tenant.id,
                     name: tenant.name,
@@ -199,12 +192,12 @@ export const buildRegisterCompanyRequestUseCase = ({
                     statusCode: 201,
                     payload: {
                         success: true,
-                        message: 'Company registered and activated successfully! Welcome to Premium.',
+                        message: `Company registered and activated successfully! Welcome to ${plan.charAt(0).toUpperCase() + plan.slice(1)}.`,
                         data: {
                             id: tenant.id,
                             name: tenant.name,
                             status: 'active',
-                            plan: 'premium',
+                            plan,
                             company_token: tenant.company_token
                         }
                     }
@@ -224,12 +217,12 @@ export const buildRegisterCompanyRequestUseCase = ({
                 statusCode: 201,
                 payload: {
                     success: true,
-                    message: 'Your company registration has been submitted for review. You will be notified once approved.',
+                    message: `Your ${plan} plan registration has been submitted for review. You will be notified once approved.`,
                     data: {
                         id: tenant.id,
                         name: tenant.name,
                         status: 'pending',
-                        plan: 'standard',
+                        plan,
                         company_token: tenant.company_token
                     }
                 }

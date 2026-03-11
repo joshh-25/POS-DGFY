@@ -55,7 +55,7 @@ export const createTenant = async (data) => {
  */
 export const findTenantByToken = async (token) => {
     return await Tenant.findOne({
-        where: { company_token: token, status: 'active' }
+        where: { company_token: token }
     });
 };
 
@@ -94,7 +94,7 @@ export const findTenantsByEmail = async (email) => {
             as: 'tenant',
             where: {
                 status: {
-                    [sequelize.Sequelize.Op.in]: ['active', 'pending']
+                    [sequelize.Sequelize.Op.in]: ['active', 'pending', 'inactive', 'rejected']
                 }
             }
         }]

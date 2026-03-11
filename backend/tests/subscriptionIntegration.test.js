@@ -87,6 +87,9 @@ describe('Subscription Integration - Access Gates and Persisted State', () => {
 
     beforeAll(async () => {
         await sequelize.authenticate();
+        await Tenant.sync();
+        await User.sync();
+        await UserTenantMapping.sync();
         await EngagementEvent.sync();
 
         await UserTenantMapping.destroy({

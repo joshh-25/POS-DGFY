@@ -176,6 +176,89 @@ class PayPalService {
     }
 
     /**
+     * Revise (upgrade/downgrade) an existing PayPal subscription to a new plan.
+     * Returns the PayPal response including HATEOAS links; the caller must extract
+     * the `approve` link and redirect the user to re-consent.
+     */
+    async reviseSubscription(subscriptionId, newPlanId) {
+        const token = await this.getAccessToken();
+        const appUrl = process.env.APP_URL || 'http://localhost:5173';
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/v1/billing/subscriptions/${subscriptionId}/revise`,
+                {
+                    plan_id: newPlanId,
+                    application_context: {
+                        brand_name: 'SKUpervisor',
+                        return_url: `${appUrl}/settings?tab=subscription&revision=success`,
+                        cancel_url: `${appUrl}/settings?tab=subscription&revision=cancelled`
+                    }
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+            return response.data;
+        } catch (error) {
+            logger.error('PayPal Revise Subscription Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a subscription server-side (without the JS SDK).
+     * Used by admin-initiated PayPal setup to generate an approval link to email the user.
+     * Returns { subscriptionId, approvalUrl }.
+     */
+    async createSubscriptionServerSide(planId, subscriberEmail, returnUrl, cancelUrl) {
+        // MOCK BACKDOOR FOR TESTING
+        if (process.env.MOCK_PAYPAL === 'true' && process.env.NODE_ENV !== 'production') {
+            const mockSubId = `I-MOCK${Date.now()}`;
+            logger.info(`[MOCK] Creating server-side subscription for ${subscriberEmail}: ${mockSubId}`);
+            return {
+                subscriptionId: mockSubId,
+                approvalUrl: `https://www.sandbox.paypal.com/webapps/billing/subscriptions?ba_token=BA-MOCK${Date.now()}`
+            };
+        }
+
+        const token = await this.getAccessToken();
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/v1/billing/subscriptions`,
+                {
+                    plan_id: planId,
+                    subscriber: { email_address: subscriberEmail },
+                    application_context: {
+                        brand_name: 'SKUpervisor',
+                        user_action: 'SUBSCRIBE_NOW',
+                        return_url: returnUrl,
+                        cancel_url: cancelUrl
+                    }
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    }
+                }
+            );
+            const data = response.data;
+            const approveLink = (data.links || []).find(l => l.rel === 'approve');
+            return {
+                subscriptionId: data.id,
+                approvalUrl: approveLink ? approveLink.href : null
+            };
+        } catch (error) {
+            logger.error('PayPal Create Server-Side Subscription Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    /**
      * Verify Webhook Signature
      */
     async verifyWebhookSignature(headers, eventBody) {

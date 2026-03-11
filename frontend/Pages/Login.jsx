@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -25,6 +25,15 @@ export default function Login() {
   const [availableTenants, setAvailableTenants] = useState([]);
   const [lookupDone, setLookupDone] = useState(false);
   const [lookupError, setLookupError] = useState('');
+
+  // Inactive / rejected tenant state
+  const [tenantStatus, setTenantStatus] = useState(null); // 'inactive' | 'rejected' | null
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [identifiedToken, setIdentifiedToken] = useState('');
+  const [identifiedPlan, setIdentifiedPlan] = useState('standard');
+  const [isActioning, setIsActioning] = useState(false);
+  const [actionSent, setActionSent] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   // Clear stale company token when landing on login page
   // and reset any stale in-memory state from a previous user session.
@@ -49,7 +58,13 @@ export default function Login() {
     setIsLookingUp(true);
     setLookupError('');
     setAvailableTenants([]);
-    let identifiedToken = null;
+    setTenantStatus(null);
+    setRejectionReason('');
+    setIdentifiedToken('');
+    setIdentifiedPlan('standard');
+    setActionSent(false);
+    setActionError('');
+    let resolvedToken = null;
 
     try {
       console.log('🔍 [Login] Looking up email:', formData.email);
@@ -67,27 +82,30 @@ export default function Login() {
         setShowTokenField(true);
         setFormData(prev => ({ ...prev, companyToken: '' }));
       } else {
-        // Single tenant - auto-fill token
-        identifiedToken = data.company_token;
+        resolvedToken = data.company_token;
+        setIdentifiedToken(data.company_token);
+        setIdentifiedPlan(data.plan || 'standard');
         setFormData(prev => ({ ...prev, companyToken: data.company_token }));
         setShowTokenField(false);
         setAvailableTenants([]);
 
-        // If the tenant is pending, inform the user
         if (data.status === 'pending') {
           setLookupError('Your company is currently awaiting approval. You can sign in once activated.');
+        } else if (data.status === 'inactive') {
+          setTenantStatus('inactive');
+        } else if (data.status === 'rejected') {
+          setTenantStatus('rejected');
+          setRejectionReason(data.rejection_reason || '');
         }
       }
       setLookupDone(true);
     } catch (err) {
       console.error('❌ [Login] Lookup failed:', err.response?.status, err.response?.data || err.message);
       if (err.response?.status === 404) {
-        // Email not found - show manual token field
         setLookupError('Email not found. Enter your company token manually.');
         setShowTokenField(true);
         setFormData(prev => ({ ...prev, companyToken: '' }));
       } else {
-        // Network or other error - allow manual entry
         setLookupError('Identification failed. Please enter your company token manually.');
         setShowTokenField(true);
       }
@@ -95,7 +113,23 @@ export default function Login() {
     } finally {
       setIsLookingUp(false);
     }
-    return identifiedToken;
+    return resolvedToken;
+  };
+
+
+  const handleResubmitRegistration = async () => {
+    setIsActioning(true);
+    setActionError('');
+    try {
+      await api.post('/admin/tenants/resubmit', {}, {
+        headers: { 'x-company-token': identifiedToken }
+      });
+      setActionSent(true);
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Failed to re-submit registration. Please try again.');
+    } finally {
+      setIsActioning(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -228,7 +262,24 @@ export default function Login() {
                 {availableTenants.length > 0 ? (
                   <Select
                     value={formData.companyToken}
-                    onValueChange={(value) => setFormData({ ...formData, companyToken: value })}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, companyToken: value });
+                      const selected = availableTenants.find(t => t.company_token === value);
+                      if (selected) {
+                        setIdentifiedToken(value);
+                        setIdentifiedPlan(selected.plan || 'standard');
+                        setActionSent(false);
+                        setActionError('');
+                        if (selected.status === 'inactive') {
+                          setTenantStatus('inactive');
+                        } else if (selected.status === 'rejected') {
+                          setTenantStatus('rejected');
+                          setRejectionReason(selected.rejection_reason || '');
+                        } else {
+                          setTenantStatus(null);
+                        }
+                      }
+                    }}
                     disabled={isLoading}
                   >
                     <SelectTrigger className="mt-1">
@@ -237,7 +288,7 @@ export default function Login() {
                     <SelectContent>
                       {availableTenants.map((tenant) => (
                         <SelectItem key={tenant.id} value={tenant.company_token}>
-                          {tenant.name}
+                          {tenant.name}{tenant.status === 'inactive' ? ' (Inactive)' : tenant.status === 'rejected' ? ' (Rejected)' : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -288,6 +339,65 @@ export default function Login() {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
+
+          {/* Inactive tenant — reactivation */}
+          {tenantStatus === 'inactive' && (
+            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-800">Account Inactive</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Your company account is currently inactive. Reactivate via PayPal or request admin access.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => navigate(`/reactivate?token=${identifiedToken}&plan=${identifiedPlan}`)}
+                  >
+                    <ArrowRight className="w-3 h-3 mr-1" />
+                    Reactivate Account
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Rejected tenant — re-submit */}
+          {tenantStatus === 'rejected' && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-800">Registration Rejected</p>
+                  {rejectionReason && (
+                    <p className="text-xs text-red-700 mt-1">Reason: {rejectionReason}</p>
+                  )}
+                  <p className="text-xs text-red-700 mt-1">
+                    You may update your details and re-submit for review.
+                  </p>
+                  {actionSent ? (
+                    <p className="text-xs text-green-700 font-medium mt-2">Re-submission received. Our team will review it shortly.</p>
+                  ) : (
+                    <>
+                      {actionError && <p className="text-xs text-red-600 mt-1">{actionError}</p>}
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-3 bg-red-600 hover:bg-red-700 text-white"
+                        onClick={handleResubmitRegistration}
+                        disabled={isActioning}
+                      >
+                        {isActioning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}
+                        Re-submit Registration
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Registration Link */}
           <div className="mt-6 text-center space-y-2">

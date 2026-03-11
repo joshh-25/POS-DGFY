@@ -120,6 +120,62 @@ Shared top-level fields used by newer events:
 - Meaning: The backend persisted the premium upgrade state
 - Does not prove: later feature usage or retained customer value
 
+### `paypal_migration_attempted`
+- Producer: `migrateToPayPalUseCase`
+- Source: `payments.migrate`
+- Trigger: Migration route reaches the use case
+- Classification: non-terminal attempt
+- Meaning: Backend received a request to switch a manual tenant to PayPal recurring
+
+### `paypal_migration_blocked_*`
+- Producer: `migrateToPayPalUseCase`
+- Source: `payments.migrate`
+- Trigger: Migration blocked by business validation (for example: missing subscription, not active, already PayPal, invalid plan, plan mismatch)
+- Classification: terminal blocked outcome
+- Meaning: Migration request was rejected before persistence
+
+### `paypal_migration_failed`
+- Producer: `migrateToPayPalUseCase`
+- Source: `payments.migrate`
+- Trigger: Provider verification exception, missing server plan configuration, or other non-validation failure
+- Classification: terminal failure outcome
+- Meaning: Migration terminated due to operational failure
+
+### `paypal_migration_succeeded`
+- Producer: `migrateToPayPalUseCase`
+- Source: `payments.migrate`
+- Trigger: Tenant billing method was updated to PayPal recurring
+- Classification: terminal success outcome
+- Meaning: Migration state persisted successfully
+
+### `paypal_reactivation_attempted`
+- Producer: `reactivateWithPayPalUseCase`
+- Source: `payments.reactivate_with_paypal`
+- Trigger: Public reactivation route reaches the use case
+- Classification: non-terminal attempt
+- Meaning: Backend received an inactive-account self-reactivation request
+
+### `paypal_reactivation_blocked_*`
+- Producer: `reactivateWithPayPalUseCase`
+- Source: `payments.reactivate_with_paypal`
+- Trigger: Reactivation blocked by business validation (for example: missing subscription, tenant not inactive, unpaid subscription, invalid plan)
+- Classification: terminal blocked outcome
+- Meaning: Reactivation request was rejected before persistence
+
+### `paypal_reactivation_failed`
+- Producer: `reactivateWithPayPalUseCase`
+- Source: `payments.reactivate_with_paypal`
+- Trigger: Provider verification exception or missing server plan configuration
+- Classification: terminal failure outcome
+- Meaning: Reactivation terminated due to operational failure
+
+### `paypal_reactivation_succeeded`
+- Producer: `reactivateWithPayPalUseCase`
+- Source: `payments.reactivate_with_paypal`
+- Trigger: Tenant reactivation state was persisted successfully
+- Classification: terminal success outcome
+- Meaning: Account was restored with PayPal recurring billing
+
 ### `paypal_payment_sale_completed`
 - Producer: `handleWebhookUseCase`
 - Source: `payments.webhook`

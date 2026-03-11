@@ -14,7 +14,10 @@ import {
     Key,
     Edit2,
     Trash2,
-    AlertTriangle
+    AlertTriangle,
+    CreditCard,
+    RotateCcw,
+    ArrowUpDown
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -210,6 +213,61 @@ export default function TenantManager() {
         }
     };
 
+    const handleSetupPayPal = async (tenantId) => {
+        setActionLoading(tenantId);
+        try {
+            const response = await adminService.setupPayPalRecurring(tenantId);
+            const approvalUrl = response.data?.approvalUrl;
+            if (approvalUrl) {
+                toast.success(`PayPal setup initiated. Share this approval link with the tenant:\n${approvalUrl}`, { duration: 10000 });
+            } else {
+                toast.success('PayPal setup initiated. The tenant will receive an email with the approval link.');
+            }
+            loadTenants();
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to setup PayPal: ${normalized.message}`);
+            }
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleAdminChangePlan = async (tenantId, plan) => {
+        if (!confirm(`Change this tenant's plan to "${plan}"? This takes effect immediately.`)) return;
+        setActionLoading(tenantId);
+        try {
+            await adminService.adminChangePlan(tenantId, plan);
+            loadTenants();
+            toast.success(`Plan changed to ${plan}`);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to change plan: ${normalized.message}`);
+            }
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleReactivate = async (tenantId, tenantName) => {
+        if (!confirm(`Reactivate "${tenantName}"? This will restore their access for 30 days.`)) return;
+        setActionLoading(tenantId);
+        try {
+            await adminService.adminReactivateTenant(tenantId);
+            loadTenants();
+            toast.success(`${tenantName} reactivated successfully`);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to reactivate: ${normalized.message}`);
+            }
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const formatDate = (timestamp) => {
         return new Date(timestamp).toLocaleDateString('en-US', {
             year: 'numeric',
@@ -357,6 +415,21 @@ export default function TenantManager() {
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 <span className="text-slate-400">Plan:</span>
                                                 <span className="capitalize">{tenant.plan || 'free'}</span>
+                                                {tenant.payment_method && (
+                                                    <span className={cn(
+                                                        "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                                                        tenant.payment_method === 'paypal'
+                                                            ? "bg-blue-100 text-blue-700"
+                                                            : "bg-slate-100 text-slate-500"
+                                                    )}>
+                                                        {tenant.payment_method}
+                                                    </span>
+                                                )}
+                                                {tenant.pending_plan && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+                                                        → {tenant.pending_plan}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -392,7 +465,55 @@ export default function TenantManager() {
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {tenant.status === 'inactive' && (
+                                                    <Button
+                                                        onClick={() => handleReactivate(tenant.id, tenant.name)}
+                                                        disabled={isProcessing}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                        size="sm"
+                                                    >
+                                                        {isProcessing ? (
+                                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <>
+                                                                <RotateCcw className="w-4 h-4 mr-1" />
+                                                                Reactivate
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                                {tenant.status === 'active' && tenant.payment_method !== 'paypal' && (
+                                                    <Button
+                                                        onClick={() => handleSetupPayPal(tenant.id)}
+                                                        disabled={isProcessing}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                    >
+                                                        {isProcessing ? (
+                                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <>
+                                                                <CreditCard className="w-4 h-4 mr-1" />
+                                                                Setup PayPal
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    onClick={() => {
+                                                        const newPlan = tenant.plan === 'premium' ? 'standard' : 'premium';
+                                                        handleAdminChangePlan(tenant.id, newPlan);
+                                                    }}
+                                                    disabled={isProcessing}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-slate-600"
+                                                >
+                                                    <ArrowUpDown className="w-4 h-4 mr-1" />
+                                                    {tenant.plan === 'premium' ? 'To Standard' : 'To Premium'}
+                                                </Button>
                                                 <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"

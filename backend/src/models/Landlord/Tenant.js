@@ -92,6 +92,42 @@ export default (sequelize) => {
             type: DataTypes.DATE,
             allowNull: true
         },
+        // Plan change queue fields (PayPal Revise API flow)
+        pending_plan: {
+            type: DataTypes.ENUM('standard', 'premium'),
+            allowNull: true
+        },
+        pending_plan_change_date: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        pending_plan_approved: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
+        },
+        // Admin-initiated PayPal setup fields
+        pending_paypal_subscription_id: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        paypal_setup_initiated_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        // Billing method tracking
+        payment_method: {
+            type: DataTypes.ENUM('manual', 'paypal'),
+            defaultValue: 'manual'
+        },
+        // Reactivation / rejection
+        reactivation_requested_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        rejection_reason: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
         last_expiry_notified_at: {
             type: DataTypes.DATE,
             allowNull: true,

@@ -132,7 +132,9 @@ export const lookupEmail = async (req, res, next) => {
               company_token: tenants[0].company_token,
               company_name: tenants[0].name,
               tenant_id: tenants[0].id,
-              status: tenants[0].status
+              status: tenants[0].status,
+              plan: tenants[0].plan || 'standard',
+              rejection_reason: tenants[0].rejection_reason || null
             },
             message: 'Tenant found',
             timestamp: timestamp()
@@ -147,7 +149,9 @@ export const lookupEmail = async (req, res, next) => {
               id: tenant.id,
               name: tenant.name,
               company_token: tenant.company_token,
-              status: tenant.status
+              status: tenant.status,
+              plan: tenant.plan || 'standard',
+              rejection_reason: tenant.rejection_reason || null
             }))
           },
           message: 'Multiple tenants found',

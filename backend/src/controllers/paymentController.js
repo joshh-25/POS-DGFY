@@ -8,7 +8,12 @@ export {
     cancelSubscription,
     getBillingHistory,
     syncWithPayPal,
-    upgradeToPremium
+    upgradeToPremium,
+    migrateToPayPal,
+    changePlan,
+    getPendingPlan,
+    requestReactivation,
+    reactivateWithPayPal
 } from '../modules/payments/controllers/paymentHandlers.js';
 
 import {
@@ -17,7 +22,12 @@ import {
     cancelSubscription,
     getBillingHistory,
     syncWithPayPal,
-    upgradeToPremium
+    upgradeToPremium,
+    migrateToPayPal,
+    changePlan,
+    getPendingPlan,
+    requestReactivation,
+    reactivateWithPayPal
 } from '../modules/payments/controllers/paymentHandlers.js';
 
 export default {
@@ -26,5 +36,10 @@ export default {
     cancelSubscription,
     getBillingHistory,
     syncWithPayPal,
-    upgradeToPremium
+    upgradeToPremium,
+    migrateToPayPal,
+    changePlan,
+    getPendingPlan,
+    requestReactivation,
+    reactivateWithPayPal
 };

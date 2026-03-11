@@ -6788,3 +6788,187 @@ Three distinct gaps existed between `frontend/src/config/permissions_frontend.js
 | **Total** | | **42** |
 
 Staff defaults: 7 | Manager defaults: 41 | Admin: 42
+
+---
+
+## Phase 65 — Subscription Management Extension (2026-03-10)
+
+### Overview
+Full subscription management system extending the multi-tenant SaaS platform. Unifies registration flows (both plans now support PayPal recurring and manual paths), adds self-service plan changes, admin-initiated PayPal setup, a complete cancellation/reactivation lifecycle, rejected-tenant re-submission, in-app grace period banner, and fixes two critical auth middleware gaps. Nine critical bugs were identified during a comprehensive post-implementation audit and fixed.
+
+### New Database Fields (Tenant Model)
+Migration: `backend/migrations/20260309000001-extend-tenant-subscription-fields.cjs`
+
+8 new fields added to `tenants` table (with `describeTable` idempotency guard):
+
+| Field | Type | Default |
+|-------|------|---------|
+| `pending_plan` | ENUM('standard','premium') | NULL |
+| `pending_plan_change_date` | DATE | NULL |
+| `pending_plan_approved` | BOOLEAN | false |
+| `pending_paypal_subscription_id` | STRING | NULL |
+| `paypal_setup_initiated_at` | DATE | NULL |
+| `payment_method` | ENUM('manual','paypal') | 'manual' |
+| `reactivation_requested_at` | DATE | NULL |
+| `rejection_reason` | STRING(500) | NULL |
+
+### Auth Middleware Fixes (auth.js)
+
+**G6 — Inactive Subscription Block** added to `authenticate()`:
+- `tenantStatus === 'inactive'` (tenant-level) → 403 `{ subscriptionStatus: 'inactive' }`
+- `subscription_status === 'inactive' && status !== 'pending'` → 403
+- `subscription_status === 'cancelled' && current_period_end < now` → 403
+- All checks gated on `req.tenant` existing
+
+**G7 — Premium Feature Guard** added to `requirePremium()`:
+- Validates `subscription_status === 'active'` OR (`past_due` AND `grace_period_end > now`)
+- Returns 403 `{ requiresRenewal: true }` if expired
+
+### New Use Cases
+
+**`migrateToPayPalUseCase`** (`modules/payments/usecases/`)
+- Guards: already on PayPal → 409; subscription not active → 400
+- Verifies subscriptionId with PayPal (must be ACTIVE)
+- Writes: `paypal_subscription_id`, `payment_method='paypal'`, `current_period_end`, `billing_cycle_anchor`
+
+**`changePlanUseCase`** (`modules/payments/usecases/`)
+- Guards: inactive account → 403; same plan → 409; pending change (non-admin) → 409
+- PayPal path: calls `reviseSubscription()`, queues pending change, returns `{ requiresConsent: true, approvalUrl }`
+- Manual/immediate path: updates plan directly, sends `sendPlanChangeAppliedEmail`
+
+**`setupPayPalRecurringUseCase`** (`modules/payments/usecases/`)
+- Guards: not manual → 409; not active → 400
+- Calls `paypalService.createSubscriptionServerSide()`, sets pending fields + 72h TTL
+- Sends setup invitation email with approval URL
+
+**`requestReactivationUseCase`** (`modules/payments/usecases/`)
+- Guard: status not inactive → 400
+- Sets `reactivation_requested_at = now`; sends reactivation request email to admin
+- Queries landlord DB directly — works for unprovisioned tenants
+
+**`resubmitRegistrationUseCase`** (`modules/tenants/usecases/`)
+- Guard: status not rejected → 400
+- Resets `status='pending'`, `rejection_reason=null`
+- Sends re-submission confirmation email to user
+- Queries landlord DB directly — works for unprovisioned tenant DBs
+
+### PayPal Service Extensions (paypalService.js)
+- **`reviseSubscription(subscriptionId, newPlanId)`** — POST `/v1/billing/subscriptions/{id}/revise`; returns links array
+- **`createSubscriptionServerSide(planId, subscriberEmail, returnUrl, cancelUrl)`** — server-side subscription creation; returns `{ subscriptionId, approvalUrl }`
+
+### Registration Refactor (registerCompanyRequestUseCase.js)
+Replaced hard Premium-requires-subscriptionId logic with unified path:
+- With `subscriptionId` (either plan): PayPal verify → auto-activate, `payment_method='paypal'`
+- Without `subscriptionId` (either plan): `status='pending'`, `payment_method='manual'`
+
+### Webhook Handler Enhancements (handleWebhookUseCase.js)
+- **`BILLING.SUBSCRIPTION.ACTIVATED`**: Admin-initiated path (finds by `pending_paypal_subscription_id`) promotes to `paypal_subscription_id`, sets `payment_method='paypal'`, clears pending fields; plan resolved from env var comparison
+- **`BILLING.SUBSCRIPTION.UPDATED`** (new): sets `pending_plan_approved=true` when PayPal plan_id matches pending plan
+- **`PAYMENT.SALE.COMPLETED`**: after period extension, checks `pending_plan && pending_plan_approved` → applies deferred plan, clears pending fields, sends email
+
+### Billing Scheduler Additions (billingScheduler.js)
+4 new daily tasks:
+- **`applyDeferredPlanChanges()`** — applies manual-tenant pending plan changes when `pending_plan_change_date <= now`
+- **`expirePayPalSetups()`** — clears 72h-old pending PayPal setups, notifies admin
+- **`expireUnapprovedRevisions()`** — clears 72h-old unapproved PayPal plan revisions
+- **`deactivateCancelledTenants()`** — sets `status='inactive'` when `subscription_status='cancelled' && current_period_end < now`
+
+### New HTTP Endpoints
+
+**Payment Routes (`backend/src/routes/payments.js`)**:
+| Route | Auth | Use Case |
+|-------|------|----------|
+| `POST /payments/migrate-to-paypal` | JWT | `migrateToPayPalUseCase` |
+| `POST /payments/change-plan` | JWT | `changePlanUseCase` |
+| `GET /payments/pending-plan` | JWT | load tenant, return pending fields |
+| `POST /payments/request-reactivation` | x-company-token only | `requestReactivationUseCase` |
+
+**Admin Tenant Routes (`backend/src/routes/adminTenants.js`)**:
+| Route | Auth | Use Case |
+|-------|------|----------|
+| `POST /admin/tenants/resubmit` | x-company-token only | `resubmitRegistrationUseCase` |
+| `POST /admin/tenants/:id/setup-paypal-recurring` | Admin JWT | `setupPayPalRecurringUseCase` |
+| `POST /admin/tenants/:id/change-plan` | Admin JWT | `changePlanUseCase` (immediate=true) |
+| `POST /admin/tenants/:id/reactivate` | Admin JWT | update status + send approved email |
+
+### Email Templates Added (7 new)
+`getPayPalSetupTemplate`, `getPayPalSetupExpiredTemplate`, `getPlanChangePendingTemplate`, `getPlanChangeAppliedTemplate`, `getReactivationRequestTemplate`, `getReactivationApprovedTemplate`, `getResubmissionConfirmationTemplate` — all with inline CSS, responsive design, matching existing style.
+
+### Frontend Changes
+
+**`GracePeriodBanner.jsx`** (new component, `Components/common/`)
+- Reads `subscription_status` and `grace_period_end` from Zustand `currentUser.company`
+- Renders amber banner on all pages if `past_due`: "Payment failed. Resolve by [date] or your account will be deactivated."
+- Mounted in `Layout.jsx` above main content
+
+**`Login.jsx`**
+- Email blur detects `status='inactive'` → shows amber "Request Reactivation" card with action button
+- Detects `status='rejected'` → shows red "Registration Rejected" card with reason + "Re-submit Registration" button
+- Multi-company selector: selecting an inactive/rejected company from the dropdown also triggers the appropriate card (fixed edge case)
+
+**`Settings.jsx`** (billing tab additions)
+- PayPal tenants: "Change Plan" button → calls `changePlan()` → if `requiresConsent: true`, opens `approvalUrl` in new tab
+- Pending plan change status display
+- Manual/admin: "Set Up PayPal Recurring" section
+
+**`TenantManager.jsx`** (admin)
+- Per-tenant conditional action buttons: "Setup PayPal", "Change Plan", "Reactivate"
+- `payment_method` and `pending_plan` badges in tenant detail view
+
+**`RegisterCompany.jsx`**
+- Both Standard and Premium plan cards now support PayPal and manual payment toggle
+
+**`paymentService.js`** — 4 new methods: `migrateToPayPal`, `changePlan`, `getPendingPlan`, `requestReactivation`
+
+**`adminService.js`** — 3 new methods: `setupPayPalRecurring`, `adminChangePlan`, `adminReactivateTenant`
+
+### Post-Audit Critical Fixes (9 total)
+
+| # | File | Fix |
+|---|------|-----|
+| 1 | `landlordService.js` | `findTenantsByEmail` status filter expanded to include inactive/rejected |
+| 2 | `landlordService.js` | `findTenantByToken` status filter removed; access control delegated to auth middleware |
+| 3 | `tenantHandler.js` | `req.tenant` set before DB connection attempt |
+| 4 | `tenantHandler.js` | Graceful DB fallback for unprovisioned tenant DBs; subscription context fields added to dbStore |
+| 5 | `billingScheduler.js` | `isEmailConfigured()` guard added to `checkExpiringSubscriptions` |
+| 6 | `changePlanUseCase.js` | `tenant.status !== 'active'` guard added (returns 403) |
+| 7 | `billingScheduler.js` | Deactivation notification email added to `deactivateCancelledTenants` |
+| 8 | `userService.js` | Expose `subscription_status`, `grace_period_end`, `payment_method` in `/auth/me` company object |
+| 9 | `authHandlers.js` | `rejection_reason` field added to email lookup response (both single and multi-tenant) |
+
+### Confidence Rating: 8/10
+Solid on all implemented features. Remaining gap: PayPal sandbox end-to-end validation of `BILLING.SUBSCRIPTION.UPDATED` webhook payload field names.
+
+---
+
+## Phase 62: Action Confirmation Dialog — `toolName` Property Fix
+**Status**: ✅ COMPLETE
+**Date**: 2026-03-07
+
+### Issue
+
+The AI action confirmation dialog (`ConfirmActionDialog.jsx`) was displaying raw data instead of the designed user-friendly UI layouts when confirming write operations (e.g., "Register new supplier", "Create purchase order").
+
+### Root Cause
+
+A property name mismatch between the backend and the frontend component:
+
+- **Backend** (`generateConfirmationUseCase.js`): Returns the action type under the key `toolName` (e.g., `create_supplier`, `create_purchase_order`)
+- **Frontend** (`ConfirmActionDialog.jsx`): All action-type-specific `renderDetails()` `if`-blocks were checking `action.action_type`, which was always `undefined`
+
+Because `action.action_type` was never truthy, every pending action fell through all specific renderers directly to the generic smart fallback, which showed unformatted raw field values (comparable in appearance to a JSON dump).
+
+### Fix
+
+- **`frontend/Components/ai/ConfirmActionDialog.jsx`**: Replaced all instances of `action.action_type` → `action.toolName` across the entire file (affects the icon/color lookup maps and all `renderDetails()` branch conditions).
+
+No layout, styling, or business logic was changed — only the property key reference.
+
+### Impact
+
+All pre-built action-specific UI renderers are now correctly activated for their matching `toolName`. Users now see:
+- **Labeled field rows** (e.g., "Contact Person:", "Lead Time: 4 days") instead of raw JSON
+- **Contextual warnings** (e.g., *"Stock will be updated and FIFO batches created. This cannot be undone."*)
+- **Scrollable item lists** with prices for purchase orders and dispatch orders
+- **Correct icons and color theming** per action type (e.g., teal `Building2` for supplier creation)
+

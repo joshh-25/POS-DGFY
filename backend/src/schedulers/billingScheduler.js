@@ -4,6 +4,7 @@ import dbStore from '../utils/dbStore.js';
 import * as emailService from '../services/emailService.js';
 import cacheService from '../services/cacheService.js'; // Fix 8.2: Import cache service for locking
 import logger from '../config/logger.js';
+import { paymentRepository } from '../modules/payments/repositories/paymentRepository.js';
 
 /**
  * Initialize billing scheduler
@@ -27,6 +28,10 @@ export const initBillingScheduler = () => {
         try {
             await checkExpiringSubscriptions();
             await checkExpiredSubscriptions();
+            await applyDeferredPlanChanges();
+            await expirePayPalSetups();
+            await expireUnapprovedRevisions();
+            await deactivateCancelledTenants();
         } catch (error) {
             logger.error('Billing scheduler error:', error);
         } finally {
@@ -94,13 +99,15 @@ export const checkExpiringSubscriptions = async () => {
             for (const tenant of expiring) {
                 logger.info(`Sending ${range.label} expiry warning to ${tenant.name}`);
 
-                await emailService.sendSubscriptionExpiringEmail({
-                    email: tenant.admin_email,
-                    companyName: tenant.name,
-                    expiryDate: tenant.current_period_end
-                });
+                if (emailService.isEmailConfigured()) {
+                    await emailService.sendSubscriptionExpiringEmail({
+                        email: tenant.admin_email,
+                        companyName: tenant.name,
+                        expiryDate: tenant.current_period_end
+                    }).catch(err => logger.warn('Email failed (expiry warning):', err.message));
+                }
 
-                // Mark as notified
+                // Mark as notified regardless of email success to prevent re-sending
                 await tenant.update({
                     last_expiry_notified_at: new Date(),
                     last_expiry_notification_type: range.label
@@ -186,6 +193,104 @@ export const checkExpiredSubscriptions = async () => {
         }
 
         if (expired.length < BATCH_SIZE) hasMore = false;
+    }
+};
+
+/**
+ * Apply deferred plan changes for manually-billed tenants.
+ * Runs when pending_plan_change_date <= now and payment_method = 'manual'.
+ */
+export const applyDeferredPlanChanges = async () => {
+    const now = new Date();
+    const tenants = await paymentRepository.findTenantsByDeferredPlanChange(now);
+
+    for (const tenant of tenants) {
+        const oldPlan = tenant.plan;
+        const newPlan = tenant.pending_plan;
+        logger.info(`Applying deferred plan change for ${tenant.name}: ${oldPlan} → ${newPlan}`);
+
+        await tenant.update({
+            plan: newPlan,
+            pending_plan: null,
+            pending_plan_change_date: null,
+            pending_plan_approved: false
+        });
+
+        if (emailService.isEmailConfigured()) {
+            await emailService.sendPlanChangeAppliedEmail({
+                email: tenant.admin_email,
+                companyName: tenant.name,
+                oldPlan,
+                newPlan
+            }).catch(err => logger.warn('Email failed (deferred plan change):', err.message));
+        }
+    }
+};
+
+/**
+ * Expire admin-initiated PayPal setup links after 72 hours.
+ */
+export const expirePayPalSetups = async () => {
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    const tenants = await paymentRepository.findTenantsByPendingPayPalSetup(cutoff);
+
+    for (const tenant of tenants) {
+        logger.info(`PayPal setup link expired for ${tenant.name}. Clearing pending setup.`);
+
+        await tenant.update({
+            pending_paypal_subscription_id: null,
+            paypal_setup_initiated_at: null
+        });
+
+        // Notify the platform admin
+        const adminEmail = process.env.PLATFORM_ADMIN_EMAIL || process.env.SMTP_USER;
+        if (adminEmail && emailService.isEmailConfigured()) {
+            await emailService.sendPayPalSetupExpiredEmail({
+                email: adminEmail,
+                companyName: tenant.name
+            }).catch(err => logger.warn('Email failed (paypal setup expired):', err.message));
+        }
+    }
+};
+
+/**
+ * Expire unapproved PayPal plan revisions after 72 hours.
+ * If the user never re-consented on PayPal, the pending change is cancelled.
+ */
+export const expireUnapprovedRevisions = async () => {
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    const tenants = await paymentRepository.findTenantsByExpiredRevisions(cutoff);
+
+    for (const tenant of tenants) {
+        logger.info(`Unapproved plan revision expired for ${tenant.name}. Clearing pending plan.`);
+
+        await tenant.update({
+            pending_plan: null,
+            pending_plan_change_date: null,
+            pending_plan_approved: false
+        });
+    }
+};
+
+/**
+ * Deactivate cancelled tenants whose current_period_end has passed.
+ */
+export const deactivateCancelledTenants = async () => {
+    const now = new Date();
+    const tenants = await paymentRepository.findCancelledExpiredTenants(now);
+
+    for (const tenant of tenants) {
+        logger.info(`Deactivating cancelled tenant ${tenant.name} (period ended ${tenant.current_period_end}).`);
+
+        await tenant.update({ status: 'inactive' });
+
+        if (emailService.isEmailConfigured()) {
+            await emailService.sendSubscriptionCancelledEmail({
+                email: tenant.admin_email,
+                companyName: tenant.name,
+                downgradeDate: new Date()
+            }).catch(err => logger.warn('Email failed (tenant deactivated):', err.message));
+        }
     }
 };
 

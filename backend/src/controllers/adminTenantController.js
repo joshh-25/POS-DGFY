@@ -11,7 +11,11 @@ export {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    setupPayPalRecurring,
+    adminChangePlan,
+    adminReactivateTenant,
+    resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
 import {
@@ -23,7 +27,11 @@ import {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    setupPayPalRecurring,
+    adminChangePlan,
+    adminReactivateTenant,
+    resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
 export default {
@@ -35,5 +43,9 @@ export default {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    setupPayPalRecurring,
+    adminChangePlan,
+    adminReactivateTenant,
+    resubmitRegistration
 };

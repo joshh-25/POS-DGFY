@@ -25,6 +25,7 @@ const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
+const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
@@ -72,6 +73,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
+        <Route path="/reactivate" element={<Reactivate />} />
 
         {/* Protected routes - require authentication */}
         <Route path="/" element={

@@ -16,7 +16,14 @@ import {
   getSubscriptionExpiringTemplate,
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
-  getPaymentFailedGracePeriodTemplate
+  getPaymentFailedGracePeriodTemplate,
+  getPayPalSetupTemplate,
+  getPayPalSetupExpiredTemplate,
+  getPlanChangePendingTemplate,
+  getPlanChangeAppliedTemplate,
+  getReactivationRequestTemplate,
+  getReactivationApprovedTemplate,
+  getResubmissionConfirmationTemplate
 } from '../templates/emailTemplates.js';
 
 // Lazy initialize transporter
@@ -275,6 +282,81 @@ export const sendPaymentFailedGracePeriodEmail = async ({ email, companyName, gr
   });
 };
 
+// ─── Subscription Lifecycle Emails (Phase 2) ─────────────────────────────────
+
+/** Admin-initiated PayPal setup link sent to user */
+export const sendPayPalSetupEmail = async ({ email, companyName, approvalUrl, expiresAt, planName, amount }) => {
+  const html = getPayPalSetupTemplate({ companyName, approvalUrl, expiresAt, planName, amount });
+  return sendEmail({
+    to: email,
+    subject: `Action Required: Set Up PayPal Recurring Billing for ${companyName}`,
+    html
+  });
+};
+
+/** Admin notified that a PayPal setup link expired */
+export const sendPayPalSetupExpiredEmail = async ({ email, companyName }) => {
+  const html = getPayPalSetupExpiredTemplate({ companyName });
+  return sendEmail({
+    to: email,
+    subject: `PayPal Setup Link Expired for ${companyName}`,
+    html
+  });
+};
+
+/** Notifies user that a plan change is queued and needs PayPal re-consent */
+export const sendPlanChangePendingEmail = async ({ email, companyName, currentPlan, newPlan, approvalUrl }) => {
+  const html = getPlanChangePendingTemplate({ companyName, currentPlan, newPlan, approvalUrl });
+  return sendEmail({
+    to: email,
+    subject: `Plan Change Pending Approval for ${companyName}`,
+    html
+  });
+};
+
+/** Notifies user that their plan change has been applied */
+export const sendPlanChangeAppliedEmail = async ({ email, companyName, oldPlan, newPlan }) => {
+  const html = getPlanChangeAppliedTemplate({ companyName, oldPlan, newPlan });
+  return sendEmail({
+    to: email,
+    subject: `Your ${companyName} Plan Has Been Updated to ${newPlan}`,
+    html
+  });
+};
+
+/** Sent to the platform admin when an inactive tenant requests reactivation */
+export const sendReactivationRequestEmail = async ({ email, companyName }) => {
+  const requestedAt = new Date().toLocaleString();
+  const html = getReactivationRequestTemplate({ companyName, requestedAt });
+  return sendEmail({
+    to: email,
+    subject: `Reactivation Request from ${companyName}`,
+    html
+  });
+};
+
+/** Sent to the tenant admin when their account is reactivated */
+export const sendReactivationApprovedEmail = async ({ email, companyName, companyToken }) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const loginUrl = `${appUrl}/login`;
+  const html = getReactivationApprovedTemplate({ companyName, companyToken, loginUrl });
+  return sendEmail({
+    to: email,
+    subject: `Your ${companyName} Account Has Been Reactivated!`,
+    html
+  });
+};
+
+/** Sent to the user after they re-submit a previously rejected registration */
+export const sendResubmissionConfirmationEmail = async ({ email, companyName }) => {
+  const html = getResubmissionConfirmationTemplate({ companyName });
+  return sendEmail({
+    to: email,
+    subject: `Registration Re-submitted: ${companyName}`,
+    html
+  });
+};
+
 export default {
   sendEmail,
   sendInvitationEmail,
@@ -284,6 +366,13 @@ export default {
   sendSubscriptionCancelledEmail,
   sendPaymentFailedEmail,
   sendPaymentFailedGracePeriodEmail,
+  sendPayPalSetupEmail,
+  sendPayPalSetupExpiredEmail,
+  sendPlanChangePendingEmail,
+  sendPlanChangeAppliedEmail,
+  sendReactivationRequestEmail,
+  sendReactivationApprovedEmail,
+  sendResubmissionConfirmationEmail,
   verifyConnection,
   isEmailConfigured
 };

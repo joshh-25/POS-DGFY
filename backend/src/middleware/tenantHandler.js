@@ -61,8 +61,22 @@ export const tenantHandler = async (req, res, next) => {
 
         logger.debug(`[TenantHandler] Found tenant: ${tenant.name} (${tenant.id})`);
 
-        // 3. Get Connection
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        // Attach tenant to request immediately so public endpoints (reactivation, resubmit)
+        // can access req.tenant.id even if the tenant DB is not yet provisioned.
+        req.tenant = tenant;
+
+        // 3. Get Connection — may fail for tenants whose DB has not been provisioned yet
+        // (e.g. rejected registrations). Fall back to default context while keeping req.tenant.
+        let sequelizeInstance;
+        try {
+            sequelizeInstance = await tenantConnector.getConnection(tenant);
+        } catch (dbError) {
+            logger.warn(`[TenantHandler] Could not connect to tenant DB for ${tenant.name} (${tenant.status}). Falling back to default context.`);
+            return dbStore.run({
+                tenantId: 'default',
+                tenantName: 'SKU-Inventory-Manager (Default)'
+            }, next);
+        }
 
         // 4. Bind Models (Factory Logic)
         // Since we are not rewriting all models to factories YET, we need a hybrid approach.
@@ -73,7 +87,7 @@ export const tenantHandler = async (req, res, next) => {
         // The models are still static in Phase 2 Pilot.
         // But for AuthPilot, we will need at least User model to optionally be bound.
 
-        // Important: In Phase 3, we will load models dynamically. 
+        // Important: In Phase 3, we will load models dynamically.
         // For now, we put the 'sequelize' instance in the store so services can use it.
         // 53. const context = {
         //     sequelize: sequelizeInstance,
@@ -91,11 +105,11 @@ export const tenantHandler = async (req, res, next) => {
             tenantToken: companyToken,
             tenantName: tenant.name,
             tenantPlan: tenant.plan,
+            tenantSubscriptionStatus: tenant.subscription_status,
+            tenantGracePeriodEnd: tenant.grace_period_end,
+            tenantPaymentMethod: tenant.payment_method,
             ...tenantModels
         };
-
-        // Attach tenant to request for downstream middleware/controllers
-        req.tenant = tenant;
 
         // 5. Run Request in Context
         dbStore.run(context, next);

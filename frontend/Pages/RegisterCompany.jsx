@@ -55,11 +55,6 @@ export default function RegisterCompany() {
         // This fixes the race condition where state hasn't updated yet
         const activeSubscriptionId = directSubscriptionId || paypalSubscriptionId;
 
-        if (selectedPlan === 'premium' && !activeSubscriptionId) {
-            setError('Please complete the PayPal subscription for Premium plan');
-            return;
-        }
-
         setIsLoading(true);
 
         try {
@@ -190,24 +185,24 @@ export default function RegisterCompany() {
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div
                                     className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedPlan === 'standard' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-indigo-300'}`}
-                                    onClick={() => setSelectedPlan('standard')}
+                                    onClick={() => { setSelectedPlan('standard'); setPaypalSubscriptionId(null); }}
                                 >
                                     <div className="flex items-center justify-between mb-2">
                                         <h3 className="font-semibold text-slate-900">Standard</h3>
                                         <Building2 className="w-5 h-5 text-slate-500" />
                                     </div>
-                                    <p className="text-sm text-slate-600">Manual Approval</p>
+                                    <p className="text-sm text-slate-600">₱2,000 / month</p>
                                     <p className="text-xs text-slate-500 mt-1">Basic inventory features</p>
                                 </div>
                                 <div
                                     className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedPlan === 'premium' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-indigo-300'}`}
-                                    onClick={() => setSelectedPlan('premium')}
+                                    onClick={() => { setSelectedPlan('premium'); setPaypalSubscriptionId(null); }}
                                 >
                                     <div className="flex items-center justify-between mb-2">
                                         <h3 className="font-semibold text-indigo-700">Premium</h3>
                                         <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
                                     </div>
-                                    <p className="text-sm text-slate-600">$29.99 / month</p>
+                                    <p className="text-sm text-slate-600">₱3,000 / month</p>
                                     <p className="text-xs text-indigo-600 mt-1 font-medium">Instant Access + AI Chat</p>
                                 </div>
                             </div>
@@ -285,44 +280,57 @@ export default function RegisterCompany() {
                                 )}
                             </div>
 
-                            {selectedPlan === 'premium' ? (
-                                <div className="mt-6">
-                                    <p className="text-sm font-medium text-slate-700 mb-3">Subscribe to Activate Account</p>
-                                    <div className={!isPasswordValid || !passwordsMatch || !formData.companyName ? 'opacity-50 pointer-events-none' : ''}>
-                                        <PayPalButtons
-                                            style={{ layout: "vertical", label: "subscribe" }}
-                                            createSubscription={(data, actions) => {
-                                                return actions.subscription.create({
-                                                    plan_id: import.meta.env.VITE_PAYPAL_PLAN_ID
-                                                });
-                                            }}
-                                            onApprove={(data, actions) => {
-                                                // Fix: Pass subscriptionID directly to handler to avoid race condition
-                                                setPaypalSubscriptionId(data.subscriptionID);
-                                                handleSubmit(null, data.subscriptionID);
-                                            }}
-                                            onCancel={() => {
-                                                setError("Subscription cancelled. You need to subscribe to create a Premium account.");
-                                            }}
-                                            onError={(err) => {
-                                                console.error("PayPal Error:", err);
-                                                setError(`Payment failed: ${err.message || "Unknown error"}. Please try again or contact support.`);
-                                            }}
-                                        />
-                                    </div>
-                                    <p className="text-xs text-center text-slate-500 mt-2">
-                                        You'll be charged $29.99/month. Cancel anytime.
-                                    </p>
+                            {/* PayPal subscription path */}
+                            <div className="mt-4">
+                                <p className="text-sm font-medium text-slate-700 mb-2">
+                                    Subscribe via PayPal — activate instantly
+                                </p>
+                                <div className={!isPasswordValid || !passwordsMatch || !formData.companyName ? 'opacity-50 pointer-events-none' : ''}>
+                                    <PayPalButtons
+                                        style={{ layout: "vertical", label: "subscribe" }}
+                                        createSubscription={(data, actions) => {
+                                            const planId = selectedPlan === 'premium'
+                                                ? (import.meta.env.VITE_PAYPAL_PREMIUM_PLAN_ID || import.meta.env.VITE_PAYPAL_PLAN_ID)
+                                                : import.meta.env.VITE_PAYPAL_STANDARD_PLAN_ID;
+                                            return actions.subscription.create({ plan_id: planId });
+                                        }}
+                                        onApprove={(data) => {
+                                            setPaypalSubscriptionId(data.subscriptionID);
+                                            handleSubmit(null, data.subscriptionID);
+                                        }}
+                                        onCancel={() => setError('PayPal subscription cancelled. You may still submit a registration request below.')}
+                                        onError={(err) => {
+                                            console.error('PayPal Error:', err);
+                                            setError(`Payment failed: ${err.message || 'Unknown error'}. Please try again or submit a registration request below.`);
+                                        }}
+                                    />
                                 </div>
-                            ) : (
-                                <Button
-                                    type="submit"
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 mt-4"
-                                    disabled={isLoading || !isPasswordValid || !passwordsMatch}
-                                >
-                                    {isLoading ? 'Creating Request...' : 'Submit Registration Request'}
-                                </Button>
-                            )}
+                                <p className="text-xs text-center text-slate-500 mt-1">
+                                    {selectedPlan === 'premium' ? '₱3,000/month. Cancel anytime.' : '₱2,000/month. Cancel anytime.'}
+                                </p>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="relative my-4">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-slate-200" />
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase">
+                                    <span className="bg-white px-2 text-slate-400">or</span>
+                                </div>
+                            </div>
+
+                            {/* Manual registration path */}
+                            <Button
+                                type="submit"
+                                className="w-full bg-slate-700 hover:bg-slate-800"
+                                disabled={isLoading || !isPasswordValid || !passwordsMatch}
+                            >
+                                {isLoading ? 'Creating Request...' : 'Submit Registration Request'}
+                            </Button>
+                            <p className="text-xs text-center text-slate-500 mt-1">
+                                Admin will review and approve your request manually.
+                            </p>
                         </form>
 
                         <div className="mt-6 text-center">

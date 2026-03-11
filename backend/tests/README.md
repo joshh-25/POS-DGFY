@@ -50,7 +50,7 @@ npm run audit:indexes
 
 ### PayPal Sandbox Canary (`paypalSandboxCanary.e2e.test.js`)
 
-**Purpose**: Scheduled end-to-end canary that validates live PayPal sandbox subscription verification plus `/api/v1/payments/upgrade` billing-funnel telemetry persistence against real external endpoints.
+**Purpose**: Scheduled end-to-end canary that validates live PayPal sandbox subscription verification plus `/api/v1/payments/upgrade`, `/api/v1/payments/migrate-to-paypal`, and `/api/v1/payments/reactivate-with-paypal` billing-funnel telemetry persistence against real external endpoints.
 
 **How to run locally**:
 ```bash
@@ -64,6 +64,8 @@ npm test -- paypalSandboxCanary.e2e.test.js
 - `PAYPAL_WEBHOOK_ID`
 - `PAYPAL_SANDBOX_ACTIVE_SUBSCRIPTION_ID`
 - `PAYPAL_SANDBOX_NONACTIVE_SUBSCRIPTION_ID` (optional; if omitted, an invalid ID is used for the blocked-path assertion)
+- `PAYPAL_STANDARD_PLAN_ID`
+- `PAYPAL_PREMIUM_PLAN_ID` (or legacy `PAYPAL_PLAN_ID`)
 - `PAYPAL_MODE=sandbox` (recommended; the test defaults to sandbox mode when unset)
 
 **Behavior contract**:
@@ -74,7 +76,9 @@ npm test -- paypalSandboxCanary.e2e.test.js
 1. OAuth token retrieval from PayPal sandbox.
 2. Live subscription verification against sandbox APIs.
 3. `/api/v1/payments/upgrade` accepts an ACTIVE subscription and rejects a non-active/invalid one.
-4. Upgrade-route billing-funnel telemetry rows are persisted with the expected `event_type`, `source`, and `correlation_id`.
+4. `/api/v1/payments/migrate-to-paypal` persists PayPal migration state for a manual tenant and writes attempted+succeeded telemetry pairs.
+5. `/api/v1/payments/reactivate-with-paypal` reactivates an inactive tenant and writes attempted+succeeded telemetry pairs.
+6. Billing-funnel telemetry rows are persisted with the expected `event_type`, `source`, and `correlation_id` for each covered flow.
 
 **What it does not validate**:
 1. Real webhook delivery into `/api/v1/payments/webhook`.
@@ -85,6 +89,23 @@ npm test -- paypalSandboxCanary.e2e.test.js
 See:
 - `docs/testing/billing-funnel-telemetry-definition.md`
 - `docs/testing/telemetry-event-catalog.md`
+
+---
+
+### Payment Lifecycle Integration (`paymentLifecycle.integration.test.js`)
+
+**Purpose**: Route-level DB integration for migration/reactivation contracts using mocked PayPal transport and real landlord persistence.
+
+**How to run locally**:
+```bash
+cd backend
+npm test -- paymentLifecycle.integration.test.js
+```
+
+**What it validates**:
+1. `/api/v1/payments/migrate-to-paypal` updates tenant billing state and writes attempted+succeeded telemetry pair.
+2. `/api/v1/payments/reactivate-with-paypal` restores inactive tenant state and writes attempted+succeeded telemetry pair.
+3. Telemetry rows preserve `source` and `correlation_id` route contracts.
 
 ---
 
@@ -192,9 +213,16 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - All test emails are namespaced under `EMAIL_PREFIX = 'lookup-v2-test-'` plus a `Date.now()` timestamp to prevent cross-run collisions.
 
 **Infrastructure notes**:
-- `NODE_ENV=test` routes to `sku_inventory_manager_test` database automatically
+- `NODE_ENV=test` routes to `sku_test` database automatically (see `backend/src/config/database.js`)
 - Rate limiter `skip()` returns `true` when `NODE_ENV === 'test'`
 - `--runInBand` ensures sequential execution (avoids parallel DB state conflicts)
+
+**Local preflight prerequisite**:
+- Ensure the `sku_test` database exists before running integration suites that hit the landlord DB.
+- Example:
+```sql
+CREATE DATABASE IF NOT EXISTS sku_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
 
 ---
 

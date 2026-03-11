@@ -21,8 +21,7 @@ import {
   Star,
   CheckCircle2,
   History,
-  XCircle,
-  ExternalLink
+  XCircle
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +41,7 @@ import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import { useSearchParams } from 'react-router-dom';
+import { shouldShowMigrateToPayPalSection } from '../src/utils/subscriptionUi.js';
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -82,6 +82,9 @@ export default function Settings() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [billingHistory, setBillingHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
+  const [isMigratingToPayPal, setIsMigratingToPayPal] = useState(false);
+  const [pendingPlanInfo, setPendingPlanInfo] = useState(null);
 
   // Fetch current user and system settings on mount
   useEffect(() => {
@@ -130,12 +133,22 @@ export default function Settings() {
     fetchData();
   }, []);
 
-  // Fetch billing history when tab changes to subscription
+  // Fetch billing data when tab changes to subscription
   useEffect(() => {
-    if (currentTab === 'subscription' && currentUser?.company?.plan === 'premium') {
+    if (currentTab === 'subscription') {
       fetchBillingHistory();
+      fetchPendingPlan();
     }
-  }, [currentTab, currentUser?.company?.plan]);
+  }, [currentTab]);
+
+  const fetchPendingPlan = async () => {
+    try {
+      const data = await paymentService.getPendingPlan();
+      setPendingPlanInfo(data);
+    } catch {
+      // silently ignore — unauthenticated or no pending plan
+    }
+  };
 
   const fetchBillingHistory = async () => {
     setIsLoadingHistory(true);
@@ -300,6 +313,40 @@ export default function Settings() {
       toast.error("Failed to sync status. Please try again later.");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleChangePlan = async (newPlan) => {
+    setIsChangingPlan(true);
+    try {
+      const result = await paymentService.changePlan(newPlan);
+      if (result?.requiresConsent && result?.approvalUrl) {
+        window.open(result.approvalUrl, '_blank', 'noopener,noreferrer');
+        toast.info("Approve the plan change in PayPal. It will take effect on your next billing cycle.");
+        fetchPendingPlan();
+      } else {
+        const updatedUser = await userService.getCurrentUser();
+        setCurrentUser(updatedUser);
+        toast.success(`Plan changed to ${newPlan} successfully.`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to change plan.");
+    } finally {
+      setIsChangingPlan(false);
+    }
+  };
+
+  const handleMigrateToPayPal = async (subscriptionId) => {
+    setIsMigratingToPayPal(true);
+    try {
+      await paymentService.migrateToPayPal(subscriptionId);
+      const updatedUser = await userService.getCurrentUser();
+      setCurrentUser(updatedUser);
+      toast.success("PayPal subscription linked successfully.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to link PayPal subscription.");
+    } finally {
+      setIsMigratingToPayPal(false);
     }
   };
 
@@ -475,6 +522,11 @@ export default function Settings() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              <PayPalScriptProvider options={{
+                "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
+                vault: true,
+                intent: "subscription"
+              }}>
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-tight mb-3">Plan Details</h4>
@@ -512,12 +564,26 @@ export default function Settings() {
                 </div>
               </div>
 
-              {currentUser?.company?.plan === 'premium' && (
-                <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t border-slate-100">
+              {/* Pending plan change notice */}
+              {pendingPlanInfo?.pending_plan && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-start gap-3 text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-indigo-800">Plan change pending: </span>
+                    <span className="text-indigo-700 capitalize">{pendingPlanInfo.pending_plan}</span>
+                    {pendingPlanInfo.pending_plan_approved
+                      ? ' — approved, will apply on next billing cycle.'
+                      : ' — awaiting your approval in PayPal.'}
+                  </div>
+                </div>
+              )}
+
+              {/* PayPal tenant actions */}
+              {currentUser?.company?.payment_method === 'paypal' && (
+                <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-100">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 sm:flex-none"
                     onClick={handleSyncSubscription}
                     disabled={isSyncing}
                   >
@@ -525,11 +591,36 @@ export default function Settings() {
                     Sync with PayPal
                   </Button>
 
+                  {currentUser?.company?.plan === 'standard' && !pendingPlanInfo?.pending_plan && (
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      onClick={() => handleChangePlan('premium')}
+                      disabled={isChangingPlan}
+                    >
+                      {isChangingPlan ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}
+                      Upgrade to Premium
+                    </Button>
+                  )}
+
+                  {currentUser?.company?.plan === 'premium' && !pendingPlanInfo?.pending_plan && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-slate-600"
+                      onClick={() => handleChangePlan('standard')}
+                      disabled={isChangingPlan}
+                    >
+                      {isChangingPlan ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
+                      Downgrade to Standard
+                    </Button>
+                  )}
+
                   {currentUser?.company?.subscription_status !== 'cancelled' && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-slate-500 hover:text-red-600 hover:bg-red-50 flex-1 sm:flex-none"
+                      className="text-slate-500 hover:text-red-600 hover:bg-red-50 ml-auto"
                       onClick={handleCancelSubscription}
                       disabled={isCancelling}
                     >
@@ -542,15 +633,47 @@ export default function Settings() {
                     <div className="w-full mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-amber-800 text-sm">
                       <AlertTriangle className="w-5 h-5 text-amber-600" />
                       <div>
-                        <strong>Payment Failed.</strong> You are currently in a grace period. Please update your payment method in PayPal to avoid service interruption.
+                        <strong>Payment Failed.</strong> Update your payment method in PayPal to avoid service interruption.
                       </div>
                     </div>
                   )}
                 </div>
               )}
 
+              {/* Migrate to PayPal (manual tenants, master admin only) */}
+              {shouldShowMigrateToPayPalSection({
+                company: currentUser?.company,
+                isMasterAdmin: currentUser?.is_master_admin
+              }) && (
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2">Link PayPal Subscription</h4>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Subscribe via PayPal to enable automatic renewals for your current plan.
+                  </p>
+                  {isMigratingToPayPal ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Linking subscription...
+                    </div>
+                  ) : (
+                    <div className="max-w-[280px]">
+                      <PayPalButtons
+                        style={{ layout: 'vertical', label: 'subscribe', height: 44 }}
+                        createSubscription={(data, actions) => {
+                          const planId = currentUser?.company?.plan === 'premium'
+                            ? (import.meta.env.VITE_PAYPAL_PREMIUM_PLAN_ID || import.meta.env.VITE_PAYPAL_PLAN_ID)
+                            : import.meta.env.VITE_PAYPAL_STANDARD_PLAN_ID;
+                          return actions.subscription.create({ plan_id: planId });
+                        }}
+                        onApprove={(data) => handleMigrateToPayPal(data.subscriptionID)}
+                        onError={(err) => toast.error(`PayPal error: ${err.message || 'Unknown error'}`)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Billing History Section */}
-              {currentUser?.company?.plan === 'premium' && (
+              {currentUser?.company?.payment_method === 'paypal' && (
                 <div className="mt-8">
                   <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
                     <History className="w-4 h-4 text-teal-600" />
@@ -595,27 +718,22 @@ export default function Settings() {
                 </div>
               )}
 
-              {currentUser?.company?.plan === 'standard' && (
+              {currentUser?.company?.plan === 'standard' && currentUser?.company?.payment_method !== 'paypal' && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
                   <div className="bg-gradient-to-br from-indigo-600 to-teal-600 rounded-2xl p-6 text-white relative overflow-hidden shadow-xl">
                     <Star className="absolute top-4 right-4 w-12 h-12 text-white/10 rotate-12" />
                     <div className="relative z-10">
                       <h3 className="text-xl font-bold mb-2">Upgrade to Premium</h3>
                       <p className="text-white/80 text-sm mb-6 max-w-md">
-                        Unlock AI features, smart predictions, and prioritized support for your entire company. Just $29.99/month.
+                        Unlock AI features, smart predictions, and prioritized support for your entire company. Just ₱3,000/month.
                       </p>
 
-                      <PayPalScriptProvider options={{
-                        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
-                        vault: true,
-                        intent: "subscription"
-                      }}>
                         <div className="max-w-[280px]">
                           <PayPalButtons
                             style={{ layout: "vertical", label: "subscribe", height: 44, color: 'blue' }}
                             createSubscription={(data, actions) => {
                               return actions.subscription.create({
-                                plan_id: import.meta.env.VITE_PAYPAL_PLAN_ID
+                                plan_id: import.meta.env.VITE_PAYPAL_PREMIUM_PLAN_ID || import.meta.env.VITE_PAYPAL_PLAN_ID
                               });
                             }}
                             onApprove={(data, actions) => {
@@ -630,11 +748,11 @@ export default function Settings() {
                             }}
                           />
                         </div>
-                      </PayPalScriptProvider>
                     </div>
                   </div>
                 </div>
               )}
+              </PayPalScriptProvider>
             </CardContent>
           </Card>
         </TabsContent>

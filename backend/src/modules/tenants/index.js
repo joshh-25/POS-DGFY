@@ -17,6 +17,7 @@ import { buildGetPricingSettingsUseCase } from './usecases/getPricingSettingsUse
 import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSettingsUseCase.js';
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
+import { buildResubmitRegistrationUseCase } from './usecases/resubmitRegistrationUseCase.js';
 
 export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase({
     tenantAdminRepository,
@@ -73,6 +74,12 @@ export const updateTenantUseCase = buildUpdateTenantUseCase({
 export const deleteTenantUseCase = buildDeleteTenantUseCase({
     tenantAdminRepository,
     deleteTenantDatabase,
+    logger
+});
+
+export const resubmitRegistrationUseCase = buildResubmitRegistrationUseCase({
+    tenantAdminRepository,
+    emailService,
     logger
 });
 

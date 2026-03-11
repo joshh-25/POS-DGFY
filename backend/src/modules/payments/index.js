@@ -1,17 +1,24 @@
 import logger from '../../config/logger.js';
 import { paypalService } from '../../services/paypalService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
+import * as emailService from '../../services/emailService.js';
 import { paymentRepository } from './repositories/paymentRepository.js';
 import { buildHandleWebhookUseCase } from './usecases/handleWebhookUseCase.js';
 import { buildCancelSubscriptionUseCase } from './usecases/cancelSubscriptionUseCase.js';
 import { buildGetBillingHistoryUseCase } from './usecases/getBillingHistoryUseCase.js';
 import { buildSyncWithPayPalUseCase } from './usecases/syncWithPayPalUseCase.js';
 import { buildUpgradeToPremiumUseCase } from './usecases/upgradeToPremiumUseCase.js';
+import { buildMigrateToPayPalUseCase } from './usecases/migrateToPayPalUseCase.js';
+import { buildChangePlanUseCase } from './usecases/changePlanUseCase.js';
+import { buildSetupPayPalRecurringUseCase } from './usecases/setupPayPalRecurringUseCase.js';
+import { buildRequestReactivationUseCase } from './usecases/requestReactivationUseCase.js';
+import { buildReactivateWithPayPalUseCase } from './usecases/reactivateWithPayPalUseCase.js';
 
 export const handleWebhookUseCase = buildHandleWebhookUseCase({
     paymentRepository,
     paypalService,
     trackEngagementEvent,
+    emailService,
     logger
 });
 
@@ -31,6 +38,40 @@ export const syncWithPayPalUseCase = buildSyncWithPayPalUseCase({
 });
 
 export const upgradeToPremiumUseCase = buildUpgradeToPremiumUseCase({
+    paymentRepository,
+    paypalService,
+    trackEngagementEvent,
+    logger
+});
+
+export const migrateToPayPalUseCase = buildMigrateToPayPalUseCase({
+    paymentRepository,
+    paypalService,
+    trackEngagementEvent,
+    logger
+});
+
+export const changePlanUseCase = buildChangePlanUseCase({
+    paymentRepository,
+    paypalService,
+    emailService,
+    logger
+});
+
+export const setupPayPalRecurringUseCase = buildSetupPayPalRecurringUseCase({
+    paymentRepository,
+    paypalService,
+    emailService,
+    logger
+});
+
+export const requestReactivationUseCase = buildRequestReactivationUseCase({
+    paymentRepository,
+    emailService,
+    logger
+});
+
+export const reactivateWithPayPalUseCase = buildReactivateWithPayPalUseCase({
     paymentRepository,
     paypalService,
     trackEngagementEvent,

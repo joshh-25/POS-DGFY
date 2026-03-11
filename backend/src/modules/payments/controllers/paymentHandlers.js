@@ -5,9 +5,22 @@ import {
     cancelSubscriptionUseCase,
     getBillingHistoryUseCase,
     syncWithPayPalUseCase,
-    upgradeToPremiumUseCase
+    upgradeToPremiumUseCase,
+    migrateToPayPalUseCase,
+    changePlanUseCase,
+    requestReactivationUseCase,
+    reactivateWithPayPalUseCase,
+    paymentRepository
 } from '../index.js';
 import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+
+const requireTenantContext = (req, res) => {
+    if (!req.tenant?.id) {
+        res.status(400).json({ success: false, message: 'Company token required' });
+        return null;
+    }
+    return req.tenant.id;
+};
 
 /**
  * Handle PayPal Webhooks
@@ -109,7 +122,8 @@ export const simulateWebhook = async (req, res) => {
  */
 export const cancelSubscription = async (req, res) => {
     try {
-        const tenantId = req.tenant.id;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
         const result = await cancelSubscriptionUseCase({ tenantId });
         return sendUseCaseResult(res, result, {
             successPayloadResolver: () => ({
@@ -130,7 +144,8 @@ export const cancelSubscription = async (req, res) => {
  */
 export const getBillingHistory = async (req, res) => {
     try {
-        const tenantId = req.tenant.id;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
         const result = await getBillingHistoryUseCase({ tenantId });
         return sendUseCaseResult(res, result, {
             successPayloadResolver: () => ({
@@ -150,7 +165,8 @@ export const getBillingHistory = async (req, res) => {
  */
 export const syncWithPayPal = async (req, res) => {
     try {
-        const tenantId = req.tenant.id;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
         const result = await syncWithPayPalUseCase({ tenantId });
         return sendUseCaseResult(res, result, {
             successPayloadResolver: () => ({
@@ -172,7 +188,8 @@ export const syncWithPayPal = async (req, res) => {
 export const upgradeToPremium = async (req, res) => {
     try {
         const { subscriptionId } = req.body;
-        const tenantId = req.tenant.id;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
         const userId = req.user?.user_id || null;
         const correlationId = req.requestId || req.headers['x-request-id'] || crypto.randomUUID();
 
@@ -195,11 +212,149 @@ export const upgradeToPremium = async (req, res) => {
     }
 };
 
+/**
+ * Migrate from manual billing to PayPal recurring
+ * POST /api/v1/payments/migrate-to-paypal
+ */
+export const migrateToPayPal = async (req, res) => {
+    try {
+        const { subscriptionId } = req.body;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const userId = req.user?.user_id || null;
+        const correlationId = req.requestId || req.headers['x-request-id'] || crypto.randomUUID();
+        const result = await migrateToPayPalUseCase({ tenantId, userId, subscriptionId, correlationId });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: 'Successfully migrated to PayPal recurring billing.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Migrate to PayPal Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Change subscription plan
+ * POST /api/v1/payments/change-plan
+ */
+export const changePlan = async (req, res) => {
+    try {
+        const { newPlan } = req.body;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const result = await changePlanUseCase({ tenantId, newPlan });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: result.data?.requiresConsent
+                    ? 'Plan change initiated. Please complete approval on PayPal.'
+                    : 'Plan changed successfully.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Change Plan Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Get pending plan change status
+ * GET /api/v1/payments/pending-plan
+ */
+export const getPendingPlan = async (req, res) => {
+    try {
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const tenant = await paymentRepository.findTenantById(tenantId);
+        if (!tenant) {
+            return res.status(404).json({ success: false, message: 'Tenant not found' });
+        }
+        return res.json({
+            success: true,
+            data: {
+                pending_plan: tenant.pending_plan || null,
+                pending_plan_change_date: tenant.pending_plan_change_date || null,
+                pending_plan_approved: tenant.pending_plan_approved || false
+            }
+        });
+    } catch (error) {
+        logger.error('Get Pending Plan Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Request manual reactivation (for inactive tenants)
+ * POST /api/v1/payments/request-reactivation
+ * No JWT required — tenant identified via tenantHandler (x-company-token)
+ */
+export const requestReactivation = async (req, res) => {
+    try {
+        if (!req.tenant) {
+            return res.status(400).json({ success: false, message: 'Company token required' });
+        }
+        const tenantId = req.tenant.id;
+        const result = await requestReactivationUseCase({ tenantId });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: result.data?.message || 'Reactivation request submitted.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Request Reactivation Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Self-service reactivation via PayPal for inactive tenants
+ * POST /api/v1/payments/reactivate-with-paypal
+ * No JWT required — tenant identified via tenantHandler (x-company-token)
+ */
+export const reactivateWithPayPal = async (req, res) => {
+    try {
+        if (!req.tenant) {
+            return res.status(400).json({ success: false, message: 'Company token required' });
+        }
+        const { subscriptionId } = req.body;
+        const tenantId = req.tenant.id;
+        const correlationId = req.requestId || req.headers['x-request-id'] || crypto.randomUUID();
+        const result = await reactivateWithPayPalUseCase({
+            tenantId,
+            userId: null,
+            subscriptionId,
+            correlationId
+        });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: result.data?.message || 'Account reactivated successfully.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Reactivate With PayPal Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export default {
     handleWebhook,
     simulateWebhook,
     cancelSubscription,
     getBillingHistory,
     syncWithPayPal,
-    upgradeToPremium
+    upgradeToPremium,
+    migrateToPayPal,
+    changePlan,
+    getPendingPlan,
+    requestReactivation,
+    reactivateWithPayPal
 };

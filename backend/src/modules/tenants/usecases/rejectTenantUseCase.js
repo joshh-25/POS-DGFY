@@ -23,6 +23,7 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, 
 
             await tenantAdminRepository.updateTenant(tenant, {
                 status: 'rejected',
+                rejection_reason: reason || null,
                 settings: { ...tenant.settings, rejection_reason: reason }
             });
 

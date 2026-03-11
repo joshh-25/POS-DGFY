@@ -130,7 +130,8 @@ export const buildUpgradeToPremiumUseCase = ({
                 subscription_status: 'active',
                 paypal_subscription_id: subscriptionId,
                 current_period_end: nextBillingDate,
-                billing_cycle_anchor: resolvedBillingAnchor
+                billing_cycle_anchor: resolvedBillingAnchor,
+                payment_method: 'paypal'
             });
         } catch (error) {
             await tracker.failed({

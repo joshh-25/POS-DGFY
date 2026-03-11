@@ -64,6 +64,8 @@ SUMMARY_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.summary.txt"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+BACKUP_FILE=""
+
 log() {
     echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [${GREEN}INFO${NC}] $1"
 }
@@ -80,6 +82,36 @@ fatal() {
 require_command() {
     local cmd="$1"
     command -v "$cmd" >/dev/null 2>&1 || fatal "Missing required command: $cmd"
+}
+
+env_value() {
+    local file="$1"
+    local key="$2"
+    awk -F= -v target="$key" '
+        $0 !~ /^[[:space:]]*#/ && $1 == target {
+            val = substr($0, index($0, "=") + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+            print val
+            exit
+        }
+    ' "$file"
+}
+
+run_step() {
+    local label="$1"
+    shift
+    log "$label"
+    "$@"
+}
+
+run_ci_if_lockfile_exists() {
+    local dir="$1"
+    local lock_file="$dir/package-lock.json"
+    if [[ -f "$lock_file" ]]; then
+        (cd "$dir" && npm ci --no-audit --no-fund)
+    else
+        warn "No package-lock.json in $dir, skipping npm ci there."
+    fi
 }
 
 run_optional_node_script() {
@@ -137,14 +169,20 @@ ENV_FILE="$BACKEND_DIR/.env"
 
 REQUIRED_ENV_VARS=("PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "PAYPAL_MODE" "PAYPAL_WEBHOOK_ID" "DB_HOST" "DB_USER" "DB_NAME")
 for var in "${REQUIRED_ENV_VARS[@]}"; do
-    if ! grep -q "^${var}=" "$ENV_FILE"; then
+    value="$(env_value "$ENV_FILE" "$var")"
+    if [[ -z "${value:-}" ]]; then
         fatal "Missing required env variable ${var} in backend/.env"
-    fi
-    if grep -q "^${var}=$" "$ENV_FILE"; then
-        fatal "Empty required env variable ${var} in backend/.env"
     fi
 done
 log "Required env validation passed."
+
+PAYPAL_MODE_VALUE="$(env_value "$ENV_FILE" "PAYPAL_MODE")"
+if [[ "$PAYPAL_MODE_VALUE" != "live" && "$PAYPAL_MODE_VALUE" != "sandbox" ]]; then
+    fatal "PAYPAL_MODE must be either 'live' or 'sandbox'. Current value: $PAYPAL_MODE_VALUE"
+fi
+if [[ "${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}" == "1" && "$PAYPAL_MODE_VALUE" != "live" ]]; then
+    fatal "DEPLOY_REQUIRE_LIVE_PAYPAL=1 but PAYPAL_MODE is '$PAYPAL_MODE_VALUE'. Refusing production deploy."
+fi
 
 PRE_DEPLOY_COMMIT="$(git rev-parse HEAD)"
 LAST_DEPLOYED_COMMIT="unknown"
@@ -222,11 +260,11 @@ log "Migrations changed in this release: $MIGRATIONS_CHANGED"
 
 if [[ "$SKIP_DB_BACKUP" != "1" ]]; then
     if command -v mysqldump >/dev/null 2>&1; then
-        DB_HOST="$(grep -E '^DB_HOST=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
-        DB_USER="$(grep -E '^DB_USER=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
-        DB_NAME="$(grep -E '^DB_NAME=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
-        DB_PASS="$(grep -E '^DB_PASSWORD=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
-        DB_PASS="${DB_PASS:-$(grep -E '^DB_PASS=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')}"
+        DB_HOST="$(env_value "$ENV_FILE" "DB_HOST")"
+        DB_USER="$(env_value "$ENV_FILE" "DB_USER")"
+        DB_NAME="$(env_value "$ENV_FILE" "DB_NAME")"
+        DB_PASS="$(env_value "$ENV_FILE" "DB_PASSWORD")"
+        DB_PASS="${DB_PASS:-$(env_value "$ENV_FILE" "DB_PASS")}"
 
         BACKUP_DIR="$PROJECT_ROOT/backups"
         mkdir -p "$BACKUP_DIR"
@@ -239,6 +277,9 @@ if [[ "$SKIP_DB_BACKUP" != "1" ]]; then
             mysqldump -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" > "$BACKUP_FILE"
         fi
         log "Database backup completed."
+
+        # Keep only the latest 20 SQL backups to avoid unbounded disk growth.
+        ls -1t "$BACKUP_DIR"/predeploy_*.sql 2>/dev/null | tail -n +21 | xargs -r rm -f
     else
         if [[ "$MIGRATIONS_CHANGED" == "1" ]]; then
             fatal "mysqldump is unavailable and migrations changed. Install mysqldump or use --skip-db-backup intentionally."
@@ -249,22 +290,19 @@ else
     warn "DB backup skipped by --skip-db-backup."
 fi
 
-log "Installing deterministic dependencies..."
-npm ci --no-audit --no-fund
-(cd "$BACKEND_DIR" && npm ci --no-audit --no-fund)
-(cd "$FRONTEND_DIR" && npm ci --no-audit --no-fund)
+run_step "Installing deterministic dependencies..." run_ci_if_lockfile_exists "$PROJECT_ROOT"
+run_ci_if_lockfile_exists "$BACKEND_DIR"
+run_ci_if_lockfile_exists "$FRONTEND_DIR"
 
-log "Running documentation governance lint..."
-npm run lint:docs
+run_step "Running documentation governance lint..." npm run lint:docs
 
-log "Running architecture gate checks..."
-npm run check:architecture
+run_step "Running architecture gate checks..." npm run check:architecture
 
-log "Building frontend production artifacts..."
-(cd "$FRONTEND_DIR" && NODE_ENV=production npm run build)
+run_step "Building frontend production artifacts..." bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build"
 
-log "Running database migrations..."
-(cd "$BACKEND_DIR" && npx sequelize-cli db:migrate)
+run_step "Running database migration status (pre-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
+run_step "Running database migrations..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate"
+run_step "Running database migration status (post-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
 
 if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
     log "Running optional maintenance hooks (enabled)..."
@@ -281,11 +319,9 @@ if ! (cd "$BACKEND_DIR" && npm run repair:indexes); then
     warn "Index self-heal did not fully converge. Continuing to strict schema/index audit gate."
 fi
 
-log "Running schema/index audit..."
-(cd "$BACKEND_DIR" && npm run audit:indexes)
+run_step "Running schema/index audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:indexes"
 
-log "Running billing-funnel telemetry audit..."
-(cd "$BACKEND_DIR" && npm run audit:billing-funnel)
+run_step "Running billing-funnel telemetry audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:billing-funnel"
 
 log "Running tenant schema sync..."
 if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
@@ -303,15 +339,19 @@ if command -v pm2 >/dev/null 2>&1; then
     else
         fatal "No PM2 ecosystem config found."
     fi
+    if pm2 list --no-color | grep -Eiq 'errored|stopped'; then
+        pm2 list --no-color || true
+        fatal "PM2 reports errored/stopped processes after reload."
+    fi
     pm2 save
 else
     fatal "pm2 is not installed; cannot restart services."
 fi
 
-BACKEND_PORT="$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
+BACKEND_PORT="$(env_value "$ENV_FILE" "PORT")"
 BACKEND_PORT="${BACKEND_PORT:-5000}"
-BACKEND_HEALTH_URL="http://127.0.0.1:${BACKEND_PORT}/health"
-FRONTEND_HEALTH_URL="http://127.0.0.1:5173/"
+BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-http://127.0.0.1:${BACKEND_PORT}/health}"
+FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
 
 log "Waiting for services to stabilize..."
 sleep 12
@@ -329,16 +369,20 @@ for attempt in {1..12}; do
 done
 [[ "$backend_ok" == "1" ]] || fatal "Backend health check failed: $BACKEND_HEALTH_URL"
 
-frontend_ok="0"
-for attempt in {1..10}; do
-    fe_code="$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_HEALTH_URL" || true)"
-    if [[ "$fe_code" == "200" ]]; then
-        frontend_ok="1"
-        break
-    fi
-    sleep 2
-done
-[[ "$frontend_ok" == "1" ]] || fatal "Frontend health check failed: $FRONTEND_HEALTH_URL"
+if [[ -n "$FRONTEND_HEALTH_URL" ]]; then
+    frontend_ok="0"
+    for attempt in {1..10}; do
+        fe_code="$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_HEALTH_URL" || true)"
+        if [[ "$fe_code" == "200" ]]; then
+            frontend_ok="1"
+            break
+        fi
+        sleep 2
+    done
+    [[ "$frontend_ok" == "1" ]] || fatal "Frontend health check failed: $FRONTEND_HEALTH_URL"
+else
+    warn "DEPLOY_FRONTEND_HEALTH_URL not set. Skipping frontend HTTP health check."
+fi
 
 run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
 
@@ -354,6 +398,7 @@ echo "$POST_PULL_COMMIT" > "$DEPLOY_STATE_DIR/last_deployed_commit"
     echo "manifest_file=$MANIFEST_FILE"
     echo "log_file=$LOG_FILE"
     echo "migrations_changed=$MIGRATIONS_CHANGED"
+    echo "db_backup_file=${BACKUP_FILE:-none}"
     echo "total_changed_files=$TOTAL_CHANGED_FILES"
     echo "backend_changed_files=$BACKEND_CHANGED_FILES"
     echo "frontend_changed_files=$FRONTEND_CHANGED_FILES"

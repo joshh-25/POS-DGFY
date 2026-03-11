@@ -271,4 +271,43 @@ export const updatePricing = async (settings) => {
     return response.data;
 };
 
+/**
+ * Initiate admin-driven PayPal setup for a manual tenant
+ */
+export const setupPayPalRecurring = async (tenantId) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(`/admin/tenants/${tenantId}/setup-paypal-recurring`, {}, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+/**
+ * Change a tenant's plan (admin override)
+ */
+export const adminChangePlan = async (tenantId, plan) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(`/admin/tenants/${tenantId}/change-plan`, { plan }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+/**
+ * Reactivate an inactive tenant
+ */
+export const adminReactivateTenant = async (tenantId) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(`/admin/tenants/${tenantId}/reactivate`, {}, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+};
+
 

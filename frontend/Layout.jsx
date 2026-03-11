@@ -21,6 +21,7 @@ import {
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
+import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import useStore from './src/store/useStore.js';
 
 const ALL_NAV_ITEMS = [
@@ -181,6 +182,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Main content */}
       <main className="lg:ml-64 min-h-screen pt-16 lg:pt-0">
+        <GracePeriodBanner />
         <div className="p-6 lg:p-8">
           {children}
         </div>

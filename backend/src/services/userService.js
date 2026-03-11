@@ -30,7 +30,7 @@ export const getCurrentUser = async (userId) => {
     throw notFoundError('User not found');
   }
 
-  const { tenantPlan } = dbStore.getStore() || {};
+  const { tenantPlan, tenantSubscriptionStatus, tenantGracePeriodEnd, tenantPaymentMethod } = dbStore.getStore() || {};
 
   return {
     user_id: user.user_id,
@@ -42,7 +42,12 @@ export const getCurrentUser = async (userId) => {
     created_at: user.created_at,
     permissions: user.permissions || [],
     is_master_admin: user.is_master_admin,
-    company: { plan: tenantPlan || 'standard' }
+    company: {
+      plan: tenantPlan || 'standard',
+      subscription_status: tenantSubscriptionStatus || 'active',
+      grace_period_end: tenantGracePeriodEnd || null,
+      payment_method: tenantPaymentMethod || 'manual'
+    }
   };
 };
 

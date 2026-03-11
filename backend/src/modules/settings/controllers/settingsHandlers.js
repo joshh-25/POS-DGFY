@@ -180,7 +180,19 @@ export const resetSettingsToDefault = async (req, res, next) => {
  */
 export const getCompanyInfo = async (req, res, next) => {
   try {
-    const tenantId = dbStore.getStore()?.tenantId;
+    if (!req.tenant?.id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'Company token required',
+        timestamp: timestamp()
+      });
+    }
+
+    // Prefer request tenant context from tenantHandler. The async-local store can
+    // be "default" when tenant DB connection falls back, but req.tenant still
+    // contains the resolved landlord tenant identity.
+    const tenantId = req.tenant?.id || dbStore.getStore()?.tenantId;
     const result = await getCompanyInfoUseCase({ tenantId });
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,

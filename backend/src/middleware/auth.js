@@ -102,6 +102,45 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    // G6: Block access for tenants with expired/inactive subscriptions.
+    // req.tenant is set by tenantHandler which runs before authenticate.
+    if (req.tenant) {
+      const tenantStatus = req.tenant.status;
+      const subStatus = req.tenant.subscription_status;
+      const now = new Date();
+      const periodEnd = req.tenant.current_period_end ? new Date(req.tenant.current_period_end) : null;
+
+      if (tenantStatus === 'inactive') {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          message: 'Your company subscription is inactive. Please contact your administrator to reactivate.',
+          subscriptionStatus: 'inactive',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (tenantStatus === 'active' && subStatus === 'inactive') {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          message: 'Your subscription has expired. Please renew to continue.',
+          subscriptionStatus: 'inactive',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (tenantStatus === 'active' && subStatus === 'cancelled' && periodEnd && periodEnd < now) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          message: 'Your subscription has been cancelled and has expired.',
+          subscriptionStatus: 'cancelled',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     // Attach user to request
     req.user = {
       user_id: user.user_id,
@@ -247,13 +286,27 @@ export const requirePremium = (req, res, next) => {
     });
   }
 
-  if (req.tenant.plan === 'premium') {
-    return next();
+  if (req.tenant.plan !== 'premium') {
+    return res.status(403).json({
+      success: false,
+      message: 'This feature requires a Premium subscription.',
+      requiresUpgrade: true
+    });
   }
 
-  return res.status(403).json({
-    success: false,
-    message: 'This feature requires a Premium subscription.',
-    requiresUpgrade: true
-  });
+  // G7: Also verify the premium subscription is still live (active or in grace period).
+  const now = new Date();
+  const subStatus = req.tenant.subscription_status;
+  const gracePeriodEnd = req.tenant.grace_period_end ? new Date(req.tenant.grace_period_end) : null;
+  const inGrace = subStatus === 'past_due' && gracePeriodEnd && gracePeriodEnd > now;
+
+  if (subStatus !== 'active' && !inGrace) {
+    return res.status(403).json({
+      success: false,
+      message: 'Your Premium subscription has expired.',
+      requiresRenewal: true
+    });
+  }
+
+  return next();
 };

@@ -1,5 +1,5 @@
-> **Version:** 2.1.0
-> **Last Updated:** March 2026
+> **Version:** 2.1.1
+> **Last Updated:** March 7, 2026
 > **Tool Count:** 64
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
@@ -621,6 +621,12 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Null rejection on `update_dispatch_line_sale_price`**: Tool schema used `type: "number"` which rejects null (internal transfers) — fixed to `type: ["number", "null"]`
 - **Archived filter ignored**: `query_dispatch_orders` handler destructured args but excluded `archived` — fixed
 - **Unused import removed**: `RefreshCw` was imported but unused in `ConfirmActionDialog.jsx` — removed
+
+### v2.1.1 (March 7, 2026) - Confirmation Dialog `toolName` Fix
+
+- **Bug Fix**: `ConfirmActionDialog.jsx` was checking `action.action_type` in all `renderDetails()` branches, but the backend passes the action type as `action.toolName`. This caused every pending action to bypass all per-action UI renderers and fall through to the generic smart fallback, rendering raw field values instead of the styled confirmation cards.
+- **Fix**: Replaced all `action.action_type` references with `action.toolName` across `ConfirmActionDialog.jsx`. No layout or business logic was changed.
+- **Impact**: All typed renderers (supplier, PO, JO, stock adjustment, user management, dispatch orders, folders) now render correctly — showing labeled fields, contextual warnings, scrollable item lists, and correct icons/colors.
 
 ### v2.0.0 (February 19, 2026) - AI Capability Gap Checker
 - **New Feature**: `GET /api/v1/ai/diagnostics` — stateless, read-only diagnostic endpoint that returns a structured gap report for the current tenant

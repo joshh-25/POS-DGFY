@@ -8,7 +8,11 @@ import {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    setupPayPalRecurring,
+    adminChangePlan,
+    adminReactivateTenant,
+    resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
@@ -17,6 +21,9 @@ const router = express.Router();
 
 // PUBLIC: Submit company registration request (no auth required)
 router.post('/register', tenantRegistrationLimiter, registerCompanyRequest);
+
+// PUBLIC: Re-submit a rejected registration (x-company-token only, no JWT)
+router.post('/resubmit', tenantRegistrationLimiter, resubmitRegistration);
 
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
@@ -29,8 +36,16 @@ router.put('/pricing', authenticateAdmin, updatePricingSettings);
 router.post('/:id/approve', authenticateAdmin, approveTenant);
 
 // ADMIN: Reject a pending tenant
-// ADMIN: Reject a pending tenant
 router.post('/:id/reject', authenticateAdmin, rejectTenant);
+
+// ADMIN: Setup PayPal recurring billing for a manual tenant
+router.post('/:id/setup-paypal-recurring', authenticateAdmin, setupPayPalRecurring);
+
+// ADMIN: Change tenant plan (immediate override)
+router.post('/:id/change-plan', authenticateAdmin, adminChangePlan);
+
+// ADMIN: Reactivate an inactive tenant
+router.post('/:id/reactivate', authenticateAdmin, adminReactivateTenant);
 
 // ADMIN: Update tenant details (status, plan)
 router.put('/:id', authenticateAdmin, updateTenant);

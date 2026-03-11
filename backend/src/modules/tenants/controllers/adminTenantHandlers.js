@@ -8,8 +8,12 @@ import {
     getPricingSettingsUseCase,
     updatePricingSettingsUseCase,
     updateTenantUseCase,
-    deleteTenantUseCase
+    deleteTenantUseCase,
+    resubmitRegistrationUseCase,
+    tenantAdminRepository
 } from '../index.js';
+import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/index.js';
+import * as emailService from '../../../services/emailService.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 
@@ -195,6 +199,87 @@ export const deleteTenant = async (req, res) => {
     return sendUseCaseResult(res, result);
 };
 
+/**
+ * ADMIN: Initiate admin-driven PayPal setup for a manual tenant
+ * Generates an approval link to email the tenant
+ */
+export const setupPayPalRecurring = async (req, res) => {
+    const result = await setupPayPalRecurringUseCase({
+        tenantId: req.params?.id
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to initiate PayPal setup'
+    });
+};
+
+/**
+ * ADMIN: Change a tenant's plan immediately (admin-override, no PayPal re-consent)
+ */
+export const adminChangePlan = async (req, res) => {
+    const result = await changePlanUseCase({
+        tenantId: req.params?.id,
+        newPlan: req.body?.plan,
+        immediate: true
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to change plan'
+    });
+};
+
+/**
+ * ADMIN: Reactivate an inactive tenant
+ * Sets status='active', subscription_status='active', extends period +30 days
+ */
+export const adminReactivateTenant = async (req, res) => {
+    try {
+        const tenant = await tenantAdminRepository.findTenantById(req.params?.id);
+        if (!tenant) {
+            return res.status(404).json({ success: false, message: 'Tenant not found' });
+        }
+
+        const newPeriodEnd = new Date();
+        newPeriodEnd.setDate(newPeriodEnd.getDate() + 30);
+
+        await tenantAdminRepository.updateTenant(tenant, {
+            status: 'active',
+            subscription_status: 'active',
+            current_period_end: newPeriodEnd,
+            reactivation_requested_at: null
+        });
+
+        if (emailService.isEmailConfigured()) {
+            await emailService.sendReactivationApprovedEmail({
+                email: tenant.admin_email,
+                companyName: tenant.name,
+                companyToken: tenant.company_token
+            }).catch(err => {
+                // Non-fatal
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: `Tenant ${tenant.name} reactivated`,
+            data: { id: tenant.id, status: 'active', current_period_end: newPeriodEnd }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * PUBLIC: Re-submit a rejected registration for re-review
+ * Uses x-company-token; no JWT required
+ */
+export const resubmitRegistration = async (req, res) => {
+    const result = await resubmitRegistrationUseCase({
+        tenantId: req.tenant?.id
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Re-submission failed'
+    });
+};
+
 export default {
     registerCompanyRequest,
     listTenants,
@@ -204,5 +289,9 @@ export default {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    setupPayPalRecurring,
+    adminChangePlan,
+    adminReactivateTenant,
+    resubmitRegistration
 };

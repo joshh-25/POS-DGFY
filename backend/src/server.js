@@ -436,8 +436,13 @@ const startServer = async () => {
         'PAYPAL_CLIENT_ID',
         'PAYPAL_CLIENT_SECRET',
         'PAYPAL_WEBHOOK_ID',
+        'PAYPAL_STANDARD_PLAN_ID'
       ];
       const missing = requiredPaypalEnvVars.filter(k => !process.env[k]);
+      const hasPremiumPlan = Boolean(process.env.PAYPAL_PREMIUM_PLAN_ID || process.env.PAYPAL_PLAN_ID);
+      if (!hasPremiumPlan) {
+        missing.push('PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID)');
+      }
       if (missing.length > 0) {
         logger.error(`CRITICAL: Missing required PayPal environment variables: ${missing.join(', ')}. Server will not start.`);
         process.exit(1);

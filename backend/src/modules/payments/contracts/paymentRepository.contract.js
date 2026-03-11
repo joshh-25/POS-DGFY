@@ -17,7 +17,12 @@ export const PaymentRepositoryContract = Object.freeze([
     'findPaymentsByTenantId',
     'findWebhookLog',
     'findOrCreateWebhookLog',
-    'runInTransaction'
+    'runInTransaction',
+    'findTenantByPendingSubscriptionId',
+    'findTenantsByPendingPayPalSetup',
+    'findTenantsByDeferredPlanChange',
+    'findTenantsByExpiredRevisions',
+    'findCancelledExpiredTenants'
 ]);
 
 export const assertPaymentRepositoryContract = (repository) => {
