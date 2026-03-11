@@ -394,9 +394,11 @@ require_command curl
 log "Backend health candidates: ${BACKEND_HEALTH_CANDIDATES[*]}"
 backend_ok="0"
 declare -a backend_attempt_diagnostics=()
+health_tmp_dir="${TMPDIR:-/tmp}"
+mkdir -p "$health_tmp_dir"
 for candidate_url in "${BACKEND_HEALTH_CANDIDATES[@]}"; do
     for attempt in {1..12}; do
-        body_file="/tmp/skupervisor_backend_health_$(echo "$attempt" | tr -cd '0-9').json"
+        body_file="$health_tmp_dir/skupervisor_backend_health_${attempt}.json"
         http_code="$(curl -s -o "$body_file" -w '%{http_code}' "$candidate_url" || true)"
         if [[ "$http_code" == "200" ]]; then
             backend_ok="1"
@@ -404,7 +406,11 @@ for candidate_url in "${BACKEND_HEALTH_CANDIDATES[@]}"; do
             break 2
         fi
         if [[ "$attempt" == "12" ]]; then
-            response_preview="$(tr '\n' ' ' < "$body_file" | cut -c1-220)"
+            if [[ -f "$body_file" ]]; then
+                response_preview="$(tr '\n' ' ' < "$body_file" | cut -c1-220)"
+            else
+                response_preview="<no response body captured>"
+            fi
             backend_attempt_diagnostics+=("url=$candidate_url code=$http_code body='${response_preview}'")
         fi
         sleep 3
