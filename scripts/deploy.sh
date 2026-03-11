@@ -127,6 +127,38 @@ run_optional_node_script() {
     fi
 }
 
+build_backend_health_candidates() {
+    local explicit_url="${DEPLOY_BACKEND_HEALTH_URL:-}"
+    local env_port="$1"
+    local -a candidates=()
+    local -a seen=()
+
+    add_candidate() {
+        local candidate="$1"
+        [[ -z "$candidate" ]] && return 0
+        for existing in "${seen[@]}"; do
+            if [[ "$existing" == "$candidate" ]]; then
+                return 0
+            fi
+        done
+        seen+=("$candidate")
+        candidates+=("$candidate")
+    }
+
+    if [[ -n "$explicit_url" ]]; then
+        add_candidate "$explicit_url"
+    fi
+
+    if [[ -n "$env_port" ]]; then
+        add_candidate "http://127.0.0.1:${env_port}/health"
+    fi
+
+    add_candidate "http://127.0.0.1:5000/health"
+    add_candidate "http://127.0.0.1:5001/health"
+
+    printf "%s\n" "${candidates[@]}"
+}
+
 trap 'fatal "Deployment failed at line $LINENO. See $LOG_FILE"' ERR
 
 require_command git
@@ -350,24 +382,46 @@ fi
 
 BACKEND_PORT="$(env_value "$ENV_FILE" "PORT")"
 BACKEND_PORT="${BACKEND_PORT:-5000}"
-BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-http://127.0.0.1:${BACKEND_PORT}/health}"
+BACKEND_HEALTH_URL=""
 FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
+mapfile -t BACKEND_HEALTH_CANDIDATES < <(build_backend_health_candidates "$BACKEND_PORT")
 
 log "Waiting for services to stabilize..."
 sleep 12
 
 require_command curl
 
+log "Backend health candidates: ${BACKEND_HEALTH_CANDIDATES[*]}"
 backend_ok="0"
-for attempt in {1..12}; do
-    http_code="$(curl -s -o /tmp/skupervisor_backend_health.json -w '%{http_code}' "$BACKEND_HEALTH_URL" || true)"
-    if [[ "$http_code" == "200" ]]; then
-        backend_ok="1"
-        break
-    fi
-    sleep 3
+declare -a backend_attempt_diagnostics=()
+for candidate_url in "${BACKEND_HEALTH_CANDIDATES[@]}"; do
+    for attempt in {1..12}; do
+        body_file="/tmp/skupervisor_backend_health_$(echo "$attempt" | tr -cd '0-9').json"
+        http_code="$(curl -s -o "$body_file" -w '%{http_code}' "$candidate_url" || true)"
+        if [[ "$http_code" == "200" ]]; then
+            backend_ok="1"
+            BACKEND_HEALTH_URL="$candidate_url"
+            break 2
+        fi
+        if [[ "$attempt" == "12" ]]; then
+            response_preview="$(tr '\n' ' ' < "$body_file" | cut -c1-220)"
+            backend_attempt_diagnostics+=("url=$candidate_url code=$http_code body='${response_preview}'")
+        fi
+        sleep 3
+    done
 done
-[[ "$backend_ok" == "1" ]] || fatal "Backend health check failed: $BACKEND_HEALTH_URL"
+
+if [[ "$backend_ok" != "1" ]]; then
+    warn "Backend health diagnostics:"
+    for diagnostic in "${backend_attempt_diagnostics[@]}"; do
+        warn "  $diagnostic"
+    done
+    pm2 list --no-color || true
+    pm2 logs sku-backend --nostream --lines 80 || true
+    fatal "Backend health check failed on all candidates."
+fi
+
+log "Backend health check passed: $BACKEND_HEALTH_URL"
 
 if [[ -n "$FRONTEND_HEALTH_URL" ]]; then
     frontend_ok="0"
