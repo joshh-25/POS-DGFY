@@ -17,6 +17,9 @@ const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
  */
 export const tenantHandler = async (req, res, next) => {
     try {
+        const path = req.path || '';
+        const isPublicWebhookRoute = path === '/api/v1/payments/webhook';
+
         // 1. Identification Strategy: Header (x-company-token) -> Subdomain (Future) -> Auth User (Future)
         const companyToken = req.headers['x-company-token'];
 
@@ -29,7 +32,11 @@ export const tenantHandler = async (req, res, next) => {
             // Allow proceed with DEFAULT context (no isolation yet)
             // This is crucial for Phase 2 compatibility.
             // Wrap in dbStore.run with EMPTY context so dbStore.get() falls back to global models.
-            logger.warn('[TenantHandler] ⚠️ No company token provided in request headers');
+            if (!isPublicWebhookRoute) {
+                logger.warn('[TenantHandler] No company token provided in request headers');
+            } else {
+                logger.debug('[TenantHandler] No company token for webhook route (expected).');
+            }
             return dbStore.run({
                 tenantId: 'default',
                 tenantName: 'SKU-Inventory-Manager (Default)'

@@ -395,6 +395,9 @@ export const buildHandleWebhookUseCase = ({
                 case 'BILLING.SUBSCRIPTION.ACTIVATED':
                     await handleSubscriptionActivated(resource);
                     break;
+                case 'BILLING.SUBSCRIPTION.CREATED':
+                    logger.info(`Webhook received for subscription creation: ${resource?.id || 'unknown-subscription-id'}`);
+                    break;
                 case 'BILLING.SUBSCRIPTION.UPDATED':
                     await handleSubscriptionUpdated(resource);
                     break;

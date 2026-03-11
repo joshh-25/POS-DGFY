@@ -216,6 +216,20 @@ if [[ "${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}" == "1" && "$PAYPAL_MODE_VALUE" != "live
     fatal "DEPLOY_REQUIRE_LIVE_PAYPAL=1 but PAYPAL_MODE is '$PAYPAL_MODE_VALUE'. Refusing production deploy."
 fi
 
+PAYPAL_STANDARD_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")"
+PAYPAL_PREMIUM_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_PREMIUM_PLAN_ID")"
+PAYPAL_LEGACY_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_PLAN_ID")"
+
+if [[ -z "${PAYPAL_STANDARD_PLAN_ID_VALUE:-}" ]]; then
+    fatal "Missing required env variable PAYPAL_STANDARD_PLAN_ID in backend/.env"
+fi
+if [[ -z "${PAYPAL_PREMIUM_PLAN_ID_VALUE:-}" && -z "${PAYPAL_LEGACY_PLAN_ID_VALUE:-}" ]]; then
+    fatal "Missing required env variable PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID) in backend/.env"
+fi
+if [[ -z "${PAYPAL_PREMIUM_PLAN_ID_VALUE:-}" && -n "${PAYPAL_LEGACY_PLAN_ID_VALUE:-}" ]]; then
+    warn "Using legacy PAYPAL_PLAN_ID fallback for premium plan. Prefer setting PAYPAL_PREMIUM_PLAN_ID."
+fi
+
 PRE_DEPLOY_COMMIT="$(git rev-parse HEAD)"
 LAST_DEPLOYED_COMMIT="unknown"
 if [[ -f "$DEPLOY_STATE_DIR/last_deployed_commit" ]]; then
