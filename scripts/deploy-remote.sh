@@ -25,7 +25,7 @@ TARGET_BRANCH="master"
 # Forwarded to remote deploy.sh
 # ------------------------------------------
 DEPLOY_REQUIRE_LIVE_PAYPAL="${DEPLOY_REQUIRE_LIVE_PAYPAL:-1}"
-DEPLOY_FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-https://skupervisor.surebizcorp.com/}"
+DEPLOY_FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
 DEPLOY_BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-}"
 
 # Colors
@@ -38,6 +38,20 @@ NC='\033[0m'
 echo -e "\n${CYAN}Remote Deployment Trigger${NC}"
 echo -e "   Target: ${YELLOW}$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR${NC}"
 echo -e "   Branch: ${YELLOW}$TARGET_BRANCH${NC}\n"
+
+if hostname -I 2>/dev/null | tr ' ' '\n' | grep -Fxq "$REMOTE_HOST"; then
+    echo -e "${YELLOW}Detected execution on target server ($REMOTE_HOST).${NC}"
+    echo -e "${YELLOW}Running local deploy script directly (no SSH hop).${NC}"
+    export DEPLOY_REQUIRE_LIVE_PAYPAL="$DEPLOY_REQUIRE_LIVE_PAYPAL"
+    if [ -n "$DEPLOY_FRONTEND_HEALTH_URL" ]; then
+        export DEPLOY_FRONTEND_HEALTH_URL="$DEPLOY_FRONTEND_HEALTH_URL"
+    fi
+    if [ -n "$DEPLOY_BACKEND_HEALTH_URL" ]; then
+        export DEPLOY_BACKEND_HEALTH_URL="$DEPLOY_BACKEND_HEALTH_URL"
+    fi
+    bash "$DEPLOY_SCRIPT" --branch "$TARGET_BRANCH"
+    exit $?
+fi
 
 # ------------------------------------------
 # Step 1: Confirm intent
