@@ -13,12 +13,20 @@ const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && 
 export const buildReceivePurchaseOrderUseCase = ({ purchaseOrderRepository }) => {
   return async ({ poId, receiptData, userId }) => {
     const normalizedPoId = parsePositiveInt(poId);
-    const normalizedUserId = parsePositiveInt(userId);
+    const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
 
-    if (!normalizedPoId || !normalizedUserId) {
+    if (!normalizedPoId) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'poId and userId must be positive integers',
+        'poId must be a positive integer',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (userId !== undefined && userId !== null && !normalizedUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'userId must be a positive integer when provided',
         { statusCode: 400 }
       ));
     }

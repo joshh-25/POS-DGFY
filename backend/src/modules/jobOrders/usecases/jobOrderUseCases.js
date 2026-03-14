@@ -83,12 +83,20 @@ export const buildCreateJobOrderUseCase = ({ jobOrderService }) => {
 export const buildFinalizeJobOrderUseCase = ({ jobOrderService }) => {
   return async ({ jobOrderId, userId }) => {
     const normalizedJobOrderId = parsePositiveInt(jobOrderId);
-    const normalizedUserId = parsePositiveInt(userId);
+    const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
 
-    if (!normalizedJobOrderId || !normalizedUserId) {
+    if (!normalizedJobOrderId) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'jobOrderId and userId must be positive integers',
+        'jobOrderId must be a positive integer',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (userId !== undefined && userId !== null && !normalizedUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'userId must be a positive integer when provided',
         { statusCode: 400 }
       ));
     }
@@ -103,12 +111,20 @@ export const buildFinalizeJobOrderUseCase = ({ jobOrderService }) => {
 export const buildCompleteJobOrderUseCase = ({ jobOrderService }) => {
   return async ({ jobOrderId, userId, completionData }) => {
     const normalizedJobOrderId = parsePositiveInt(jobOrderId);
-    const normalizedUserId = parsePositiveInt(userId);
+    const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
 
-    if (!normalizedJobOrderId || !normalizedUserId) {
+    if (!normalizedJobOrderId) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'jobOrderId and userId must be positive integers',
+        'jobOrderId must be a positive integer',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (userId !== undefined && userId !== null && !normalizedUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'userId must be a positive integer when provided',
         { statusCode: 400 }
       ));
     }
@@ -138,12 +154,20 @@ export const buildCompleteJobOrderUseCase = ({ jobOrderService }) => {
 export const buildArchiveJobOrderUseCase = ({ jobOrderService }) => {
   return async ({ jobOrderId, userId }) => {
     const normalizedJobOrderId = parsePositiveInt(jobOrderId);
-    const normalizedUserId = parsePositiveInt(userId);
+    const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
 
-    if (!normalizedJobOrderId || !normalizedUserId) {
+    if (!normalizedJobOrderId) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'jobOrderId and userId must be positive integers',
+        'jobOrderId must be a positive integer',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (userId !== undefined && userId !== null && !normalizedUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'userId must be a positive integer when provided',
         { statusCode: 400 }
       ));
     }

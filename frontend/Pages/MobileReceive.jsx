@@ -121,6 +121,14 @@ export default function MobileReceive() {
     };
 
     const handleQuantityChange = (lineItemId, value) => {
+        if (value === '') {
+            setReceivedQuantities(prev => ({
+                ...prev,
+                [lineItemId]: ''
+            }));
+            return;
+        }
+
         const numValue = parseFloat(value);
         const safeValue = isNaN(numValue) ? 0 : Math.max(0, numValue);
 
@@ -147,6 +155,10 @@ export default function MobileReceive() {
     };
 
     const handleProductionQuantityChange = (value) => {
+        if (value === '') {
+            setProductionQuantity('');
+            return;
+        }
         const numValue = parseFloat(value);
         const safeValue = isNaN(numValue) ? 0 : Math.max(0, numValue);
         setProductionQuantity(safeValue);
