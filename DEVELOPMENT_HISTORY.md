@@ -6972,3 +6972,57 @@ All pre-built action-specific UI renderers are now correctly activated for their
 - **Scrollable item lists** with prices for purchase orders and dispatch orders
 - **Correct icons and color theming** per action type (e.g., teal `Building2` for supplier creation)
 
+$Phase63
+
+## Phase 63: Surgical QR & Receiving Fixes
+**Status**: âœ… COMPLETE
+**Date**: 2026-03-14
+
+### Objective
+
+Surgically re-implement fixes for the QR code receiving system and mobile input behavior after a previously attempted refactor caused application-wide regressions.
+
+### Changes
+
+#### 1. Frontend: Mobile Receive Input Logic (MobileReceive.jsx)
+- **Issue:** Users couldn't backspace or clear quantity fields because the component was treating empty strings as '0' immediately, causing a "sticky zero" behavior.
+- **Fix:** Updated the onChange logic to allow empty strings ('') to be held in state. This allows users to clear inputs entirely while typing without the UI jumping back to '0'.
+
+#### 2. Backend: Relaxed User ID Validation (receivePurchaseOrderUseCase.js, jobOrderUseCases.js)
+- **Issue:** QR scans from mobile devices were frequently failing with 400 Bad Request because the backend strictly required a userId (positive integer), which was often missing or null in mobile scan contexts.
+- **Fix:** Relaxed the validation to treat userId as optional. 
+    - If userId is provided, it must still be a positive integer.
+    - If userId is missing, null, or undefined, the backend now permits the transaction (facilitating guest scans or context-free mobile receives).
+
+### Impact
+
+- **Improved UX:** Mobile receiving is now fluid and behaves as expected for standard text inputs.
+- **Improved Success Rate:** QR code receipt scans no longer fail due to missing user identification, ensuring the inventory data is actually recorded when scanned in the field.
+- **Safety:** These changes were implemented "surgically," touching only the relevant logic and avoiding any refactoring of the PayPal or authentication core modules.
+
+## Phase 63: Surgical QR & Receiving Fixes
+**Status**: ✅ COMPLETE
+**Date**: 2026-03-14
+
+### Objective
+
+Surgically re-implement fixes for the QR code receiving system and mobile input behavior after a previously attempted refactor caused application-wide regressions.
+
+### Changes
+
+#### 1. Frontend: Mobile Receive Input Logic (MobileReceive.jsx)
+- **Issue:** Users couldn't backspace or clear quantity fields because the component was treating empty strings as '0' immediately, causing a 'sticky zero' behavior.
+- **Fix:** Updated the onChange logic to allow empty strings ('') to be held in state. This allows users to clear inputs entirely while typing without the UI jumping back to '0'.
+
+#### 2. Backend: Relaxed User ID Validation (receivePurchaseOrderUseCase.js, jobOrderUseCases.js)
+- **Issue:** QR scans from mobile devices were frequently failing with 400 Bad Request because the backend strictly required a userId (positive integer), which was often missing or null in mobile scan contexts.
+- **Fix:** Relaxed the validation to treat userId as optional. 
+    - If userId is provided, it must still be a positive integer.
+    - If userId is missing, null, or undefined, the backend now permits the transaction (facilitating guest scans or context-free mobile receives).
+
+### Impact
+
+- **Improved UX:** Mobile receiving is now fluid and behaves as expected for standard text inputs.
+- **Improved Success Rate:** QR code receipt scans no longer fail due to missing user identification, ensuring the inventory data is actually recorded when scanned in the field.
+- **Safety:** These changes were implemented 'surgically,' touching only the relevant logic and avoiding any refactoring of the PayPal or authentication core modules.
+
