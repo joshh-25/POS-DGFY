@@ -6,36 +6,65 @@ description: Deploy updates to production hosting server (skupervisor.surebizcor
 # Production Deployment Workflow
 
 ## Prerequisites
-- SSH access to the hosting server (`root@hermes-cloud`)
+- SSH access to the hosting server (`root@hermes-cloud` / `root@192.53.116.33 -p 64428`)
 - Git credentials for GitHub repository
+- All local changes committed and pushed to `master`
 
-## Deployment Steps
+## Option A: One-Command Remote Deploy (Recommended)
 
-### 1. SSH into the Server
+Run **locally** from the repo root. This pushes your code, SSHes into production, and runs everything:
+
 ```bash
-ssh root@hermes-cloud
+bash scripts/deploy-remote.sh
+```
+
+You will be prompted to confirm, and optionally auto-commit uncommitted changes.
+
+## Option B: SSH + Server Deploy
+
+### 1. Push your changes locally first
+```bash
+git push origin master
+```
+
+### 2. SSH into the server
+```bash
+ssh -p 64428 root@192.53.116.33
 cd /var/www/skupervisor
 ```
 
-### 2. Auto-Deployment (Recommended)
-This script handles git pull, installing dependencies, building frontend, migrating database, and restarting PM2.
-
+### 3. Run the deployment script
 ```bash
-# First time setup: ensure script is executable (if needed)
-chmod +x scripts/deploy.sh
-
-# Run deployment
-./scripts/deploy.sh
+bash scripts/deploy.sh
 ```
 
-### 3. Manual Deployment (Fallback)
-If the script fails, follow these steps manually:
-1. `git pull origin master`
-2. `cd backend && npm install && npx sequelize-cli db:migrate && cd ..`
-3. `cd frontend && npm install && npm run build && cd ..`
-4. `pm2 restart all`
+That single command handles **everything**:
+1. Validates env requirements and Node.js version
+2. Fetches and pulls code (fast-forward only)
+3. Re-executes itself to pick up script changes
+4. Creates database backup (pre-deploy)
+5. Installs deterministic dependencies (`npm ci`)
+6. Runs docs lint and architecture gates
+7. Builds frontend
+8. Runs DB migrations
+9. Runs index self-heal + strict index audit
+10. Runs billing-funnel audit
+11. Runs tenant schema sync
+12. Reloads PM2 and verifies backend/frontend health
+13. Automatically rolls back if health check fails
+14. Rotates old deploy logs
 
-### 7. Verify Deployment
+> **Do NOT** run `git pull` or `pm2 restart all` separately — `deploy.sh` handles both internally.
+
+### 4. (Optional) Pin to a specific commit
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$BRANCH"
+EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
+bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+## Verify Deployment
 ```bash
 # Check PM2 status
 pm2 status
@@ -43,46 +72,41 @@ pm2 status
 # Check backend logs for errors
 pm2 logs sku-backend --lines 20
 
-# Test API endpoint
-curl http://localhost:5001/api/v1/items
+# Test health endpoint
+curl http://localhost:5001/health
 ```
 
-### 8. Browser Verification
-- Open the website URL
-- Do a hard refresh (`Ctrl + Shift + R`)
-- Test main features: Login, Items, Purchase Orders, Job Orders
+Open https://skupervisor.surebizcorp.com and hard-refresh (`Ctrl+Shift+R`).
 
 ---
 
 ## Troubleshooting
 
-### 502 Bad Gateway
-- Backend server crashed. Check logs: `pm2 logs sku-backend --lines 50`
-- Usually caused by missing npm dependencies: `cd backend && npm install`
-- Restart: `pm2 restart sku-backend`
+### Lock Error
+```
+Another deployment appears to be running (lock: /tmp/skupervisor_deploy.lock)
+```
+Check if a deploy is actually running: `ps -ef | grep deploy.sh | grep -v grep`
 
-### 404 on API Routes
-- Backend not running or wrong port
-- Check: `curl http://localhost:5001/api/v1/items`
-- Verify PM2: `pm2 status`
+If not: `rm -f /tmp/skupervisor_deploy.lock` and retry.
+
+### 502 Bad Gateway
+- Check logs: `pm2 logs sku-backend --lines 50`
+- Usually caused by missing npm dependencies: `cd backend && npm ci`
+- Restart: `pm2 startOrReload ecosystem.config.cjs --env production --update-env`
 
 ### Migration Errors
-- "Table already exists": Schema already applied, can skip
-- "Duplicate key": Run repair script if needed
-- Check migration status: `npx sequelize-cli db:migrate:status`
+- "Table already exists": Schema already applied, usually safe to skip
+- Check status: `cd backend && npx sequelize-cli db:migrate:status`
 
-### Git Merge Conflicts
-- For other files: `git stash && git pull && git stash pop`
-
----
-
-## Quick Reference (Copy-Paste)
-
+### Manual Fallback (Last Resort)
+Only if `deploy.sh` itself is broken:
 ```bash
-# Full deployment sequence
 cd /var/www/skupervisor
-git pull origin master
-bash deploy.sh
-pm2 restart all
-pm2 logs sku-backend --lines 20
+git pull --ff-only origin master
+npm ci --no-audit --no-fund
+cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && npm run audit:billing-funnel && cd ..
+cd frontend && npm ci --no-audit --no-fund && npm run build && cd ..
+pm2 startOrReload ecosystem.config.cjs --env production --update-env
+pm2 save
 ```

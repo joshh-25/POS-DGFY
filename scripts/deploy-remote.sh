@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # ==========================================
@@ -8,7 +8,7 @@ set -euo pipefail
 # Pushes local changes to GitHub, then SSHes into the production
 # server and runs deploy.sh in one command.
 #
-# Usage: bash scripts/deploy-remote.sh
+# Usage: bash scripts/deploy-remote.sh [--skip-db-backup]
 
 # ------------------------------------------
 # Configuration
@@ -27,6 +27,25 @@ TARGET_BRANCH="master"
 DEPLOY_REQUIRE_LIVE_PAYPAL="${DEPLOY_REQUIRE_LIVE_PAYPAL:-1}"
 DEPLOY_FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
 DEPLOY_BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-}"
+
+# ------------------------------------------
+# Optional flags parsed from CLI
+# ------------------------------------------
+SKIP_DB_BACKUP="0"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skip-db-backup)
+            SKIP_DB_BACKUP="1"
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            echo "Usage: bash scripts/deploy-remote.sh [--skip-db-backup]"
+            exit 1
+            ;;
+    esac
+done
 
 # Colors
 RED='\033[0;31m'
@@ -49,7 +68,11 @@ if hostname -I 2>/dev/null | tr ' ' '\n' | grep -Fxq "$REMOTE_HOST"; then
     if [ -n "$DEPLOY_BACKEND_HEALTH_URL" ]; then
         export DEPLOY_BACKEND_HEALTH_URL="$DEPLOY_BACKEND_HEALTH_URL"
     fi
-    bash "$DEPLOY_SCRIPT" --branch "$TARGET_BRANCH"
+    deploy_extra_args=""
+    if [ "$SKIP_DB_BACKUP" = "1" ]; then
+        deploy_extra_args="--skip-db-backup"
+    fi
+    bash "$DEPLOY_SCRIPT" --branch "$TARGET_BRANCH" $deploy_extra_args
     exit $?
 fi
 
@@ -121,7 +144,24 @@ echo -e "${GREEN}Push successful.${NC}"
 LOCAL_COMMIT="$(git rev-parse HEAD)"
 
 # ------------------------------------------
-# Step 5: SSH and run server deployment
+# Step 5: Build remote deploy arguments
+# ------------------------------------------
+REMOTE_DEPLOY_ARGS="--branch ${TARGET_BRANCH} --expect-commit ${LOCAL_COMMIT}"
+if [ "$SKIP_DB_BACKUP" = "1" ]; then
+    REMOTE_DEPLOY_ARGS="$REMOTE_DEPLOY_ARGS --skip-db-backup"
+fi
+
+# Build environment exports for the remote side
+REMOTE_EXPORTS="export DEPLOY_REQUIRE_LIVE_PAYPAL=${DEPLOY_REQUIRE_LIVE_PAYPAL}"
+if [ -n "$DEPLOY_FRONTEND_HEALTH_URL" ]; then
+    REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_FRONTEND_HEALTH_URL=${DEPLOY_FRONTEND_HEALTH_URL}"
+fi
+if [ -n "$DEPLOY_BACKEND_HEALTH_URL" ]; then
+    REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_BACKEND_HEALTH_URL=${DEPLOY_BACKEND_HEALTH_URL}"
+fi
+
+# ------------------------------------------
+# Step 6: SSH and run server deployment
 # ------------------------------------------
 echo -e "\n${YELLOW}Connecting to production server...${NC}"
 
@@ -130,21 +170,17 @@ ssh -t -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" "
 
     echo ''
     echo '=================================================='
-    echo '  Connected to: $REMOTE_HOST'
-    echo '  Directory:    $REMOTE_DIR'
+    echo '  Connected to: ${REMOTE_HOST}'
+    echo '  Directory:    ${REMOTE_DIR}'
     echo '=================================================='
 
-    cd '$REMOTE_DIR' || { echo 'Could not cd to $REMOTE_DIR'; exit 1; }
+    cd ${REMOTE_DIR} || { echo 'Could not cd to ${REMOTE_DIR}'; exit 1; }
 
-    chmod +x '$DEPLOY_SCRIPT'
+    chmod +x ${DEPLOY_SCRIPT}
 
-    export DEPLOY_REQUIRE_LIVE_PAYPAL='$DEPLOY_REQUIRE_LIVE_PAYPAL'
-    export DEPLOY_FRONTEND_HEALTH_URL='$DEPLOY_FRONTEND_HEALTH_URL'
-    if [ -n '$DEPLOY_BACKEND_HEALTH_URL' ]; then
-      export DEPLOY_BACKEND_HEALTH_URL='$DEPLOY_BACKEND_HEALTH_URL'
-    fi
+    ${REMOTE_EXPORTS}
 
-    ./'$DEPLOY_SCRIPT' --branch '$TARGET_BRANCH' --expect-commit '$LOCAL_COMMIT'
+    ./${DEPLOY_SCRIPT} ${REMOTE_DEPLOY_ARGS}
 "
 
 SSH_EXIT=$?

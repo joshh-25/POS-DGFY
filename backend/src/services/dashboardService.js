@@ -187,8 +187,8 @@ export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort =
 
   const parsedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 100;
   const cappedLimit = Math.min(parsedLimit, 200);
-  const parsedPage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
-  const offset = (parsedPage - 1) * cappedLimit;
+  const safePage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
+  const offset = (safePage - 1) * cappedLimit;
 
   const valueItemWhere = buildVisibleWhere({
     status: 'active',

@@ -51,6 +51,7 @@ export const buildExecuteAiToolUseCase = ({
         case 'get_available_permissions':
         case 'generate_executive_summary':
         case 'get_job_orders':
+        case 'get_job_order_details':
         case 'create_job_order':
         case 'complete_job_order':
         case 'get_stock_movements':

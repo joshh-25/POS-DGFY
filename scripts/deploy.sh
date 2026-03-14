@@ -18,12 +18,17 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[1;36m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Force color output for sub-processes (npm, vite, git) even when piped thru tee
 export FORCE_COLOR=1
 export NPM_CONFIG_COLOR=always
 export CLICOLOR_FORCE=1
+
+# Track elapsed time (Bash built-in SECONDS resets to 0 here)
+SECONDS=0
 
 BRANCH_OVERRIDE=""
 EXPECTED_COMMIT=""
@@ -136,7 +141,7 @@ build_backend_health_candidates() {
     add_candidate() {
         local candidate="$1"
         [[ -z "$candidate" ]] && return 0
-        for existing in "${seen[@]}"; do
+        for existing in "${seen[@]+"${seen[@]}"}"; do
             if [[ "$existing" == "$candidate" ]]; then
                 return 0
             fi
@@ -159,13 +164,76 @@ build_backend_health_candidates() {
     printf "%s\n" "${candidates[@]}"
 }
 
-trap 'fatal "Deployment failed at line $LINENO. See $LOG_FILE"' ERR
+# ---------------------------------------------------------------------------
+# Cleanup function — runs on both success and failure
+# ---------------------------------------------------------------------------
+cleanup_temp_files() {
+    rm -f "${TMPDIR:-/tmp}"/skupervisor_backend_health_*.json 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Rollback helper — called if post-deploy health check fails
+# ---------------------------------------------------------------------------
+rollback_to_commit() {
+    local target_commit="$1"
+    warn "Rolling back to pre-deploy commit $target_commit ..."
+
+    cd "$PROJECT_ROOT"
+    git checkout --force "$target_commit"
+
+    run_ci_if_lockfile_exists "$PROJECT_ROOT"
+    run_ci_if_lockfile_exists "$BACKEND_DIR"
+    run_ci_if_lockfile_exists "$FRONTEND_DIR"
+
+    bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build"
+
+    if command -v pm2 >/dev/null 2>&1; then
+        if [[ -f "$PROJECT_ROOT/ecosystem.config.cjs" ]]; then
+            pm2 startOrReload "$PROJECT_ROOT/ecosystem.config.cjs" --env production --update-env
+        elif [[ -f "$PROJECT_ROOT/ecosystem.config.js" ]]; then
+            pm2 startOrReload "$PROJECT_ROOT/ecosystem.config.js" --env production --update-env
+        fi
+        pm2 save
+    fi
+
+    warn "Rollback complete. Server is back on commit $target_commit."
+}
+
+# ---------------------------------------------------------------------------
+# Deploy log rotation — keep only the latest N sets
+# ---------------------------------------------------------------------------
+rotate_deploy_logs() {
+    local keep="${1:-30}"
+
+    # Rotate main log files
+    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.log 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+
+    # Rotate changed-files manifests
+    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.changed_files.txt 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+
+    # Rotate summary files
+    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.summary.txt 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+}
+
+trap 'cleanup_temp_files; fatal "Deployment failed at line $LINENO. See $LOG_FILE"' ERR
+trap 'cleanup_temp_files' EXIT
+
+# ===========================================================================
+# Pre-flight checks
+# ===========================================================================
 
 require_command git
 require_command npm
 require_command node
 require_command npx
 require_command bash
+require_command curl
+
+# Validate Node.js minimum version (project requires >= 18.0.0)
+NODE_MAJOR="$(node -e 'console.log(process.versions.node.split(".")[0])')"
+if [[ "$NODE_MAJOR" -lt 18 ]]; then
+    fatal "Node.js >= 18.0.0 required. Current: $(node --version)"
+fi
 
 if command -v flock >/dev/null 2>&1; then
     if [[ "${DEPLOY_LOCK_ACQUIRED:-0}" != "1" ]]; then
@@ -269,8 +337,24 @@ if [[ "${DEPLOY_REEXECED:-0}" != "1" ]]; then
     if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
         reexec_args+=(--run-legacy-hooks)
     fi
-    exec bash "$PROJECT_ROOT/scripts/deploy.sh" "${reexec_args[@]}"
+    exec bash "$PROJECT_ROOT/scripts/deploy.sh" ${reexec_args[@]+"${reexec_args[@]}"}
 fi
+
+# ===========================================================================
+# Deploy banner
+# ===========================================================================
+SHORT_OLD="${PRE_DEPLOY_COMMIT:0:10}"
+SHORT_NEW="${POST_PULL_COMMIT:0:10}"
+
+echo ""
+echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}${BOLD}║           SKU INVENTORY MANAGER — PRODUCTION DEPLOY      ║${NC}"
+echo -e "${CYAN}${BOLD}╠══════════════════════════════════════════════════════════╣${NC}"
+echo -e "${CYAN}${BOLD}║${NC}  Branch : ${YELLOW}$TARGET_BRANCH${NC}"
+echo -e "${CYAN}${BOLD}║${NC}  Commit : ${YELLOW}$SHORT_OLD${NC} → ${GREEN}$SHORT_NEW${NC}"
+echo -e "${CYAN}${BOLD}║${NC}  Time   : ${YELLOW}$(date +'%Y-%m-%d %H:%M:%S %Z')${NC}"
+echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
+echo ""
 
 if [[ "$PRE_DEPLOY_COMMIT" == "$POST_PULL_COMMIT" ]]; then
     log "No new commit pulled. Continuing with full deterministic deploy pipeline."
@@ -304,6 +388,9 @@ if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
 fi
 log "Migrations changed in this release: $MIGRATIONS_CHANGED"
 
+# ===========================================================================
+# Database backup
+# ===========================================================================
 if [[ "$SKIP_DB_BACKUP" != "1" ]]; then
     if command -v mysqldump >/dev/null 2>&1; then
         DB_HOST="$(env_value "$ENV_FILE" "DB_HOST")"
@@ -336,6 +423,9 @@ else
     warn "DB backup skipped by --skip-db-backup."
 fi
 
+# ===========================================================================
+# Dependencies, linting, and build
+# ===========================================================================
 run_step "Installing deterministic dependencies..." run_ci_if_lockfile_exists "$PROJECT_ROOT"
 run_ci_if_lockfile_exists "$BACKEND_DIR"
 run_ci_if_lockfile_exists "$FRONTEND_DIR"
@@ -346,10 +436,16 @@ run_step "Running architecture gate checks..." npm run check:architecture
 
 run_step "Building frontend production artifacts..." bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build"
 
+# ===========================================================================
+# Database migrations
+# ===========================================================================
 run_step "Running database migration status (pre-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
 run_step "Running database migrations..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate"
 run_step "Running database migration status (post-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
 
+# ===========================================================================
+# Optional legacy hooks
+# ===========================================================================
 if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
     log "Running optional maintenance hooks (enabled)..."
     run_optional_node_script "$BACKEND_DIR" "scripts/deploy_fix_precision.js" "precision hotfix v1"
@@ -360,6 +456,9 @@ else
     warn "Skipping legacy maintenance hooks by default. Use --run-legacy-hooks (or DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS=1) only for targeted recovery."
 fi
 
+# ===========================================================================
+# Index repair and audits
+# ===========================================================================
 log "Repairing required schema indexes (self-heal pass)..."
 if ! (cd "$BACKEND_DIR" && npm run repair:indexes); then
     warn "Index self-heal did not fully converge. Continuing to strict schema/index audit gate."
@@ -369,6 +468,9 @@ run_step "Running schema/index audit..." bash -lc "cd \"$BACKEND_DIR\" && npm ru
 
 run_step "Running billing-funnel telemetry audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:billing-funnel"
 
+# ===========================================================================
+# Tenant schema sync
+# ===========================================================================
 log "Running tenant schema sync..."
 if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
     (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js)
@@ -376,6 +478,9 @@ else
     warn "sync-tenant-schemas.js not found; skipped."
 fi
 
+# ===========================================================================
+# PM2 reload
+# ===========================================================================
 if command -v pm2 >/dev/null 2>&1; then
     log "Reloading PM2 services..."
     if [[ -f "$PROJECT_ROOT/ecosystem.config.cjs" ]]; then
@@ -394,6 +499,9 @@ else
     fatal "pm2 is not installed; cannot restart services."
 fi
 
+# ===========================================================================
+# Health checks with automatic rollback
+# ===========================================================================
 BACKEND_PORT="$(env_value "$ENV_FILE" "PORT")"
 BACKEND_PORT="${BACKEND_PORT:-5000}"
 BACKEND_HEALTH_URL=""
@@ -402,8 +510,6 @@ mapfile -t BACKEND_HEALTH_CANDIDATES < <(build_backend_health_candidates "$BACKE
 
 log "Waiting for services to stabilize..."
 sleep 12
-
-require_command curl
 
 log "Backend health candidates: ${BACKEND_HEALTH_CANDIDATES[*]}"
 backend_ok="0"
@@ -433,12 +539,20 @@ done
 
 if [[ "$backend_ok" != "1" ]]; then
     warn "Backend health diagnostics:"
-    for diagnostic in "${backend_attempt_diagnostics[@]}"; do
+    for diagnostic in "${backend_attempt_diagnostics[@]+"${backend_attempt_diagnostics[@]}"}"; do
         warn "  $diagnostic"
     done
     pm2 list --no-color || true
     pm2 logs sku-backend --nostream --lines 80 || true
-    fatal "Backend health check failed on all candidates."
+
+    # ---------- Automatic rollback ----------
+    if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
+        warn "Attempting automatic rollback to previous working commit..."
+        rollback_to_commit "$PRE_DEPLOY_COMMIT"
+        fatal "Backend health check failed on all candidates. ROLLED BACK to $PRE_DEPLOY_COMMIT. Investigate and redeploy."
+    else
+        fatal "Backend health check failed on all candidates (no code change to rollback)."
+    fi
 fi
 
 log "Backend health check passed: $BACKEND_HEALTH_URL"
@@ -460,7 +574,21 @@ fi
 
 run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
 
+# ===========================================================================
+# Finalize
+# ===========================================================================
 echo "$POST_PULL_COMMIT" > "$DEPLOY_STATE_DIR/last_deployed_commit"
+
+# Rotate deploy logs (keep latest 30 sets)
+rotate_deploy_logs 30
+
+# Clean up lock file explicitly (fd 9 auto-closes on exit, but this is clearer)
+rm -f "$LOCK_FILE" 2>/dev/null || true
+
+# Calculate elapsed time
+ELAPSED="$SECONDS"
+ELAPSED_MIN="$((ELAPSED / 60))"
+ELAPSED_SEC="$((ELAPSED % 60))"
 
 {
     echo "deploy_timestamp=$RUN_TS"
@@ -480,7 +608,17 @@ echo "$POST_PULL_COMMIT" > "$DEPLOY_STATE_DIR/last_deployed_commit"
     echo "scripts_changed_files=$SCRIPTS_CHANGED_FILES"
     echo "backend_health_url=$BACKEND_HEALTH_URL"
     echo "frontend_health_url=$FRONTEND_HEALTH_URL"
+    echo "elapsed_seconds=$ELAPSED"
 } > "$SUMMARY_FILE"
 
 log "Deployment summary: $SUMMARY_FILE"
-log "Deployment completed successfully."
+
+echo ""
+echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}${BOLD}║           DEPLOYMENT COMPLETED SUCCESSFULLY              ║${NC}"
+echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}${BOLD}║${NC}  Commit  : ${GREEN}${POST_PULL_COMMIT:0:10}${NC}"
+echo -e "${GREEN}${BOLD}║${NC}  Duration: ${YELLOW}${ELAPSED_MIN}m ${ELAPSED_SEC}s${NC}"
+echo -e "${GREEN}${BOLD}║${NC}  Health  : ${GREEN}✓ Backend${NC}  ${FRONTEND_HEALTH_URL:+${GREEN}✓ Frontend${NC}}"
+echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
+echo ""

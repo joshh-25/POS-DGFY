@@ -121,6 +121,39 @@ export const buildJobOrderToolRegistry = ({ jobOrderService, itemService, logger
         batch_created: result.batchId,
         ingredients_consumed: result.ingredientsConsumed
       };
+    },
+
+    get_job_order_details: async ({ args }) => {
+      const { jo_id } = args;
+      const jobOrder = await jobOrderService.getJobOrderById(jo_id);
+
+      return {
+        success: true,
+        job_order: {
+          jo_id: jobOrder.jo_id,
+          jo_number: jobOrder.jo_number,
+          product_name: jobOrder.product?.name,
+          quantity_to_produce: jobOrder.quantity_to_produce,
+          quantity_produced: jobOrder.quantity_produced,
+          status: jobOrder.status,
+          responsible_user: jobOrder.responsibleUser?.username,
+          created_at: jobOrder.created_at,
+          ingredients: jobOrder.ingredients?.map(ing => ({
+            item_id: ing.item_id,
+            item_name: ing.item?.name,
+            quantity_required: ing.quantity_required,
+            quantity_consumed: ing.quantity_consumed,
+            unit_of_measure: ing.unit_of_measure
+          })) || [],
+          consumed_batches: jobOrder.ingredients?.filter(ing => ing.dataValues.batchTransactions?.length > 0).map(ing => ({
+            item_name: ing.item?.name,
+            batches: ing.dataValues.batchTransactions.map(bt => ({
+              batch_number: bt.batch?.po_number || bt.batch?.batch_id || `BTCH-${bt.batch_id}`,
+              quantity: bt.quantity
+            }))
+          })) || []
+        }
+      };
     }
   };
 

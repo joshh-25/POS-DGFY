@@ -160,6 +160,7 @@ export const TOOL_REGISTRY_BY_NAME = Object.freeze({
 
   // Job orders
   get_job_orders: jobOrderToolRegistry,
+  get_job_order_details: jobOrderToolRegistry,
   create_job_order: jobOrderToolRegistry,
   complete_job_order: jobOrderToolRegistry,
 
