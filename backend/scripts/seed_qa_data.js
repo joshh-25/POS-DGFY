@@ -76,17 +76,17 @@ async function seedData() {
         let sugarId = sugarRows[0]?.item_id;
 
         if (!sugarId) {
-            const [sugarRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-                ['QA Sugar Test', 'SUG-001', 'raw_material', 'active', 0.5, 100000, 1, 'kg']);
+            const [sugarRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, max_capacity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                ['QA Sugar Test', 'SUG-001', 'raw_material', 'active', 0.5, 100000, 1, 'kg', 200000]);
             sugarId = sugarRes.insertId;
         } else {
-            await connection.query('UPDATE items SET status = "active", cost_per_unit = 0.5, current_stock = 100000, fifo_enabled = 1, unit_of_measure = "kg" WHERE item_id = ?', [sugarId]);
+            await connection.query('UPDATE items SET status = "active", cost_per_unit = 0.5, current_stock = 100000, fifo_enabled = 1, unit_of_measure = "kg", max_capacity = 200000 WHERE item_id = ?', [sugarId]);
         }
         console.log(`Ensured Sugar exists (ID: ${sugarId}).`);
 
         // 3. Add Flour for analytics
-        await connection.query('INSERT IGNORE INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-            ['QA Flour Test', 'FLR-001', 'raw_material', 'active', 0.8, 5000, 1]);
+        await connection.query('INSERT IGNORE INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, max_capacity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+            ['QA Flour Test', 'FLR-001', 'raw_material', 'active', 0.8, 5000, 1, 'kg', 10000]);
         console.log('Ensured Flour exists for analytics.');
 
         // 4. Create Supplier
@@ -120,11 +120,11 @@ async function seedData() {
         let productId = productRows[0]?.item_id;
 
         if (!productId) {
-            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, product_type, status, batch_size, cost_per_unit, yield_percentage, max_capacity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-                ['QA Test Product 2026-02-18', 'TP-999', 'product', 'finished_goods', 'active', 500, 250, 98, 10000]);
+            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, product_type, status, batch_size, cost_per_unit, yield_percentage, max_capacity, unit_of_measure, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                ['QA Test Product 2026-02-18', 'TP-999', 'product', 'finished_goods', 'active', 500, 250, 98, 10000, 'pcs']);
             productId = productRes.insertId;
         } else {
-            await connection.query('UPDATE items SET status = "active", batch_size = 500, cost_per_unit = 250, yield_percentage = 98, max_capacity = 10000 WHERE item_id = ?', [productId]);
+            await connection.query('UPDATE items SET status = "active", batch_size = 500, cost_per_unit = 250, yield_percentage = 98, max_capacity = 10000, unit_of_measure = "pcs" WHERE item_id = ?', [productId]);
         }
         console.log(`Ensured Product exists (ID: ${productId}).`);
 
@@ -136,8 +136,8 @@ async function seedData() {
         // 8. Create a Completed Job Order for Traceability
         await connection.query('DELETE FROM job_orders');
         const [joRes] = await connection.query(`
-            INSERT INTO job_orders (product_id, quantity_to_produce, quantity_produced, status, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, NOW(), NOW())
+            INSERT INTO job_orders (product_id, quantity_to_produce, quantity_produced, status, created_date, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, NOW(), NOW(), NOW())
         `, [productId, 100, 100, 'completed']);
         const joId = joRes.insertId;
         console.log(`Created completed JO: ${joId}`);
@@ -145,8 +145,8 @@ async function seedData() {
         // 9. Create Stock Movements
         await connection.query('DELETE FROM stock_movements');
         await connection.query(`
-            INSERT INTO stock_movements (item_id, movement_type, quantity, user_responsible, timestamp, created_at, updated_at)
-            VALUES (?, ?, ?, ?, NOW(), NOW(), NOW())
+            INSERT INTO stock_movements (item_id, movement_type, quantity, user_responsible, timestamp, created_at)
+            VALUES (?, ?, ?, ?, NOW(), NOW())
         `, [sugarId, 'adjustment', 1000, 1]);
         console.log('Created stock movement for traceability.');
 
