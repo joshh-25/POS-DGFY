@@ -66,8 +66,8 @@ async function seedData() {
         
         // 1. Seed User (Robustly)
         await connection.query(`
-            REPLACE INTO users (user_id, username, email, role, password_hash, is_active, is_master_admin) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            REPLACE INTO users (user_id, username, email, role, password_hash, is_active, is_master_admin, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         `, [1, 'admin', 'admin@premiumcorp.com', 'admin', '$2b$10$X.f7Lg0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0', 1, 1]);
         console.log('Seeded/Updated admin user.');
 
@@ -76,7 +76,7 @@ async function seedData() {
         let sugarId = sugarRows[0]?.item_id;
 
         if (!sugarId) {
-            const [sugarRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            const [sugarRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 ['QA Sugar Test', 'SUG-001', 'Raw Material', 'active', 0.5, 100000, 1, 'kg', TENANT_ID]);
             sugarId = sugarRes.insertId;
         } else {
@@ -85,7 +85,7 @@ async function seedData() {
         console.log(`Ensured Sugar exists (ID: ${sugarId}).`);
 
         // 3. Add Flour for analytics
-        await connection.query('INSERT IGNORE INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        await connection.query('INSERT IGNORE INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             ['QA Flour Test', 'FLR-001', 'Raw Material', 'active', 0.8, 5000, 1, TENANT_ID]);
         console.log('Ensured Flour exists for analytics.');
 
@@ -94,7 +94,7 @@ async function seedData() {
         let supplierId;
         if (suppliers.length === 0) {
             const [supplierRes] = await connection.query(
-                'INSERT INTO suppliers (name, contact_person, email, status, tenant_id) VALUES (?, ?, ?, ?, ?)',
+                'INSERT INTO suppliers (name, contact_person, email, status, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())',
                 ['QA Supplier', 'John Doe', 'john@qasupplier.com', 'active', TENANT_ID]
             );
             supplierId = supplierRes.insertId;
@@ -106,11 +106,11 @@ async function seedData() {
         // 5. Create FIFO Batches for Sugar
         await connection.query('DELETE FROM fifo_batches WHERE item_id = ?', [sugarId]);
         await connection.query(
-            'INSERT INTO fifo_batches (item_id, quantity, cost_per_unit, received_date, po_number, quantity_consumed, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO fifo_batches (item_id, quantity, cost_per_unit, received_date, po_number, quantity_consumed, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             [sugarId, 50000, 0.5, '2026-01-01', 'PO-001', 0, TENANT_ID]
         );
         await connection.query(
-            'INSERT INTO fifo_batches (item_id, quantity, cost_per_unit, received_date, po_number, quantity_consumed, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO fifo_batches (item_id, quantity, cost_per_unit, received_date, po_number, quantity_consumed, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             [sugarId, 50000, 0.5, '2026-02-01', 'PO-002', 0, TENANT_ID]
         );
         console.log('Created FIFO batches for Sugar.');
@@ -120,7 +120,7 @@ async function seedData() {
         let productId = productRows[0]?.item_id;
 
         if (!productId) {
-            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, batch_size, cost_per_unit, yield_percentage, max_capacity, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, batch_size, cost_per_unit, yield_percentage, max_capacity, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 ['QA Test Product 2026-02-18', 'TP-999', 'Finished Goods', 'active', 500, 250, 98, 10000, TENANT_ID]);
             productId = productRes.insertId;
         } else {
@@ -129,7 +129,7 @@ async function seedData() {
         console.log(`Ensured Product exists (ID: ${productId}).`);
 
         // 7. Ensure Composition
-        await connection.query('REPLACE INTO product_composition (product_id, ingredient_id, quantity_required, tenant_id) VALUES (?, ?, ?, ?)',
+        await connection.query('REPLACE INTO product_composition (product_id, ingredient_id, quantity_required, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())',
             [productId, sugarId, 10, TENANT_ID]);
         console.log('Ensured product composition.');
 
@@ -145,8 +145,8 @@ async function seedData() {
         // 9. Create Stock Movements
         await connection.query('DELETE FROM stock_movements WHERE tenant_id = ?', [TENANT_ID]);
         await connection.query(`
-            INSERT INTO stock_movements (item_id, movement_type, quantity, tenant_id, user_responsible, timestamp)
-            VALUES (?, ?, ?, ?, ?, NOW())
+            INSERT INTO stock_movements (item_id, movement_type, quantity, tenant_id, user_responsible, timestamp, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, NOW(), NOW(), NOW())
         `, [sugarId, 'adjustment', 1000, TENANT_ID, 1]);
         console.log('Created stock movement for traceability.');
 
