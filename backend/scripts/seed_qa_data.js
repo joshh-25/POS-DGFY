@@ -77,7 +77,7 @@ async function seedData() {
 
         if (!sugarId) {
             const [sugarRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, unit_of_measure, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-                ['QA Sugar Test', 'SUG-001', 'Raw Material', 'active', 0.5, 100000, 1, 'kg']);
+                ['QA Sugar Test', 'SUG-001', 'raw_material', 'active', 0.5, 100000, 1, 'kg']);
             sugarId = sugarRes.insertId;
         } else {
             await connection.query('UPDATE items SET status = "active", cost_per_unit = 0.5, current_stock = 100000, fifo_enabled = 1, unit_of_measure = "kg" WHERE item_id = ?', [sugarId]);
@@ -86,7 +86,7 @@ async function seedData() {
 
         // 3. Add Flour for analytics
         await connection.query('INSERT IGNORE INTO items (name, sku_code, category, status, cost_per_unit, current_stock, fifo_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-            ['QA Flour Test', 'FLR-001', 'Raw Material', 'active', 0.8, 5000, 1]);
+            ['QA Flour Test', 'FLR-001', 'raw_material', 'active', 0.8, 5000, 1]);
         console.log('Ensured Flour exists for analytics.');
 
         // 4. Create Supplier
@@ -120,8 +120,8 @@ async function seedData() {
         let productId = productRows[0]?.item_id;
 
         if (!productId) {
-            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, status, batch_size, cost_per_unit, yield_percentage, max_capacity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
-                ['QA Test Product 2026-02-18', 'TP-999', 'Finished Goods', 'active', 500, 250, 98, 10000]);
+            const [productRes] = await connection.query('INSERT INTO items (name, sku_code, category, product_type, status, batch_size, cost_per_unit, yield_percentage, max_capacity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                ['QA Test Product 2026-02-18', 'TP-999', 'product', 'finished_goods', 'active', 500, 250, 98, 10000]);
             productId = productRes.insertId;
         } else {
             await connection.query('UPDATE items SET status = "active", batch_size = 500, cost_per_unit = 250, yield_percentage = 98, max_capacity = 10000 WHERE item_id = ?', [productId]);
