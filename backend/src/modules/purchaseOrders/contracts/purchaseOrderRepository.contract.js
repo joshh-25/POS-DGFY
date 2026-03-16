@@ -9,7 +9,9 @@ export const PurchaseOrderRepositoryContract = Object.freeze([
   'getPurchaseOrderById',
   'createPurchaseOrder',
   'finalizePurchaseOrder',
-  'receivePurchaseOrder',
+  'updatePurchaseOrder',
+  'updatePOLineItem',
+  'getPOLineItemsByPoId',
   'archivePurchaseOrder',
   'restorePurchaseOrder'
 ]);

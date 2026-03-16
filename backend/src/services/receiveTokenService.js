@@ -328,8 +328,16 @@ export const receiveViaToken = async (rawToken, receiptData) => {
         throw error;
     }
 
-    // Mark token as used
-    await receiveToken.update({ used_at: new Date(), used_by: null });
+    // Mark token as used ONLY if the order is fully received/completed
+    const isCompleted = (receiveToken.token_type === 'PO' && (result.status === 'received' || result.status === 'completed')) ||
+                        (receiveToken.token_type === 'JO' && result.status === 'completed');
+
+    if (isCompleted) {
+        await receiveToken.update({ used_at: new Date(), used_by: null });
+        console.log(`[ReceiveToken] Token ${rawToken.substring(0, 8)}... marked as used (Order ${receiveToken.token_type} #${orderId} is ${result.status})`);
+    } else {
+        console.log(`[ReceiveToken] Token ${rawToken.substring(0, 8)}... kept ACTIVE (Order ${receiveToken.token_type} #${orderId} is ${result.status})`);
+    }
 
     return result;
 };

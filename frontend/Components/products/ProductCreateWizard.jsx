@@ -80,6 +80,19 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
 
   const isEditingDraft = product?.status === 'draft';
 
+  // Helper to parse numeric fields
+  const parseNumberField = (value, fallback = 0) => {
+    if (value === null || value === undefined || value === '') return fallback;
+    const num = Number(value);
+    return isNaN(num) ? fallback : num;
+  };
+
+  const parseNumberFieldOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  };
+
   // Helper to parse JSON string fields that may be stored as strings in the database
   const parseJsonField = (value, fallback = {}) => {
     if (!value) return fallback;
@@ -100,6 +113,15 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
       const loadedData = {
         ...defaultProductData,
         ...product,
+        // Parse numeric fields
+        batch_size: parseNumberFieldOrNull(product.batch_size),
+        yield_percentage: parseNumberField(product.yield_percentage, 100),
+        processing_loss: parseNumberField(product.processing_loss, 0),
+        current_stock: parseNumberField(product.current_stock, 0),
+        max_capacity: parseNumberField(product.max_capacity, 1000),
+        min_threshold: parseNumberField(product.min_threshold, 0),
+        purchase_allowance: parseNumberField(product.purchase_allowance, 0),
+        cost_per_unit: parseNumberField(product.cost_per_unit, 0),
         // Parse nested JSON fields that may be stored as strings
         nutritional_info: parseJsonField(product.nutritional_info, {}),
         physical_properties: parseJsonField(product.physical_properties, {}),

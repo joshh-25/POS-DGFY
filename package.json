@@ -24,7 +24,9 @@
     "check:architecture": "cd backend && npm run check:architecture-guardrails && npm run check:controller-boundaries",
     "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\"",
     "kill:dev": "bash scripts/kill-dev.sh",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:auto": "bash scripts/deploy.sh --auto",
+    "deploy:verify": "bash scripts/deploy.sh --auto --verify"
   },
   "keywords": [
     "inventory",

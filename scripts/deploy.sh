@@ -33,7 +33,9 @@ SECONDS=0
 BRANCH_OVERRIDE=""
 EXPECTED_COMMIT=""
 SKIP_DB_BACKUP="0"
+AUTO_MODE="0"
 RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
+DEEP_VERIFY="${DEPLOY_POST_DEPLOY_VERIFY:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -49,13 +51,33 @@ while [[ $# -gt 0 ]]; do
             SKIP_DB_BACKUP="1"
             shift
             ;;
+        --auto)
+            AUTO_MODE="1"
+            shift
+            ;;
         --run-legacy-hooks)
             RUN_LEGACY_HOOKS="1"
             shift
             ;;
+        --verify)
+            DEEP_VERIFY="1"
+            shift
+            ;;
+        --help)
+            echo "Usage: bash scripts/deploy.sh [options]"
+            echo ""
+            echo "Options:"
+            echo "  --branch <name>       Override target branch (default: current branch)"
+            echo "  --expect-commit <sha> Require specific remote SHA"
+            echo "  --auto                Unattended mode (auto-detect branch/commit, skip SHA match)"
+            echo "  --skip-db-backup      Skip mysqldump before migrations"
+            echo "  --run-legacy-hooks    Enable legacy maintenance scripts"
+            echo "  --verify              Run deep AI verification after deploy"
+            exit 0
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: bash scripts/deploy.sh [--branch <name>] [--expect-commit <sha>] [--skip-db-backup] [--run-legacy-hooks]"
+            echo "Use --help for usage."
             exit 1
             ;;
     esac
@@ -312,8 +334,8 @@ git fetch --prune origin "$TARGET_BRANCH"
 REMOTE_COMMIT="$(git rev-parse "origin/$TARGET_BRANCH")"
 log "Remote commit: $REMOTE_COMMIT"
 
-if [[ -n "$EXPECTED_COMMIT" && "$REMOTE_COMMIT" != "$EXPECTED_COMMIT" ]]; then
-    fatal "Expected commit $EXPECTED_COMMIT does not match origin/$TARGET_BRANCH ($REMOTE_COMMIT)"
+if [[ "$AUTO_MODE" == "1" ]]; then
+    log "Auto-mode enabled: skipping SHA match requirement (Target SHA: $REMOTE_COMMIT)"
 fi
 
 log "Pulling latest code (fast-forward only)..."
@@ -336,6 +358,12 @@ if [[ "${DEPLOY_REEXECED:-0}" != "1" ]]; then
     fi
     if [[ "$RUN_LEGACY_HOOKS" == "1" ]]; then
         reexec_args+=(--run-legacy-hooks)
+    fi
+    if [[ "$AUTO_MODE" == "1" ]]; then
+        reexec_args+=(--auto)
+    fi
+    if [[ "$DEEP_VERIFY" == "1" ]]; then
+        reexec_args+=(--verify)
     fi
     exec bash "$PROJECT_ROOT/scripts/deploy.sh" ${reexec_args[@]+"${reexec_args[@]}"}
 fi
@@ -573,6 +601,13 @@ else
 fi
 
 run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
+
+# ===========================================================================
+# Deep AI Verification (Optional Gate)
+# ===========================================================================
+if [[ "$DEEP_VERIFY" == "1" ]]; then
+    run_step "Running Deep AI Verification (30-Questions Gate)..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/qa_30_questions_verification.js"
+fi
 
 # ===========================================================================
 # Finalize

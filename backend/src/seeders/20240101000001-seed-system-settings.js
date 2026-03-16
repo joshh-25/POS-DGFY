@@ -4,7 +4,7 @@ export default {
     let existingSettings = [];
     try {
       const result = await queryInterface.sequelize.query(
-        `SELECT setting_key FROM system_settings WHERE setting_key IN ('min_stock_threshold_percent', 'purchase_allowance_percent', 'low_stock_alert_threshold', 'forecast_days_ahead', 'currency', 'system_timezone')`
+        'SELECT setting_key FROM system_settings'
       );
       existingSettings = result[0] || [];
     } catch (err) {

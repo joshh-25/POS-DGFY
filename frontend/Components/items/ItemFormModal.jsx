@@ -56,17 +56,23 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
 
   useEffect(() => {
     if (item && open) {
+      const parseNum = (val, fallback = 0) => {
+        if (val === null || val === undefined || val === '') return fallback;
+        const num = Number(val);
+        return isNaN(num) ? fallback : num;
+      };
+
       const initialData = {
         sku_code: item.sku_code || '',
         name: item.name || '',
         category: item.category || 'ingredient',
         description: item.description || '',
         unit_of_measure: item.unit_of_measure || 'kg',
-        cost_per_unit: item.cost_per_unit ?? 0,
-        max_capacity: item.max_capacity ?? 0,
-        current_stock: item.current_stock ?? 0,
-        min_threshold: item.min_threshold ?? 0,
-        purchase_allowance: item.purchase_allowance ?? 0,
+        cost_per_unit: parseNum(item.cost_per_unit, 0),
+        max_capacity: parseNum(item.max_capacity, 0),
+        current_stock: parseNum(item.current_stock, 0),
+        min_threshold: parseNum(item.min_threshold, 0),
+        purchase_allowance: parseNum(item.purchase_allowance, 0),
         fifo_enabled: item.fifo_enabled || false,
         shelf_life_days: item.shelf_life_days ?? '',
         opened_shelf_life_days: item.opened_shelf_life_days ?? '',

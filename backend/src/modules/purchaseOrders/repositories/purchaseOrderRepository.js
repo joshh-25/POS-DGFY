@@ -88,7 +88,7 @@ export const purchaseOrderRepository = {
     };
   },
 
-  async getPurchaseOrderById(poId) {
+  async getPurchaseOrderById(poId, options = {}) {
     const PurchaseOrder = dbStore.get('PurchaseOrder');
     const Supplier = dbStore.get('Supplier');
     const User = dbStore.get('User');
@@ -96,6 +96,7 @@ export const purchaseOrderRepository = {
     const Item = dbStore.get('Item');
 
     const po = await PurchaseOrder.findByPk(poId, {
+      ...options,
       include: [
         { model: Supplier, as: 'supplier' },
         { model: User, as: 'creator', attributes: ['username'] },
@@ -230,63 +231,28 @@ export const purchaseOrderRepository = {
     return po;
   },
 
-  async receivePurchaseOrder(poId, receiptData, userId) {
+  async updatePurchaseOrder(poId, updateData, options = {}) {
     const PurchaseOrder = dbStore.get('PurchaseOrder');
+    return await PurchaseOrder.update(updateData, {
+      where: { po_id: poId },
+      ...options
+    });
+  },
+
+  async updatePOLineItem(lineItemId, updateData, options = {}) {
     const POLineItem = dbStore.get('POLineItem');
-    const Item = dbStore.get('Item');
-
-    const po = await PurchaseOrder.findByPk(poId, {
-      include: [{ model: POLineItem, as: 'lineItems', include: [{ model: Item, as: 'item' }] }]
+    return await POLineItem.update(updateData, {
+      where: { line_item_id: lineItemId },
+      ...options
     });
+  },
 
-    if (!po) {
-      throw createHttpError('Purchase order not found', 404);
-    }
-
-    const { line_items } = receiptData;
-
-    for (const receiptItem of line_items) {
-      const lineItem = po.lineItems.find((li) => li.line_item_id === receiptItem.line_item_id);
-      if (!lineItem) continue;
-
-      const quantityReceived = receiptItem.quantity_received || lineItem.quantity_ordered;
-
-      await lineItem.update({
-        quantity_received: quantityReceived,
-        quality_check_status: receiptItem.quality_check_status || 'passed'
-      });
-
-      const item = lineItem.item;
-      await createStockMovement({
-        item_id: item.item_id,
-        quantity: quantityReceived,
-        movement_type: 'purchase_receipt',
-        reference_id: po.po_number,
-        reference_type: 'PO',
-        notes: receiptData.notes || po.notes || null,
-        expiry_date: receiptItem.expiry_date || null,
-        cost_per_unit: lineItem.unit_price,
-        po_number: po.po_number
-      }, userId);
-
-      if (receiptItem.expiry_date) {
-        await lineItem.update({ expiry_date: receiptItem.expiry_date });
-      }
-    }
-
-    const allReceived = po.lineItems.every(
-      (li) => parseFloat(li.quantity_received) >= parseFloat(li.quantity_ordered)
-    );
-
-    await po.update({
-      status: allReceived ? 'received' : 'partial',
-      received_date: new Date(),
-      received_by: userId,
-      notes: receiptData.notes || po.notes,
-      delivery_rating: receiptData.delivery_rating || po.delivery_rating
+  async getPOLineItemsByPoId(poId, options = {}) {
+    const POLineItem = dbStore.get('POLineItem');
+    return await POLineItem.findAll({
+      where: { po_id: poId },
+      ...options
     });
-
-    return po;
   },
 
   async archivePurchaseOrder(poId, userId) {

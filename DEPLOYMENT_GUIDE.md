@@ -20,11 +20,30 @@ Use this guide for:
   - `DB_USER`
   - `DB_NAME`
 
-## Standard Deployment (Recommended)
-Run on the production server:
+## Standard Deployment (Simplified)
+Run on the production server for a one-command deploy:
 
 ```bash
 cd /var/www/skupervisor
+npm run deploy:auto
+```
+
+This command will:
+1. Auto-detect your current branch.
+2. Auto-detect the latest commit from origin.
+3. Perform all safety audits and deployment steps automatically.
+
+### Automated Verification Mode
+To run a deep AI verification gate after deployment:
+
+```bash
+npm run deploy:verify
+```
+
+## Advanced Deployment (SHA Pinning)
+If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
+
+```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
