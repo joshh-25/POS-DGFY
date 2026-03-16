@@ -24,6 +24,7 @@
     "generate:ai-docs": "node scripts/generate-ai-docs.js",
     "ai:check": "npm run validate:ai && npm run generate:ai-docs",
     "audit:indexes": "node scripts/audit-indexes.js",
+    "cleanup:indexes": "node scripts/cleanup-duplicate-indexes.js",
     "repair:indexes": "node scripts/repair-required-indexes.js",
     "audit:billing-funnel": "node scripts/audit-billing-funnel.js",
     "check:architecture-guardrails": "node scripts/check-architecture-guardrails.js",

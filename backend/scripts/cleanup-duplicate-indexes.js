@@ -89,7 +89,6 @@ async function main() {
   console.log('🧹 Duplicate Index Cleanup Script');
   console.log('==================================\n');
 
-  // Connect to MySQL without specifying a database
   const connection = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 3306,
@@ -98,34 +97,32 @@ async function main() {
   });
 
   try {
-    // Get all tenant databases (those starting with 'sku_')
-    const [databases] = await connection.query(
-      `SELECT SCHEMA_NAME FROM information_schema.schemata
-       WHERE SCHEMA_NAME LIKE 'sku_%'
-       ORDER BY SCHEMA_NAME`
+    const landlordDb = process.env.DB_NAME || 'sku_inventory_manager';
+    console.log(`🔍 Fetching tenants from landlord: ${landlordDb}...`);
+    
+    const [tenants] = await connection.query(
+      `SELECT db_name FROM \`${landlordDb}\`.tenants WHERE status = 'active'`
     );
 
-    console.log(`Found ${databases.length} SKU databases to check.\n`);
+    const databases = [landlordDb, ...tenants.map(t => t.db_name)];
+    const uniqueDbs = [...new Set(databases)];
+
+    console.log(`Found ${uniqueDbs.length} unique databases to check.\n`);
 
     let totalCleaned = 0;
 
-    for (const db of databases) {
-      const dbName = db.SCHEMA_NAME;
-
-      // Skip landlord database
-      if (dbName === 'sku_landlord') {
-        console.log(`⏭️ Skipping landlord database: ${dbName}`);
-        continue;
+    for (const dbName of uniqueDbs) {
+      try {
+        await connection.query(`USE \`${dbName}\``);
+        const removed = await cleanupDuplicateIndexes(connection, dbName);
+        totalCleaned += removed;
+      } catch (err) {
+        console.warn(`⚠️ skipping ${dbName}: ${err.message}`);
       }
-
-      await connection.query(`USE \`${dbName}\``);
-      const removed = await cleanupDuplicateIndexes(connection, dbName);
-      totalCleaned += removed;
     }
 
     console.log('\n==================================');
     console.log(`✅ Cleanup complete! Removed ${totalCleaned} duplicate indexes.`);
-    console.log('\n💡 Now run: node backend/scripts/sync-tenant-schemas.js');
 
   } finally {
     await connection.end();

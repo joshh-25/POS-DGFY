@@ -92,23 +92,28 @@ Cleanup example:
 mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
 ```
 
-## 6. `backend/scripts/sync-tenant-schemas.js`
-Attempts `sequelize.sync({ alter: true })` for active tenant databases.
+## 6. `backend/scripts/cleanup-duplicate-indexes.js`
+Removes duplicate indexes (e.g., `email_2`, `sku_code_3`) that accumulate from repeated Sequelize syncs and hit the MySQL 64-key limit.
 
 Usage:
 ```bash
 cd backend
-node scripts/sync-tenant-schemas.js
+node scripts/cleanup-duplicate-indexes.js
 ```
 
-Note:
-- Logs and continues when a stale tenant points to a non-existent DB.
+## 7. `backend/scripts/seed_qa_data.js`
+Resets the "Premium Corp" QA tenant with a 100% verified dataset for AI and business logic verification.
 
-## 7. Legacy Recovery Scripts
+Usage:
+```bash
+cd backend
+node scripts/seed_qa_data.js
+```
+
+## 8. Legacy Recovery Scripts
 These scripts exist for recovery, not normal deploy flow:
 - `backend/scripts/surgical_migrate.js`
 - `backend/scripts/deploy_fix_precision.js`
-- `backend/scripts/deploy_fix_precision_v2.js`
 - `backend/scripts/register_legacy_tenant.js`
 
 Run only with explicit intent and verified backup.

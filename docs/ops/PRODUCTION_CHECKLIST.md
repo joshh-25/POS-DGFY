@@ -24,9 +24,13 @@ Use this checklist for every production rollout.
   ```
 
 Notes:
-- Legacy hooks are skipped by default. Enable only when needed:
+- **Key Limit Fix**: If schema sync fails with "Too many keys", run:
   ```bash
-  bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --run-legacy-hooks
+  node backend/scripts/cleanup-duplicate-indexes.js
+  ```
+- **Seeding Quality Data**: To reset the QA environment with 100% verified data:
+  ```bash
+  node backend/scripts/seed_qa_data.js
   ```
 - Strict gates must pass:
   - `npm run audit:indexes`
