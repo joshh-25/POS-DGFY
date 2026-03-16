@@ -66,9 +66,9 @@ async function seedData() {
         
         // 1. Seed User (Robustly)
         await connection.query(`
-            REPLACE INTO users (user_id, username, email, role, password_hash, tenant_id, is_active, is_master_admin) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [1, 'admin', 'admin@premiumcorp.com', 'admin', '$2b$10$X.f7Lg0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0', TENANT_ID, 1, 1]);
+            REPLACE INTO users (user_id, username, email, role, password_hash, is_active, is_master_admin) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [1, 'admin', 'admin@premiumcorp.com', 'admin', '$2b$10$X.f7Lg0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0', 1, 1]);
         console.log('Seeded/Updated admin user.');
 
         // 2. Update Sugar (item_id 1 assumes name 'QA Sugar Test')
