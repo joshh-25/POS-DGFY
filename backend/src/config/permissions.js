@@ -56,6 +56,15 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- POINT OF SALE ---
+    POS: {
+        label: "Point of Sale",
+        actions: {
+            VIEW_POS: "pos:view",           // View POS transactions and reports
+            TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
+        }
+    },
+
     // --- STOCK CONTROL ---
     STOCK: {
         label: "Stock Control",
@@ -118,6 +127,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         ...Object.values(PERMISSIONS.SUPPLIERS.actions),
         ...Object.values(PERMISSIONS.ORDERS.actions),
         ...Object.values(PERMISSIONS.DISPATCH.actions),
+        ...Object.values(PERMISSIONS.POS.actions),
         ...Object.values(PERMISSIONS.STOCK.actions),
         ...Object.values(PERMISSIONS.REPORTS.actions),
         PERMISSIONS.AI.actions.AI_CHAT_VIEW,
@@ -134,6 +144,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.ORDERS.actions.VIEW_PO,
         PERMISSIONS.ORDERS.actions.VIEW_JO,
         PERMISSIONS.DISPATCH.actions.VIEW_DO,
+        PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
         PERMISSIONS.AI.actions.AI_CHAT_VIEW, // Read-only chat
         // Explicitly NO create/edit/delete/approve/action

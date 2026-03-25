@@ -12,6 +12,8 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -28,6 +30,7 @@ const rateLimitCounters = {
   auth_register: 0,
   auth_lookup: 0,
   ai: 0,
+  pos: 0,
   registration: 0,
   other: 0,
 };
@@ -51,6 +54,7 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/auth/register')) return 'auth_register';
   if (path.includes('/auth/lookup')) return 'auth_lookup';
   if (path.includes('/ai/')) return 'ai';
+  if (path.includes('/pos/')) return 'pos';
   if (path.includes('/admin/tenants/register')) return 'registration';
   return fallbackScope || 'other';
 };
@@ -312,9 +316,44 @@ export const tenantRegistrationLimiter = rateLimit({
   },
 });
 
+// POS rate limiter: tenant/user/terminal scoped to avoid IP-only throttling on shared networks
+export const posLimiter = rateLimit({
+  windowMs: posWindowMs,
+  max: posMaxRequests,
+  message: createRateLimitError('POS request limit reached. Please wait before retrying.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('pos'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || 'anonymous';
+    const terminalKey = req.headers['x-pos-terminal-id'] || req.body?.terminal_id || firstForwardedIp(req) || req.ip || 'unknown-terminal';
+    return `pos:${tenantKey}:${userKey}:${terminalKey}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'POS request limit reached. Please wait before retrying.',
+      'pos',
+      'tenant_user_terminal'
+    );
+    logRateLimitEvent(req, 'pos', response.retryAfterSeconds, 'tenant_user_terminal');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 export default {
   general: generalLimiter,
   auth: authLimiter,
   lookup: lookupLimiter,
   registration: tenantRegistrationLimiter,
+  pos: posLimiter,
 };

@@ -6,6 +6,21 @@ import dbStore from '../utils/dbStore.js';
 // isTokenBlacklisted() still runs first, so logout is immediately honoured.
 const _userCache = new Map(); // user_id -> { user, expiresAt }
 const USER_CACHE_TTL_MS = 30_000; // 30 seconds
+const SUBSCRIPTION_GATE_BYPASS_ROUTES = new Set([
+  'POST /upgrade',
+  'POST /migrate-to-paypal',
+  'POST /migrate-to-paymongo',
+  'POST /change-plan',
+  'POST /change-paymongo-plan',
+  'POST /setup-paymongo-recurring',
+  'POST /sync',
+  'POST /sync-paymongo',
+]);
+
+const shouldBypassSubscriptionGate = (req) => {
+  const routeKey = `${(req.method || '').toUpperCase()} ${req.path || ''}`;
+  return req.baseUrl === '/api/v1/payments' && SUBSCRIPTION_GATE_BYPASS_ROUTES.has(routeKey);
+};
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -107,6 +122,7 @@ export const authenticate = async (req, res, next) => {
     if (req.tenant) {
       const tenantStatus = req.tenant.status;
       const subStatus = req.tenant.subscription_status;
+      const bypassSubscriptionGate = shouldBypassSubscriptionGate(req);
       const now = new Date();
       const periodEnd = req.tenant.current_period_end ? new Date(req.tenant.current_period_end) : null;
 
@@ -120,7 +136,7 @@ export const authenticate = async (req, res, next) => {
         });
       }
 
-      if (tenantStatus === 'active' && subStatus === 'inactive') {
+      if (!bypassSubscriptionGate && tenantStatus === 'active' && subStatus === 'inactive') {
         return res.status(403).json({
           success: false,
           data: null,
@@ -130,7 +146,7 @@ export const authenticate = async (req, res, next) => {
         });
       }
 
-      if (tenantStatus === 'active' && subStatus === 'cancelled' && periodEnd && periodEnd < now) {
+      if (!bypassSubscriptionGate && tenantStatus === 'active' && subStatus === 'cancelled' && periodEnd && periodEnd < now) {
         return res.status(403).json({
           success: false,
           data: null,

@@ -31,6 +31,9 @@ import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
+import PosTransaction from './PosTransaction.js';
+import PosTransactionLine from './PosTransactionLine.js';
+import PosInvoiceCounter from './PosInvoiceCounter.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
@@ -186,6 +189,15 @@ DispatchOrderLine.belongsTo(FIFOBatch, { foreignKey: 'batch_id', as: 'batch' });
 Item.hasMany(DispatchOrderLine, { foreignKey: 'item_id', as: 'dispatchOrderLines' });
 User.hasMany(DispatchOrder, { foreignKey: 'created_by', as: 'createdDispatchOrders' });
 
+// POS associations
+PosTransaction.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
+PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
+Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
+
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -231,6 +243,9 @@ const db = {
   ItemFolder,
   DispatchOrder,
   DispatchOrderLine,
+  PosTransaction,
+  PosTransactionLine,
+  PosInvoiceCounter,
   Tenant,
   UserTenantMapping,
   Payment,
@@ -274,6 +289,9 @@ export {
   ItemFolder,
   DispatchOrder,
   DispatchOrderLine,
+  PosTransaction,
+  PosTransactionLine,
+  PosInvoiceCounter,
   Tenant,
   UserTenantMapping,
   Payment,

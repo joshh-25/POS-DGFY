@@ -398,6 +398,7 @@ import receiveTokenRoutes from './routes/receiveTokens.js';
 import analyticsRoutes from './routes/analytics.js';
 import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
+import posRoutes from './routes/pos.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 
@@ -417,6 +418,7 @@ app.use('/api/v1/forecast', forecastRoutes);
 app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -590,4 +592,3 @@ export const __getBillingFunnelAuditStateForTests = () => billingFunnelAuditStat
 
 export default app;
 // End of file
-

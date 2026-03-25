@@ -2,7 +2,7 @@ import Joi from 'joi';
 
 // Valid enum values (must match StockMovement model)
 const MOVEMENT_TYPES = ['production_consumption', 'purchase_receipt', 'return', 'transfer', 'calculated_loss', 'adjustment', 'production_output', 'goods_issue'];
-const REFERENCE_TYPES = ['PO', 'JO', 'MANUAL', 'RETURN', 'DO'];
+const REFERENCE_TYPES = ['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS'];
 const LOSS_REASONS = ['waste', 'spoilage', 'damage', 'pilferage'];
 
 export const createStockMovementSchema = Joi.object({

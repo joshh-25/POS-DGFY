@@ -32,7 +32,7 @@ const StockMovement = sequelize.define('StockMovement', {
     allowNull: true
   },
   reference_type: {
-    type: DataTypes.ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO'),
+    type: DataTypes.ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS'),
     defaultValue: 'MANUAL'
   },
   user_responsible: {
