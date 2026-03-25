@@ -16,6 +16,7 @@ export function createPageUrl(pageName) {
     'JobOrders': '/job-orders',
     'StockMovements': '/stock-movements',
     'DispatchOrders': '/dispatch-orders',
+    'POS': '/pos',
     'Reports': '/reports',
     'AiChat': '/ai-chat',
     'Settings': '/settings',
@@ -38,6 +39,7 @@ export function getPageNameFromPath(pathname) {
     '/job-orders': 'JobOrders',
     '/stock-movements': 'StockMovements',
     '/dispatch-orders': 'DispatchOrders',
+    '/pos': 'POS',
     '/reports': 'Reports',
     '/ai-chat': 'AiChat',
     '/settings': 'Settings',
@@ -45,4 +47,3 @@ export function getPageNameFromPath(pathname) {
 
   return pathMap[pathname] || 'Dashboard';
 }
-

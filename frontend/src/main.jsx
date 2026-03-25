@@ -29,6 +29,7 @@ const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
+const POSPage = lazy(() => import('./features/pos/pages/POSPage.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
@@ -136,6 +137,13 @@ function App() {
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
               <AiChat />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/pos" element={
+          <ProtectedRoute>
+            <Layout currentPageName={currentPageName}>
+              <POSPage />
             </Layout>
           </ProtectedRoute>
         } />

@@ -47,6 +47,13 @@ export const PERMISSIONS = {
             DELETE_DO: "do:delete"
         }
     },
+    POS: {
+        label: "Point of Sale",
+        actions: {
+            VIEW_POS: "pos:view",
+            TRANSACT_POS: "pos:transact"
+        }
+    },
     STOCK: {
         label: "Stock Control",
         actions: {
@@ -131,6 +138,13 @@ export const PERMISSION_GROUPS = {
             CREATE_DO: "do:create",
             DISPATCH_DO: "do:dispatch",
             DELETE_DO: "do:delete"
+        }
+    },
+    POS: {
+        label: "Point of Sale",
+        permissions: {
+            VIEW_POS: "pos:view",
+            TRANSACT_POS: "pos:transact"
         }
     },
     STOCK: {
