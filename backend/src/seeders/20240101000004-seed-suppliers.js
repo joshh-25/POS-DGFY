@@ -1,5 +1,5 @@
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     const now = new Date();
     
     await queryInterface.bulkInsert('suppliers', [

@@ -252,7 +252,7 @@ export const adminReactivateTenant = async (req, res) => {
                 email: tenant.admin_email,
                 companyName: tenant.name,
                 companyToken: tenant.company_token
-            }).catch(err => {
+            }).catch(() => {
                 // Non-fatal
             });
         }

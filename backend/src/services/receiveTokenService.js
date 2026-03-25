@@ -2,7 +2,6 @@
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
-import logger from '../config/logger.js';
 import * as purchaseOrderService from './purchaseOrderService.js';
 import * as jobOrderService from './jobOrderService.js';
 

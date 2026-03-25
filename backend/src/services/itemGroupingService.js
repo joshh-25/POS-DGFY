@@ -63,7 +63,7 @@ export const createFolder = async (name, description = '', parent_id = null) => 
         };
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
-            throw new Error(`Folder "${name}" already exists`);
+            throw new Error(`Folder "${name}" already exists`, { cause: error });
         }
         logger.error('Error creating inventory folder:', error);
         throw error;

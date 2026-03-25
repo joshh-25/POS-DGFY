@@ -21,7 +21,7 @@ const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'pean
  * Event Loop immediately. Signature is unchanged: accepts a string, returns a Promise.
  */
 export const parseCSV = (csvContent) => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         parse(csvContent, {
             columns: true,
             skip_empty_lines: true,

@@ -6,7 +6,6 @@
 import db from '../models/index.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
-import { Op } from 'sequelize';
 
 async function buildDependencyGraph(ProductComposition) {
     const compositions = await ProductComposition.findAll({

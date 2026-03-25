@@ -5,8 +5,6 @@ import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import {
     getTemplateHeaders,
-    ITEMS_HEADERS,
-    PRODUCTS_HEADERS,
     ITEMS_CATEGORIES,
     PRODUCTS_CATEGORIES,
     TEMPLATE_TYPES

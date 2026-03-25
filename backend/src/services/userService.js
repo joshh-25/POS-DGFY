@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import dbStore from '../utils/dbStore.js';
-import { hashPassword, comparePassword, generateToken, generateRefreshToken } from './authService.js';
+import { hashPassword, comparePassword, generateToken } from './authService.js';
 import * as landlordService from './landlordService.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import * as emailService from './emailService.js';

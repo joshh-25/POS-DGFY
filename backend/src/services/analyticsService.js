@@ -286,7 +286,8 @@ export const detectAnomalies = async (options = {}) => {
         }
     }
 
-    return anomalies.sort((a, b) => (a.severity === 'CRITICAL' ? -1 : 1));
+    const severityRank = { CRITICAL: 0, WARNING: 1 };
+    return anomalies.sort((a, b) => (severityRank[a.severity] ?? 99) - (severityRank[b.severity] ?? 99));
 };
 
 /**
@@ -390,8 +391,6 @@ export const analyzeInventoryCosts = async ({ startDate, endDate }) => {
 
     let cogs = 0;
     let wasteValue = 0;
-    const categoryBreakdown = {};
-
     for (const m of movements) {
         // Use historical cost if available, otherwise current item cost
         const cost = parseFloat(m.weighted_average_cost || m.item?.cost_per_unit || 0);

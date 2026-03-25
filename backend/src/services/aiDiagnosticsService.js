@@ -636,10 +636,9 @@ const STATIC_KNOWLEDGE_GAPS = [
  * Phase 2: Returns static SYSTEM_FEATURE_MAP analysis + static knowledge gaps.
  * Phase 4 will add live tenant DB counts.
  *
- * @param {Object} user - The authenticated user object from req.user
  * @returns {Promise<Object>} Structured diagnostics report
  */
-export const runDiagnostics = async (user) => {
+export const runDiagnostics = async () => {
   const coveredFeatures = SYSTEM_FEATURE_MAP.filter(f => f.status === 'covered');
   const gapFeatures     = SYSTEM_FEATURE_MAP.filter(f => f.status === 'gap');
 

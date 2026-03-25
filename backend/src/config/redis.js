@@ -69,11 +69,7 @@ export const initializeRedis = async () => {
     });
 
     // Connect to Redis
-    try {
-      await redisClient.connect();
-    } catch (connectError) {
-      throw connectError; // Re-throw to be caught by outer catch
-    }
+    await redisClient.connect();
     isRedisAvailable = true;
     logger.info('✅ Redis connection established successfully');
     return true;
@@ -103,7 +99,7 @@ export const initializeRedis = async () => {
           // If not connected, just disconnect without quit
           await redisClient.disconnect().catch(() => {});
         }
-      } catch (quitError) {
+      } catch {
         // Ignore quit/disconnect errors
       }
     }
@@ -149,4 +145,3 @@ export default {
   isRedisConnected,
   closeRedis,
 };
-

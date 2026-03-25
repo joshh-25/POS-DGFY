@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     // Check if admin user already exists
     let existingAdmin = [];
     try {
@@ -9,7 +9,7 @@ export default {
         `SELECT email FROM users WHERE email = 'admin@test.com' OR role = 'admin'`
       );
       existingAdmin = result[0] || [];
-    } catch (err) {
+    } catch {
       // Table might not exist yet, continue with insert
     }
 
@@ -41,7 +41,7 @@ export default {
     }
   },
 
-  async down(queryInterface, Sequelize) {
+  async down(queryInterface) {
     // Remove the seeded admin user
     await queryInterface.bulkDelete('users', {
       email: 'admin@test.com'

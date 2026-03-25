@@ -37,7 +37,9 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
         req.tenant = {
             id: 'ai-export-tenant',
             name: 'AI Export Tenant',
-            plan: 'premium'
+            status: 'active',
+            plan: 'premium',
+            subscription_status: 'active'
         };
         next();
     }

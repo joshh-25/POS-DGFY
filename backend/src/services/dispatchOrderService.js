@@ -304,7 +304,7 @@ export const createDispatchOrder = async (data, userId) => {
     }
 };
 
-export const updateDispatchOrder = async (doId, data, userId) => {
+export const updateDispatchOrder = async (doId, data) => {
     const DispatchOrder = dbStore.get('DispatchOrder');
     const DispatchOrderLine = dbStore.get('DispatchOrderLine');
     const Item = dbStore.get('Item');

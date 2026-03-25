@@ -1,5 +1,5 @@
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     // Get item IDs by SKU code (products and ingredients)
     const [items] = await queryInterface.sequelize.query(
       `SELECT item_id, sku_code FROM items WHERE sku_code IN ('PRD-GTM-001', 'PRD-HRB-001', 'ING-TEA-001', 'ING-GIN-001', 'ING-SUG-001')`

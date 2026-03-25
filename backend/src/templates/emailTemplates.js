@@ -317,12 +317,11 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyTok
  * Generate company rejection notification email template
  * @param {Object} params - Template parameters
  * @param {string} params.companyName - The rejected company name
- * @param {string} params.adminEmail - Admin's email
  * @param {string} [params.rejectionReason] - Optional reason for rejection
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyRejectedTemplate = ({ companyName, adminEmail, rejectionReason, appUrl }) => {
+export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, appUrl }) => {
   const registerUrlRaw = `${appUrl}/register`;
   const registerUrl = appendUtm(registerUrlRaw, 'company_rejected');
 
@@ -472,7 +471,7 @@ export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, appUr
 </html>`.trim();
 };
 
-export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate, appUrl }) => {
+export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate }) => {
   // No CTA in this email currently, but helper is available.
 
   return `
@@ -512,7 +511,7 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate, a
 </html>`.trim();
 };
 
-export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => {
+export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
   // Payment failure notification
 
   return `
@@ -552,7 +551,7 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => 
 </html>`.trim();
 };
 
-export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd, appUrl }) => {
+export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd }) => {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -659,7 +658,7 @@ export const getPayPalSetupTemplate = ({ companyName, approvalUrl, expiresAt, pl
   return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Billing Setup', body);
 };
 
-/** Admin notified when PayPal setup link expired */
+/* Admin notified when PayPal setup link expired
 export const getPayPalSetupExpiredTemplate = ({ companyName }) => {
   const body = `
     <h2 style="margin:0 0 16px;color:#b91c1c;font-size:22px;">PayPal Setup Link Expired</h2>

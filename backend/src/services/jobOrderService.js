@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
-import { convertQuantity, areCompatible, normalizeUom, getUomLabel } from '../utils/uomConverter.js';
+import { convertQuantity, areCompatible, normalizeUom } from '../utils/uomConverter.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
 const visibleItemWhere = (where = {}) => {
@@ -218,7 +218,7 @@ export const createJobOrder = async (joData, userId) => {
   });
 };
 
-export const finalizeJobOrder = async (joId, userId) => {
+export const finalizeJobOrder = async (joId) => {
   const JobOrder = dbStore.get('JobOrder');
   const Item = dbStore.get('Item');
   const JOIngredient = dbStore.get('JOIngredient');
@@ -490,7 +490,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       // Create production output movement
       // Use createStockMovement with 'production_output' which handles positive addition
       // PASS TRANSACTION 't'
-      const productionMovement = await createStockMovement({
+      await createStockMovement({
         item_id: product.item_id,
         quantity: qtyToProcess,
         movement_type: 'production_output',

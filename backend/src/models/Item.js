@@ -132,7 +132,7 @@ const Item = sequelize.define('Item', {
       if (typeof rawValue === 'string') {
         try {
           return JSON.parse(rawValue);
-        } catch (e) {
+        } catch {
           return null;
         }
       }
@@ -173,7 +173,7 @@ const Item = sequelize.define('Item', {
       if (typeof rawValue === 'string') {
         try {
           return JSON.parse(rawValue);
-        } catch (e) {
+        } catch {
           return null;
         }
       }

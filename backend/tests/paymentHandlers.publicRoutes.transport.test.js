@@ -4,22 +4,34 @@ const mockHandleWebhookUseCase = jest.fn();
 const mockCancelSubscriptionUseCase = jest.fn();
 const mockGetBillingHistoryUseCase = jest.fn();
 const mockSyncWithPayPalUseCase = jest.fn();
+const mockSyncWithPayMongoUseCase = jest.fn();
 const mockUpgradeToPremiumUseCase = jest.fn();
 const mockMigrateToPayPalUseCase = jest.fn();
+const mockMigrateToPayMongoUseCase = jest.fn();
 const mockChangePlanUseCase = jest.fn();
+const mockChangePayMongoSubscriptionUseCase = jest.fn();
 const mockRequestReactivationUseCase = jest.fn();
 const mockReactivateWithPayPalUseCase = jest.fn();
+const mockReactivateWithPayMongoUseCase = jest.fn();
+const mockCancelPayMongoSubscriptionUseCase = jest.fn();
+const mockSetupPayMongoRecurringUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/payments/index.js', () => ({
     handleWebhookUseCase: mockHandleWebhookUseCase,
     cancelSubscriptionUseCase: mockCancelSubscriptionUseCase,
     getBillingHistoryUseCase: mockGetBillingHistoryUseCase,
     syncWithPayPalUseCase: mockSyncWithPayPalUseCase,
+    syncWithPayMongoUseCase: mockSyncWithPayMongoUseCase,
     upgradeToPremiumUseCase: mockUpgradeToPremiumUseCase,
     migrateToPayPalUseCase: mockMigrateToPayPalUseCase,
+    migrateToPayMongoUseCase: mockMigrateToPayMongoUseCase,
     changePlanUseCase: mockChangePlanUseCase,
+    changePayMongoSubscriptionUseCase: mockChangePayMongoSubscriptionUseCase,
     requestReactivationUseCase: mockRequestReactivationUseCase,
     reactivateWithPayPalUseCase: mockReactivateWithPayPalUseCase,
+    reactivateWithPayMongoUseCase: mockReactivateWithPayMongoUseCase,
+    cancelPayMongoSubscriptionUseCase: mockCancelPayMongoSubscriptionUseCase,
+    setupPayMongoRecurringUseCase: mockSetupPayMongoRecurringUseCase,
     paymentRepository: {}
 }));
 

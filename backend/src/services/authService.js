@@ -14,8 +14,6 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import * as cacheService from './cacheService.js';
 import * as landlordService from './landlordService.js';
-import fs from 'fs';
-import path from 'path';
 import logger from '../config/logger.js';
 
 

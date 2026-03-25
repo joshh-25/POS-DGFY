@@ -2,11 +2,13 @@ import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 
 const mockSendSubscriptionExpiringEmail = jest.fn();
+const mockIsEmailConfigured = jest.fn();
 const mockDbGet = jest.fn();
 const mockAcquireLock = jest.fn();
 const mockReleaseLock = jest.fn();
 
 jest.unstable_mockModule('../src/services/emailService.js', () => ({
+    isEmailConfigured: mockIsEmailConfigured,
     sendSubscriptionExpiringEmail: mockSendSubscriptionExpiringEmail,
     sendPaymentFailedGracePeriodEmail: jest.fn(),
     sendSubscriptionCancelledEmail: jest.fn()
@@ -119,6 +121,9 @@ describe('billingScheduler.checkExpiringSubscriptions idempotency', () => {
         jest.setSystemTime(FIXED_NOW);
         jest.clearAllMocks();
         mockSendSubscriptionExpiringEmail.mockReset();
+        mockSendSubscriptionExpiringEmail.mockResolvedValue({ messageId: 'ok' });
+        mockIsEmailConfigured.mockReset();
+        mockIsEmailConfigured.mockReturnValue(true);
         mockDbGet.mockReset();
         mockAcquireLock.mockReset();
         mockReleaseLock.mockReset();
@@ -192,7 +197,7 @@ describe('billingScheduler.checkExpiringSubscriptions idempotency', () => {
         expect(tenant.last_expiry_notification_type).toBe('7-day');
     });
 
-    it('does not update notification markers when email send fails', async () => {
+    it('still updates notification markers when email send fails (non-blocking send)', async () => {
         const tenant = makeTenant({
             id: 'tenant-send-fail',
             current_period_end: dateFromBase(FIXED_NOW, 7)
@@ -202,10 +207,11 @@ describe('billingScheduler.checkExpiringSubscriptions idempotency', () => {
         mockDbGet.mockReturnValue(tenantModel);
         mockSendSubscriptionExpiringEmail.mockRejectedValue(new Error('smtp down'));
 
-        await expect(checkExpiringSubscriptions()).rejects.toThrow('smtp down');
-        expect(tenant.update).not.toHaveBeenCalled();
-        expect(tenant.last_expiry_notified_at).toBeNull();
-        expect(tenant.last_expiry_notification_type).toBeNull();
+        await checkExpiringSubscriptions();
+        expect(mockSendSubscriptionExpiringEmail).toHaveBeenCalledTimes(1);
+        expect(tenant.update).toHaveBeenCalledTimes(1);
+        expect(tenant.last_expiry_notified_at).toBeInstanceOf(Date);
+        expect(tenant.last_expiry_notification_type).toBe('7-day');
     });
 
     it('processes 1-day range tenant once and remains idempotent on rerun', async () => {

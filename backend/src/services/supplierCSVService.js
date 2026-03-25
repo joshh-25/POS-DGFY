@@ -14,7 +14,7 @@ const VALID_STATUSES = ['active', 'inactive', 'draft'];
  * Switched to async Promise-based parse() — non-blocking, Event Loop stays responsive.
  */
 export const parseCSV = (csvContent) => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         parse(csvContent, {
             columns: true,
             skip_empty_lines: true,
@@ -172,7 +172,7 @@ export const previewImport = async (csvContent) => {
 /**
  * Confirm Import
  */
-export const confirmImport = async (rows, userId) => {
+export const confirmImport = async (rows) => {
     const results = {
         created: [],
         updated: [],
@@ -193,36 +193,29 @@ export const confirmImport = async (rows, userId) => {
                 continue;
             }
 
-            try {
-                const Supplier = dbStore.get('Supplier');
-                if (row.action === 'CREATE') {
-                    const newSupplier = await Supplier.create({
-                        ...row.data,
-                        status: row.data.status || 'active'
-                    }, { transaction });
+            const Supplier = dbStore.get('Supplier');
+            if (row.action === 'CREATE') {
+                const newSupplier = await Supplier.create({
+                    ...row.data,
+                    status: row.data.status || 'active'
+                }, { transaction });
 
-                    results.created.push({
-                        rowNumber: row.rowNumber,
-                        supplier_id: newSupplier.supplier_id,
-                        name: newSupplier.name
-                    });
-                } else {
-                    // UPDATE
-                    await Supplier.update(row.data, {
-                        where: { supplier_id: row.existingSupplierId },
-                        transaction
-                    });
-                    results.updated.push({
-                        rowNumber: row.rowNumber,
-                        supplier_id: row.existingSupplierId,
-                        name: row.data.name
-                    });
-                }
-            } catch (error) {
-                // Should we fail the whole batch? Implementation Plan 6.4 implies "transaction" which usually means atomicity.
-                // However, preserving partial success logic requires isolated transactions or savepoints.
-                // Given "Wrap confirmImport logic in a Sequelize transaction", we'll enforce atomicity for the batch of valid rows.
-                throw error;
+                results.created.push({
+                    rowNumber: row.rowNumber,
+                    supplier_id: newSupplier.supplier_id,
+                    name: newSupplier.name
+                });
+            } else {
+                // UPDATE
+                await Supplier.update(row.data, {
+                    where: { supplier_id: row.existingSupplierId },
+                    transaction
+                });
+                results.updated.push({
+                    rowNumber: row.rowNumber,
+                    supplier_id: row.existingSupplierId,
+                    name: row.data.name
+                });
             }
         }
 

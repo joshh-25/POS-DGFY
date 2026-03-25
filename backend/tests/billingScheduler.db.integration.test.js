@@ -3,8 +3,10 @@ import { Op } from 'sequelize';
 import crypto from 'crypto';
 
 const mockSendSubscriptionExpiringEmail = jest.fn();
+const mockIsEmailConfigured = jest.fn();
 
 jest.unstable_mockModule('../src/services/emailService.js', () => ({
+    isEmailConfigured: mockIsEmailConfigured,
     sendSubscriptionExpiringEmail: mockSendSubscriptionExpiringEmail,
     sendPaymentFailedGracePeriodEmail: jest.fn(),
     sendSubscriptionCancelledEmail: jest.fn()
@@ -49,6 +51,8 @@ describe('billingScheduler DB integration - expiring notifications idempotency',
 
     beforeEach(async () => {
         mockSendSubscriptionExpiringEmail.mockReset();
+        mockIsEmailConfigured.mockReset();
+        mockIsEmailConfigured.mockReturnValue(true);
         if (tenantIds.length > 0) {
             await Tenant.destroy({ where: { id: { [Op.in]: tenantIds } } });
             tenantIds.length = 0;
@@ -93,15 +97,16 @@ describe('billingScheduler DB integration - expiring notifications idempotency',
         expect(refreshed.last_expiry_notified_at).toBeTruthy();
     });
 
-    it('does not persist notification markers when email send fails', async () => {
+    it('persists notification markers even when email send fails', async () => {
         const tenant = await createExpiringTenant({ daysAhead: 7 });
         mockSendSubscriptionExpiringEmail.mockRejectedValue(new Error('smtp failure'));
 
-        await expect(checkExpiringSubscriptions()).rejects.toThrow('smtp failure');
+        await checkExpiringSubscriptions();
 
         const refreshed = await Tenant.findByPk(tenant.id);
-        expect(refreshed.last_expiry_notified_at).toBeNull();
-        expect(refreshed.last_expiry_notification_type).toBeNull();
+        expect(mockSendSubscriptionExpiringEmail).toHaveBeenCalledTimes(1);
+        expect(refreshed.last_expiry_notification_type).toBe('7-day');
+        expect(refreshed.last_expiry_notified_at).not.toBeNull();
     });
 
     it('allows send again when the previous send was yesterday for the same label', async () => {

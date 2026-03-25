@@ -1,5 +1,5 @@
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     // Check if items already exist (idempotent seeder)
     let existingItems = [];
     try {
@@ -7,7 +7,7 @@ export default {
         `SELECT sku_code FROM items WHERE sku_code IN ('ING-SUG-001', 'ING-SAL-001', 'ING-GIN-001', 'ING-TEA-001', 'PRD-GTM-001', 'PRD-HRB-001', 'PRD-WIP-001', 'PKG-BTL-001', 'PKG-STK-001', 'PKG-BOX-001', 'SUP-CLN-001', 'SUP-SAN-001')`
       );
       existingItems = result[0] || [];
-    } catch (err) {
+    } catch {
       // Table might not exist yet, continue with insert
     }
 

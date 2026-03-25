@@ -8,7 +8,7 @@
  * Run `npm run validate:ai` to verify consistency.
  */
 
-import { AI_TOOLS, TOOL_CATEGORIES } from './aiTools.js';
+import { AI_TOOLS } from './aiTools.js';
 
 /**
  * Get tool names grouped by category for the system prompt

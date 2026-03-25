@@ -26,9 +26,11 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
     tenantHandler: (req, res, next) => {
         req.tenant = {
-            id: 'test-tenant-123',
+            id: '11111111-1111-4111-8111-111111111111',
             name: 'Test Tenant',
-            plan: 'premium' // CRITICAL: satisfies requirePremium
+            status: 'active',
+            plan: 'premium', // CRITICAL: satisfies requirePremium
+            subscription_status: 'active'
         };
         next();
     }

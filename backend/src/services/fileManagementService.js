@@ -33,7 +33,7 @@ const ensureRootExists = async () => {
  */
 const resolveSafePath = (relativePath) => {
     // Normalize path to basic characters
-    const safeRelative = path.normalize(relativePath).replace(/^(\.\.[\/\\])+/, '');
+    const safeRelative = path.normalize(relativePath).replace(/^(\.\.[/\\])+/, '');
     const absolutePath = path.join(UPLOADS_ROOT, safeRelative);
 
     if (!absolutePath.startsWith(UPLOADS_ROOT)) {
@@ -63,7 +63,7 @@ export const listFiles = async (directoryPath = '') => {
 
             try {
                 stats = await fs.stat(entryPath);
-            } catch (err) {
+            } catch {
                 // Ignore stat errors (e.g. broken links)
             }
 
@@ -79,7 +79,7 @@ export const listFiles = async (directoryPath = '') => {
         return fileList;
     } catch (error) {
         logger.error(`Error listing files in ${directoryPath}:`, error);
-        throw new Error(`Failed to list files: ${error.message}`);
+        throw new Error(`Failed to list files: ${error.message}`, { cause: error });
     }
 };
 
@@ -112,7 +112,7 @@ export const createFolder = async (folderPath) => {
         };
     } catch (error) {
         logger.error(`Error creating folder ${folderPath}:`, error);
-        throw new Error(`Failed to create folder: ${error.message}`);
+        throw new Error(`Failed to create folder: ${error.message}`, { cause: error });
     }
 };
 
@@ -172,7 +172,7 @@ export const moveFile = async (sourcePath, destinationPath) => {
         };
     } catch (error) {
         logger.error(`Error moving ${sourcePath} to ${destinationPath}:`, error);
-        throw new Error(`Failed to move item: ${error.message}`);
+        throw new Error(`Failed to move item: ${error.message}`, { cause: error });
     }
 };
 

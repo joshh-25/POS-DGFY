@@ -17,7 +17,8 @@ jest.unstable_mockModule('../src/modules/dispatchOrders/index.js', () => ({
   dispatchLinesUseCase: jest.fn(),
   cancelDispatchOrderUseCase: jest.fn(),
   archiveDispatchOrderUseCase: mockArchiveDispatchOrderUseCase,
-  getEarningsReportUseCase: jest.fn()
+  getEarningsReportUseCase: jest.fn(),
+  updateLineSalePriceUseCase: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({

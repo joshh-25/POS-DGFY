@@ -1,7 +1,6 @@
 
 import { Sequelize } from 'sequelize';
 import logger from '../config/logger.js';
-import db from '../models/index.js'; // Main DB connection (Landlord)
 
 // Configuration
 const MAX_CACHED_CONNECTIONS = 20;
@@ -239,7 +238,7 @@ class TenantConnector {
      */
     async closeConnection(tenantId) {
         if (this.connections.has(tenantId)) {
-            const { sequelize, tenantName } = this.connections.get(tenantId);
+            const { sequelize } = this.connections.get(tenantId);
             try {
                 await sequelize.close();
                 this.connections.delete(tenantId);

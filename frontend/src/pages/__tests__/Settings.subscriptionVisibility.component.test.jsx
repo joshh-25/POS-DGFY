@@ -70,7 +70,7 @@ describe('Settings subscription visibility (component)', () => {
     };
   });
 
-  it('renders Link PayPal Subscription for standard manual master admin', () => {
+  it('renders Link PayMongo Subscription for standard manual master admin', () => {
     mockedStoreState.currentUser = {
       is_master_admin: true,
       role: 'admin',
@@ -82,21 +82,21 @@ describe('Settings subscription visibility (component)', () => {
     };
 
     const html = renderToStaticMarkup(<Settings />);
-    expect(html).toContain('Link PayPal Subscription');
+    expect(html).toContain('Link PayMongo Subscription');
   });
 
-  it('hides Link PayPal Subscription when tenant already uses PayPal', () => {
+  it('hides Link PayMongo Subscription when tenant already uses PayMongo', () => {
     mockedStoreState.currentUser = {
       is_master_admin: true,
       role: 'admin',
       company: {
         plan: 'standard',
-        payment_method: 'paypal',
+        payment_method: 'paymongo',
         subscription_status: 'active'
       }
     };
 
     const html = renderToStaticMarkup(<Settings />);
-    expect(html).not.toContain('Link PayPal Subscription');
+    expect(html).not.toContain('Link PayMongo Subscription');
   });
 });

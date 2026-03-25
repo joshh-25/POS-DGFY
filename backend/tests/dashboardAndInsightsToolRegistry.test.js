@@ -30,7 +30,8 @@ describe('dashboardAndInsightsToolRegistry', () => {
       overstock_count: 13,
       pending_purchase_orders: 4,
       active_job_orders: 2,
-      total_inventory_value: 450000
+      total_inventory_value: 450000,
+      data_quality: null
     });
   });
 

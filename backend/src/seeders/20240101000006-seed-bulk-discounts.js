@@ -1,5 +1,5 @@
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     // Get supplier IDs by name
     const [suppliers] = await queryInterface.sequelize.query(
       `SELECT supplier_id, name FROM suppliers WHERE name IN ('Supplier A - Premium Foods', 'Supplier B - Organic Spices', 'Supplier C - PackagePro')`

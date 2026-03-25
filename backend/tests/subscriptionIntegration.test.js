@@ -57,6 +57,9 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
 // 5. Disable internal service mocks
 process.env.MOCK_PAYPAL = 'false';
 process.env.NODE_ENV = 'test';
+process.env.PAYPAL_CLIENT_ID = 'test-client-id';
+process.env.PAYPAL_CLIENT_SECRET = 'test-client-secret';
+process.env.PAYPAL_MODE = 'sandbox';
 
 const ENGAGEMENT_EVENT_SAFE_ATTRIBUTES = [
     'event_type',

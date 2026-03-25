@@ -3,7 +3,6 @@ import tenantConnector from '../utils/TenantConnector.js';
 import dbStore from '../utils/dbStore.js';
 import { findTenantByToken } from '../services/landlordService.js';
 import logger from '../config/logger.js';
-import defaultModels from '../models/index.js'; // Fallback models
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 
 // Short-lived in-memory cache for tenant lookups.
@@ -77,7 +76,7 @@ export const tenantHandler = async (req, res, next) => {
         let sequelizeInstance;
         try {
             sequelizeInstance = await tenantConnector.getConnection(tenant);
-        } catch (dbError) {
+        } catch {
             logger.warn(`[TenantHandler] Could not connect to tenant DB for ${tenant.name} (${tenant.status}). Falling back to default context.`);
             return dbStore.run({
                 tenantId: 'default',

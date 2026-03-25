@@ -39,7 +39,6 @@ export const buildItemToolRegistry = ({ itemService }) => {
         search,
         category,
         status = 'active',
-        stock_status: _stockStatus,
         limit = 50,
         page = 1
       } = args;

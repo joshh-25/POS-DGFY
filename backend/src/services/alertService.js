@@ -20,7 +20,7 @@ const getSettingValue = async (key, defaultValue) => {
       return setting.setting_value === 'true' || setting.setting_value === '1';
     }
     return setting.setting_value;
-  } catch (err) {
+  } catch {
     console.warn(`Failed to get setting ${key}, using default: ${defaultValue}`);
     return defaultValue;
   }

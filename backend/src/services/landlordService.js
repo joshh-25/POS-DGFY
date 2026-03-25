@@ -3,6 +3,22 @@ import { Tenant, UserTenantMapping, sequelize } from '../models/index.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
 
+// Keep tenant lookups resilient when landlord schemas are slightly behind
+// (e.g., test fixtures not yet migrated with optional billing columns).
+const TENANT_LOOKUP_ATTRIBUTES = [
+    'id',
+    'name',
+    'company_token',
+    'db_name',
+    'db_host',
+    'status',
+    'plan',
+    'subscription_status',
+    'current_period_end',
+    'payment_method',
+    'rejection_reason'
+];
+
 /**
  * Generate a secure random token for company invites/identification
  */
@@ -55,7 +71,8 @@ export const createTenant = async (data) => {
  */
 export const findTenantByToken = async (token) => {
     return await Tenant.findOne({
-        where: { company_token: token }
+        where: { company_token: token },
+        attributes: TENANT_LOOKUP_ATTRIBUTES
     });
 };
 
@@ -65,7 +82,8 @@ export const findTenantByToken = async (token) => {
  */
 export const findTenantByDbName = async (dbName) => {
     return await Tenant.findOne({
-        where: { db_name: dbName }
+        where: { db_name: dbName },
+        attributes: TENANT_LOOKUP_ATTRIBUTES
     });
 };
 
@@ -74,7 +92,8 @@ export const findTenantByDbName = async (dbName) => {
  */
 export const isDomainAvailable = async (domain) => {
     const tenant = await Tenant.findOne({
-        where: { domain }
+        where: { domain },
+        attributes: ['id']
     });
     return !tenant;
 };
@@ -92,9 +111,10 @@ export const findTenantsByEmail = async (email) => {
         include: [{
             model: Tenant,
             as: 'tenant',
+            attributes: TENANT_LOOKUP_ATTRIBUTES,
             where: {
                 status: {
-                    [sequelize.Sequelize.Op.in]: ['active', 'pending', 'inactive', 'rejected']
+                    [sequelize.Sequelize.Op.in]: ['active', 'pending', 'inactive']
                 }
             }
         }]

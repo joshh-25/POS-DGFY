@@ -28,7 +28,7 @@ import {
 
 // Lazy initialize transporter
 let _transporter = null;
-let _isConfigured = false;
+const getAppUrl = () => process.env.APP_URL || 'http://localhost:5173';
 
 /**
  * Check if email is configured
@@ -59,8 +59,6 @@ const getTransporter = () => {
   };
 
   _transporter = nodemailer.createTransport(config);
-  _isConfigured = true;
-
   logger.info('Email transporter initialized');
   return _transporter;
 };
@@ -115,7 +113,7 @@ export const sendEmail = async ({ to, subject, html, text }) => {
  * @returns {Promise<Object>} - Nodemailer send result
  */
 export const sendInvitationEmail = async ({ email, inviterName, role, invitationToken, tenantName }) => {
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = getAppUrl();
   const inviteUrl = `${appUrl}/accept-invite?token=${invitationToken}`;
 
   const html = getInvitationTemplate({
@@ -143,7 +141,7 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
  * @returns {Promise<Object>} - Nodemailer send result
  */
 export const sendCompanyApprovedEmail = async ({ email, companyName, companyToken }) => {
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = getAppUrl();
   const loginUrl = `${appUrl}/login`;
 
   const html = getCompanyApprovedTemplate({
@@ -170,7 +168,7 @@ export const sendCompanyApprovedEmail = async ({ email, companyName, companyToke
  * @returns {Promise<Object>} - Nodemailer send result
  */
 export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionReason }) => {
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = getAppUrl();
   const registerUrl = `${appUrl}/register-company`;
 
   const html = getCompanyRejectedTemplate({
@@ -214,7 +212,7 @@ export const verifyConnection = async () => {
  * Send subscription expiring notification
  */
 export const sendSubscriptionExpiringEmail = async ({ email, companyName, expiryDate }) => {
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = getAppUrl();
   const upgradeUrl = `${appUrl}/settings?tab=subscription`;
 
   const html = getSubscriptionExpiringTemplate({
@@ -235,6 +233,7 @@ export const sendSubscriptionExpiringEmail = async ({ email, companyName, expiry
  * Send subscription cancelled notification
  */
 export const sendSubscriptionCancelledEmail = async ({ email, companyName, downgradeDate }) => {
+  const appUrl = getAppUrl();
   const html = getSubscriptionCancelledTemplate({
     companyName,
     downgradeDate: new Date(downgradeDate).toLocaleDateString(),
@@ -252,6 +251,7 @@ export const sendSubscriptionCancelledEmail = async ({ email, companyName, downg
  * Send payment failed notification
  */
 export const sendPaymentFailedEmail = async ({ email, companyName, retryDate }) => {
+  const appUrl = getAppUrl();
   const html = getPaymentFailedTemplate({
     companyName,
     retryDate: retryDate ? new Date(retryDate).toLocaleDateString() : 'soon',
@@ -269,6 +269,7 @@ export const sendPaymentFailedEmail = async ({ email, companyName, retryDate }) 
  * Send payment failed grace period notification
  */
 export const sendPaymentFailedGracePeriodEmail = async ({ email, companyName, gracePeriodEnd }) => {
+  const appUrl = getAppUrl();
   const html = getPaymentFailedGracePeriodTemplate({
     companyName,
     gracePeriodEnd: new Date(gracePeriodEnd).toLocaleDateString(),
@@ -337,7 +338,7 @@ export const sendReactivationRequestEmail = async ({ email, companyName }) => {
 
 /** Sent to the tenant admin when their account is reactivated */
 export const sendReactivationApprovedEmail = async ({ email, companyName, companyToken }) => {
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = getAppUrl();
   const loginUrl = `${appUrl}/login`;
   const html = getReactivationApprovedTemplate({ companyName, companyToken, loginUrl });
   return sendEmail({

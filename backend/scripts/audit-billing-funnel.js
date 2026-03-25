@@ -49,6 +49,7 @@ const run = async () => {
             } : undefined,
             paymentModel: rows ? null : undefined,
             tenantModel: rows ? null : undefined,
+            webhookLogModel: rows ? null : undefined,
             lookbackHours,
             attemptGraceMinutes
         });

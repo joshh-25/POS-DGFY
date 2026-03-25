@@ -3,6 +3,9 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 import { v4 as uuidv4 } from 'uuid';
 
+process.env.OPENAI_API_KEY = 'test-openai-key';
+process.env.OPENAI_MODEL = 'gpt-4o';
+
 // 1. Mock OpenAI
 const mockCreate = jest.fn();
 jest.unstable_mockModule('openai', () => ({
@@ -32,9 +35,11 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
     tenantHandler: (req, res, next) => {
         req.tenant = {
-            id: 'test-tenant-123',
+            id: '11111111-1111-4111-8111-111111111111',
             name: 'Test Tenant',
-            plan: 'premium'
+            status: 'active',
+            plan: 'premium',
+            subscription_status: 'active'
         };
         next();
     }
@@ -116,7 +121,7 @@ describe('AI Cost Control Integration Test', () => {
         });
 
         expect(log).toBeDefined();
-        expect(log.tenant_id).toBe('test-tenant-123'); // From mocked tenantHandler
+        expect(log.tenant_id).toBe('11111111-1111-4111-8111-111111111111'); // From mocked tenantHandler
         expect(log.user_id).toBe(user.user_id);
         expect(log.input_tokens).toBe(15);
         expect(log.output_tokens).toBe(25);

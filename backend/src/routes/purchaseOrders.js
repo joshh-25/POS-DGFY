@@ -1,6 +1,6 @@
 import express from 'express';
 import * as purchaseOrderController from '../controllers/purchaseOrderController.js';
-import { validateCreatePurchaseOrder, validateUpdatePurchaseOrder, validateCreatePurchaseOrderDraft } from '../validators/purchaseOrderValidator.js';
+import { validateCreatePurchaseOrder, validateCreatePurchaseOrderDraft } from '../validators/purchaseOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 

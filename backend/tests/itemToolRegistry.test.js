@@ -85,7 +85,7 @@ describe('itemToolRegistry', () => {
 
     expect(itemService.getItems).toHaveBeenCalledWith({ search: 'SKU-7', limit: 1 });
     expect(result.suppliers[0].name).toBe('DairyCo');
-    expect(result.batches[0].batch_id).toBe(3);
+    expect(result.fifo_batches[0].batch_id).toBe(3);
     expect(result.recent_movements[0].type).toBe('purchase_receipt');
   });
 

@@ -3,7 +3,6 @@ import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
-import { createStockMovement } from '../../../services/stockMovementService.js';
 import { assertPurchaseOrderRepositoryContract } from '../contracts/purchaseOrderRepository.contract.js';
 
 const createHttpError = (message, statusCode) => {

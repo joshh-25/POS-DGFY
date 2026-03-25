@@ -1,6 +1,6 @@
 import express from 'express';
 import * as jobOrderController from '../controllers/jobOrderController.js';
-import { validateCreateJobOrder, validateUpdateJobOrder, validateCreateJobOrderDraft } from '../validators/jobOrderValidator.js';
+import { validateCreateJobOrder, validateCreateJobOrderDraft } from '../validators/jobOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 

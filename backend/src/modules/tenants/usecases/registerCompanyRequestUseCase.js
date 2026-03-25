@@ -16,6 +16,7 @@ export const buildRegisterCompanyRequestUseCase = ({
 }) => {
     return async ({ body, correlationId }) => {
         const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId } = body || {};
+        const normalizedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
         const adminEmailDomain = typeof adminEmail === 'string' && adminEmail.includes('@')
             ? adminEmail.split('@')[1].toLowerCase()
             : null;
@@ -27,7 +28,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             subscriptionId: subscriptionId || null,
             correlationId,
             baseMetadata: {
-                plan,
+                plan: normalizedPlan,
                 email_domain: adminEmailDomain
             }
         });
@@ -56,6 +57,39 @@ export const buildRegisterCompanyRequestUseCase = ({
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Missing required fields: name, adminEmail, adminPassword',
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (!['standard', 'premium'].includes(normalizedPlan)) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'invalid_plan',
+                    httpStatus: 400,
+                    metadata: {
+                        plan: normalizedPlan
+                    }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Plan must be either standard or premium.',
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (normalizedPlan === 'premium' && !subscriptionId) {
+                await tracker.blocked('missing_subscription', {
+                    httpStatus: 400,
+                    failureReason: 'missing_subscription_id',
+                    metadata: {
+                        plan: normalizedPlan
+                    }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A PayPal subscription ID is required for premium registration.',
                     { statusCode: 400 }
                 ));
             }
@@ -144,7 +178,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                 status: initialStatus,
                 admin_email: adminEmail,
                 admin_password_hash: passwordHash,
-                plan,
+                plan: normalizedPlan,
                 subscription_status: subscriptionStatus,
                 paypal_subscription_id: validatedSubscriptionId,
                 current_period_end: currentPeriodEnd,
@@ -161,7 +195,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             }
 
             if (initialStatus === 'active') {
-                logger?.info?.(`Auto-provisioning ${plan} Tenant via PayPal: ${name}`);
+                logger?.info?.(`Auto-provisioning ${normalizedPlan} Tenant via PayPal: ${name}`);
                 await provisionTenant({
                     tenantId: tenant.id,
                     name: tenant.name,
@@ -192,12 +226,12 @@ export const buildRegisterCompanyRequestUseCase = ({
                     statusCode: 201,
                     payload: {
                         success: true,
-                        message: `Company registered and activated successfully! Welcome to ${plan.charAt(0).toUpperCase() + plan.slice(1)}.`,
+                        message: `Company registered and activated successfully! Welcome to ${normalizedPlan.charAt(0).toUpperCase() + normalizedPlan.slice(1)}.`,
                         data: {
                             id: tenant.id,
                             name: tenant.name,
                             status: 'active',
-                            plan,
+                            plan: normalizedPlan,
                             company_token: tenant.company_token
                         }
                     }
@@ -217,12 +251,12 @@ export const buildRegisterCompanyRequestUseCase = ({
                 statusCode: 201,
                 payload: {
                     success: true,
-                    message: `Your ${plan} plan registration has been submitted for review. You will be notified once approved.`,
+                    message: `Your ${normalizedPlan} plan registration has been submitted for review. You will be notified once approved.`,
                     data: {
                         id: tenant.id,
                         name: tenant.name,
                         status: 'pending',
-                        plan,
+                        plan: normalizedPlan,
                         company_token: tenant.company_token
                     }
                 }

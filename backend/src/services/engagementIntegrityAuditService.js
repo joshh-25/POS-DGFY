@@ -140,7 +140,7 @@ export const auditBillingFunnelIntegrity = async ({
     const graceCutoff = new Date(now.getTime() - (attemptGraceMinutes * 60 * 1000));
     const writeAuditStats = getEngagementWriteAuditStats({ now, lookbackHours });
 
-    let rows = [];
+    let rows;
 
     try {
         rows = await engagementEventModel.findAll({

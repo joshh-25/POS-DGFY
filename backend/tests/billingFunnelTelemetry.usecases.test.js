@@ -341,6 +341,7 @@ describe('billing funnel telemetry hardening', () => {
                 plan: 'standard',
                 subscription_status: 'inactive',
                 billing_cycle_anchor: null,
+                update: jest.fn().mockResolvedValue(true),
                 save: jest.fn().mockResolvedValue(true)
             };
             const paymentRepository = basePaymentRepository();

@@ -496,21 +496,15 @@ export const buildHandleWebhookUseCase = ({
 
         if (!shouldBypassSignature) {
             const isPayMongoEvent = eventType?.startsWith('subscription.') || eventType?.startsWith('payment.');
-            let isValid = false;
-
-            if (isPayMongoEvent) {
-                isValid = paymongoService?.verifyWebhookSignature?.(paymongoSignature, rawBody || body) || false;
-            } else {
-                if (!paypalService?.verifyWebhookSignature) {
-                    isValid = false;
-                } else {
-                    isValid = await paypalService.verifyWebhookSignature(headers, body);
-                }
-            }
+            const isValid = isPayMongoEvent
+                ? paymongoService?.verifyWebhookSignature?.(paymongoSignature, rawBody || body) || false
+                : (paypalService?.verifyWebhookSignature
+                    ? await paypalService.verifyWebhookSignature(headers, body)
+                    : false);
 
             if (!isValid) {
                 logger.error(`Invalid webhook signature for ID: ${webhookId}`);
-                await emitWebhookEvent('billing_webhook_invalid_signature', {
+                await emitWebhookEvent('paypal_webhook_invalid_signature', {
                     requestId: transmissionId || webhookId,
                     correlationId: webhookId,
                     providerEventId: paypalEventId,

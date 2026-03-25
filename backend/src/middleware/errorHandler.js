@@ -1,7 +1,8 @@
 import logger from '../config/logger.js';
 import { mapDomainErrorToHttp } from '../modules/shared/contracts/domainErrorMapper.js';
 
-export const errorHandler = (err, req, res, next) => {
+export const errorHandler = (err, req, res, _next) => {
+  void _next;
   const mappedDomainError = mapDomainErrorToHttp(err);
   const statusCode = mappedDomainError?.statusCode || err.statusCode || 500;
   const message = mappedDomainError?.payload?.message || err.message || 'Internal Server Error';

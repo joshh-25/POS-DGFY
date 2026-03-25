@@ -62,7 +62,7 @@ export const buildJobOrderToolRegistry = ({ jobOrderService, itemService, logger
         if (product) {
           productName = product.name;
         }
-      } catch (_error) {
+      } catch {
         // Best effort only; response already has a fallback label.
       }
 

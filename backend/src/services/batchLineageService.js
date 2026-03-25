@@ -1,8 +1,5 @@
-import { Op } from 'sequelize';
 import logger from '../config/logger.js';
 import dbStore from '../utils/dbStore.js';
-import { Op } from 'sequelize';
-import logger from '../config/logger.js';
 
 /**
  * Create batch lineage records when a product is produced from ingredients

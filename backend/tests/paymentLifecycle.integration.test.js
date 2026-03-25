@@ -44,6 +44,9 @@ jest.unstable_mockModule('../src/controllers/aiController.js', () => ({
 process.env.MOCK_PAYPAL = 'false';
 process.env.NODE_ENV = 'test';
 process.env.REDIS_URL = '';
+process.env.PAYPAL_CLIENT_ID = 'test-client-id';
+process.env.PAYPAL_CLIENT_SECRET = 'test-client-secret';
+process.env.PAYPAL_MODE = 'sandbox';
 process.env.PAYPAL_STANDARD_PLAN_ID = 'P-STANDARD';
 process.env.PAYPAL_PREMIUM_PLAN_ID = 'P-PREMIUM';
 

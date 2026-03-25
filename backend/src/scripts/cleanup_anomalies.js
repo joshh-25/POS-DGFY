@@ -1,7 +1,6 @@
 import sequelize from '../config/database.js';
 import Item from '../models/Item.js';
 import StockMovement from '../models/StockMovement.js';
-import { Op } from 'sequelize';
 
 const cleanupAnomalies = async () => {
     try {

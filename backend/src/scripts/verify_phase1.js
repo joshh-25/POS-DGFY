@@ -1,8 +1,6 @@
 
 import { sequelize } from '../models/index.js';
-import { createTenant } from '../services/landlordService.js';
 import tenantConnector from '../utils/TenantConnector.js';
-import logger from '../config/logger.js';
 
 async function verifyInfrastructure() {
     console.log('--- STARTING PHASE 1 VERIFICATION ---');
@@ -58,7 +56,7 @@ async function verifyInfrastructure() {
 
         // 4. Test Caching
         const start2 = Date.now();
-        const tenantDbCached = await tenantConnector.getConnection(tenant);
+        await tenantConnector.getConnection(tenant);
         const duration2 = Date.now() - start2;
         console.log(`✅ Connection 2 (Cached): ${duration2}ms`);
 

@@ -1,5 +1,5 @@
 export default {
-  async up(queryInterface, Sequelize) {
+  async up(queryInterface) {
     // Check if data already exists (idempotent seeder)
     let existingSettings = [];
     try {
@@ -7,7 +7,7 @@ export default {
         'SELECT setting_key FROM system_settings'
       );
       existingSettings = result[0] || [];
-    } catch (err) {
+    } catch {
       // Table might not exist yet, continue with insert
     }
 
@@ -96,7 +96,7 @@ export default {
     await queryInterface.bulkInsert('system_settings', settingsToInsert);
   },
 
-  async down(queryInterface, Sequelize) {
+  async down(queryInterface) {
     await queryInterface.bulkDelete('system_settings', null, {});
   }
 };

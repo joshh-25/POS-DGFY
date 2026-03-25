@@ -9,7 +9,10 @@ const mockGetPricingSettingsUseCase = jest.fn();
 const mockUpdatePricingSettingsUseCase = jest.fn();
 const mockUpdateTenantUseCase = jest.fn();
 const mockDeleteTenantUseCase = jest.fn();
+const mockResubmitRegistrationUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockSetupPayPalRecurringUseCase = jest.fn();
+const mockChangePlanUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   registerCompanyRequestUseCase: mockRegisterCompanyRequestUseCase,
@@ -20,7 +23,22 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   getPricingSettingsUseCase: mockGetPricingSettingsUseCase,
   updatePricingSettingsUseCase: mockUpdatePricingSettingsUseCase,
   updateTenantUseCase: mockUpdateTenantUseCase,
-  deleteTenantUseCase: mockDeleteTenantUseCase
+  deleteTenantUseCase: mockDeleteTenantUseCase,
+  resubmitRegistrationUseCase: mockResubmitRegistrationUseCase,
+  tenantAdminRepository: {
+    findTenantById: jest.fn(),
+    updateTenant: jest.fn()
+  }
+}));
+
+jest.unstable_mockModule('../src/modules/payments/index.js', () => ({
+  setupPayPalRecurringUseCase: mockSetupPayPalRecurringUseCase,
+  changePlanUseCase: mockChangePlanUseCase
+}));
+
+jest.unstable_mockModule('../src/services/emailService.js', () => ({
+  isEmailConfigured: jest.fn().mockReturnValue(false),
+  sendReactivationApprovedEmail: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({

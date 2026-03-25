@@ -2,7 +2,6 @@ import cron from 'node-cron';
 import fs from 'fs/promises';
 import path from 'path';
 import logger from '../config/logger.js';
-import { TEMP_DIR } from '../config/uploadConfig.js'; // Assuming we export this or defined hardcoded
 
 // Fallback if not exported
 const UPLOAD_DIR = 'uploads/temp';

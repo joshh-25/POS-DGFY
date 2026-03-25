@@ -92,7 +92,6 @@ export const checkExpiringSubscriptions = async () => {
             });
 
             if (expiring.length === 0) {
-                hasMore = false;
                 break;
             }
 
@@ -128,7 +127,6 @@ export const checkExpiredSubscriptions = async () => {
     const now = new Date();
     const BATCH_SIZE = 50;
 
-    let offset = 0;
     let hasMore = true;
 
     while (hasMore) {
@@ -151,7 +149,6 @@ export const checkExpiredSubscriptions = async () => {
         });
 
         if (expired.length === 0) {
-            hasMore = false;
             break;
         }
 

@@ -40,7 +40,6 @@ describe('settingsHandlers.getCompanyInfo', () => {
   });
 
   it('returns 200 success payload for valid tenant context', async () => {
-    mockGetStore.mockReturnValue({ tenantId: 123 });
     mockGetCompanyInfoUseCase.mockResolvedValue({
       success: true,
       data: {
@@ -52,7 +51,7 @@ describe('settingsHandlers.getCompanyInfo', () => {
 
     const res = createRes();
     const next = jest.fn();
-    await getCompanyInfo({}, res, next);
+    await getCompanyInfo({ tenant: { id: 123 } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -63,11 +62,11 @@ describe('settingsHandlers.getCompanyInfo', () => {
       message: 'Company information retrieved successfully',
       timestamp: expect.any(String)
     }));
+    expect(mockGetCompanyInfoUseCase).toHaveBeenCalledWith({ tenantId: 123 });
     expect(next).not.toHaveBeenCalled();
   });
 
   it('returns mapped error payload when use-case fails', async () => {
-    mockGetStore.mockReturnValue({});
     mockGetCompanyInfoUseCase.mockResolvedValue({
       success: false,
       error: {
@@ -80,7 +79,7 @@ describe('settingsHandlers.getCompanyInfo', () => {
 
     const res = createRes();
     const next = jest.fn();
-    await getCompanyInfo({}, res, next);
+    await getCompanyInfo({ tenant: { id: 456 } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -91,7 +90,7 @@ describe('settingsHandlers.getCompanyInfo', () => {
       errors: null,
       timestamp: expect.any(String)
     }));
+    expect(mockGetCompanyInfoUseCase).toHaveBeenCalledWith({ tenantId: 456 });
     expect(next).not.toHaveBeenCalled();
   });
 });
-

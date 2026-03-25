@@ -45,7 +45,7 @@ export const canBeSupplierItem = (category) => {
 };
 
 // Helper: Check if can be used as JO input ingredient
-export const canBeJobOrderInput = (category, productType) => {
+export const canBeJobOrderInput = (category) => {
     if (category === CATEGORIES.PRODUCT) {
         // Both WIP and Finished Goods can be JO inputs
         return true;

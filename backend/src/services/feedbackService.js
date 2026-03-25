@@ -42,7 +42,7 @@ export const getAllFeedback = async () => {
         return feedback;
     } catch (error) {
         console.error('Error reading feedback log:', error);
-        throw new Error('Failed to retrieve feedback');
+        throw new Error('Failed to retrieve feedback', { cause: error });
     }
 };
 

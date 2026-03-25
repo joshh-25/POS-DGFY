@@ -92,6 +92,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 
 const mockVerifyWebhookSignature = jest.fn().mockResolvedValue(true);
 const mockGetSubscriptionDetails = jest.fn();
+const PAYPAL_PREMIUM_PLAN_ID = 'P-TEST-PREMIUM';
+const PAYPAL_STANDARD_PLAN_ID = 'P-TEST-STANDARD';
 
 jest.unstable_mockModule('../src/services/paypalService.js', () => ({
     paypalService: {
@@ -153,6 +155,8 @@ function makeRes() {
 
 beforeEach(() => {
     jest.clearAllMocks();
+    process.env.PAYPAL_PREMIUM_PLAN_ID = PAYPAL_PREMIUM_PLAN_ID;
+    process.env.PAYPAL_STANDARD_PLAN_ID = PAYPAL_STANDARD_PLAN_ID;
 
     // Reset WebhookLog to always allow processing (no duplicate)
     mockWebhookLogFindOne.mockResolvedValue(null);
@@ -167,7 +171,10 @@ beforeEach(() => {
     mockTransaction.mockImplementation(async (cb) => cb({}));
     mockPaymentCreate.mockResolvedValue(true);
     mockTenantSave.mockResolvedValue(true);
-    mockTenantUpdate.mockResolvedValue(true);
+    mockTenantUpdate.mockImplementation(async function (payload) {
+        Object.assign(this, payload);
+        return true;
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,25 +183,33 @@ beforeEach(() => {
 
 describe('Gap 2 — handleSubscriptionActivated: plan must be set to premium', () => {
 
-    it('2a. sets plan=premium on the tenant object before calling save()', async () => {
+    it('2a. sets plan=premium on subscription activation via update()', async () => {
         const tenant = makeTenant({ plan: 'standard', subscription_status: 'inactive' });
         mockDb.Tenant.findOne.mockResolvedValue(tenant);
 
-        const req = makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', { id: 'I-SUB-123' });
+        const req = makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', {
+            id: 'I-SUB-123',
+            plan_id: PAYPAL_PREMIUM_PLAN_ID
+        });
         const res = makeRes();
 
         await handleWebhook(req, res);
 
-        // The real handler must have mutated tenant.plan before calling save()
         expect(tenant.plan).toBe('premium');
-        expect(mockTenantSave).toHaveBeenCalled();
+        expect(mockTenantUpdate).toHaveBeenCalledWith(expect.objectContaining({
+            plan: 'premium',
+            subscription_status: 'active'
+        }));
     });
 
     it('2b. sets subscription_status=active alongside plan=premium', async () => {
         const tenant = makeTenant({ plan: 'standard', subscription_status: 'inactive' });
         mockDb.Tenant.findOne.mockResolvedValue(tenant);
 
-        const req = makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', { id: 'I-SUB-123' });
+        const req = makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', {
+            id: 'I-SUB-123',
+            plan_id: PAYPAL_PREMIUM_PLAN_ID
+        });
         const res = makeRes();
 
         await handleWebhook(req, res);
@@ -213,7 +228,10 @@ describe('Gap 2 — handleSubscriptionActivated: plan must be set to premium', (
         // After the real handler runs:
         mockDb.Tenant.findOne.mockResolvedValue(tenantBefore);
         await handleWebhook(
-            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', { id: 'I-SUB-123' }),
+            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', {
+                id: 'I-SUB-123',
+                plan_id: PAYPAL_PREMIUM_PLAN_ID
+            }),
             makeRes()
         );
 
@@ -225,7 +243,10 @@ describe('Gap 2 — handleSubscriptionActivated: plan must be set to premium', (
         mockDb.Tenant.findOne.mockResolvedValue(tenant);
 
         await handleWebhook(
-            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', { id: 'I-SUB-123' }),
+            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', {
+                id: 'I-SUB-123',
+                plan_id: PAYPAL_PREMIUM_PLAN_ID
+            }),
             makeRes()
         );
 
@@ -237,7 +258,10 @@ describe('Gap 2 — handleSubscriptionActivated: plan must be set to premium', (
         mockDb.Tenant.findOne.mockResolvedValue(tenant);
 
         await handleWebhook(
-            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', { id: 'I-SUB-123' }),
+            makeWebhookReq('BILLING.SUBSCRIPTION.ACTIVATED', {
+                id: 'I-SUB-123',
+                plan_id: PAYPAL_PREMIUM_PLAN_ID
+            }),
             makeRes()
         );
 
@@ -457,7 +481,7 @@ describe('Gap 1 — handlePaymentCompleted: period_end idempotency', () => {
         expect(newEnd > futureEnd).toBe(true);
     });
 
-    it('1c. sets plan=premium on payment completed', async () => {
+    it('1c. preserves existing plan on payment completed when no deferred plan change exists', async () => {
         const tenant = makeTenant({ plan: 'standard' });
         mockDb.Tenant.findOne.mockResolvedValue(tenant);
 
@@ -466,7 +490,7 @@ describe('Gap 1 — handlePaymentCompleted: period_end idempotency', () => {
             makeRes()
         );
 
-        expect(tenant.plan).toBe('premium');
+        expect(tenant.plan).toBe('standard');
     });
 
     it('1d. uses next_billing_date from PayPal resource when provided (authoritative path)', async () => {

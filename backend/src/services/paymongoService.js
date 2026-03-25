@@ -67,10 +67,9 @@ class PayMongoService {
      * @param {string} params.currency - Currency code (e.g., 'PHP')
      * @param {string} params.description - Payment description
      * @param {string} params.paymentMethodId - Payment Method ID or Source ID
-     * @param {boolean} params.saveSource - Save source for recurring charges
      * @returns {Promise<Object>} Payment response
      */
-    async createPayment({ amount, currency = 'PHP', description, paymentMethodId, saveSource = true }) {
+    async createPayment({ amount, currency = 'PHP', description, paymentMethodId }) {
         try {
             const response = await axios.post(`${this.baseUrl}/payments`, {
                 data: {

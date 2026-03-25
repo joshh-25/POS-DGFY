@@ -1,20 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import sequelize from '../config/database.js'; // Landlord connection
 import dbStore from '../utils/dbStore.js';
-import util from 'util';
-import { exec } from 'child_process';
-import path from 'path';
 import bcrypt from 'bcryptjs';
 import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
-import { fileURLToPath } from 'url';
 import * as landlordService from './landlordService.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.resolve(__dirname, '../../');
-
-const execPromise = util.promisify(exec);
 
 // Strict allowlist pattern for all tenant database names.
 // Guards every DDL path against invalid or maliciously crafted identifiers.

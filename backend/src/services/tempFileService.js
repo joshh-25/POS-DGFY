@@ -50,10 +50,9 @@ export const storeTemporaryFile = async (content, filename, userId) => {
 /**
  * Get temporary file content
  * @param {string} fileId - File ID
- * @param {number} userId - User requesting the file
  * @returns {Object|null} File content and info
  */
-export const getTemporaryFile = async (fileId, userId) => {
+export const getTemporaryFile = async (fileId) => {
   const redisKey = `temp_file:${fileId}`;
   const fileData = await cacheService.get(redisKey);
 
@@ -256,7 +255,7 @@ export const validateCsvStructure = (parsed, requiredFields) => {
   }
 
   // Check for empty rows
-  const emptyRows = rows.filter((row, idx) => {
+  const emptyRows = rows.filter((row) => {
     const values = Object.values(row);
     return values.every(v => !v || v.trim() === '');
   });

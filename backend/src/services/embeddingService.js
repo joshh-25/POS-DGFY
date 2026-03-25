@@ -126,7 +126,7 @@ export const searchByMeaning = async (queryText, limit = 20, threshold = 0.4) =>
         allEmbeddings.forEach(rec => {
             try {
                 EMBEDDING_CACHE[tenantId][rec.item_id] = JSON.parse(rec.vector);
-            } catch (e) {
+            } catch {
                 logger.warn(`Failed to parse vector for item ${rec.item_id} in tenant ${tenantId}`);
             }
         });

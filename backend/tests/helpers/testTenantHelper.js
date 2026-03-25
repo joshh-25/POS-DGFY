@@ -37,6 +37,7 @@ export async function createTestTenant(label = 'default') {
         company_token: token,
         status: 'active',
         plan: 'premium',
+        subscription_status: 'active',
         db_host: process.env.DB_HOST || 'localhost'
     });
 

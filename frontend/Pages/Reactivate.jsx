@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, RotateCcw, Loader2, Star, Package } from 'lucide-react';
 import { reactivateWithPayMongo, requestReactivationPublic } from '../src/services/paymentService.js';
+import { resolveReactivatePayPalConfig } from '../src/utils/subscriptionUi.js';
 
-export default function Reactivate() {
+export default function Reactivate({ envOverrides }) {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const plan = searchParams.get('plan') === 'premium' ? 'premium' : 'standard';
   const [subscriptionId, setSubscriptionId] = useState('');
 
   const [reactivationDone, setReactivationDone] = useState(false);
@@ -15,6 +17,29 @@ export default function Reactivate() {
   const [isReactivating, setIsReactivating] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [error, setError] = useState('');
+  const runtimeEnv = envOverrides || import.meta.env || {};
+  const paypalConfig = resolveReactivatePayPalConfig({
+    plan,
+    env: runtimeEnv
+  });
+
+  const planInfoMap = {
+    standard: {
+      label: 'Standard',
+      price: 'Core inventory tools',
+      iconClass: 'text-slate-500',
+      Icon: Package
+    },
+    premium: {
+      label: 'Premium',
+      price: 'Advanced AI and analytics',
+      iconClass: 'text-amber-500',
+      Icon: Star
+    }
+  };
+
+  const planInfo = planInfoMap[plan];
+  const PlanIcon = planInfo.Icon;
 
   if (!token) {
     return (
@@ -96,6 +121,13 @@ export default function Reactivate() {
               <p className="text-sm text-slate-500">{planInfo.price}</p>
             </div>
           </div>
+
+          {!paypalConfig.canRender && (
+            <div className="mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+              <p className="font-medium">PayPal is temporarily unavailable.</p>
+              <p className="mt-1 text-xs">{paypalConfig.reason}</p>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
