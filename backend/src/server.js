@@ -165,7 +165,12 @@ app.use(compression());
 
 // Body parsing middleware
 // Increased limit to 10mb to support bulk CSV imports (up to 1000 items)
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Capture basic HTTP metrics before route handlers mutate response status.
@@ -428,6 +433,8 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     // ── Production environment guard ──────────────────────────────────────────
+    // DISABLED - switching to PayMongo
+    /*
     // If any required PayPal variable is missing in production the server must
     // refuse to start. This is the only reliable way to catch a misconfigured
     // deployment before it silently breaks the payment or webhook flow.
@@ -448,6 +455,7 @@ const startServer = async () => {
         process.exit(1);
       }
     }
+    */
 
     // Initialize cleanup job
     initCleanupJob();
@@ -541,7 +549,7 @@ const startServer = async () => {
 
     // Handle unhandled promise rejections — log but do NOT crash the server.
     // Calling gracefulShutdown here would take down all 50 users whenever any background
-    // job (billing scheduler, OpenAI, PayPal) throws an unexpected error.
+    // job (billing scheduler, OpenAI) throws an unexpected error.
     process.on('unhandledRejection', (err) => {
       logger.error('Unhandled Promise Rejection (non-fatal, server kept alive):', err);
     });

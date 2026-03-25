@@ -16,7 +16,7 @@ export default function GracePeriodBanner() {
     <div className="w-full bg-amber-500 text-white px-4 py-2.5 flex items-center gap-3 text-sm font-medium">
       <AlertTriangle className="w-4 h-4 shrink-0" />
       <span>
-        Payment failed. Update your payment method in PayPal to avoid service interruption.
+        Payment failed. Update your payment method to avoid service interruption.
         {graceEnd && ` Your access continues until ${graceEnd}.`}
       </span>
     </div>

@@ -6,7 +6,14 @@ const { Tenant, Payment, WebhookLog } = db;
 
 export const paymentRepository = {
     findTenantBySubscriptionId(subscriptionId) {
-        return Tenant.findOne({ where: { paypal_subscription_id: subscriptionId } });
+        return Tenant.findOne({
+            where: {
+                [Op.or]: [
+                    { paypal_subscription_id: subscriptionId },
+                    { paymongo_subscription_id: subscriptionId }
+                ]
+            }
+        });
     },
     findTenantById(tenantId) {
         return Tenant.findByPk(tenantId);
@@ -34,13 +41,28 @@ export const paymentRepository = {
     },
     // ── Subscription lifecycle queries ─────────────────────────────────────────
     findTenantByPendingSubscriptionId(subscriptionId) {
-        return Tenant.findOne({ where: { pending_paypal_subscription_id: subscriptionId } });
+        return Tenant.findOne({
+            where: {
+                [Op.or]: [
+                    { pending_paypal_subscription_id: subscriptionId },
+                    { pending_paymongo_subscription_id: subscriptionId }
+                ]
+            }
+        });
     },
     findTenantsByPendingPayPalSetup(cutoffDate) {
         return Tenant.findAll({
             where: {
-                pending_paypal_subscription_id: { [Op.ne]: null },
-                paypal_setup_initiated_at: { [Op.lt]: cutoffDate }
+                [Op.or]: [
+                    {
+                        pending_paypal_subscription_id: { [Op.ne]: null },
+                        paypal_setup_initiated_at: { [Op.lt]: cutoffDate }
+                    },
+                    {
+                        pending_paymongo_subscription_id: { [Op.ne]: null },
+                        paymongo_setup_initiated_at: { [Op.lt]: cutoffDate }
+                    }
+                ]
             }
         });
     },

@@ -4,13 +4,19 @@ import {
     simulateWebhook,
     upgradeToPremium,
     cancelSubscription,
+    cancelPayMongoSubscription,
     getBillingHistory,
     syncWithPayPal,
+    syncWithPayMongo,
     migrateToPayPal,
+    migrateToPayMongo,
     changePlan,
+    changePayMongoPlan,
+    setupPayMongoRecurring,
     getPendingPlan,
     requestReactivation,
-    reactivateWithPayPal
+    reactivateWithPayPal,
+    reactivateWithPayMongo
 } from '../controllers/paymentController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -32,6 +38,7 @@ router.post('/request-reactivation', requestReactivation);
  * No JWT — tenant identified via x-company-token header (tenantHandler).
  */
 router.post('/reactivate-with-paypal', reactivateWithPayPal);
+router.post('/reactivate-with-paymongo', reactivateWithPayMongo);
 
 /**
  * Private Payments endpoints
@@ -40,8 +47,13 @@ router.post('/upgrade', authenticate, upgradeToPremium);
 router.post('/cancel', authenticate, cancelSubscription);
 router.get('/history', authenticate, getBillingHistory);
 router.post('/sync', authenticate, syncWithPayPal);
+router.post('/sync-paymongo', authenticate, syncWithPayMongo);
 router.post('/migrate-to-paypal', authenticate, migrateToPayPal);
+router.post('/migrate-to-paymongo', authenticate, migrateToPayMongo);
 router.post('/change-plan', authenticate, changePlan);
+router.post('/change-paymongo-plan', authenticate, changePayMongoPlan);
+router.post('/setup-paymongo-recurring', authenticate, setupPayMongoRecurring);
+router.post('/cancel-paymongo', authenticate, cancelPayMongoSubscription);
 router.get('/pending-plan', authenticate, getPendingPlan);
 
 /**

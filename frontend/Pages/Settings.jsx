@@ -31,7 +31,6 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import useStore from '../src/store/useStore.js';
@@ -41,7 +40,7 @@ import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import { useSearchParams } from 'react-router-dom';
-import { shouldShowMigrateToPayPalSection } from '../src/utils/subscriptionUi.js';
+import { shouldShowMigrateToPayMongoSection } from '../src/utils/subscriptionUi.js';
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -77,13 +76,14 @@ export default function Settings() {
   const { currentUser, setCurrentUser } = useStore();
   const { can } = usePermission();
 
-  const [isUpgrading, setIsUpgrading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [billingHistory, setBillingHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
-  const [isMigratingToPayPal, setIsMigratingToPayPal] = useState(false);
+  const [isMigratingToPayMongo, setIsMigratingToPayMongo] = useState(false);
+  const [paymongoSubscriptionIdInput, setPaymongoSubscriptionIdInput] = useState('');
+  const [isStartingPayMongoSetup, setIsStartingPayMongoSetup] = useState(false);
   const [pendingPlanInfo, setPendingPlanInfo] = useState(null);
 
   // Fetch current user and system settings on mount
@@ -268,18 +268,20 @@ export default function Settings() {
     toast.success("Settings reset to defaults");
   };
 
-  const handleUpgradeSuccess = async (subscriptionId) => {
-    setIsUpgrading(true);
+  const handleSetupPayMongoRecurring = async () => {
+    setIsStartingPayMongoSetup(true);
     try {
-      await paymentService.upgradeToPremium(subscriptionId);
-
-      const user = await userService.getCurrentUser();
-      setCurrentUser(user);
-      toast.success("Welcome to Premium! Your features are now unlocked.");
+      const result = await paymentService.setupPayMongoRecurring();
+      if (result?.checkoutLink) {
+        window.open(result.checkoutLink, '_blank', 'noopener,noreferrer');
+        toast.success('PayMongo checkout link opened in a new tab. Complete setup to activate recurring billing.');
+      } else {
+        toast.success('PayMongo recurring setup initiated.');
+      }
     } catch (err) {
-      toast.error("Upgrade pending verification. Please refresh in a moment.");
+      toast.error(err.response?.data?.message || 'Failed to start PayMongo setup.');
     } finally {
-      setIsUpgrading(false);
+      setIsStartingPayMongoSetup(false);
     }
   };
 
@@ -290,7 +292,7 @@ export default function Settings() {
 
     setIsCancelling(true);
     try {
-      const result = await paymentService.cancelSubscription();
+      const result = await paymentService.cancelPayMongoSubscription('User initiated cancellation from settings');
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
       toast.success(result.message || "Subscription cancelled successfully.");
@@ -304,10 +306,10 @@ export default function Settings() {
   const handleSyncSubscription = async () => {
     setIsSyncing(true);
     try {
-      const result = await paymentService.syncSubscription();
+      const result = await paymentService.syncPayMongoSubscription();
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
-      toast.success("Subscription status updated from PayPal.");
+      toast.success("Subscription status updated from PayMongo.");
       fetchBillingHistory();
     } catch (err) {
       toast.error("Failed to sync status. Please try again later.");
@@ -319,16 +321,12 @@ export default function Settings() {
   const handleChangePlan = async (newPlan) => {
     setIsChangingPlan(true);
     try {
-      const result = await paymentService.changePlan(newPlan);
-      if (result?.requiresConsent && result?.approvalUrl) {
-        window.open(result.approvalUrl, '_blank', 'noopener,noreferrer');
-        toast.info("Approve the plan change in PayPal. It will take effect on your next billing cycle.");
-        fetchPendingPlan();
-      } else {
-        const updatedUser = await userService.getCurrentUser();
-        setCurrentUser(updatedUser);
-        toast.success(`Plan changed to ${newPlan} successfully.`);
-      }
+      const result = await paymentService.changePayMongoPlan(newPlan);
+      const updatedUser = await userService.getCurrentUser();
+      setCurrentUser(updatedUser);
+      toast.success(result?.effective_immediately
+        ? `Plan changed to ${newPlan} successfully.`
+        : `Plan change to ${newPlan} was scheduled successfully.`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to change plan.");
     } finally {
@@ -336,17 +334,18 @@ export default function Settings() {
     }
   };
 
-  const handleMigrateToPayPal = async (subscriptionId) => {
-    setIsMigratingToPayPal(true);
+  const handleMigrateToPayMongo = async (subscriptionId) => {
+    setIsMigratingToPayMongo(true);
     try {
-      await paymentService.migrateToPayPal(subscriptionId);
+      await paymentService.migrateToPayMongo(subscriptionId);
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
-      toast.success("PayPal subscription linked successfully.");
+      setPaymongoSubscriptionIdInput('');
+      toast.success("PayMongo subscription linked successfully.");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to link PayPal subscription.");
+      toast.error(err.response?.data?.message || "Failed to link PayMongo subscription.");
     } finally {
-      setIsMigratingToPayPal(false);
+      setIsMigratingToPayMongo(false);
     }
   };
 
@@ -522,11 +521,6 @@ export default function Settings() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <PayPalScriptProvider options={{
-                "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID || "test",
-                vault: true,
-                intent: "subscription"
-              }}>
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-tight mb-3">Plan Details</h4>
@@ -573,13 +567,13 @@ export default function Settings() {
                     <span className="text-indigo-700 capitalize">{pendingPlanInfo.pending_plan}</span>
                     {pendingPlanInfo.pending_plan_approved
                       ? ' — approved, will apply on next billing cycle.'
-                      : ' — awaiting your approval in PayPal.'}
+                      : ' — awaiting provider approval.'}
                   </div>
                 </div>
               )}
 
-              {/* PayPal tenant actions */}
-              {currentUser?.company?.payment_method === 'paypal' && (
+              {/* PayMongo tenant actions */}
+              {currentUser?.company?.payment_method === 'paymongo' && (
                 <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-100">
                   <Button
                     variant="outline"
@@ -588,7 +582,7 @@ export default function Settings() {
                     disabled={isSyncing}
                   >
                     <RefreshCw className={cn("w-4 h-4 mr-2", isSyncing && "animate-spin")} />
-                    Sync with PayPal
+                    Sync with PayMongo
                   </Button>
 
                   {currentUser?.company?.plan === 'standard' && !pendingPlanInfo?.pending_plan && (
@@ -633,47 +627,59 @@ export default function Settings() {
                     <div className="w-full mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-amber-800 text-sm">
                       <AlertTriangle className="w-5 h-5 text-amber-600" />
                       <div>
-                        <strong>Payment Failed.</strong> Update your payment method in PayPal to avoid service interruption.
+                        <strong>Payment Failed.</strong> Update your payment method to avoid service interruption.
                       </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Migrate to PayPal (manual tenants, master admin only) */}
-              {shouldShowMigrateToPayPalSection({
+              {/* Migrate to PayMongo (manual tenants, master admin only) */}
+              {shouldShowMigrateToPayMongoSection({
                 company: currentUser?.company,
                 isMasterAdmin: currentUser?.is_master_admin
               }) && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-2">Link PayPal Subscription</h4>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2">Link PayMongo Subscription</h4>
                   <p className="text-xs text-slate-500 mb-3">
-                    Subscribe via PayPal to enable automatic renewals for your current plan.
+                    Enter an existing PayMongo subscription ID to enable automatic renewals for your current plan.
                   </p>
-                  {isMigratingToPayPal ? (
+                  {isMigratingToPayMongo ? (
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <RefreshCw className="w-4 h-4 animate-spin" /> Linking subscription...
                     </div>
                   ) : (
-                    <div className="max-w-[280px]">
-                      <PayPalButtons
-                        style={{ layout: 'vertical', label: 'subscribe', height: 44 }}
-                        createSubscription={(data, actions) => {
-                          const planId = currentUser?.company?.plan === 'premium'
-                            ? (import.meta.env.VITE_PAYPAL_PREMIUM_PLAN_ID || import.meta.env.VITE_PAYPAL_PLAN_ID)
-                            : import.meta.env.VITE_PAYPAL_STANDARD_PLAN_ID;
-                          return actions.subscription.create({ plan_id: planId });
-                        }}
-                        onApprove={(data) => handleMigrateToPayPal(data.subscriptionID)}
-                        onError={(err) => toast.error(`PayPal error: ${err.message || 'Unknown error'}`)}
+                    <div className="max-w-md space-y-3">
+                      <Input
+                        placeholder="PayMongo subscription ID"
+                        value={paymongoSubscriptionIdInput}
+                        onChange={(e) => setPaymongoSubscriptionIdInput(e.target.value)}
                       />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleMigrateToPayMongo(paymongoSubscriptionIdInput)}
+                          disabled={!paymongoSubscriptionIdInput.trim()}
+                          className="bg-teal-600 hover:bg-teal-700"
+                        >
+                          <LinkIcon className="w-4 h-4 mr-2" />
+                          Link Subscription
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleSetupPayMongoRecurring}
+                          disabled={isStartingPayMongoSetup}
+                        >
+                          {isStartingPayMongoSetup ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}
+                          Start Checkout
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
               {/* Billing History Section */}
-              {currentUser?.company?.payment_method === 'paypal' && (
+              {currentUser?.company?.payment_method === 'paymongo' && (
                 <div className="mt-8">
                   <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
                     <History className="w-4 h-4 text-teal-600" />
@@ -718,7 +724,7 @@ export default function Settings() {
                 </div>
               )}
 
-              {currentUser?.company?.plan === 'standard' && currentUser?.company?.payment_method !== 'paypal' && (
+              {currentUser?.company?.plan === 'standard' && currentUser?.company?.payment_method !== 'paymongo' && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
                   <div className="bg-gradient-to-br from-indigo-600 to-teal-600 rounded-2xl p-6 text-white relative overflow-hidden shadow-xl">
                     <Star className="absolute top-4 right-4 w-12 h-12 text-white/10 rotate-12" />
@@ -728,31 +734,20 @@ export default function Settings() {
                         Unlock AI features, smart predictions, and prioritized support for your entire company. Just ₱3,000/month.
                       </p>
 
-                        <div className="max-w-[280px]">
-                          <PayPalButtons
-                            style={{ layout: "vertical", label: "subscribe", height: 44, color: 'blue' }}
-                            createSubscription={(data, actions) => {
-                              return actions.subscription.create({
-                                plan_id: import.meta.env.VITE_PAYPAL_PREMIUM_PLAN_ID || import.meta.env.VITE_PAYPAL_PLAN_ID
-                              });
-                            }}
-                            onApprove={(data, actions) => {
-                              handleUpgradeSuccess(data.subscriptionID);
-                            }}
-                            onCancel={() => {
-                              toast.info("Subscription cancelled.");
-                            }}
-                            onError={(err) => {
-                              console.error("PayPal Error:", err);
-                              toast.error(`Payment failed: ${err.message || "Unknown error"}`);
-                            }}
-                          />
-                        </div>
+                      <div className="max-w-[320px]">
+                        <Button
+                          className="bg-white text-indigo-700 hover:bg-slate-100"
+                          onClick={handleSetupPayMongoRecurring}
+                          disabled={isStartingPayMongoSetup}
+                        >
+                          {isStartingPayMongoSetup ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}
+                          Open PayMongo Checkout
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-              </PayPalScriptProvider>
             </CardContent>
           </Card>
         </TabsContent>

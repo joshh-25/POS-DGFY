@@ -1,55 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, AlertTriangle, RotateCcw, Loader2, Star, Building2 } from 'lucide-react';
-import { reactivateWithPayPal, requestReactivationPublic } from '../src/services/paymentService.js';
-import { resolveReactivatePayPalConfig } from '../src/utils/subscriptionUi.js';
+import { Input } from '@/components/ui/input';
+import { CheckCircle2, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
+import { reactivateWithPayMongo, requestReactivationPublic } from '../src/services/paymentService.js';
 
-const PLAN_DETAILS = {
-  premium: {
-    label: 'Premium',
-    price: '₱3,000/month',
-    icon: Star,
-    iconClass: 'text-yellow-500 fill-yellow-500'
-  },
-  standard: {
-    label: 'Standard',
-    price: '₱2,000/month',
-    icon: Building2,
-    iconClass: 'text-slate-500'
-  }
-};
-
-export default function Reactivate({ envOverrides = null }) {
+export default function Reactivate() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
-  const planParam = searchParams.get('plan');
-  const env = envOverrides || import.meta.env;
+  const [subscriptionId, setSubscriptionId] = useState('');
 
-  const plan = PLAN_DETAILS[planParam] ? planParam : 'standard';
-  const planInfo = PLAN_DETAILS[plan];
-  const PlanIcon = planInfo.icon;
-  const paypalConfig = resolveReactivatePayPalConfig({ plan, env });
-
-  const [paypalDone, setPaypalDone] = useState(false);
+  const [reactivationDone, setReactivationDone] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isPayPalButtonReady, setIsPayPalButtonReady] = useState(false);
-  const [isPayPalUnavailable, setIsPayPalUnavailable] = useState(false);
-
-  useEffect(() => {
-    if (!paypalConfig.canRender || isPayPalButtonReady) {
-      return undefined;
-    }
-
-    const timeoutId = setTimeout(() => {
-      setIsPayPalUnavailable(true);
-    }, 8000);
-
-    return () => clearTimeout(timeoutId);
-  }, [paypalConfig.canRender, isPayPalButtonReady]);
 
   if (!token) {
     return (
@@ -66,13 +31,21 @@ export default function Reactivate({ envOverrides = null }) {
     );
   }
 
-  const handlePayPalApprove = async (subscriptionID) => {
+  const handlePayMongoReactivate = async () => {
+    if (!subscriptionId.trim()) {
+      setError('PayMongo subscription ID is required.');
+      return;
+    }
+
+    setIsReactivating(true);
     setError('');
     try {
-      await reactivateWithPayPal(subscriptionID, token);
-      setPaypalDone(true);
+      await reactivateWithPayMongo(subscriptionId.trim(), token);
+      setReactivationDone(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Reactivation failed. Please try again or contact support.');
+    } finally {
+      setIsReactivating(false);
     }
   };
 
@@ -89,15 +62,13 @@ export default function Reactivate({ envOverrides = null }) {
     }
   };
 
-  if (paypalDone) {
+  if (reactivationDone) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
           <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Account Reactivated!</h1>
-          <p className="text-slate-600 mb-6">
-            Your {planInfo.label} subscription is active. You can sign in now.
-          </p>
+          <p className="text-slate-600 mb-6">Your account is active again. You can sign in now.</p>
           <Link to="/login">
             <Button className="w-full">Sign In</Button>
           </Link>
@@ -132,41 +103,21 @@ export default function Reactivate({ envOverrides = null }) {
             </div>
           )}
 
-          <div className="mb-6">
-            <p className="text-sm font-medium text-slate-700 mb-3">
-              Reactivate instantly via PayPal
-            </p>
-            {!paypalConfig.canRender || isPayPalUnavailable ? (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                <p className="font-medium">PayPal is temporarily unavailable.</p>
-                <p className="text-xs mt-1">
-                  {paypalConfig.reason || 'The PayPal button could not be loaded. You can continue with admin reactivation below.'}
-                </p>
-              </div>
-            ) : (
-              <PayPalScriptProvider options={{
-                'client-id': paypalConfig.clientId,
-                vault: true,
-                intent: 'subscription'
-              }}>
-                <PayPalButtons
-                  style={{ layout: 'vertical', label: 'subscribe' }}
-                  createSubscription={(data, actions) => {
-                    return actions.subscription.create({ plan_id: paypalConfig.planId });
-                  }}
-                  onInit={() => {
-                    setIsPayPalButtonReady(true);
-                    setIsPayPalUnavailable(false);
-                  }}
-                  onApprove={(data) => handlePayPalApprove(data.subscriptionID)}
-                  onCancel={() => setError('PayPal subscription cancelled. You can try again below.')}
-                  onError={(err) => {
-                    setIsPayPalUnavailable(true);
-                    setError(`PayPal error: ${err.message || 'Unknown error'}. Please try again.`);
-                  }}
-                />
-              </PayPalScriptProvider>
-            )}
+          <div className="mb-6 space-y-3">
+            <p className="text-sm font-medium text-slate-700">Reactivate with PayMongo</p>
+            <Input
+              value={subscriptionId}
+              onChange={(e) => setSubscriptionId(e.target.value)}
+              placeholder="Enter PayMongo subscription ID"
+            />
+            <Button className="w-full" onClick={handlePayMongoReactivate} disabled={isReactivating}>
+              {isReactivating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Reactivating...</>
+              ) : (
+                'Reactivate Now'
+              )}
+            </Button>
+            <p className="text-xs text-slate-500">If you do not have a subscription ID yet, use the admin request option below.</p>
           </div>
 
           <div className="relative my-6">

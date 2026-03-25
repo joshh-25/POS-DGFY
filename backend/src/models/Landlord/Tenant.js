@@ -76,6 +76,15 @@ export default (sequelize) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        // PayMongo subscription fields
+        paymongo_subscription_id: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        paymongo_source_id: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         current_period_end: {
             type: DataTypes.DATE,
             allowNull: true
@@ -114,9 +123,18 @@ export default (sequelize) => {
             type: DataTypes.DATE,
             allowNull: true
         },
+        // Admin-initiated PayMongo setup fields
+        pending_paymongo_subscription_id: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        paymongo_setup_initiated_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         // Billing method tracking
         payment_method: {
-            type: DataTypes.ENUM('manual', 'paypal'),
+            type: DataTypes.ENUM('manual', 'paypal', 'paymongo'),
             defaultValue: 'manual'
         },
         // Reactivation / rejection

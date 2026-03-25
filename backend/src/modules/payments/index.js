@@ -1,5 +1,6 @@
 import logger from '../../config/logger.js';
 import { paypalService } from '../../services/paypalService.js';
+import { paymongoService } from '../../services/paymongoService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
 import * as emailService from '../../services/emailService.js';
 import { paymentRepository } from './repositories/paymentRepository.js';
@@ -13,10 +14,17 @@ import { buildChangePlanUseCase } from './usecases/changePlanUseCase.js';
 import { buildSetupPayPalRecurringUseCase } from './usecases/setupPayPalRecurringUseCase.js';
 import { buildRequestReactivationUseCase } from './usecases/requestReactivationUseCase.js';
 import { buildReactivateWithPayPalUseCase } from './usecases/reactivateWithPayPalUseCase.js';
+import { buildMigrateToPayMongoUseCase } from './usecases/migrateToPayMongoUseCase.js';
+import { buildSetupPayMongoRecurringUseCase } from './usecases/setupPayMongoRecurringUseCase.js';
+import { buildReactivateWithPayMongoUseCase } from './usecases/reactivateWithPayMongoUseCase.js';
+import { buildSyncWithPayMongoUseCase } from './usecases/syncWithPayMongoUseCase.js';
+import { buildCancelPayMongoSubscriptionUseCase } from './usecases/cancelPayMongoSubscriptionUseCase.js';
+import { buildChangePayMongoSubscriptionUseCase } from './usecases/changePayMongoSubscriptionUseCase.js';
 
 export const handleWebhookUseCase = buildHandleWebhookUseCase({
     paymentRepository,
     paypalService,
+    paymongoService,
     trackEngagementEvent,
     emailService,
     logger
@@ -75,6 +83,45 @@ export const reactivateWithPayPalUseCase = buildReactivateWithPayPalUseCase({
     paymentRepository,
     paypalService,
     trackEngagementEvent,
+    logger
+});
+
+export const migrateToPayMongoUseCase = buildMigrateToPayMongoUseCase({
+    paymentRepository,
+    paymongoService,
+    trackEngagementEvent,
+    logger
+});
+
+export const setupPayMongoRecurringUseCase = buildSetupPayMongoRecurringUseCase({
+    paymentRepository,
+    paymongoService,
+    emailService,
+    logger
+});
+
+export const reactivateWithPayMongoUseCase = buildReactivateWithPayMongoUseCase({
+    paymentRepository,
+    paymongoService,
+    logger
+});
+
+export const syncWithPayMongoUseCase = buildSyncWithPayMongoUseCase({
+    paymentRepository,
+    paymongoService,
+    logger
+});
+
+export const cancelPayMongoSubscriptionUseCase = buildCancelPayMongoSubscriptionUseCase({
+    paymentRepository,
+    paymongoService,
+    emailService,
+    logger
+});
+
+export const changePayMongoSubscriptionUseCase = buildChangePayMongoSubscriptionUseCase({
+    paymentRepository,
+    paymongoService,
     logger
 });
 

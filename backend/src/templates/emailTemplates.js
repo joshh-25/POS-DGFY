@@ -513,7 +513,7 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate, a
 };
 
 export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => {
-  // Explicitly linking to PayPal, external URL.
+  // Payment failure notification
 
   return `
 <!DOCTYPE html>
@@ -540,7 +540,7 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => 
                 We were unable to process the latest payment for your <strong>${companyName}</strong> subscription.
               </p>
               <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
-                PayPal will automatically retry the payment on <strong>${retryDate}</strong>. Please ensure your payment method has sufficient funds to avoid service interruption.
+                We will automatically retry the payment on <strong>${retryDate}</strong>. Please ensure your payment method has sufficient funds to avoid service interruption.
               </p>
             </td>
           </tr>
@@ -553,9 +553,6 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate, appUrl }) => 
 };
 
 export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEnd, appUrl }) => {
-  const paypalUrlRaw = 'https://www.paypal.com';
-  // UTMs on paypal.com won't help us track *our* engagement
-
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -586,13 +583,8 @@ export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEn
                 </p>
               </div>
               <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
-                Please update your payment method in your PayPal account to ensure uninterrupted service. If payment is not received by the end of the grace period, your account will be automatically downgraded to the Standard plan.
+                Please update your payment method to ensure uninterrupted service. If payment is not received by the end of the grace period, your account will be automatically downgraded to the Standard plan.
               </p>
-              <div style="text-align: center;">
-                <a href="https://www.paypal.com" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  Go to PayPal
-                </a>
-              </div>
             </td>
           </tr>
         </table>
@@ -640,7 +632,8 @@ const emailWrap = (headerBg, headerText, bodyContent) => `
 </body>
 </html>`.trim();
 
-/** Admin-initiated PayPal setup invitation */
+/** Admin-initiated PayPal setup invitation (DISABLED - switching to PayMongo) */
+/*
 export const getPayPalSetupTemplate = ({ companyName, approvalUrl, expiresAt, planName, amount }) => {
   const body = `
     <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Set Up PayPal Recurring Billing</h2>
@@ -678,8 +671,48 @@ export const getPayPalSetupExpiredTemplate = ({ companyName }) => {
     </p>`;
   return emailWrap('#991b1b', 'Setup Expired', body);
 };
+*/
 
-/** Plan change queued (pending user re-consent on PayPal) */
+/** Admin-initiated PayMongo setup invitation */
+export const getPayMongoSetupTemplate = ({ companyName, checkoutLink, expiresAt, planName, amount }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Set Up PayMongo Recurring Billing</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      Your SKUpervisor administrator has initiated PayMongo recurring billing for <strong>${companyName}</strong>.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#166534;font-size:14px;"><strong>Plan:</strong> ${planName}</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>Amount:</strong> ${amount}/month</p>
+      <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>Link expires:</strong> ${expiresAt}</p>
+    </div>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      Click the button below to complete your recurring payment setup on PayMongo.
+    </p>
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${checkoutLink}" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0891b2 100%);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
+        Set Up on PayMongo
+      </a>
+    </div>
+    <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:0 8px 8px 0;">
+      <p style="margin:0;color:#92400e;font-size:13px;">This link expires in 72 hours. If it has expired, please contact your administrator.</p>
+    </div>`;
+  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Billing Setup', body);
+};
+
+/** Admin notified when PayMongo setup link expired */
+export const getPayMongoSetupExpiredTemplate = ({ companyName }) => {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#b91c1c;font-size:22px;">PayMongo Setup Link Expired</h2>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
+      The PayMongo recurring billing setup link you sent to <strong>${companyName}</strong> has expired without being completed.
+    </p>
+    <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
+      You can re-initiate the setup from the admin panel on the tenant's detail page.
+    </p>`;
+  return emailWrap('#991b1b', 'Setup Expired', body);
+};
+
+/** Plan change queued (pending user re-consent on PayPal) - DISABLED, updating for PayMongo */
 export const getPlanChangePendingTemplate = ({ companyName, currentPlan, newPlan, approvalUrl }) => {
   const body = `
     <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Plan Change Pending Your Approval</h2>
@@ -691,11 +724,11 @@ export const getPlanChangePendingTemplate = ({ companyName, currentPlan, newPlan
       <p style="margin:4px 0 0;color:#1d4ed8;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
     </div>
     <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
-      Please approve this change on PayPal. The new pricing will take effect on your next billing cycle.
+      Please approve this change through your payment provider. The new pricing will take effect on your next billing cycle.
     </p>
     ${approvalUrl ? `<div style="text-align:center;margin-bottom:16px;">
       <a href="${approvalUrl}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
-        Approve on PayPal
+        Approve Change
       </a>
     </div>` : ''}`;
   return emailWrap('#1d4ed8', 'Plan Change', body);
@@ -777,8 +810,8 @@ export default {
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
   getPaymentFailedGracePeriodTemplate,
-  getPayPalSetupTemplate,
-  getPayPalSetupExpiredTemplate,
+  getPayMongoSetupTemplate,
+  getPayMongoSetupExpiredTemplate,
   getPlanChangePendingTemplate,
   getPlanChangeAppliedTemplate,
   getReactivationRequestTemplate,

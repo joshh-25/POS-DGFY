@@ -235,20 +235,22 @@ export const expirePayPalSetups = async () => {
     const tenants = await paymentRepository.findTenantsByPendingPayPalSetup(cutoff);
 
     for (const tenant of tenants) {
-        logger.info(`PayPal setup link expired for ${tenant.name}. Clearing pending setup.`);
+        logger.info(`Billing setup link expired for ${tenant.name}. Clearing pending setup.`);
 
         await tenant.update({
             pending_paypal_subscription_id: null,
-            paypal_setup_initiated_at: null
+            paypal_setup_initiated_at: null,
+            pending_paymongo_subscription_id: null,
+            paymongo_setup_initiated_at: null
         });
 
         // Notify the platform admin
         const adminEmail = process.env.PLATFORM_ADMIN_EMAIL || process.env.SMTP_USER;
         if (adminEmail && emailService.isEmailConfigured()) {
-            await emailService.sendPayPalSetupExpiredEmail({
+            await emailService.sendPayMongoSetupExpiredEmail({
                 email: adminEmail,
                 companyName: tenant.name
-            }).catch(err => logger.warn('Email failed (paypal setup expired):', err.message));
+            }).catch(err => logger.warn('Email failed (billing setup expired):', err.message));
         }
     }
 };

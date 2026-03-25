@@ -348,7 +348,7 @@ export default function Login() {
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-amber-800">Account Inactive</p>
                   <p className="text-xs text-amber-700 mt-1">
-                    Your company account is currently inactive. Reactivate via PayPal or request admin access.
+                    Your company account is currently inactive. Reactivate or request admin access.
                   </p>
                   <Button
                     type="button"

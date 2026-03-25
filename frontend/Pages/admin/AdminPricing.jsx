@@ -18,7 +18,7 @@ export default function AdminPricing() {
     const [settings, setSettings] = useState({
         premium_plan_price: '',
         standard_plan_price: '',
-        paypal_product_id: ''
+        // paypal_product_id: '' // DISABLED - switching to PayMongo
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -166,11 +166,11 @@ export default function AdminPricing() {
                     <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                             <RefreshCw className="w-5 h-5 text-slate-400" />
-                            PayPal Integration
+                            PayPal Integration (DISABLED - switching to PayMongo)
                         </h2>
                     </div>
 
-                    <div className="p-6 space-y-4">
+                    {/* <div className="p-6 space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">
                                 PayPal Product ID
@@ -186,7 +186,7 @@ export default function AdminPricing() {
                                 The Product ID created in your PayPal Dashboard that represents this application.
                             </p>
                         </div>
-                    </div>
+                    </div> */}
                 </div>
 
                 <div className="flex justify-end">

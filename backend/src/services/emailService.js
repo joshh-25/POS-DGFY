@@ -17,8 +17,8 @@ import {
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
   getPaymentFailedGracePeriodTemplate,
-  getPayPalSetupTemplate,
-  getPayPalSetupExpiredTemplate,
+  getPayMongoSetupTemplate,
+  getPayMongoSetupExpiredTemplate,
   getPlanChangePendingTemplate,
   getPlanChangeAppliedTemplate,
   getReactivationRequestTemplate,
@@ -284,27 +284,27 @@ export const sendPaymentFailedGracePeriodEmail = async ({ email, companyName, gr
 
 // ─── Subscription Lifecycle Emails (Phase 2) ─────────────────────────────────
 
-/** Admin-initiated PayPal setup link sent to user */
-export const sendPayPalSetupEmail = async ({ email, companyName, approvalUrl, expiresAt, planName, amount }) => {
-  const html = getPayPalSetupTemplate({ companyName, approvalUrl, expiresAt, planName, amount });
+/** Admin-initiated PayMongo setup link sent to user */
+export const sendPayMongoSetupEmail = async ({ email, companyName, checkoutLink, expiresAt, planName, amount }) => {
+  const html = getPayMongoSetupTemplate({ companyName, checkoutLink, expiresAt, planName, amount });
   return sendEmail({
     to: email,
-    subject: `Action Required: Set Up PayPal Recurring Billing for ${companyName}`,
+    subject: `Action Required: Set Up PayMongo Recurring Billing for ${companyName}`,
     html
   });
 };
 
-/** Admin notified that a PayPal setup link expired */
-export const sendPayPalSetupExpiredEmail = async ({ email, companyName }) => {
-  const html = getPayPalSetupExpiredTemplate({ companyName });
+/** Admin notified that a PayMongo setup link expired */
+export const sendPayMongoSetupExpiredEmail = async ({ email, companyName }) => {
+  const html = getPayMongoSetupExpiredTemplate({ companyName });
   return sendEmail({
     to: email,
-    subject: `PayPal Setup Link Expired for ${companyName}`,
+    subject: `PayMongo Setup Link Expired for ${companyName}`,
     html
   });
 };
 
-/** Notifies user that a plan change is queued and needs PayPal re-consent */
+/** Notifies user that a plan change is queued and needs re-consent */
 export const sendPlanChangePendingEmail = async ({ email, companyName, currentPlan, newPlan, approvalUrl }) => {
   const html = getPlanChangePendingTemplate({ companyName, currentPlan, newPlan, approvalUrl });
   return sendEmail({
@@ -366,8 +366,8 @@ export default {
   sendSubscriptionCancelledEmail,
   sendPaymentFailedEmail,
   sendPaymentFailedGracePeriodEmail,
-  sendPayPalSetupEmail,
-  sendPayPalSetupExpiredEmail,
+  sendPayMongoSetupEmail,
+  sendPayMongoSetupExpiredEmail,
   sendPlanChangePendingEmail,
   sendPlanChangeAppliedEmail,
   sendReactivationRequestEmail,

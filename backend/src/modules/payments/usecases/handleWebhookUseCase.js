@@ -11,6 +11,7 @@ import { emitBillingFunnelEvent } from '../../../services/billingFunnelTelemetry
 export const buildHandleWebhookUseCase = ({
     paymentRepository,
     paypalService,
+    paymongoService,
     trackEngagementEvent,
     emailService,
     logger
@@ -120,7 +121,7 @@ export const buildHandleWebhookUseCase = ({
                 tenant.pending_plan = null;
                 tenant.pending_plan_approved = false;
                 tenant.pending_plan_change_date = null;
-                logger.info(`Applying deferred plan change for tenant ${tenant.name}: ${oldPlan} → ${tenant.plan}`);
+                logger.info(`Applying deferred plan change for tenant ${tenant.name}: ${oldPlan} -> ${tenant.plan}`);
                 if (emailService?.isEmailConfigured?.()) {
                     emailService.sendPlanChangeAppliedEmail({
                         email: tenant.admin_email,
@@ -305,12 +306,176 @@ export const buildHandleWebhookUseCase = ({
         });
     }
 
-    return async ({ body, headers, bypassSignature = false }) => {
-        const eventType = body?.event_type;
-        const resource = body?.resource || {};
+    async function handlePayMongoPaymentPaid(resource) {
+        const payload = resource?.attributes?.data || resource || {};
+        const paymentId = payload?.id;
+        const attrs = payload?.attributes || {};
+        const metadata = attrs?.metadata || {};
+        const subscriptionId = metadata?.subscription_id || metadata?.paymongo_subscription_id || null;
+
+        if (!subscriptionId) {
+            logger.warn('PayMongo payment event missing subscription_id metadata', { paymentId });
+            return;
+        }
+
+        const tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+        if (!tenant) {
+            logger.warn(`PayMongo payment for unknown subscription: ${subscriptionId}`);
+            return;
+        }
+
+        const amount = Number(attrs?.amount || 0) / 100;
+        const currency = attrs?.currency || 'PHP';
+
+        await paymentRepository.runInTransaction(async (transaction) => {
+            try {
+                await paymentRepository.createPayment({
+                    tenant_id: tenant.id,
+                    transaction_id: paymentId,
+                    amount,
+                    currency,
+                    status: 'completed',
+                    payment_method: 'paymongo',
+                    metadata: resource
+                }, { transaction });
+            } catch (error) {
+                if (error?.name === 'SequelizeUniqueConstraintError') {
+                    logger.info(`Duplicate PayMongo payment transaction ${paymentId} detected.`);
+                    return;
+                }
+                throw error;
+            }
+
+            const now = new Date();
+            const anchor = tenant.billing_cycle_anchor || now.getDate();
+            const nextBillingDate = extendOneCalendarMonth(now, anchor);
+
+            tenant.subscription_status = 'active';
+            tenant.current_period_end = nextBillingDate;
+            tenant.payment_method = 'paymongo';
+            await tenant.save({ transaction });
+        });
+    }
+
+    const resolvePayMongoSubscriptionId = (resource) => {
+        const payload = resource?.attributes?.data || resource || {};
+        const attrs = payload?.attributes || {};
+
+        return (
+            payload?.id
+            || attrs?.subscription_id
+            || attrs?.subscription?.id
+            || attrs?.metadata?.subscription_id
+            || attrs?.metadata?.paymongo_subscription_id
+            || attrs?.subscription?.data?.id
+            || payload?.relationships?.subscription?.data?.id
+            || null
+        );
+    };
+
+    async function updatePayMongoSubscriptionState(resource, nextState) {
+        const subscriptionId = resolvePayMongoSubscriptionId(resource);
+        if (!subscriptionId) {
+            logger.warn('PayMongo event missing subscription reference', { nextState });
+            return;
+        }
+
+        const tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId)
+            || await paymentRepository.findTenantByPendingSubscriptionId(subscriptionId);
+
+        if (!tenant) {
+            logger.warn(`PayMongo event for unknown subscription: ${subscriptionId}`);
+            return;
+        }
+
+        const updates = {};
+        if (nextState === 'active') {
+            updates.subscription_status = 'active';
+            updates.payment_method = 'paymongo';
+        }
+        if (nextState === 'past_due') {
+            updates.subscription_status = 'past_due';
+            updates.payment_method = 'paymongo';
+        }
+        if (nextState === 'cancelled') {
+            updates.subscription_status = 'cancelled';
+            updates.cancelled_at = new Date();
+            updates.paymongo_subscription_id = null;
+            updates.payment_method = 'manual';
+        }
+
+        await tenant.update(updates);
+    }
+
+    async function handlePayMongoSubscriptionCreated(resource) {
+        const payload = resource?.attributes?.data || resource || {};
+        const subscriptionId = resolvePayMongoSubscriptionId(payload);
+        if (!subscriptionId) return;
+
+        let tenant = await paymentRepository.findTenantByPendingSubscriptionId(subscriptionId);
+        if (!tenant) {
+            tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+        }
+        if (!tenant) {
+            logger.warn(`PayMongo subscription created for unknown tenant: ${subscriptionId}`);
+            return;
+        }
+
+        await tenant.update({
+            paymongo_subscription_id: subscriptionId,
+            payment_method: 'paymongo',
+            subscription_status: 'active',
+            pending_paymongo_subscription_id: null,
+            paymongo_setup_initiated_at: null
+        });
+    }
+
+    async function handlePayMongoSubscriptionUpdated(resource) {
+        const payload = resource?.attributes?.data || resource || {};
+        const subscriptionId = resolvePayMongoSubscriptionId(payload);
+        if (!subscriptionId) return;
+
+        const tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId)
+            || await paymentRepository.findTenantByPendingSubscriptionId(subscriptionId);
+        if (!tenant) {
+            logger.warn(`PayMongo subscription updated for unknown tenant: ${subscriptionId}`);
+            return;
+        }
+
+        const paymongoStatus = payload?.attributes?.status;
+        if (paymongoStatus === 'active') {
+            await tenant.update({ subscription_status: 'active' });
+        } else if (paymongoStatus === 'past_due' || paymongoStatus === 'incomplete' || paymongoStatus === 'unpaid') {
+            await tenant.update({ subscription_status: 'past_due' });
+        }
+    }
+
+    async function handlePayMongoSubscriptionCancelled(resource) {
+        const payload = resource?.attributes?.data || resource || {};
+        const subscriptionId = resolvePayMongoSubscriptionId(payload);
+        if (!subscriptionId) return;
+
+        const tenant = await paymentRepository.findTenantBySubscriptionId(subscriptionId);
+        if (!tenant) {
+            logger.warn(`PayMongo subscription cancelled for unknown tenant: ${subscriptionId}`);
+            return;
+        }
+
+        await tenant.update({
+            subscription_status: 'cancelled',
+            cancelled_at: new Date(),
+            paymongo_subscription_id: null,
+            payment_method: 'manual'
+        });
+    }
+
+    return async ({ body, headers, rawBody, bypassSignature = false }) => {
+        const eventType = body?.event_type || body?.type;
+        const resource = body?.resource || body?.data || {};
         const paypalEventId = body?.id || null;
         const paypalEventTime = body?.create_time || body?.event_time || null;
         const transmissionId = headers?.['paypal-transmission-id'] || null;
+        const paymongoSignature = headers?.['paymongo-signature'] || headers?.['x-paymongo-signature'] || null;
         const webhookId = buildWebhookDedupKey(body, headers);
         const shouldBypassSignature = bypassSignature && process.env.NODE_ENV !== 'production';
 
@@ -323,17 +488,29 @@ export const buildHandleWebhookUseCase = ({
             ));
         }
 
-        logger.info(`Received PayPal Webhook: ${eventType}`, {
+        logger.info(`Received webhook: ${eventType}`, {
             webhookId,
             transmissionId,
             resourceId: resource?.id
         });
 
         if (!shouldBypassSignature) {
-            const isValid = await paypalService.verifyWebhookSignature(headers, body);
+            const isPayMongoEvent = eventType?.startsWith('subscription.') || eventType?.startsWith('payment.');
+            let isValid = false;
+
+            if (isPayMongoEvent) {
+                isValid = paymongoService?.verifyWebhookSignature?.(paymongoSignature, rawBody || body) || false;
+            } else {
+                if (!paypalService?.verifyWebhookSignature) {
+                    isValid = false;
+                } else {
+                    isValid = await paypalService.verifyWebhookSignature(headers, body);
+                }
+            }
+
             if (!isValid) {
-                logger.error(`Invalid PayPal Webhook Signature for ID: ${webhookId}`);
-                await emitWebhookEvent('paypal_webhook_invalid_signature', {
+                logger.error(`Invalid webhook signature for ID: ${webhookId}`);
+                await emitWebhookEvent('billing_webhook_invalid_signature', {
                     requestId: transmissionId || webhookId,
                     correlationId: webhookId,
                     providerEventId: paypalEventId,
@@ -343,8 +520,9 @@ export const buildHandleWebhookUseCase = ({
                     failureReason: 'webhook_signature_verification_failed',
                     httpStatus: 401,
                     metadata: {
-                        paypal_event_type: eventType,
-                        transmission_id: transmissionId
+                        event_type: eventType,
+                        transmission_id: transmissionId,
+                        is_paymongo_event: isPayMongoEvent
                     }
                 });
                 return fail(new DomainError(
@@ -354,7 +532,7 @@ export const buildHandleWebhookUseCase = ({
                 ));
             }
         } else {
-            logger.warn(`Bypassing PayPal webhook signature verification for simulated event ${webhookId}.`);
+            logger.warn(`Bypassing webhook signature verification for simulated event ${webhookId}.`);
         }
 
         const existingLog = await paymentRepository.findWebhookLog(webhookId);
@@ -400,6 +578,29 @@ export const buildHandleWebhookUseCase = ({
                     break;
                 case 'BILLING.SUBSCRIPTION.UPDATED':
                     await handleSubscriptionUpdated(resource);
+                    break;
+                case 'payment.paid':
+                    await handlePayMongoPaymentPaid(resource);
+                    break;
+                case 'payment.failed':
+                    await updatePayMongoSubscriptionState(resource, 'past_due');
+                    break;
+                case 'subscription.created':
+                    await handlePayMongoSubscriptionCreated(resource);
+                    break;
+                case 'subscription.updated':
+                    await handlePayMongoSubscriptionUpdated(resource);
+                    break;
+                case 'subscription.past_due':
+                case 'subscription.unpaid':
+                case 'subscription.invoice.payment_failed':
+                    await updatePayMongoSubscriptionState(resource, 'past_due');
+                    break;
+                case 'subscription.invoice.paid':
+                    await updatePayMongoSubscriptionState(resource, 'active');
+                    break;
+                case 'subscription.cancelled':
+                    await handlePayMongoSubscriptionCancelled(resource);
                     break;
                 default:
                     logger.info(`Unhandled Webhook Event: ${eventType}`);

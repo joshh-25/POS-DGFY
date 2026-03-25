@@ -213,6 +213,8 @@ export default function TenantManager() {
         }
     };
 
+    // DISABLED - switching to PayMongo
+    /*
     const handleSetupPayPal = async (tenantId) => {
         setActionLoading(tenantId);
         try {
@@ -233,6 +235,7 @@ export default function TenantManager() {
             setActionLoading(null);
         }
     };
+    */
 
     const handleAdminChangePlan = async (tenantId, plan) => {
         if (!confirm(`Change this tenant's plan to "${plan}"? This takes effect immediately.`)) return;
@@ -483,7 +486,8 @@ export default function TenantManager() {
                                                         )}
                                                     </Button>
                                                 )}
-                                                {tenant.status === 'active' && tenant.payment_method !== 'paypal' && (
+                                                {/* DISABLED - switching to PayMongo */}
+                                                {/* {tenant.status === 'active' && tenant.payment_method !== 'paypal' && (
                                                     <Button
                                                         onClick={() => handleSetupPayPal(tenant.id)}
                                                         disabled={isProcessing}
@@ -500,7 +504,7 @@ export default function TenantManager() {
                                                             </>
                                                         )}
                                                     </Button>
-                                                )}
+                                                )} */}
                                                 <Button
                                                     onClick={() => {
                                                         const newPlan = tenant.plan === 'premium' ? 'standard' : 'premium';
@@ -601,7 +605,8 @@ export default function TenantManager() {
                                 </div>
                             </div>
 
-                            {addForm.plan === 'premium' && (
+                            {/* DISABLED - switching to PayMongo */}
+                            {/* {addForm.plan === 'premium' && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-700">PayPal Subscription ID</label>
                                     <input
@@ -613,7 +618,7 @@ export default function TenantManager() {
                                     />
                                     <p className="text-xs text-slate-500">Leave empty if not yet paid/linked.</p>
                                 </div>
-                            )}
+                            )} */}
 
                             <div className="flex gap-3 pt-4">
                                 <Button

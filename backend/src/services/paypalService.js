@@ -1,4 +1,7 @@
 
+// DISABLED - switching to PayMongo
+// PayPal Service has been disabled. Use PayMongo integrations instead.
+/*
 import axios from 'axios';
 import dotenv from 'dotenv';
 import logger from '../config/logger.js';
@@ -14,6 +17,7 @@ const BASE_URL = PAYPAL_MODE === 'sandbox'
  * PayPal Service
  * Handles interactions with PayPal API for subscriptions and payments.
  */
+/*
 class PayPalService {
     constructor() {
         this.accessToken = null;
@@ -24,6 +28,7 @@ class PayPalService {
      * Get PayPal Access Token
      * Returns a valid access token, refreshing if necessary.
      */
+/*
     async getAccessToken() {
         if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
             return this.accessToken;
@@ -53,6 +58,7 @@ class PayPalService {
      * Create a Product (if not exists)
      * e.g., "SKU Inventory Manager Premium"
      */
+/*
     async createProduct(name, description) {
         const token = await this.getAccessToken();
         try {
@@ -77,6 +83,7 @@ class PayPalService {
     /**
      * Create a Subscription Plan
      */
+/*
     async createPlan(productId, name, price) {
         const token = await this.getAccessToken();
         try {
@@ -124,6 +131,7 @@ class PayPalService {
      * Verify a Subscription
      * Checks if the subscription is active.
      */
+/*
     async verifySubscription(subscriptionId) {
         // MOCK BACKDOOR FOR TESTING
         if (process.env.MOCK_PAYPAL === 'true' && process.env.NODE_ENV !== 'production') {
@@ -150,6 +158,7 @@ class PayPalService {
      * Get Subscription Details
      * Fetches full status from PayPal
      */
+/*
     async getSubscriptionDetails(subscriptionId) {
         return this.verifySubscription(subscriptionId);
     }
@@ -157,6 +166,7 @@ class PayPalService {
     /**
      * Cancel a Subscription
      */
+/*
     async cancelSubscription(subscriptionId, reason = 'User requested cancellation') {
         const token = await this.getAccessToken();
         try {
@@ -180,6 +190,7 @@ class PayPalService {
      * Returns the PayPal response including HATEOAS links; the caller must extract
      * the `approve` link and redirect the user to re-consent.
      */
+/*
     async reviseSubscription(subscriptionId, newPlanId) {
         const token = await this.getAccessToken();
         const appUrl = process.env.APP_URL || 'http://localhost:5173';
@@ -213,6 +224,7 @@ class PayPalService {
      * Used by admin-initiated PayPal setup to generate an approval link to email the user.
      * Returns { subscriptionId, approvalUrl }.
      */
+/*
     async createSubscriptionServerSide(planId, subscriberEmail, returnUrl, cancelUrl) {
         // MOCK BACKDOOR FOR TESTING
         if (process.env.MOCK_PAYPAL === 'true' && process.env.NODE_ENV !== 'production') {
@@ -261,6 +273,7 @@ class PayPalService {
     /**
      * Verify Webhook Signature
      */
+/*
     async verifyWebhookSignature(headers, eventBody) {
         // MOCK BACKDOOR FOR TESTING
         if (process.env.MOCK_PAYPAL === 'true' && process.env.NODE_ENV !== 'production') {
@@ -305,3 +318,7 @@ class PayPalService {
 }
 
 export const paypalService = new PayPalService();
+*/
+
+// Stub export to prevent import errors
+export const paypalService = null;

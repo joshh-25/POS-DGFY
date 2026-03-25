@@ -5,11 +5,17 @@ import {
     cancelSubscriptionUseCase,
     getBillingHistoryUseCase,
     syncWithPayPalUseCase,
+    syncWithPayMongoUseCase,
     upgradeToPremiumUseCase,
     migrateToPayPalUseCase,
+    migrateToPayMongoUseCase,
     changePlanUseCase,
+    changePayMongoSubscriptionUseCase,
     requestReactivationUseCase,
     reactivateWithPayPalUseCase,
+    reactivateWithPayMongoUseCase,
+    cancelPayMongoSubscriptionUseCase,
+    setupPayMongoRecurringUseCase,
     paymentRepository
 } from '../index.js';
 import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -30,7 +36,8 @@ export const handleWebhook = async (req, res) => {
     try {
         const result = await handleWebhookUseCase({
             body: req.body,
-            headers: req.headers
+            headers: req.headers,
+            rawBody: req.rawBody
         });
 
         if (!result.success) {
@@ -181,6 +188,24 @@ export const syncWithPayPal = async (req, res) => {
     }
 };
 
+export const syncWithPayMongo = async (req, res) => {
+    try {
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const result = await syncWithPayMongoUseCase({ tenantId });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: 'Subscription synchronized with PayMongo',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('PayMongo Sync Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 /**
  * Handle Real-time Upgrade
  * POST /api/v1/payments/upgrade
@@ -237,6 +262,27 @@ export const migrateToPayPal = async (req, res) => {
     }
 };
 
+export const migrateToPayMongo = async (req, res) => {
+    try {
+        const { subscriptionId } = req.body;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const userId = req.user?.user_id || null;
+        const correlationId = req.requestId || req.headers['x-request-id'] || crypto.randomUUID();
+        const result = await migrateToPayMongoUseCase({ tenantId, userId, subscriptionId, correlationId });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: 'Successfully migrated to PayMongo recurring billing.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Migrate to PayMongo Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 /**
  * Change subscription plan
  * POST /api/v1/payments/change-plan
@@ -258,6 +304,64 @@ export const changePlan = async (req, res) => {
         });
     } catch (error) {
         logger.error('Change Plan Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const changePayMongoPlan = async (req, res) => {
+    try {
+        const { newPlan, effectiveDate } = req.body;
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const result = await changePayMongoSubscriptionUseCase({ tenantId, newPlan, effectiveDate });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: result.data?.effective_immediately
+                    ? 'Plan changed successfully.'
+                    : 'Plan change scheduled successfully.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Change PayMongo Plan Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const setupPayMongoRecurring = async (req, res) => {
+    try {
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const result = await setupPayMongoRecurringUseCase({ tenantId });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: 'PayMongo recurring setup initiated.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Setup PayMongo Recurring Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const cancelPayMongoSubscription = async (req, res) => {
+    try {
+        const tenantId = requireTenantContext(req, res);
+        if (!tenantId) return;
+        const { reason } = req.body || {};
+        const result = await cancelPayMongoSubscriptionUseCase({ tenantId, reason });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: 'PayMongo subscription cancelled.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Cancel PayMongo Subscription Error:', error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -345,16 +449,46 @@ export const reactivateWithPayPal = async (req, res) => {
     }
 };
 
+export const reactivateWithPayMongo = async (req, res) => {
+    try {
+        if (!req.tenant) {
+            return res.status(400).json({ success: false, message: 'Company token required' });
+        }
+        const { subscriptionId } = req.body;
+        const tenantId = req.tenant.id;
+        const result = await reactivateWithPayMongoUseCase({
+            tenantId,
+            subscriptionId
+        });
+        return sendUseCaseResult(res, result, {
+            successPayloadResolver: () => ({
+                success: true,
+                message: result.data?.message || 'Account reactivated successfully.',
+                data: result.data
+            })
+        });
+    } catch (error) {
+        logger.error('Reactivate With PayMongo Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export default {
     handleWebhook,
     simulateWebhook,
     cancelSubscription,
+    cancelPayMongoSubscription,
     getBillingHistory,
     syncWithPayPal,
+    syncWithPayMongo,
     upgradeToPremium,
     migrateToPayPal,
+    migrateToPayMongo,
     changePlan,
+    changePayMongoPlan,
+    setupPayMongoRecurring,
     getPendingPlan,
     requestReactivation,
-    reactivateWithPayPal
+    reactivateWithPayPal,
+    reactivateWithPayMongo
 };
