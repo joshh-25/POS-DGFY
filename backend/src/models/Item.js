@@ -93,6 +93,12 @@ const Item = sequelize.define('Item', {
     },
     comment: 'Last-used sale price. Auto-updated from DO dispatches. Defaults to cost_per_unit on first use.'
   },
+  vat_type: {
+    type: DataTypes.ENUM('vatable', 'vat_exempt', 'zero_rated'),
+    allowNull: false,
+    defaultValue: 'vatable',
+    comment: 'Default VAT classification used by POS and snapshotted at transaction-line level'
+  },
   fifo_enabled: {
     type: DataTypes.BOOLEAN,
     defaultValue: false

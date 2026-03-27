@@ -33,6 +33,7 @@ const ALL_NAV_ITEMS = [
   { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
   { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
+  { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
   { name: 'Reports', icon: FileText, page: 'Reports', permission: 'reports:view' },
   { name: 'AI Chat', icon: Bot, page: 'AiChat', permission: 'ai:chat' },
@@ -86,6 +87,9 @@ export default function Layout({ children, currentPageName }) {
   // During loading, show all items to prevent flash of limited menu
   const navItems = ALL_NAV_ITEMS.filter(item => {
     if (loading) return true; // Show all during loading to prevent flash
+    if (item.permissionAny?.length) {
+      return item.permissionAny.some((permission) => can(permission));
+    }
     if (!item.permission) return true; // Always show if no permission required
     return can(item.permission);
   });

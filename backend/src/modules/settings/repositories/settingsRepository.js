@@ -34,6 +34,19 @@ const serializeSettingValue = (setting, value) => {
     return String(value);
 };
 
+const inferDataType = (value) => {
+    if (typeof value === 'boolean') {
+        return 'boolean';
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return 'number';
+    }
+    if (value !== null && typeof value === 'object') {
+        return 'json';
+    }
+    return 'string';
+};
+
 const applyThresholdSettingsInternal = async () => {
     const Item = dbStore.get('Item');
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -114,18 +127,23 @@ export const settingsRepository = {
 
         for (const [key, value] of Object.entries(settingsData)) {
             try {
-                const setting = await SystemSetting.findOne({
+                let setting = await SystemSetting.findOne({
                     where: { setting_key: key }
                 });
 
                 if (!setting) {
-                    errors.push(`Setting '${key}' not found`);
-                    continue;
+                    const data_type = inferDataType(value);
+                    setting = await SystemSetting.create({
+                        setting_key: key,
+                        setting_value: serializeSettingValue({ data_type }, value),
+                        data_type,
+                        description: `Auto-created by settings update flow for key '${key}'`
+                    });
+                } else {
+                    updatePromises.push(
+                        setting.update({ setting_value: serializeSettingValue(setting, value) })
+                    );
                 }
-
-                updatePromises.push(
-                    setting.update({ setting_value: serializeSettingValue(setting, value) })
-                );
             } catch (error) {
                 errors.push(`Failed to update '${key}': ${error.message}`);
             }
@@ -150,15 +168,21 @@ export const settingsRepository = {
     },
     async updateSettingByKey(key, value) {
         const SystemSetting = dbStore.get('SystemSetting');
-        const setting = await SystemSetting.findOne({
+        let setting = await SystemSetting.findOne({
             where: { setting_key: key }
         });
 
         if (!setting) {
-            throw new Error(`Setting '${key}' not found`);
+            const data_type = inferDataType(value);
+            setting = await SystemSetting.create({
+                setting_key: key,
+                setting_value: serializeSettingValue({ data_type }, value),
+                data_type,
+                description: `Auto-created by settings update flow for key '${key}'`
+            });
+        } else {
+            await setting.update({ setting_value: serializeSettingValue(setting, value) });
         }
-
-        await setting.update({ setting_value: serializeSettingValue(setting, value) });
 
         return {
             setting_id: setting.setting_id,

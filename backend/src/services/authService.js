@@ -39,6 +39,20 @@ const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
+const getBlacklistFailureMode = () => {
+  const configuredMode = (process.env.AUTH_BLACKLIST_FAILURE_MODE || '').trim().toLowerCase();
+
+  if (configuredMode === 'fail_closed' || configuredMode === 'fail-closed') {
+    return 'fail_closed';
+  }
+
+  if (configuredMode === 'fail_open' || configuredMode === 'fail-open') {
+    return 'fail_open';
+  }
+
+  return process.env.NODE_ENV === 'production' ? 'fail_closed' : 'fail_open';
+};
+
 export const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(password, salt);
@@ -270,21 +284,39 @@ export const blacklistToken = async (token) => {
  * @returns {Promise<boolean>} - True if blacklisted
  */
 export const isTokenBlacklisted = async (token) => {
+  const failureMode = getBlacklistFailureMode();
+
   if (!process.env.REDIS_URL) {
     logger.warn('Skipping token blacklist check: REDIS_URL not configured');
     return false; // Fail Open if Redis is not configured (Dev/Test)
   }
 
   if (!cacheService.isAvailable()) {
-    // FAIL CLOSED: Redis is configured but down.
-    // We cannot verify if the token is revoked, so we must assume it might be.
-    // Throwing an error here will cause the request to fail (500), which is safer than allowing potentially revoked access.
-    logger.error('CRITICAL: Redis unavailable for token blacklist check. Denying access (Fail Closed).');
-    throw new Error('Service unavailable: Validation check failed');
+    if (failureMode === 'fail_closed') {
+      logger.error('CRITICAL: Redis unavailable for token blacklist check. Denying access (Fail Closed).');
+      const error = new Error('Service unavailable: Validation check failed');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    logger.warn('Redis unavailable for token blacklist check. Allowing request (Fail Open mode).');
+    return false;
   }
 
-  const blacklistKey = `blacklist:token:${token}`;
-  // Use getCritical to enforce fail-closed at the cache level too, though isAvailable check above catches most cases.
-  const result = await cacheService.getCritical(blacklistKey);
-  return result === 'true';
+  try {
+    const blacklistKey = `blacklist:token:${token}`;
+    // Use getCritical to enforce fail-closed when configured.
+    const result = await cacheService.getCritical(blacklistKey);
+    return result === 'true';
+  } catch {
+    if (failureMode === 'fail_closed') {
+      logger.error('CRITICAL: Token blacklist check failed during Redis read. Denying access (Fail Closed).');
+      const serviceError = new Error('Service unavailable: Validation check failed');
+      serviceError.statusCode = 503;
+      throw serviceError;
+    }
+
+    logger.warn('Token blacklist Redis read failed. Allowing request (Fail Open mode).');
+    return false;
+  }
 };
