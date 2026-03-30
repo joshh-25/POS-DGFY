@@ -31,6 +31,15 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
         type: DataTypes.DECIMAL(10, 4),
         allowNull: false
     },
+    sale_price_overridden: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    price_override_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     line_subtotal: {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false
@@ -57,4 +66,3 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
 });
 
 export default PosTransactionLine;
-

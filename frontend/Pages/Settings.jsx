@@ -21,7 +21,9 @@ import {
   Star,
   CheckCircle2,
   History,
-  XCircle
+  XCircle,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,22 @@ import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import { useSearchParams } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection } from '../src/utils/subscriptionUi.js';
 
+const ORDER_METHOD_FEE_DEFINITIONS = [
+  { key: 'dine_in', label: 'Dine In', defaultFeeLabel: 'Dine In Fee' },
+  { key: 'takeout', label: 'Takeout', defaultFeeLabel: 'Takeout Fee' },
+  { key: 'delivery', label: 'Delivery', defaultFeeLabel: 'Delivery Fee' },
+  { key: 'online', label: 'Online', defaultFeeLabel: 'Online Fee' }
+];
+
+const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((acc, method) => {
+  acc[method.key] = {
+    enabled: false,
+    amount: 0,
+    label: method.defaultFeeLabel
+  };
+  return acc;
+}, {});
+
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'profile';
@@ -53,7 +71,19 @@ export default function Settings() {
     surplusAlertEnabled: true,
     procurementReminderDay: 1,
     qualityThreshold: 3.5,
-    autoCalculateThresholds: true
+    autoCalculateThresholds: true,
+    posBusinessName: '',
+    posTinBranch: '',
+    posAddress: '',
+    posPtuNumber: '',
+    posMinNumber: '',
+    posAccreditationNumber: '',
+    posStrictComplianceEnabled: false,
+    posReceiptFooterMessage: '',
+    posDiscountProfiles: [],
+    posOrderMethodFees: createDefaultOrderMethodFees(),
+    posPettyCashSymbol: 'PHP',
+    posPettyCashAmount: 0
   });
 
   const [profileSettings, setProfileSettings] = useState({
@@ -112,7 +142,19 @@ export default function Settings() {
           surplusAlertEnabled: systemSettings.enable_expiry_alerts?.value ?? true,
           procurementReminderDay: systemSettings.alert_frequency_hours?.value || 24,
           qualityThreshold: systemSettings.supplier_rating_threshold?.value || 3.5,
-          autoCalculateThresholds: systemSettings.enable_auto_reorder?.value ?? true
+          autoCalculateThresholds: systemSettings.enable_auto_reorder?.value ?? true,
+          posBusinessName: systemSettings.pos_business_name?.value || '',
+          posTinBranch: systemSettings.pos_tin_branch?.value || '',
+          posAddress: systemSettings.pos_address?.value || '',
+          posPtuNumber: systemSettings.pos_ptu_number?.value || '',
+          posMinNumber: systemSettings.pos_min_number?.value || '',
+          posAccreditationNumber: systemSettings.pos_accreditation_number?.value || '',
+          posStrictComplianceEnabled: systemSettings.pos_strict_compliance_enabled?.value ?? false,
+          posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
+          posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
+          posOrderMethodFees: normalizeOrderMethodFees(systemSettings.pos_order_method_fees?.value),
+          posPettyCashSymbol: systemSettings.pos_petty_cash_symbol?.value || 'PHP',
+          posPettyCashAmount: Number(systemSettings.pos_petty_cash_amount?.value ?? 0) || 0
         });
 
         // Fetch company info if master admin
@@ -164,6 +206,97 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const sanitizeDiscountProfile = (profile) => ({
+    name: String(profile?.name || '').trim(),
+    percentage: Number(profile?.percentage ?? 0),
+    active: profile?.active !== false
+  });
+
+  const normalizeDiscountProfiles = (rawProfiles) => {
+    let parsed = rawProfiles;
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        parsed = [];
+      }
+    }
+
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(sanitizeDiscountProfile);
+  };
+
+  const normalizeOrderMethodFees = (rawFees) => {
+    let parsed = rawFees;
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        parsed = {};
+      }
+    }
+
+    const defaults = createDefaultOrderMethodFees();
+    if (!parsed || typeof parsed !== 'object') return defaults;
+
+    ORDER_METHOD_FEE_DEFINITIONS.forEach((method) => {
+      const entry = parsed?.[method.key];
+      if (!entry || typeof entry !== 'object') return;
+      const amount = Number(entry.amount);
+      defaults[method.key] = {
+        enabled: entry.enabled === true || entry.enabled === 'true' || entry.enabled === 1 || entry.enabled === '1',
+        amount: Number.isFinite(amount) ? Math.max(0, amount) : 0,
+        label: String(entry.label || '').trim() || method.defaultFeeLabel
+      };
+    });
+
+    return defaults;
+  };
+
+  const handleOrderMethodFeeChange = (methodKey, key, value) => {
+    setSettings((prev) => {
+      const nextFees = normalizeOrderMethodFees(prev.posOrderMethodFees);
+      const current = nextFees[methodKey] || { enabled: false, amount: 0, label: '' };
+      nextFees[methodKey] = {
+        ...current,
+        [key]: key === 'amount' ? Number(value) : value
+      };
+      return { ...prev, posOrderMethodFees: nextFees };
+    });
+  };
+
+  const handleDiscountProfileChange = (index, key, value) => {
+    setSettings((prev) => {
+      const nextProfiles = Array.isArray(prev.posDiscountProfiles)
+        ? [...prev.posDiscountProfiles]
+        : [];
+      const existing = nextProfiles[index] || { name: '', percentage: 0, active: true };
+      nextProfiles[index] = {
+        ...existing,
+        [key]: key === 'percentage' ? Number(value) : value
+      };
+      return { ...prev, posDiscountProfiles: nextProfiles };
+    });
+  };
+
+  const addDiscountProfile = () => {
+    setSettings((prev) => ({
+      ...prev,
+      posDiscountProfiles: [
+        ...(Array.isArray(prev.posDiscountProfiles) ? prev.posDiscountProfiles : []),
+        { name: '', percentage: 0, active: true }
+      ]
+    }));
+  };
+
+  const removeDiscountProfile = (index) => {
+    setSettings((prev) => ({
+      ...prev,
+      posDiscountProfiles: (Array.isArray(prev.posDiscountProfiles) ? prev.posDiscountProfiles : [])
+        .filter((_, idx) => idx !== index)
+    }));
   };
 
   const handleProfileChange = (key, value) => {
@@ -220,11 +353,39 @@ export default function Settings() {
         }));
       }
 
+      const posDiscountProfiles = (Array.isArray(settings.posDiscountProfiles) ? settings.posDiscountProfiles : [])
+        .map(sanitizeDiscountProfile)
+        .filter((profile) => profile.name.length > 0);
+
+      const normalizedNames = new Set();
+      for (const profile of posDiscountProfiles) {
+        const normalizedName = profile.name.toLowerCase();
+        if (normalizedNames.has(normalizedName)) {
+          toast.error(`Duplicate POS discount name: ${profile.name}`);
+          return;
+        }
+        normalizedNames.add(normalizedName);
+      }
+
+      const posOrderMethodFees = normalizeOrderMethodFees(settings.posOrderMethodFees);
+
       // Save threshold settings to backend
       await settingsService.updateSettings({
         enable_auto_reorder: settings.autoCalculateThresholds,
         min_stock_threshold_percent: settings.defaultMinThreshold,
-        purchase_allowance_percent: settings.defaultPurchaseAllowance
+        purchase_allowance_percent: settings.defaultPurchaseAllowance,
+        pos_business_name: settings.posBusinessName,
+        pos_tin_branch: settings.posTinBranch,
+        pos_address: settings.posAddress,
+        pos_ptu_number: settings.posPtuNumber,
+        pos_min_number: settings.posMinNumber,
+        pos_accreditation_number: settings.posAccreditationNumber,
+        pos_strict_compliance_enabled: settings.posStrictComplianceEnabled,
+        pos_receipt_footer_message: settings.posReceiptFooterMessage,
+        pos_discount_profiles: posDiscountProfiles,
+        pos_order_method_fees: posOrderMethodFees,
+        pos_petty_cash_symbol: settings.posPettyCashSymbol,
+        pos_petty_cash_amount: Number(settings.posPettyCashAmount || 0)
       });
 
       toast.success("Settings saved successfully!");
@@ -263,7 +424,19 @@ export default function Settings() {
       surplusAlertEnabled: true,
       procurementReminderDay: 1,
       qualityThreshold: 3.5,
-      autoCalculateThresholds: true
+      autoCalculateThresholds: true,
+      posBusinessName: '',
+      posTinBranch: '',
+      posAddress: '',
+      posPtuNumber: '',
+      posMinNumber: '',
+      posAccreditationNumber: '',
+      posStrictComplianceEnabled: false,
+      posReceiptFooterMessage: '',
+      posDiscountProfiles: [],
+      posOrderMethodFees: createDefaultOrderMethodFees(),
+      posPettyCashSymbol: 'PHP',
+      posPettyCashAmount: 0
     });
     toast.success("Settings reset to defaults");
   };
@@ -370,10 +543,11 @@ export default function Settings() {
       </div>
 
       <Tabs value={currentTab} onValueChange={(v) => setSearchParams({ tab: v })} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[600px] mb-8">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[760px] mb-8">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="company">Company</TabsTrigger>
           <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          <TabsTrigger value="pos">POS Setup</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
@@ -748,6 +922,231 @@ export default function Settings() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* System Tab */}
+        <TabsContent value="pos" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-teal-600" />
+                POS Setup & Receipt Metadata
+              </CardTitle>
+              <CardDescription>
+                Configure business and compliance header details shown on digital receipts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Business Name</Label>
+                  <Input
+                    value={settings.posBusinessName}
+                    onChange={(e) => handleChange('posBusinessName', e.target.value)}
+                    placeholder="Registered business name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>TIN / Branch</Label>
+                  <Input
+                    value={settings.posTinBranch}
+                    onChange={(e) => handleChange('posTinBranch', e.target.value)}
+                    placeholder="e.g. 123-456-789-000"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Business Address</Label>
+                  <Input
+                    value={settings.posAddress}
+                    onChange={(e) => handleChange('posAddress', e.target.value)}
+                    placeholder="Complete branch/business address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>PTU Number</Label>
+                  <Input
+                    value={settings.posPtuNumber}
+                    onChange={(e) => handleChange('posPtuNumber', e.target.value)}
+                    placeholder="Permit to Use reference"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>MIN Number</Label>
+                  <Input
+                    value={settings.posMinNumber}
+                    onChange={(e) => handleChange('posMinNumber', e.target.value)}
+                    placeholder="Machine Identification Number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Accreditation Number</Label>
+                  <Input
+                    value={settings.posAccreditationNumber}
+                    onChange={(e) => handleChange('posAccreditationNumber', e.target.value)}
+                    placeholder="BIR accreditation reference"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Strict POS Compliance Blocking</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Block POS checkout when required compliance fields are incomplete</span>
+                    <Switch
+                      checked={settings.posStrictComplianceEnabled}
+                      onCheckedChange={(v) => handleChange('posStrictComplianceEnabled', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Receipt Footer Message</Label>
+                  <Input
+                    value={settings.posReceiptFooterMessage}
+                    onChange={(e) => handleChange('posReceiptFooterMessage', e.target.value)}
+                    placeholder="Optional receipt footer"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Petty Cash Currency Symbol</Label>
+                  <Input
+                    value={settings.posPettyCashSymbol}
+                    onChange={(e) => handleChange('posPettyCashSymbol', e.target.value)}
+                    placeholder="e.g. PHP"
+                    maxLength={12}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Petty Cash Amount</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={settings.posPettyCashAmount}
+                    onChange={(e) => handleChange('posPettyCashAmount', e.target.value)}
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Used for cashier reconciliation and daily closeout context. Not counted as sales.
+                  </p>
+                </div>
+                <div className="space-y-3 md:col-span-2">
+                  <Label>Order Method Fees</Label>
+                  <p className="text-xs text-slate-500">
+                    Configure additive service fees by order method. These are non-VAT fees and are applied after item discounts.
+                  </p>
+                  <div className="space-y-2">
+                    {ORDER_METHOD_FEE_DEFINITIONS.map((method) => {
+                      const feeEntry = normalizeOrderMethodFees(settings.posOrderMethodFees)?.[method.key] || {
+                        enabled: false,
+                        amount: 0,
+                        label: method.defaultFeeLabel
+                      };
+
+                      return (
+                        <div
+                          key={`order-method-fee-${method.key}`}
+                          className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3"
+                        >
+                          <div className="md:col-span-3 space-y-1">
+                            <Label className="text-xs text-slate-500">{method.label}</Label>
+                            <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
+                              <Switch
+                                checked={feeEntry.enabled === true}
+                                onCheckedChange={(checked) => handleOrderMethodFeeChange(method.key, 'enabled', checked)}
+                              />
+                            </div>
+                          </div>
+                          <div className="md:col-span-4 space-y-1">
+                            <Label className="text-xs text-slate-500">Fee Amount (PHP)</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              value={feeEntry.amount}
+                              onChange={(e) => handleOrderMethodFeeChange(method.key, 'amount', e.target.value)}
+                              disabled={!feeEntry.enabled}
+                            />
+                          </div>
+                          <div className="md:col-span-5 space-y-1">
+                            <Label className="text-xs text-slate-500">Fee Label</Label>
+                            <Input
+                              value={feeEntry.label}
+                              onChange={(e) => handleOrderMethodFeeChange(method.key, 'label', e.target.value)}
+                              placeholder={method.defaultFeeLabel}
+                              disabled={!feeEntry.enabled}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label>POS Discount Presets (Percentage)</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addDiscountProfile}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Discount
+                    </Button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Example: Employee Discount at 20%. Cashiers can select these at checkout.
+                  </p>
+                  <div className="space-y-2">
+                    {(Array.isArray(settings.posDiscountProfiles) ? settings.posDiscountProfiles : []).map((profile, index) => (
+                      <div
+                        key={`discount-profile-${index}`}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3"
+                      >
+                        <div className="md:col-span-6 space-y-1">
+                          <Label className="text-xs text-slate-500">Discount Name</Label>
+                          <Input
+                            value={profile.name}
+                            onChange={(e) => handleDiscountProfileChange(index, 'name', e.target.value)}
+                            placeholder="e.g. Employee Discount"
+                          />
+                        </div>
+                        <div className="md:col-span-3 space-y-1">
+                          <Label className="text-xs text-slate-500">Percent</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={profile.percentage}
+                            onChange={(e) => handleDiscountProfileChange(index, 'percentage', e.target.value)}
+                          />
+                        </div>
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-slate-500">Active</Label>
+                          <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
+                            <Switch
+                              checked={profile.active !== false}
+                              onCheckedChange={(checked) => handleDiscountProfileChange(index, 'active', checked)}
+                            />
+                          </div>
+                        </div>
+                        <div className="md:col-span-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => removeDiscountProfile(index)}
+                            aria-label={`Remove discount profile ${index + 1}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {(Array.isArray(settings.posDiscountProfiles) ? settings.posDiscountProfiles : []).length === 0 && (
+                      <p className="text-xs text-slate-500 border border-dashed border-slate-300 rounded-lg p-3">
+                        No discount presets configured yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -2,6 +2,123 @@ import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
+import logger from '../../../config/logger.js';
+
+const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
+const ORDER_METHOD_DEFAULT_LABELS = {
+    dine_in: 'Dine In Fee',
+    takeout: 'Takeout Fee',
+    delivery: 'Delivery Fee',
+    online: 'Online Fee'
+};
+
+const createDefaultOrderMethodFees = () => ORDER_METHODS.reduce((acc, method) => {
+    acc[method] = {
+        enabled: false,
+        amount: 0,
+        label: ORDER_METHOD_DEFAULT_LABELS[method]
+    };
+    return acc;
+}, {});
+
+const parseBooleanLike = (value) => value === true || value === 'true' || value === 1 || value === '1';
+
+const parseJsonLoosely = (raw) => {
+    if (raw == null) return null;
+    if (typeof raw === 'object') return raw;
+
+    if (typeof raw !== 'string') return null;
+
+    const parseOnce = (value) => {
+        try {
+            return JSON.parse(value);
+        } catch {
+            return null;
+        }
+    };
+
+    const first = parseOnce(raw);
+    if (first == null) return null;
+
+    if (typeof first === 'string') {
+        const second = parseOnce(first);
+        if (second != null) return second;
+    }
+
+    return first;
+};
+
+const normalizeDiscountProfiles = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    if (!Array.isArray(parsed)) return [];
+
+    const seenNames = new Set();
+    const normalized = [];
+    for (const profile of parsed) {
+        const name = String(profile?.name || '').trim();
+        if (!name) continue;
+
+        const normalizedName = name.toLowerCase();
+        if (seenNames.has(normalizedName)) continue;
+        seenNames.add(normalizedName);
+
+        const numericPercentage = Number(profile?.percentage ?? 0);
+        const percentage = Number.isFinite(numericPercentage)
+            ? Math.min(100, Math.max(0, numericPercentage))
+            : 0;
+
+        normalized.push({
+            name,
+            percentage,
+            active: profile?.active !== false
+        });
+    }
+
+    return normalized.slice(0, 20);
+};
+
+const normalizeOrderMethodFees = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    const normalized = createDefaultOrderMethodFees();
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return normalized;
+    }
+
+    ORDER_METHODS.forEach((method) => {
+        const entry = parsed?.[method];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+
+        const amount = Number(entry.amount);
+        normalized[method] = {
+            enabled: parseBooleanLike(entry.enabled),
+            amount: Number.isFinite(amount) ? Math.max(0, amount) : 0,
+            label: String(entry.label || '').trim() || ORDER_METHOD_DEFAULT_LABELS[method]
+        };
+    });
+
+    return normalized;
+};
+
+const normalizeValueForSettingKey = (settingKey, value) => {
+    if (settingKey === 'pos_discount_profiles') {
+        return normalizeDiscountProfiles(value);
+    }
+    if (settingKey === 'pos_order_method_fees') {
+        return normalizeOrderMethodFees(value);
+    }
+    return value;
+};
+
+const POS_JSON_SETTING_KEYS = new Set(['pos_discount_profiles', 'pos_order_method_fees']);
+
+const shouldRepairPosJsonSetting = (setting, parsedValue) => {
+    if (!POS_JSON_SETTING_KEYS.has(setting.setting_key)) return false;
+    if (setting.data_type !== 'json') return true;
+
+    const expectedSerialized = JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue));
+    return setting.setting_value !== expectedSerialized;
+};
 
 const parseSettingValue = (setting) => {
     let value = setting.setting_value;
@@ -11,14 +128,10 @@ const parseSettingValue = (setting) => {
     } else if (setting.data_type === 'boolean') {
         value = value === 'true' || value === '1';
     } else if (setting.data_type === 'json') {
-        try {
-            value = JSON.parse(value);
-        } catch {
-            value = null;
-        }
+        value = parseJsonLoosely(value);
     }
 
-    return value;
+    return normalizeValueForSettingKey(setting.setting_key, value);
 };
 
 const serializeSettingValue = (setting, value) => {
@@ -45,6 +158,14 @@ const inferDataType = (value) => {
         return 'json';
     }
     return 'string';
+};
+
+const normalizeSettingForWrite = (setting, value) => {
+    const nextDataType = inferDataType(value);
+    return {
+        data_type: nextDataType,
+        setting_value: serializeSettingValue({ data_type: nextDataType }, value)
+    };
 };
 
 const applyThresholdSettingsInternal = async () => {
@@ -87,14 +208,31 @@ export const settingsRepository = {
         });
 
         const settingsObject = {};
+        const repairPromises = [];
         settings.forEach((setting) => {
+            const parsedValue = parseSettingValue(setting);
             settingsObject[setting.setting_key] = {
-                value: parseSettingValue(setting),
+                value: parsedValue,
                 data_type: setting.data_type,
                 description: setting.description,
                 updated_at: setting.updated_at
             };
+
+            if (shouldRepairPosJsonSetting(setting, parsedValue)) {
+                repairPromises.push(
+                    setting.update({
+                        data_type: 'json',
+                        setting_value: JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue))
+                    }).catch((error) => {
+                        logger.warn(`[SettingsRepository] Failed to repair malformed setting ${setting.setting_key}: ${error.message}`);
+                    })
+                );
+            }
         });
+
+        if (repairPromises.length > 0) {
+            await Promise.all(repairPromises);
+        }
 
         return settingsObject;
     },
@@ -108,11 +246,26 @@ export const settingsRepository = {
             throw new Error(`Setting '${key}' not found`);
         }
 
+        const parsedValue = parseSettingValue(setting);
+
+        let repaired = false;
+        if (shouldRepairPosJsonSetting(setting, parsedValue)) {
+            try {
+                await setting.update({
+                    data_type: 'json',
+                    setting_value: JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue))
+                });
+                repaired = true;
+            } catch (error) {
+                logger.warn(`[SettingsRepository] Failed to repair malformed setting ${setting.setting_key}: ${error.message}`);
+            }
+        }
+
         return {
             setting_id: setting.setting_id,
             setting_key: setting.setting_key,
-            value: parseSettingValue(setting),
-            data_type: setting.data_type,
+            value: parsedValue,
+            data_type: repaired ? 'json' : setting.data_type,
             description: setting.description,
             updated_at: setting.updated_at
         };
@@ -127,21 +280,23 @@ export const settingsRepository = {
 
         for (const [key, value] of Object.entries(settingsData)) {
             try {
+                const normalizedValue = normalizeValueForSettingKey(key, value);
                 let setting = await SystemSetting.findOne({
                     where: { setting_key: key }
                 });
 
                 if (!setting) {
-                    const data_type = inferDataType(value);
+                    const data_type = inferDataType(normalizedValue);
                     setting = await SystemSetting.create({
                         setting_key: key,
-                        setting_value: serializeSettingValue({ data_type }, value),
+                        setting_value: serializeSettingValue({ data_type }, normalizedValue),
                         data_type,
                         description: `Auto-created by settings update flow for key '${key}'`
                     });
                 } else {
+                    const normalizedUpdate = normalizeSettingForWrite(setting, normalizedValue);
                     updatePromises.push(
-                        setting.update({ setting_value: serializeSettingValue(setting, value) })
+                        setting.update(normalizedUpdate)
                     );
                 }
             } catch (error) {
@@ -168,26 +323,28 @@ export const settingsRepository = {
     },
     async updateSettingByKey(key, value) {
         const SystemSetting = dbStore.get('SystemSetting');
+        const normalizedValue = normalizeValueForSettingKey(key, value);
         let setting = await SystemSetting.findOne({
             where: { setting_key: key }
         });
 
         if (!setting) {
-            const data_type = inferDataType(value);
+            const data_type = inferDataType(normalizedValue);
             setting = await SystemSetting.create({
                 setting_key: key,
-                setting_value: serializeSettingValue({ data_type }, value),
+                setting_value: serializeSettingValue({ data_type }, normalizedValue),
                 data_type,
                 description: `Auto-created by settings update flow for key '${key}'`
             });
         } else {
-            await setting.update({ setting_value: serializeSettingValue(setting, value) });
+            const normalizedUpdate = normalizeSettingForWrite(setting, normalizedValue);
+            await setting.update(normalizedUpdate);
         }
 
         return {
             setting_id: setting.setting_id,
             setting_key: setting.setting_key,
-            value,
+            value: normalizedValue,
             data_type: setting.data_type,
             description: setting.description,
             updated_at: setting.updated_at

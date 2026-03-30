@@ -252,6 +252,11 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
           ...options
         });
 
+        const totalAvailableFromBatches = batches.reduce((sum, batch) => {
+          const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
+          return sum + Math.max(0, available);
+        }, 0);
+
 
 
         for (const batch of batches) {
@@ -280,23 +285,23 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
         }
 
         if (remaining > 0) {
-          // Check if this is a legacy data issue (current_stock exists but no FIFO batches)
-          const hasLegacyStock = currentStock > 0 && batches.length === 0;
-          if (hasLegacyStock) {
-            // Create a legacy batch to represent existing stock before consuming
-            console.warn(`[StockMovement] Creating legacy FIFO batch for item ${item.name} (ID: ${item.item_id}) with ${currentStock} ${item.unit_of_measure}`);
+          // Auto-heal legacy drift where current_stock is higher than open FIFO batches.
+          const stockDrift = Math.max(0, currentStock - totalAvailableFromBatches);
+          const hasLegacyDrift = stockDrift > 0.0001;
+          if (hasLegacyDrift) {
+            console.warn(`[StockMovement] Repairing FIFO stock drift for item ${item.name} (ID: ${item.item_id}). current_stock=${currentStock}, batch_available=${totalAvailableFromBatches}, drift=${stockDrift}`);
             const legacyBatch = await FIFOBatch.create({
               item_id: item.item_id,
-              quantity: currentStock,
+              quantity: stockDrift,
               cost_per_unit: item.cost_per_unit || 0,
               received_date: new Date(),
               expiry_date: null,
-              po_number: 'LEGACY-STOCK',
-              notes: 'Auto-created from existing stock during JO completion'
+              po_number: 'LEGACY-STOCK-DRIFT',
+              notes: 'Auto-created from current_stock/FIFO drift reconciliation'
             }, options);
 
             // Now consume from the legacy batch
-            const consume = Math.min(remaining, currentStock);
+            const consume = Math.min(remaining, stockDrift);
             await legacyBatch.update({
               quantity_consumed: consume
             }, options);
@@ -308,7 +313,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
             batchTransactionsData.push({
               batch_id: legacyBatch.batch_id,
               quantity_consumed: consume,
-              remaining_after: currentStock - consume,
+              remaining_after: stockDrift - consume,
               cost_per_unit: legacyBatch.cost_per_unit
             });
 

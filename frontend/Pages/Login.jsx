@@ -34,6 +34,7 @@ export default function Login() {
   const [isActioning, setIsActioning] = useState(false);
   const [actionSent, setActionSent] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [lastLookupEmail, setLastLookupEmail] = useState('');
 
   // Clear stale company token when landing on login page
   // and reset any stale in-memory state from a previous user session.
@@ -51,8 +52,15 @@ export default function Login() {
     // Strict email regex matching backend/Joi: something@something.something
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!formData.email || !emailRegex.test(formData.email)) {
+    const normalizedEmail = (formData.email || '').trim().toLowerCase();
+
+    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
       return null;
+    }
+
+    // Avoid re-running lookup on every blur/click if email is unchanged and already resolved.
+    if (lookupDone && normalizedEmail === lastLookupEmail && formData.companyToken) {
+      return formData.companyToken;
     }
 
     setIsLookingUp(true);
@@ -68,7 +76,11 @@ export default function Login() {
 
     try {
       console.log('🔍 [Login] Looking up email:', formData.email);
-      const response = await api.post('/auth/lookup', { email: formData.email });
+      const response = await api.post(
+        '/auth/lookup',
+        { email: normalizedEmail },
+        { timeout: 8000 }
+      );
       const data = response.data.data;
       console.log('✅ [Login] Lookup success:', data);
 
@@ -85,6 +97,7 @@ export default function Login() {
         resolvedToken = data.company_token;
         setIdentifiedToken(data.company_token);
         setIdentifiedPlan(data.plan || 'standard');
+        setError('');
         setFormData(prev => ({ ...prev, companyToken: data.company_token }));
         setShowTokenField(false);
         setAvailableTenants([]);
@@ -98,6 +111,7 @@ export default function Login() {
           setRejectionReason(data.rejection_reason || '');
         }
       }
+      setLastLookupEmail(normalizedEmail);
       setLookupDone(true);
     } catch (err) {
       console.error('❌ [Login] Lookup failed:', err.response?.status, err.response?.data || err.message);
@@ -136,16 +150,42 @@ export default function Login() {
     if (e) e.preventDefault();
     setError('');
 
-    // If still looking up, we need to wait
-    if (isLookingUp) {
+    // Browser autofill may visually fill inputs without firing React onChange.
+    // Read DOM values as fallback so submit logic uses what the user actually sees.
+    const domEmail = typeof document !== 'undefined'
+      ? document.getElementById('email')?.value
+      : '';
+    const domPassword = typeof document !== 'undefined'
+      ? document.getElementById('password')?.value
+      : '';
+    const domCompanyToken = typeof document !== 'undefined'
+      ? document.getElementById('companyToken')?.value
+      : '';
+
+    const effectiveEmail = (formData.email || domEmail || '').trim();
+    const effectivePassword = formData.password || domPassword || '';
+    const effectiveCompanyToken = (formData.companyToken || domCompanyToken || '').trim();
+
+    if (effectiveEmail !== formData.email || effectivePassword !== formData.password || effectiveCompanyToken !== formData.companyToken) {
+      setFormData({
+        email: effectiveEmail,
+        password: effectivePassword,
+        companyToken: effectiveCompanyToken
+      });
+    }
+
+    const hasManualToken = Boolean(effectiveCompanyToken);
+
+    // If lookup is still running and user has no manual token yet, block submit.
+    if (isLookingUp && !hasManualToken) {
       setError('Identifying company... please wait.');
       return;
     }
 
-    let currentToken = formData.companyToken;
+    let currentToken = effectiveCompanyToken;
 
-    // If lookup wasn't performed yet, do it now
-    if (!lookupDone && formData.email) {
+    // If lookup wasn't performed yet, do it now only when token is not already provided.
+    if (!lookupDone && effectiveEmail && !hasManualToken) {
       setIsLoading(true);
       currentToken = await handleEmailBlur();
       setIsLoading(false);
@@ -163,8 +203,8 @@ export default function Login() {
     try {
       console.log('🔐 [Login] Attempting sign-in for:', { email: formData.email, companyToken: currentToken });
       await login({
-        email: formData.email,
-        password: formData.password,
+        email: effectiveEmail,
+        password: effectivePassword,
         companyToken: currentToken
       });
 
@@ -207,13 +247,16 @@ export default function Login() {
               <div className="relative">
                 <Input
                   id="email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
                   placeholder="admin@test.com"
                   value={formData.email}
                   onChange={(e) => {
                     setFormData({ ...formData, email: e.target.value });
                     // Reset lookup state when email changes
                     setLookupDone(false);
+                    setLastLookupEmail('');
                     setLookupError('');
                   }}
                   onBlur={handleEmailBlur}
@@ -236,7 +279,9 @@ export default function Login() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="Enter your password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -296,7 +341,9 @@ export default function Login() {
                 ) : (
                   <Input
                     id="companyToken"
+                    name="companyToken"
                     type="text"
+                    autoComplete="off"
                     placeholder="e.g., token-tenant-a"
                     value={formData.companyToken}
                     onChange={(e) => setFormData({ ...formData, companyToken: e.target.value })}

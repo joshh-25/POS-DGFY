@@ -13,6 +13,7 @@ const mockValidateCompositionUseCase = jest.fn();
 const mockGetItemSupplierCoverageUseCase = jest.fn();
 const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
+const mockUpdateFolderUseCase = jest.fn();
 const mockDeleteFolderUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
@@ -30,6 +31,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getItemSupplierCoverageUseCase: mockGetItemSupplierCoverageUseCase,
   getFoldersUseCase: mockGetFoldersUseCase,
   createFolderUseCase: mockCreateFolderUseCase,
+  updateFolderUseCase: mockUpdateFolderUseCase,
   deleteFolderUseCase: mockDeleteFolderUseCase
 }));
 
@@ -41,6 +43,7 @@ let getItems;
 let createItem;
 let deleteItem;
 let validateComposition;
+let updateFolder;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -48,6 +51,7 @@ beforeAll(async () => {
   createItem = mod.createItem;
   deleteItem = mod.deleteItem;
   validateComposition = mod.validateComposition;
+  updateFolder = mod.updateFolder;
 });
 
 const createRes = () => {
@@ -191,6 +195,45 @@ describe('itemHandlers transport contracts', () => {
       error_code: 'VALIDATION_FAILED',
       errors: null,
       request_id: 'req-item-validate',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('updateFolder returns stable success payload and uses validated params/body', async () => {
+    mockUpdateFolderUseCase.mockResolvedValue({
+      folder_id: 33,
+      name: 'FG',
+      show_in_pos_filter: false,
+      message: 'Folder "FG" updated successfully.'
+    });
+
+    const req = {
+      params: { folder_id: '33' },
+      validatedParams: { folder_id: 33 },
+      validatedData: { show_in_pos_filter: false },
+      user: { user_id: 2, tenant_id: 'tenant-1' },
+      requestId: 'req-folder-update'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateFolder(req, res, next);
+
+    expect(mockUpdateFolderUseCase).toHaveBeenCalledWith({
+      folderId: 33,
+      payload: { show_in_pos_filter: false }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        folder_id: 33,
+        name: 'FG',
+        show_in_pos_filter: false,
+        message: 'Folder "FG" updated successfully.'
+      },
+      message: 'Folder "FG" updated successfully.',
       timestamp: expect.any(String)
     });
     expect(next).not.toHaveBeenCalled();

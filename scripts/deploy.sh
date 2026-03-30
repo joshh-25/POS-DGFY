@@ -470,6 +470,8 @@ run_step "Building frontend production artifacts..." bash -lc "cd \"$FRONTEND_DI
 run_step "Running database migration status (pre-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
 run_step "Running database migrations..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate"
 run_step "Running database migration status (post-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
+run_step "Normalizing original legacy tenant account..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/register_original_tenant.js --apply"
+run_step "Auditing original legacy tenant invariants..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/audit_original_legacy_account.js --strict"
 
 # ===========================================================================
 # Optional legacy hooks

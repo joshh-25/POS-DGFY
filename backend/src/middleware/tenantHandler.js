@@ -10,6 +10,7 @@ import { getTenantModels } from '../utils/tenantModelFactory.js';
 // TTL of 60 seconds: tenant tokens rarely change, and 1-minute stale is acceptable.
 const tenantCache = new Map(); // token -> { tenant, expiresAt }
 const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
+const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments)\b/i;
 
 /**
  * Middleware to resolve tenant and bind models to the request context
@@ -45,14 +46,23 @@ export const tenantHandler = async (req, res, next) => {
         // 2. Resolve Tenant (with in-memory cache to avoid a DB hit on every request)
         let tenant;
         const cached = tenantCache.get(companyToken);
-        if (cached && cached.expiresAt > Date.now()) {
-            tenant = cached.tenant;
-        } else {
-            logger.info(`[TenantHandler] Resolving tenant for token: ${companyToken}`);
-            tenant = await findTenantByToken(companyToken);
-            if (tenant) {
-                tenantCache.set(companyToken, { tenant, expiresAt: Date.now() + TENANT_CACHE_TTL_MS });
+        const requiresFreshPlanRead = PLAN_SENSITIVE_ROUTE_PATTERN.test(path);
+        try {
+            if (cached && cached.expiresAt > Date.now() && !requiresFreshPlanRead) {
+                tenant = cached.tenant;
+            } else {
+                logger.info(`[TenantHandler] Resolving tenant for token: ${companyToken}`);
+                tenant = await findTenantByToken(companyToken);
+                if (tenant) {
+                    tenantCache.set(companyToken, { tenant, expiresAt: Date.now() + TENANT_CACHE_TTL_MS });
+                }
             }
+        } catch (lookupError) {
+            logger.error(`[TenantHandler] Tenant lookup failed for token ${companyToken}: ${lookupError.message}`);
+            return dbStore.run({
+                tenantId: 'default',
+                tenantName: 'SKU-Inventory-Manager (Default)'
+            }, next);
         }
 
         if (!tenant) {

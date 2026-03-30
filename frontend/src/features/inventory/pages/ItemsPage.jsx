@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
@@ -45,6 +47,12 @@ import { useItemSelection } from '@/hooks/useItemSelection';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { usePermission } from '@/hooks/usePermission';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
+import {
+  getPosCatalogOverrides,
+  updatePosCatalogOverride,
+  uploadPosCatalogImage,
+  deletePosCatalogImage
+} from '@/services/posCatalogService.js';
 
 export default function Items() {
   const { items, loading, error, refetch } = useInventoryItems({ limit: 1000 });
@@ -52,10 +60,22 @@ export default function Items() {
   const { updateItem } = useInventoryUpdateItem();
   const { deleteItem, loading: deleting } = useInventoryDeleteItem();
   const { createItemDraft } = useInventoryCreateItemDraft();
-  const { canCreate, canDelete: canDeletePermission, canImport: canImportPermission, canExport: canExportPermission } = usePermission();
+  const {
+    can,
+    canCreate,
+    canEdit,
+    canDelete: canDeletePermission,
+    canImport: canImportPermission,
+    canExport: canExportPermission
+  } = usePermission();
 
   const { finalizeItem } = useInventoryFinalizeItem();
-  const { folders: apiFolders, createFolder: createApiFolder, refetch: refetchFolders } = useInventoryFolders();
+  const {
+    folders: apiFolders,
+    createFolder: createApiFolder,
+    updateFolder: updateApiFolder,
+    refetch: refetchFolders
+  } = useInventoryFolders();
 
   // Helper to load initial state from localStorage or defaults
   const getInitialState = (key, defaultValue) => {
@@ -115,6 +135,13 @@ export default function Items() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [itemToMove, setItemToMove] = useState(null);
   const [activeDragItem, setActiveDragItem] = useState(null);
+  const [posCatalogOverrides, setPosCatalogOverrides] = useState({});
+  const [showPosChecklistModal, setShowPosChecklistModal] = useState(false);
+  const [posChecklistSearch, setPosChecklistSearch] = useState('');
+  const [posChecklistCategory, setPosChecklistCategory] = useState('all');
+  const [posChecklistStatus, setPosChecklistStatus] = useState('all');
+  const [posChecklistSelectedIds, setPosChecklistSelectedIds] = useState(new Set());
+  const [bulkPosToggleLoading, setBulkPosToggleLoading] = useState(false);
 
   // DnD Sensors
   const sensors = useSensors(
@@ -139,6 +166,172 @@ export default function Items() {
     fetchUser();
   }, []);
 
+  const canConfigurePosCatalog = can('items:edit');
+
+  const getDefaultPosVisibility = useCallback((item) => (
+    item?.category === 'product' && item?.product_type === 'finished_goods'
+  ), []);
+
+  const fetchPosOverrides = useCallback(async () => {
+    if (!canConfigurePosCatalog) {
+      setPosCatalogOverrides({});
+      return;
+    }
+
+    try {
+      const rows = await getPosCatalogOverrides({ limit: 1000 });
+      const map = {};
+      (Array.isArray(rows) ? rows : []).forEach((row) => {
+        map[row.item_id] = row;
+      });
+      setPosCatalogOverrides(map);
+    } catch (error) {
+      console.error('Failed to load POS catalog overrides:', error);
+    }
+  }, [canConfigurePosCatalog]);
+
+  useEffect(() => {
+    fetchPosOverrides();
+  }, [fetchPosOverrides]);
+
+  const resolvePosConfig = (item) => {
+    const itemId = item?.item_id || item?.id;
+    const override = posCatalogOverrides[itemId];
+    return {
+      pos_visible: override ? override.pos_visible !== false : getDefaultPosVisibility(item),
+      pos_image_url: override?.pos_image_url || null
+    };
+  };
+
+  const handleTogglePosVisibility = async (item, nextVisible) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId) return;
+
+    try {
+      const updated = await updatePosCatalogOverride(itemId, { pos_visible: Boolean(nextVisible) });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS visibility ${nextVisible ? 'enabled' : 'disabled'} for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update POS visibility');
+    }
+  };
+
+  const handleUploadPosImage = async (item, file) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !file) return;
+
+    try {
+      const updated = await uploadPosCatalogImage(itemId, file);
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to upload POS image');
+    }
+  };
+
+  const handleDeletePosImage = async (item) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId) return;
+
+    try {
+      const updated = await deletePosCatalogImage(itemId);
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...(updated || {}), pos_image_url: null }
+      }));
+      toast.success(`POS image removed for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to remove POS image');
+    }
+  };
+
+  const posChecklistItems = useMemo(() => {
+    return items
+      .filter((item) => {
+        const matchesSearch = (item.name || '').toLowerCase().includes(posChecklistSearch.toLowerCase()) ||
+          (item.sku_code || '').toLowerCase().includes(posChecklistSearch.toLowerCase());
+        const effectiveCategory = getEffectiveCategory(item);
+        const matchesCategory = posChecklistCategory === 'all' || effectiveCategory === posChecklistCategory || item.category === posChecklistCategory;
+        const status = String(item.status || '').toLowerCase();
+        const matchesStatus = posChecklistStatus === 'all' || status === posChecklistStatus;
+        return matchesSearch && matchesCategory && matchesStatus;
+      })
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  }, [items, posChecklistSearch, posChecklistCategory, posChecklistStatus]);
+
+  const checklistSelectedCount = posChecklistSelectedIds.size;
+  const checklistFilteredCount = posChecklistItems.length;
+
+  const toggleChecklistSelection = (itemId) => {
+    setPosChecklistSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllFilteredChecklistItems = () => {
+    setPosChecklistSelectedIds(new Set(posChecklistItems.map((item) => item.item_id || item.id).filter(Boolean)));
+  };
+
+  const clearChecklistSelection = () => {
+    setPosChecklistSelectedIds(new Set());
+  };
+
+  const applyBulkPosVisibility = async (nextVisible) => {
+    const targetIds = Array.from(posChecklistSelectedIds);
+    if (targetIds.length === 0) {
+      toast.error('Select at least one item first.');
+      return;
+    }
+
+    setBulkPosToggleLoading(true);
+    try {
+      const updates = await Promise.allSettled(
+        targetIds.map(async (itemId) => {
+          const updated = await updatePosCatalogOverride(itemId, { pos_visible: Boolean(nextVisible) });
+          return { itemId, updated };
+        })
+      );
+
+      const successes = updates
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+      const failures = updates.length - successes.length;
+
+      if (successes.length > 0) {
+        setPosCatalogOverrides((prev) => {
+          const next = { ...prev };
+          successes.forEach(({ itemId, updated }) => {
+            next[itemId] = { ...(next[itemId] || {}), ...updated };
+          });
+          return next;
+        });
+      }
+
+      if (failures === 0) {
+        toast.success(`Updated POS visibility for ${successes.length} item${successes.length !== 1 ? 's' : ''}.`);
+      } else {
+        toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${failures} failed.`);
+      }
+      clearChecklistSelection();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to apply bulk POS visibility update.');
+    } finally {
+      setBulkPosToggleLoading(false);
+    }
+  };
+
   // Save filters to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('items_searchQuery', JSON.stringify(searchQuery));
@@ -155,35 +348,124 @@ export default function Items() {
 
   const [transientFolders, setTransientFolders] = useState(new Set());
 
-  const folders = useMemo(() => {
-    const folderSet = new Set(transientFolders);
+  const folderEntries = useMemo(() => {
+    const map = new Map();
 
-    // Add API folders (persistent)
     if (apiFolders && Array.isArray(apiFolders)) {
-      apiFolders.forEach(f => folderSet.add(f.name));
+      apiFolders.forEach((folder) => {
+        if (!folder?.name) return;
+        map.set(folder.name, {
+          name: folder.name,
+          folder_id: folder.folder_id,
+          description: folder.description || '',
+          show_in_pos_filter: folder.show_in_pos_filter !== false,
+          isPersistent: true
+        });
+      });
     }
 
-    // Add derived folders from items (legacy/compatibility)
-    items.forEach(item => {
-      if (item.product_folder) {
-        folderSet.add(item.product_folder);
+    transientFolders.forEach((folderName) => {
+      if (!folderName) return;
+      if (!map.has(folderName)) {
+        map.set(folderName, {
+          name: folderName,
+          folder_id: null,
+          description: '',
+          show_in_pos_filter: true,
+          isPersistent: false
+        });
       }
     });
 
-    return Array.from(folderSet).sort();
-  }, [items, transientFolders, apiFolders]);
+    items.forEach((item) => {
+      if (!item.product_folder) return;
+      if (!map.has(item.product_folder)) {
+        map.set(item.product_folder, {
+          name: item.product_folder,
+          folder_id: null,
+          description: '',
+          show_in_pos_filter: true,
+          isPersistent: false
+        });
+      }
+    });
 
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [apiFolders, items, transientFolders]);
+
+  const folders = useMemo(() => folderEntries.map((entry) => entry.name), [folderEntries]);
   const productFolders = folders;
+  const folderByName = useMemo(() => new Map(folderEntries.map((entry) => [entry.name, entry])), [folderEntries]);
+
+  const doesItemMatchFolder = useCallback((item, folderName) => {
+    if (!folderName) return false;
+    const folder = folderByName.get(folderName);
+    if (folder?.folder_id) {
+      return Number(item?.folder_id) === Number(folder.folder_id) || item?.product_folder === folderName;
+    }
+    return item?.product_folder === folderName;
+  }, [folderByName]);
+
+  const buildFolderAssignmentPayload = useCallback((folderName) => {
+    if (!folderName) {
+      return { folder_id: null, product_folder: null };
+    }
+
+    const folder = folderByName.get(folderName);
+    if (folder?.folder_id) {
+      return { folder_id: folder.folder_id, product_folder: folder.name };
+    }
+
+    return { product_folder: folderName };
+  }, [folderByName]);
+
+  const resolveItemFolderName = useCallback((item) => {
+    if (!item) return null;
+    if (item.product_folder) return item.product_folder;
+
+    if (item.folder_id) {
+      const matchingFolder = folderEntries.find((entry) => Number(entry.folder_id) === Number(item.folder_id));
+      return matchingFolder?.name || null;
+    }
+
+    return null;
+  }, [folderEntries]);
+
+  const isItemUncategorized = useCallback((item) => !resolveItemFolderName(item), [resolveItemFolderName]);
 
   const folderCounts = useMemo(() => {
     const counts = {};
-    items.forEach(item => {
-      if (item.product_folder && item.status !== 'draft') {
-        counts[item.product_folder] = (counts[item.product_folder] || 0) + 1;
-      }
+    folderEntries.forEach((folder) => {
+      counts[folder.name] = 0;
+    });
+    items.forEach((item) => {
+      if (item.status === 'draft') return;
+      folderEntries.forEach((folder) => {
+        if (doesItemMatchFolder(item, folder.name)) {
+          counts[folder.name] = (counts[folder.name] || 0) + 1;
+        }
+      });
     });
     return counts;
-  }, [items]);
+  }, [items, folderEntries, doesItemMatchFolder]);
+
+  const handleToggleFolderFilter = (folderName) => {
+    setFolderFilter((prev) => (prev === folderName ? 'all' : folderName));
+  };
+
+  const handleToggleFolderPosFilter = async (folder, nextValue) => {
+    if (!folder?.folder_id) {
+      toast.error('Only saved folders can update POS filter visibility.');
+      return;
+    }
+
+    try {
+      await updateApiFolder(folder.folder_id, { show_in_pos_filter: Boolean(nextValue) });
+      toast.success(`POS folder filter ${nextValue ? 'enabled' : 'disabled'} for ${folder.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update folder POS filter visibility');
+    }
+  };
 
   const filteredItems = useMemo(() => {
     return items
@@ -200,9 +482,9 @@ export default function Items() {
         // Folder navigation - if inside a folder, show only items in that folder
         let matchesFolder = true;
         if (currentFolder !== null) {
-          matchesFolder = item.product_folder === currentFolder;
+          matchesFolder = doesItemMatchFolder(item, currentFolder);
         } else if (folderFilter !== 'all') {
-          matchesFolder = item.product_folder === folderFilter;
+          matchesFolder = doesItemMatchFolder(item, folderFilter);
         }
 
         // Handle draft status filter
@@ -252,7 +534,7 @@ export default function Items() {
             return 0;
         }
       });
-  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder]);
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
@@ -266,7 +548,16 @@ export default function Items() {
   const isAnyModalOpen =
     showDetailsModal || showFormModal || showProductWizard || showMoveModal ||
     showDeleteDialog || showFolderDeleteDialog ||
-    showImportModal || showExportModal || showImportExportModal;
+    showImportModal || showExportModal || showImportExportModal || showPosChecklistModal;
+
+  useEffect(() => {
+    setPosChecklistSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(items.map((item) => item.item_id || item.id).filter(Boolean));
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
 
   // Escape key clears selection when the bar is visible and no modal is open
   useEffect(() => {
@@ -471,8 +762,9 @@ export default function Items() {
     setCurrentFolder(null);
   };
 
-  const handleDeleteFolderClick = (folderName) => {
-    // Look up the full folder object from apiFolders
+  const handleDeleteFolderClick = (folderInput) => {
+    const folderName = typeof folderInput === 'string' ? folderInput : folderInput?.name;
+    if (!folderName) return;
     const apiFolder = apiFolders?.find(f => f.name === folderName);
     // Build folder object — use API data if available, otherwise construct from name
     const folder = apiFolder || { name: folderName, item_count: folderCounts[folderName] || 0 };
@@ -489,7 +781,7 @@ export default function Items() {
         await deleteInventoryFolder(folderToDelete.folder_id);
       } else {
         // Legacy folder (derived from item product_folder field) — clear product_folder on all items
-        const itemsInFolder = items.filter(item => item.product_folder === folderToDelete.name);
+        const itemsInFolder = items.filter(item => doesItemMatchFolder(item, folderToDelete.name));
         for (const item of itemsInFolder) {
           await updateItem(item.item_id, { product_folder: null, folder_id: null });
         }
@@ -537,9 +829,8 @@ export default function Items() {
     if (itemsToMoveIds.length === 0) return;
 
     try {
-      const movePromises = itemsToMoveIds.map(id =>
-        updateItem(id, { product_folder: targetFolder })
-      );
+      const payload = buildFolderAssignmentPayload(targetFolder);
+      const movePromises = itemsToMoveIds.map(id => updateItem(id, payload));
 
       await Promise.all(movePromises);
 
@@ -583,14 +874,15 @@ export default function Items() {
       // Filter out items that are already in the target folder
       const itemsToMove = items.filter(item =>
         itemsToMoveIds.includes(item.item_id || item.id) &&
-        item.product_folder !== targetFolder
+        !doesItemMatchFolder(item, targetFolder)
       );
 
       if (itemsToMove.length === 0) return;
 
       try {
+        const payload = buildFolderAssignmentPayload(targetFolder);
         const movePromises = itemsToMove.map(item =>
-          updateItem(item.item_id || item.id, { product_folder: targetFolder })
+          updateItem(item.item_id || item.id, payload)
         );
 
         await Promise.all(movePromises);
@@ -677,6 +969,12 @@ export default function Items() {
                 Import / Export
               </Button>
             )}
+            {canConfigurePosCatalog && (
+              <Button variant="outline" onClick={() => setShowPosChecklistModal(true)}>
+                <ListChecks className="w-4 h-4 mr-2" />
+                POS Checklist
+              </Button>
+            )}
             {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
               <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
                 <Package className="w-4 h-4 mr-2" />
@@ -761,23 +1059,6 @@ export default function Items() {
                 </Select>
               </div>
 
-              {categoryFilter === 'product' && productFolders.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-500">Folder</span>
-                  <Select value={folderFilter} onValueChange={setFolderFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Folder" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Folders</SelectItem>
-                      {productFolders.map(folder => (
-                        <SelectItem key={folder} value={folder}>{folder}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-slate-500">Sort By</span>
                 <Select value={sortBy} onValueChange={setSortBy}>
@@ -801,6 +1082,44 @@ export default function Items() {
               </Tabs>
             </div>
           </div>
+
+          {currentFolder === null && productFolders.length > 0 && (
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-slate-500">Folder Filters</span>
+                {folderFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setFolderFilter('all')}
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    Clear folder filter
+                  </button>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {productFolders.map((folder) => {
+                  const active = folderFilter === folder;
+                  return (
+                    <button
+                      key={folder}
+                      type="button"
+                      onClick={() => handleToggleFolderFilter(folder)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all",
+                        active
+                          ? "border-teal-300 bg-teal-50 text-teal-700 shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                      )}
+                    >
+                      {folder}
+                      {active && <X className="h-3 w-3 opacity-70" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Items Grid/List */}
@@ -812,20 +1131,23 @@ export default function Items() {
               <CreateFolderCard onCreateFolder={handleCreateFolder} />
 
               {/* Folder Cards */}
-              {folders.map(folderName => (
+              {folderEntries.map((folder) => (
                 <FolderCard
-                  key={folderName}
-                  name={folderName}
-                  itemCount={folderCounts[folderName] || 0}
-                  onClick={() => handleEnterFolder(folderName)}
-                  onDelete={() => handleDeleteFolderClick(folderName)}
+                  key={folder.name}
+                  name={folder.name}
+                  itemCount={folderCounts[folder.name] || 0}
+                  onClick={() => handleEnterFolder(folder.name)}
+                  onDelete={() => handleDeleteFolderClick(folder)}
                   canDelete={canDeletePermission('items')}
+                  showInPosFilter={folder.show_in_pos_filter !== false}
+                  canTogglePosFilter={canEdit('items') && Boolean(folder.folder_id)}
+                  onTogglePosFilter={(nextValue) => handleToggleFolderPosFilter(folder, nextValue)}
                 />
               ))}
 
               {/* Uncategorized Items */}
               {filteredItems
-                .filter(item => !item.product_folder)
+                .filter(item => isItemUncategorized(item))
                 .map(item => (
                   <ItemCard
                     key={item.item_id || item.id}
@@ -834,6 +1156,11 @@ export default function Items() {
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
                     onMoveToFolder={openMoveModal}
+                    posConfig={resolvePosConfig(item)}
+                    canConfigurePosCatalog={canConfigurePosCatalog}
+                    onTogglePosVisibility={handleTogglePosVisibility}
+                    onUploadPosImage={handleUploadPosImage}
+                    onDeletePosImage={handleDeletePosImage}
                     isSelected={selectedIds.has(item.item_id || item.id)}
                     onSelect={toggleSelection}
                     currentUserRole={currentUser?.role}
@@ -858,6 +1185,11 @@ export default function Items() {
                   onEdit={handleEdit}
                   onDelete={handleDeleteClick}
                   onMoveToFolder={openMoveModal}
+                  posConfig={resolvePosConfig(item)}
+                  canConfigurePosCatalog={canConfigurePosCatalog}
+                  onTogglePosVisibility={handleTogglePosVisibility}
+                  onUploadPosImage={handleUploadPosImage}
+                  onDeletePosImage={handleDeletePosImage}
                   isSelected={selectedIds.has(item.item_id || item.id)}
                   onSelect={toggleSelection}
                   currentUserRole={currentUser?.role}
@@ -962,6 +1294,161 @@ export default function Items() {
         )}
 
         {/* Modals */}
+        <Dialog
+          open={showPosChecklistModal}
+          onOpenChange={(open) => {
+            setShowPosChecklistModal(open);
+            if (!open) {
+              clearChecklistSelection();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-5xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl">POS Checklist</DialogTitle>
+              <DialogDescription>
+                Manage POS visibility for any item category. Use filters, then select rows for bulk enable/disable.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 p-6 pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="md:col-span-2">
+                  <Input
+                    placeholder="Search by item name or SKU..."
+                    value={posChecklistSearch}
+                    onChange={(e) => setPosChecklistSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={posChecklistCategory} onValueChange={setPosChecklistCategory}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="raw_material">Raw Material</SelectItem>
+                    <SelectItem value="packaging">Packaging</SelectItem>
+                    <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+                    <SelectItem value="finished_goods">Finished Goods</SelectItem>
+                    <SelectItem value="supplies">Supplies</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={posChecklistStatus} onValueChange={setPosChecklistStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-600">
+                  Showing <span className="font-semibold text-slate-900">{checklistFilteredCount}</span> filtered item(s),
+                  selected <span className="font-semibold text-slate-900">{checklistSelectedCount}</span>.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={selectAllFilteredChecklistItems}
+                    disabled={checklistFilteredCount === 0}
+                  >
+                    Select All Filtered
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={clearChecklistSelection}
+                    disabled={checklistSelectedCount === 0}
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => applyBulkPosVisibility(true)}
+                    disabled={bulkPosToggleLoading || checklistSelectedCount === 0}
+                  >
+                    Enable Selected
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyBulkPosVisibility(false)}
+                    disabled={bulkPosToggleLoading || checklistSelectedCount === 0}
+                  >
+                    Disable Selected
+                  </Button>
+                </div>
+              </div>
+
+              <div className="max-h-[60vh] overflow-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="p-3 text-left w-12">Sel</th>
+                      <th className="p-3 text-left">Item</th>
+                      <th className="p-3 text-left">Category</th>
+                      <th className="p-3 text-left">Status</th>
+                      <th className="p-3 text-left">POS Visible</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {posChecklistItems.map((item) => {
+                      const itemId = item.item_id || item.id;
+                      const effectiveCategory = getEffectiveCategory(item);
+                      const posVisible = resolvePosConfig(item).pos_visible !== false;
+                      const checked = posChecklistSelectedIds.has(itemId);
+
+                      return (
+                        <tr key={itemId} className="hover:bg-slate-50">
+                          <td className="p-3">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleChecklistSelection(itemId)}
+                            />
+                          </td>
+                          <td className="p-3">
+                            <p className="font-medium text-slate-900">{item.name}</p>
+                            <p className="text-xs text-slate-500">{item.sku_code}</p>
+                          </td>
+                          <td className="p-3 capitalize text-slate-700">{effectiveCategory}</td>
+                          <td className="p-3 capitalize text-slate-700">{item.status || 'active'}</td>
+                          <td className="p-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTogglePosVisibility(item, !posVisible)}
+                            >
+                              {posVisible ? 'Enabled' : 'Disabled'}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {posChecklistItems.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-500">
+                          No items match the current filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <ItemDetailsModal
           item={selectedItem}
           open={showDetailsModal}
@@ -989,7 +1476,7 @@ export default function Items() {
           open={showMoveModal}
           onClose={() => setShowMoveModal(false)}
           folders={folders}
-          currentFolder={itemToMove?.product_folder}
+          currentFolder={resolveItemFolderName(itemToMove)}
           itemName={itemToMove?.name}
           onMove={handleMoveItem}
         />
@@ -1109,6 +1596,8 @@ export default function Items() {
                 onEdit={() => { }}
                 onDelete={() => { }}
                 onMoveToFolder={() => { }}
+                posConfig={resolvePosConfig(activeDragItem)}
+                canConfigurePosCatalog={false}
                 currentUserRole={currentUser?.role}
               />
             </div>

@@ -13,6 +13,16 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
     const [role, setRole] = useState('staff');
     const [loading, setLoading] = useState(false);
 
+    const roleDescriptions = {
+        admin: 'Full tenant administration and user management access.',
+        manager: 'Broad operational access across inventory and order workflows.',
+        po: 'Purchase-order focused role (PO lifecycle and receiving operations).',
+        do: 'Dispatch-order focused role (dispatch execution and fulfillment).',
+        jo: 'Job-order focused role (production planning and completion).',
+        cashier: 'POS-focused role for checkout, receipts, and daily closeout tasks.',
+        staff: 'Limited operational access with minimal write permissions.'
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -85,14 +95,16 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="staff">Staff</SelectItem>
+                                <SelectItem value="cashier">Cashier</SelectItem>
+                                <SelectItem value="po">PO Officer</SelectItem>
+                                <SelectItem value="do">DO Officer</SelectItem>
+                                <SelectItem value="jo">JO Officer</SelectItem>
                                 <SelectItem value="manager">Manager</SelectItem>
                                 <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-slate-500">
-                            {role === 'admin' && "Full access to all settings and users."}
-                            {role === 'manager' && "Can manage items, suppliers, and orders."}
-                            {role === 'staff' && "Limited access to view and basic operations."}
+                            {roleDescriptions[role]}
                         </p>
                     </div>
 

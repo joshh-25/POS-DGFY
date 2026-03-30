@@ -284,10 +284,15 @@ export const useFolders = () => {
     await fetchFolders(); // Refresh list
   }, [fetchFolders]);
 
+  const updateFolder = useCallback(async (folderId, payload) => {
+    await itemService.updateFolder(folderId, payload);
+    await fetchFolders();
+  }, [fetchFolders]);
+
   useEffect(() => {
     fetchFolders();
   }, [fetchFolders]);
 
-  return { folders, loading, error, refetch: fetchFolders, createFolder };
+  return { folders, loading, error, refetch: fetchFolders, createFolder, updateFolder };
 };
 

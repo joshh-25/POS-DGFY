@@ -12,6 +12,7 @@ import {
   getItemSupplierCoverageUseCase,
   getFoldersUseCase,
   createFolderUseCase,
+  updateFolderUseCase,
   deleteFolderUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -522,6 +523,41 @@ export const deleteFolder = async (req, res, next) => {
   }
 };
 
+export const updateFolder = async (req, res, next) => {
+  try {
+    const folder_id = req.validatedParams?.folder_id || req.params.folder_id;
+    const result = await runInventoryUseCase(
+      () => updateFolderUseCase({ folderId: folder_id, payload: req.validatedData || req.body || {} }),
+      'Failed to update folder'
+    );
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'inventory_folder_updated',
+      surface: 'inventory',
+      action: 'update_folder',
+      result,
+      successMetadataResolver: (data) => ({
+        folder_id,
+        show_in_pos_filter: data?.show_in_pos_filter ?? null
+      })
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: result.data?.message,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getItems,
   getItemById,
@@ -536,5 +572,6 @@ export default {
   getItemSupplierCoverage,
   getFolders,
   createFolder,
+  updateFolder,
   deleteFolder
 };

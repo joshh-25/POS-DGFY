@@ -20,6 +20,9 @@ export default function FolderCard({
     onClick,
     onDelete,
     canDelete = false,
+    showInPosFilter = true,
+    canTogglePosFilter = false,
+    onTogglePosFilter,
 }) {
     const { setNodeRef, isOver } = useDroppable({
         id: name, // Folder name acts as the droppable ID
@@ -71,6 +74,23 @@ export default function FolderCard({
                 <p className="text-sm text-slate-500 mt-1">
                     {itemCount} {itemCount === 1 ? 'item' : 'items'}
                 </p>
+            </div>
+
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                    type="button"
+                    disabled={!canTogglePosFilter}
+                    onClick={() => onTogglePosFilter?.(!showInPosFilter)}
+                    className={cn(
+                        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                        showInPosFilter
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            : "border-slate-300 bg-slate-100 text-slate-600",
+                        canTogglePosFilter ? "hover:opacity-90" : "cursor-not-allowed opacity-60"
+                    )}
+                >
+                    POS Filter: {showInPosFilter ? 'On' : 'Off'}
+                </button>
             </div>
         </div>
     );

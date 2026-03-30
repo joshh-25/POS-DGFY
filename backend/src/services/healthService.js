@@ -3,6 +3,10 @@ import {
     getBillingFunnelTelemetryHealthService,
     applyBillingFunnelTelemetryHealthStatus
 } from './engagementIntegrityHealthService.js';
+import {
+    getRuntimeSchemaHealthService,
+    applyRuntimeSchemaHealthStatus
+} from './runtimeSchemaHealthService.js';
 
 const buildUptime = (seconds) => `${Math.floor(seconds)}s`;
 
@@ -10,6 +14,7 @@ export const buildHealthResponse = async ({
     testConnectionFn,
     isRedisConnectedFn,
     getTenantPoolStatsFn,
+    runtimeSchemaAuditState = {},
     schemaIndexAuditState = {},
     billingFunnelAuditState = {},
     environment = process.env.NODE_ENV || 'development',
@@ -32,6 +37,7 @@ export const buildHealthResponse = async ({
                 message: 'Checking...',
                 available: false
             },
+            runtimeSchema: getRuntimeSchemaHealthService(runtimeSchemaAuditState),
             schemaIndexes: getSchemaIndexHealthService(schemaIndexAuditState),
             billingFunnelTelemetry: getBillingFunnelTelemetryHealthService(billingFunnelAuditState)
         }
@@ -89,6 +95,7 @@ export const buildHealthResponse = async ({
         };
     }
 
+    applyRuntimeSchemaHealthStatus(health, runtimeSchemaAuditState);
     applySchemaIndexHealthStatus(health, schemaIndexAuditState);
     applyBillingFunnelTelemetryHealthStatus(health, billingFunnelAuditState);
 

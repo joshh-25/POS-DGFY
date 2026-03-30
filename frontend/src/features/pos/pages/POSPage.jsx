@@ -20,10 +20,9 @@ export default function POSPage() {
         <div className="space-y-4">
             <div>
                 <h1 className="text-2xl font-semibold text-slate-900">POS Terminal</h1>
-                <p className="text-sm text-slate-500">Checkout finished goods, issue digital receipts, and generate daily Z-reading.</p>
+                <p className="text-sm text-slate-500">Checkout POS-visible items, issue digital receipts, and generate daily Z-reading.</p>
             </div>
-            <POSCheckoutTerminal />
+            <POSCheckoutTerminal canViewHistory={canViewPos} />
         </div>
     );
 }
-

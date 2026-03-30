@@ -18,7 +18,7 @@ export const useCSVImport = () => {
             const csvContent = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = (e) => resolve(e.target.result);
-                reader.onerror = (e) => reject(new Error('Failed to read file'));
+                reader.onerror = () => reject(new Error('Failed to read file'));
                 reader.readAsText(file);
             });
 

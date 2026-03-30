@@ -356,7 +356,7 @@ export const buildUserManagementToolRegistry = ({
                     };
                 }
 
-                const validRoles = ['staff', 'manager', 'admin'];
+                const validRoles = ['staff', 'cashier', 'po', 'do', 'jo', 'manager', 'admin'];
                 const rowsWithInvalidRoles = parsed.rows.filter((row) => row.role && !validRoles.includes(row.role.toLowerCase()));
 
                 if (rowsWithInvalidRoles.length > 0) {
@@ -428,4 +428,3 @@ export const buildUserManagementToolRegistry = ({
 
     return handlers;
 };
-

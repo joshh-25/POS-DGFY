@@ -33,6 +33,7 @@ export const listFolders = async () => {
             folder_id: f.folder_id,
             name: f.name,
             description: f.description,
+            show_in_pos_filter: f.show_in_pos_filter !== false,
             parent_id: f.parent_id,
             item_count: f.items?.length || 0
         }));
@@ -52,6 +53,7 @@ export const createFolder = async (name, description = '', parent_id = null) => 
         const folder = await ItemFolder.create({
             name,
             description,
+            show_in_pos_filter: true,
             parent_id
         });
 
@@ -59,6 +61,7 @@ export const createFolder = async (name, description = '', parent_id = null) => 
             success: true,
             folder_id: folder.folder_id,
             name: folder.name,
+            show_in_pos_filter: folder.show_in_pos_filter !== false,
             message: `Inventory folder "${name}" created successfully`
         };
     } catch (error) {

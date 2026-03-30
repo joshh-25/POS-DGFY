@@ -853,6 +853,8 @@ export const itemRepository = {
                 sku_code: item.sku_code,
                 name: item.name,
                 category: item.category,
+                product_type: item.product_type,
+                vat_type: item.vat_type,
                 description: item.description,
                 product_folder: item.product_folder,
                 max_capacity: item.max_capacity,
@@ -886,6 +888,15 @@ export const itemRepository = {
             }
             if (!mergedData.unit_of_measure) {
                 const error = new Error('Unit of measure is required to finalize item');
+                error.statusCode = 422;
+                throw error;
+            }
+            if (
+                mergedData.category === 'product'
+                && mergedData.product_type === 'finished_goods'
+                && !mergedData.vat_type
+            ) {
+                const error = new Error('VAT type is required to finalize finished goods');
                 error.statusCode = 422;
                 throw error;
             }
@@ -1269,6 +1280,7 @@ export const itemRepository = {
                 folder_id: folder.folder_id,
                 name: folder.name,
                 description: folder.description,
+                show_in_pos_filter: folder.show_in_pos_filter !== false,
                 parent_id: folder.parent_id,
                 item_count: folder.items?.length || 0
             }));
@@ -1284,6 +1296,7 @@ export const itemRepository = {
             const folder = await ItemFolder.create({
                 name,
                 description,
+                show_in_pos_filter: true,
                 parent_id
             });
 
@@ -1291,6 +1304,7 @@ export const itemRepository = {
                 success: true,
                 folder_id: folder.folder_id,
                 name: folder.name,
+                show_in_pos_filter: folder.show_in_pos_filter !== false,
                 message: `Inventory folder "${name}" created successfully`
             };
         } catch (error) {
@@ -1300,6 +1314,38 @@ export const itemRepository = {
             logger.error('Error creating inventory folder:', error);
             throw error;
         }
+    },
+    async updateFolder(folderId, payload = {}) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        const folder = await ItemFolder.findByPk(folderId);
+        if (!folder) {
+            const error = new Error('Folder not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const updates = {};
+        if (Object.prototype.hasOwnProperty.call(payload, 'show_in_pos_filter')) {
+            updates.show_in_pos_filter = payload.show_in_pos_filter !== false;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            const error = new Error('No valid folder fields to update');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        await folder.update(updates);
+
+        return {
+            success: true,
+            folder_id: folder.folder_id,
+            name: folder.name,
+            description: folder.description,
+            parent_id: folder.parent_id,
+            show_in_pos_filter: folder.show_in_pos_filter !== false,
+            message: `Folder "${folder.name}" updated successfully.`
+        };
     },
     async deleteFolder(folderId) {
         const ItemFolder = dbStore.get('ItemFolder');

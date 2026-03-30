@@ -4,7 +4,16 @@ import {
     listPosTransactionsUseCase,
     getPosTransactionByIdUseCase,
     closeDayZReadingUseCase,
-    getDailyZReadingUseCase
+    getDailyZReadingUseCase,
+    listPosCatalogOverridesUseCase,
+    updatePosCatalogOverrideUseCase,
+    uploadPosCatalogImageUseCase,
+    deletePosCatalogImageUseCase,
+    openTerminalShiftUseCase,
+    getCurrentTerminalShiftUseCase,
+    recordCashDrawerEventUseCase,
+    closeTerminalShiftUseCase,
+    getTerminalTodayDashboardUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -49,7 +58,8 @@ export const checkout = async (req, res, next) => {
 
         const result = await checkoutPosUseCase({
             payload,
-            userId: req.user.user_id
+            userId: req.user.user_id,
+            user: req.user
         });
 
         await trackProductUsageFromResult({
@@ -72,6 +82,146 @@ export const checkout = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS checkout completed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getCurrentTerminalShift = async (req, res, next) => {
+    try {
+        const result = await getCurrentTerminalShiftUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const openTerminalShift = async (req, res, next) => {
+    try {
+        const result = await openTerminalShiftUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_terminal_shift_opened',
+            surface: 'pos_terminal',
+            action: 'open_shift',
+            result,
+            successMetadataResolver: (data) => ({
+                shift_id: data?.shift?.pos_terminal_shift_id || null,
+                reused_existing: Boolean(data?.reused_existing)
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Terminal shift is ready',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const recordCashDrawerEvent = async (req, res, next) => {
+    try {
+        const result = await recordCashDrawerEventUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_cash_drawer_event_recorded',
+            surface: 'pos_terminal',
+            action: 'cash_event',
+            result,
+            successMetadataResolver: (data) => ({
+                shift_id: data?.pos_terminal_shift_id || null,
+                event_type: data?.event_type || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash drawer event recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const closeTerminalShift = async (req, res, next) => {
+    try {
+        const result = await closeTerminalShiftUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_terminal_shift_closed',
+            surface: 'pos_terminal',
+            action: 'close_shift',
+            result,
+            successMetadataResolver: (data) => ({
+                shift_id: data?.shift?.pos_terminal_shift_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Terminal shift closed successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getTerminalTodayDashboard = async (req, res, next) => {
+    try {
+        const result = await getTerminalTodayDashboardUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -196,12 +346,105 @@ export const getDailyZReading = async (req, res, next) => {
     }
 };
 
+export const listCatalogOverrides = async (req, res, next) => {
+    try {
+        const result = await listPosCatalogOverridesUseCase({ query: req.validatedQuery || req.query });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateCatalogOverride = async (req, res, next) => {
+    try {
+        const result = await updatePosCatalogOverrideUseCase({
+            itemId: req.validatedParams?.item_id || req.params.item_id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS catalog override updated successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const uploadCatalogImage = async (req, res, next) => {
+    try {
+        const result = await uploadPosCatalogImageUseCase({
+            itemId: req.validatedParams?.item_id || req.params.item_id,
+            file: req.file,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS catalog image uploaded successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteCatalogImage = async (req, res, next) => {
+    try {
+        const result = await deletePosCatalogImageUseCase({
+            itemId: req.validatedParams?.item_id || req.params.item_id,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS catalog image deleted successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export default {
     listCatalog,
     checkout,
     listTransactions,
     getTransactionById,
     closeDayZReading,
-    getDailyZReading
+    getDailyZReading,
+    listCatalogOverrides,
+    updateCatalogOverride,
+    uploadCatalogImage,
+    deleteCatalogImage,
+    getCurrentTerminalShift,
+    openTerminalShift,
+    recordCashDrawerEvent,
+    closeTerminalShift,
+    getTerminalTodayDashboard
 };
-

@@ -6,6 +6,15 @@ const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockCloseDayZReadingUseCase = jest.fn();
 const mockGetDailyZReadingUseCase = jest.fn();
+const mockListPosCatalogOverridesUseCase = jest.fn();
+const mockUpdatePosCatalogOverrideUseCase = jest.fn();
+const mockUploadPosCatalogImageUseCase = jest.fn();
+const mockDeletePosCatalogImageUseCase = jest.fn();
+const mockOpenTerminalShiftUseCase = jest.fn();
+const mockGetCurrentTerminalShiftUseCase = jest.fn();
+const mockRecordCashDrawerEventUseCase = jest.fn();
+const mockCloseTerminalShiftUseCase = jest.fn();
+const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
@@ -14,7 +23,16 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
-    getDailyZReadingUseCase: mockGetDailyZReadingUseCase
+    getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
+    listPosCatalogOverridesUseCase: mockListPosCatalogOverridesUseCase,
+    updatePosCatalogOverrideUseCase: mockUpdatePosCatalogOverrideUseCase,
+    uploadPosCatalogImageUseCase: mockUploadPosCatalogImageUseCase,
+    deletePosCatalogImageUseCase: mockDeletePosCatalogImageUseCase,
+    openTerminalShiftUseCase: mockOpenTerminalShiftUseCase,
+    getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
+    recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
+    closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
+    getTerminalTodayDashboardUseCase: mockGetTerminalTodayDashboardUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
@@ -56,12 +74,13 @@ describe('posHandlers transport contracts', () => {
             data: [{ item_id: 1, name: 'Tea' }]
         });
 
-        const req = { query: {}, validatedQuery: {}, requestId: 'req-pos-catalog' };
+        const req = { query: {}, validatedQuery: { search: '', folder_id: 7, limit: 100 }, requestId: 'req-pos-catalog' };
         const res = createRes();
         const next = jest.fn();
 
         await listCatalog(req, res, next);
 
+        expect(mockListPosCatalogUseCase).toHaveBeenCalledWith({ query: { search: '', folder_id: 7, limit: 100 } });
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith({
             success: true,
@@ -95,7 +114,8 @@ describe('posHandlers transport contracts', () => {
             payload: expect.objectContaining({
                 terminal_id: 'POS-01'
             }),
-            userId: 4
+            userId: 4,
+            user: expect.objectContaining({ user_id: 4 })
         });
         expect(res.status).toHaveBeenCalledWith(201);
         expect(res.json).toHaveBeenCalledWith({
@@ -182,4 +202,3 @@ describe('posHandlers transport contracts', () => {
         expect(next).not.toHaveBeenCalled();
     });
 });
-

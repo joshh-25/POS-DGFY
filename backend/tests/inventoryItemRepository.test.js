@@ -1056,20 +1056,22 @@ describe('inventory itemRepository', () => {
     expect(args.include[0].where.deleted_at).toBeNull();
     expect(args.include[0].where.status[Op.ne]).toBe('inactive');
     expect(result).toEqual([
-      {
-        folder_id: 1,
-        name: 'Raw Materials',
-        description: 'Core inputs',
-        parent_id: null,
-        item_count: 2
-      },
-      {
-        folder_id: 2,
-        name: 'Packaging',
-        description: '',
-        parent_id: null,
-        item_count: 0
-      }
+        {
+          folder_id: 1,
+          name: 'Raw Materials',
+          description: 'Core inputs',
+          show_in_pos_filter: true,
+          parent_id: null,
+          item_count: 2
+        },
+        {
+          folder_id: 2,
+          name: 'Packaging',
+          description: '',
+          show_in_pos_filter: true,
+          parent_id: null,
+          item_count: 0
+        }
     ]);
   });
 
@@ -1091,6 +1093,7 @@ describe('inventory itemRepository', () => {
       success: true,
       folder_id: 44,
       name: 'Dry Goods',
+      show_in_pos_filter: true,
       message: 'Inventory folder "Dry Goods" created successfully'
     });
 
@@ -1145,6 +1148,60 @@ describe('inventory itemRepository', () => {
     await expect(itemRepository.deleteFolder(404)).rejects.toMatchObject({
       statusCode: 404,
       message: 'Folder not found'
+    });
+  });
+
+  it('updates folder POS filter visibility', async () => {
+    const folder = {
+      folder_id: 9,
+      name: 'Finished Goods',
+      description: 'Sellable products',
+      parent_id: null,
+      show_in_pos_filter: true,
+      update: jest.fn().mockImplementation(async (updates) => {
+        folder.show_in_pos_filter = updates.show_in_pos_filter;
+      })
+    };
+    const ItemFolder = {
+      findByPk: jest.fn().mockResolvedValue(folder)
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      return {};
+    });
+
+    const result = await itemRepository.updateFolder(9, { show_in_pos_filter: false });
+
+    expect(folder.update).toHaveBeenCalledWith({ show_in_pos_filter: false });
+    expect(result).toEqual({
+      success: true,
+      folder_id: 9,
+      name: 'Finished Goods',
+      description: 'Sellable products',
+      parent_id: null,
+      show_in_pos_filter: false,
+      message: 'Folder "Finished Goods" updated successfully.'
+    });
+  });
+
+  it('rejects updateFolder payload without supported fields', async () => {
+    const ItemFolder = {
+      findByPk: jest.fn().mockResolvedValue({
+        folder_id: 11,
+        name: 'Archive',
+        update: jest.fn()
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      return {};
+    });
+
+    await expect(itemRepository.updateFolder(11, { unsupported: true })).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'No valid folder fields to update'
     });
   });
 });

@@ -4,7 +4,7 @@
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
-> **Note:** For the complete auto-generated tool reference, see [generated/AI_CAPABILITIES.md](generated/AI_CAPABILITIES.md).
+> **Note:** For the complete auto-generated tool reference, see [generated/AI_CAPABILITIES.md](../generated/AI_CAPABILITIES.md).
 
 ---
 

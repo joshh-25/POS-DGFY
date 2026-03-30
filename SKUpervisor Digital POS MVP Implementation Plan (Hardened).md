@@ -3,6 +3,38 @@
 **Author:** Codex  
 **Date:** March 25, 2026
 
+## 0.0) Consolidation Status (March 27, 2026)
+
+Overall status: **in_progress**
+
+Workstream tracker:
+1. Documentation synchronization: **in_progress**
+2. Safe cleanup (moderate): **in_progress**
+3. POS compliance/settings + receipt readiness: **in_progress**
+4. Unified Sales read layer (POS + Dispatch): **in_progress**
+5. Operational hardening + acceptance gates: **in_progress**
+
+### 0.0.1) Startup Preflight and Recovery (Mandatory for New Changes)
+
+Use this before opening the app after backend changes to avoid transient 500s:
+
+1. Ensure `backend/.env` has `DB_AUTO_SYNC=false` for normal local/PM2 runs.
+2. Apply DB changes via migrations only:
+   - `cd backend`
+   - `npm run migrate`
+3. Restart services:
+   - `pm2 restart sku-backend`
+   - `pm2 restart sku-frontend`
+4. Verify backend health before UI testing:
+   - `http://localhost:5000/health` returns `200`
+5. Then hard refresh browser (`Ctrl+Shift+R`) and continue testing.
+
+If startup/API errors appear:
+1. Check backend logs first: `pm2 logs sku-backend --lines 120 --nostream`
+2. Confirm token route health:
+   - `GET /api/v1/auth/validate-token/token-original` should return `200` with valid headers/session
+3. If health is good but UI still fails, clear stale session and login again.
+
 ## 0.1) Implementation Status Update (March 25, 2026)
 
 The project has now moved from plan-only into implemented hardening with validated evidence.

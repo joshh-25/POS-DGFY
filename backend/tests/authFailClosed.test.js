@@ -27,7 +27,7 @@ jest.unstable_mockModule('../src/services/cacheService.js', () => ({
 const { default: app } = await import('../src/server.js');
 const { default: sequelize } = await import('../src/config/database.js');
 
-describe('Auth Fail-Closed (Redis Down)', () => {
+describe('Auth Redis Failure Policy', () => {
     beforeAll(async () => {
         // We need database connection because app might try to use it
         await sequelize.authenticate();
@@ -37,7 +37,7 @@ describe('Auth Fail-Closed (Redis Down)', () => {
         await sequelize.close();
     });
 
-    test('should return 500 when Redis is disconnected (Fail-Closed)', async () => {
+    test('should fail open by default (non-production) when Redis is disconnected', async () => {
         // Setup: Simulate Redis being disconnected
         mockCacheService.isAvailable.mockReturnValue(false);
         // We also mock getCritical to throw, just in case logic slips through
@@ -45,7 +45,11 @@ describe('Auth Fail-Closed (Redis Down)', () => {
 
         // Ensure REDIS_URL is set so the check runs (simulating enabled but broken Redis)
         const originalRedisUrl = process.env.REDIS_URL;
+        const originalNodeEnv = process.env.NODE_ENV;
+        const originalFailureMode = process.env.AUTH_BLACKLIST_FAILURE_MODE;
         process.env.REDIS_URL = 'redis://localhost:6379';
+        process.env.NODE_ENV = 'test';
+        delete process.env.AUTH_BLACKLIST_FAILURE_MODE;
 
         // We can use any token string because blacklist check happens before verification
         const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature';
@@ -55,17 +59,39 @@ describe('Auth Fail-Closed (Redis Down)', () => {
                 .get('/api/v1/users/me') // Use a protected route
                 .set('Authorization', `Bearer ${token}`);
 
-            // Expect 500 Internal Server Error (or whatever the global error handler returns)
-            // The key is that it should NOT be 401 (or 200/404 if it bypassed checks)
-            // If it was fail-open (returning false), it would likely hit 401 (Invalid token) later
-            // or something else. But here we want the *Redis error* to propagate.
-
-            // If the global error handler catches it, it usually returns 500.
-            expect(response.status).toBe(500);
+            // Fail-open allows auth flow to continue, and this fake token is rejected as invalid JWT.
+            expect(response.status).toBe(401);
             expect(response.body.success).toBe(false);
         } finally {
-            // Restore env var
+            // Restore env vars
             process.env.REDIS_URL = originalRedisUrl;
+            process.env.NODE_ENV = originalNodeEnv;
+            process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
+        }
+    });
+
+    test('should return 503 when fail-closed mode is explicitly enabled and Redis is disconnected', async () => {
+        mockCacheService.isAvailable.mockReturnValue(false);
+        mockCacheService.getCritical.mockRejectedValue(new Error('Redis connection failed'));
+
+        const originalRedisUrl = process.env.REDIS_URL;
+        const originalFailureMode = process.env.AUTH_BLACKLIST_FAILURE_MODE;
+        process.env.REDIS_URL = 'redis://localhost:6379';
+        process.env.AUTH_BLACKLIST_FAILURE_MODE = 'fail_closed';
+
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature';
+
+        try {
+            const response = await request(app)
+                .get('/api/v1/users/me')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.status).toBe(503);
+            expect(response.body.success).toBe(false);
+            expect(response.body.message).toContain('Service unavailable');
+        } finally {
+            process.env.REDIS_URL = originalRedisUrl;
+            process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
         }
     });
 });

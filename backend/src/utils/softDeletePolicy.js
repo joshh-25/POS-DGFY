@@ -27,6 +27,12 @@ export const buildVisibleWhere = (
 
 export const notFoundError = (message = 'Resource not found') => {
   const error = new Error(message);
+  Object.defineProperty(error, 'message', {
+    value: message,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
   error.statusCode = 404;
   return error;
 };

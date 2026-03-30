@@ -544,7 +544,7 @@ npm run generate:ai-docs
 npm run ai:check
 ```
 
-See [docs/AI_GUIDELINES.md](docs/AI_GUIDELINES.md) for user-facing documentation and [docs/generated/AI_CAPABILITIES.md](docs/generated/AI_CAPABILITIES.md) for the auto-generated tool reference.
+See [docs/ai/AI_GUIDELINES.md](docs/ai/AI_GUIDELINES.md) for user-facing documentation and [docs/generated/AI_CAPABILITIES.md](docs/generated/AI_CAPABILITIES.md) for the auto-generated tool reference.
 
 ---
 

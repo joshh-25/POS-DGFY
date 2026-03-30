@@ -46,6 +46,56 @@ cd backend
 npm run audit:indexes
 ```
 
+### Runtime Schema Doctor Guard (startup drift prevention)
+
+**Purpose**: Detect missing required migrations/columns before PM2 boot or manual UAT.
+
+**How to run**:
+```bash
+cd backend
+npm run doctor:runtime
+```
+
+**Included unit coverage**:
+- `runtimeSchemaAuditService.test.js` — required migration/column checks, optional-column warnings, degraded/healthy status contract
+
+---
+
+### FIFO Drift Guard (inventory/POS stock consistency)
+
+**Purpose**: Detect item-vs-batch stock drift before checkout-facing tests and manual UAT.
+
+**How to run**:
+```bash
+cd backend
+npm run audit:fifo-drift
+# optional auto-repair for positive drift only
+npm run audit:fifo-drift:repair
+```
+
+**What it validates**:
+1. FIFO-enabled item `current_stock` matches open FIFO batch availability within tolerance.
+2. No FIFO batch is over-consumed (`quantity_consumed > quantity`).
+3. Coverage is tenant-aware (all active landlord tenants; `DB_NAME` fallback for local recovery mode).
+
+---
+
+### Role/Micro-Permission Drift Guard
+
+**Purpose**: Prevent silent privilege drift across `cashier`, `po`, `do`, and `jo` roles.
+
+**How to run**:
+```bash
+cd backend
+npm test -- tests/permissionsRoleMatrix.test.js
+```
+
+**What it validates**:
+1. Every supported role in `USER_ROLES` has default permissions configured.
+2. Role permission sets contain only known permission keys and no duplicates.
+3. Cashier remains restricted from admin/system mutation permissions.
+4. PO/DO/JO write-domain scopes stay isolated (no cross-domain privilege leakage).
+
 ---
 
 ### PayPal Sandbox Canary (`paypalSandboxCanary.e2e.test.js`)

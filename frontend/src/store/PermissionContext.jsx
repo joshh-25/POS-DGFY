@@ -13,6 +13,16 @@ export const PermissionProvider = ({ children }) => {
     // ... ensureCompanyToken ...
 
     const loadPermissions = async () => {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            setPermissions([]);
+            setIsMasterAdmin(false);
+            setUserRole(null);
+            setTenantPlan('free');
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const user = await getCurrentUser();
@@ -22,7 +32,7 @@ export const PermissionProvider = ({ children }) => {
                 let perms = [];
                 let rawPerms = user.permissions;
 
-                // MariaDB may return JSON columns as strings — parse them first
+                // MariaDB may return JSON columns as strings; parse them first
                 if (typeof rawPerms === 'string') {
                     try {
                         rawPerms = JSON.parse(rawPerms);
@@ -93,9 +103,10 @@ export const PermissionProvider = ({ children }) => {
     const canImport = (entity) => can(`${entity}:import`);
 
     // Role-based checks
-    const isAdmin = (userRole?.toLowerCase() === 'admin') || isMasterAdmin;
-    const isManager = (userRole?.toLowerCase() === 'manager') || isAdmin;
-    const isStaff = (userRole?.toLowerCase() === 'staff');
+    const normalizedRole = String(userRole || '').toLowerCase();
+    const isAdmin = normalizedRole === 'admin' || isMasterAdmin;
+    const isManager = normalizedRole === 'manager' || isAdmin;
+    const isStaff = ['staff', 'cashier', 'po', 'do', 'jo'].includes(normalizedRole);
 
     // Check if user can manage users (for Settings visibility)
     const canManageUsers = can('users:manage');

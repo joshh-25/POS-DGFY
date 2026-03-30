@@ -8,6 +8,7 @@ import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
 const VALID_PRODUCT_TYPES = ['work_in_progress', 'finished_goods'];
+const VALID_VAT_TYPES = ['vatable', 'vat_exempt', 'zero_rated'];
 const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'];
 
 /**
@@ -54,6 +55,11 @@ const transformRow = (row) => {
         item.product_type = row.product_type.trim().toLowerCase() || null;
     } else {
         item.product_type = null;
+    }
+    if (row.vat_type) {
+        item.vat_type = row.vat_type.trim().toLowerCase() || null;
+    } else {
+        item.vat_type = null;
     }
     if (row.description) item.description = row.description.trim();
     if (row.product_folder) item.product_folder = row.product_folder.trim();
@@ -241,6 +247,16 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
     // Validate product_type value
     if (itemData.product_type && !VALID_PRODUCT_TYPES.includes(itemData.product_type)) {
         errors.push(`Invalid product_type: ${itemData.product_type}. Must be one of: ${VALID_PRODUCT_TYPES.join(', ')}`);
+    }
+    if (itemData.vat_type && !VALID_VAT_TYPES.includes(itemData.vat_type)) {
+        errors.push(`Invalid vat_type: ${itemData.vat_type}. Must be one of: ${VALID_VAT_TYPES.join(', ')}`);
+    }
+    if (
+        itemData.category === 'product'
+        && itemData.product_type === 'finished_goods'
+        && !itemData.vat_type
+    ) {
+        errors.push('vat_type is required for finished_goods products');
     }
 
     // Validate allergens
@@ -610,6 +626,7 @@ export const PRODUCTS_HEADERS = [
     'name',
     'category',
     'product_type',
+    'vat_type',
     'description',
     'product_folder',
     'current_stock',
@@ -771,6 +788,7 @@ export const getTemplateHeaders = (type = TEMPLATE_TYPES.MASTER) => {
                 'name',
                 'category',
                 'product_type',
+                'vat_type',
                 'description',
                 'product_folder',
                 'max_capacity',

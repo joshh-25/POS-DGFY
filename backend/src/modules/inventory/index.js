@@ -12,6 +12,7 @@ import { buildValidateCompositionUseCase } from './usecases/validateCompositionU
 import { buildGetItemSupplierCoverageUseCase } from './usecases/getItemSupplierCoverageUseCase.js';
 import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
 import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
+import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
 import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
@@ -27,6 +28,7 @@ export const validateCompositionUseCase = buildValidateCompositionUseCase({ item
 export const getItemSupplierCoverageUseCase = buildGetItemSupplierCoverageUseCase({ itemRepository });
 export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
 export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
+export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });
 export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
 
 export * from './contracts/itemRepository.contract.js';

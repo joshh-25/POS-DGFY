@@ -2,7 +2,43 @@ import axios from 'axios';
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const resolveApiBaseUrl = () => {
+  const configured = (import.meta.env.VITE_API_URL || '').trim();
+  if (!configured) return '/api/v1';
+
+  // Safety guard:
+  // If build-time env hardcodes localhost but app is opened from a non-local host,
+  // fall back to same-origin /api/v1 to avoid browser-side network errors.
+  if (typeof window !== 'undefined') {
+    try {
+      const parsed = new URL(configured, window.location.origin);
+      const configuredLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+      const runtimeLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+      if (configuredLocal && !runtimeLocal) {
+        console.warn('[API] VITE_API_URL points to localhost on a non-local host. Falling back to /api/v1.');
+        return '/api/v1';
+      }
+    } catch {
+      // Ignore parse errors and use configured as-is.
+    }
+  }
+
+  return configured;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+
+const getSessionExpiredRedirect = () => {
+  const pathname =
+    typeof window !== 'undefined' && typeof window?.location?.pathname === 'string'
+      ? window.location.pathname
+      : '';
+
+  if (pathname.startsWith('/terminal')) {
+    return '/terminal?reason=session_expired';
+  }
+  return '/login?reason=session_expired';
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -68,7 +104,7 @@ if (authChannel) {
         reason: 'session_expired',
         broadcast: false,
         emitAuthEvents: false,
-        redirectTo: '/login?reason=session_expired'
+        redirectTo: getSessionExpiredRedirect()
       });
     }
   };
@@ -122,7 +158,7 @@ api.interceptors.response.use(
           reason: 'session_expired',
           broadcast: false,
           emitAuthEvents: false,
-          redirectTo: '/login?reason=session_expired'
+          redirectTo: getSessionExpiredRedirect()
         });
         return Promise.reject(error);
       }
@@ -193,7 +229,7 @@ api.interceptors.response.use(
               reason: 'session_expired',
               broadcast: false,
               emitAuthEvents: false,
-              redirectTo: '/login?reason=session_expired'
+              redirectTo: getSessionExpiredRedirect()
             });
             reject(err);
           })

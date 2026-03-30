@@ -34,12 +34,41 @@ export const fetchDailyZReading = async (businessDate) => {
     return response.data?.data;
 };
 
+export const fetchCurrentTerminalShift = async (params = {}) => {
+    const response = await api.get('/pos/terminal/shifts/current', { params });
+    return response.data?.data;
+};
+
+export const openTerminalShift = async (payload = {}) => {
+    const response = await api.post('/pos/terminal/shifts/open', payload);
+    return response.data?.data;
+};
+
+export const recordCashDrawerEvent = async (shiftId, payload = {}) => {
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/cash-events`, payload);
+    return response.data?.data;
+};
+
+export const closeTerminalShift = async (shiftId, payload = {}) => {
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/close`, payload);
+    return response.data?.data;
+};
+
+export const fetchTerminalTodayDashboard = async (params = {}) => {
+    const response = await api.get('/pos/terminal/dashboard/today', { params });
+    return response.data?.data;
+};
+
 export default {
     fetchPosCatalog,
     createPosCheckout,
     fetchPosTransactions,
     fetchPosTransactionById,
     closePosDay,
-    fetchDailyZReading
+    fetchDailyZReading,
+    fetchCurrentTerminalShift,
+    openTerminalShift,
+    recordCashDrawerEvent,
+    closeTerminalShift,
+    fetchTerminalTodayDashboard
 };
-

@@ -34,6 +34,9 @@ import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosInvoiceCounter from './PosInvoiceCounter.js';
+import PosCatalogOverride from './PosCatalogOverride.js';
+import PosTerminalShift from './PosTerminalShift.js';
+import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
@@ -192,11 +195,22 @@ User.hasMany(DispatchOrder, { foreignKey: 'created_by', as: 'createdDispatchOrde
 // POS associations
 PosTransaction.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
+PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
+Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
+PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
+PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
+PosTerminalShift.hasMany(PosTransaction, { foreignKey: 'shift_id', as: 'transactions' });
+PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift' });
+PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
+User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
+User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
 
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -246,6 +260,9 @@ const db = {
   PosTransaction,
   PosTransactionLine,
   PosInvoiceCounter,
+  PosCatalogOverride,
+  PosTerminalShift,
+  PosCashDrawerEvent,
   Tenant,
   UserTenantMapping,
   Payment,
@@ -292,6 +309,9 @@ export {
   PosTransaction,
   PosTransactionLine,
   PosInvoiceCounter,
+  PosCatalogOverride,
+  PosTerminalShift,
+  PosCashDrawerEvent,
   Tenant,
   UserTenantMapping,
   Payment,

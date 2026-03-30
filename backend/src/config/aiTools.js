@@ -887,7 +887,7 @@ export const AI_TOOLS = [
           },
           new_role: {
             type: "string",
-            enum: ["staff", "manager", "admin"],
+            enum: ["staff", "cashier", "po", "do", "jo", "manager", "admin"],
             description: "New role to assign"
           }
         },
@@ -984,7 +984,7 @@ export const AI_TOOLS = [
           },
           role: {
             type: "string",
-            enum: ["staff", "manager", "admin"],
+            enum: ["staff", "cashier", "po", "do", "jo", "manager", "admin"],
             description: "Role to assign to the invited user. Staff=view only, Manager=full operational access, Admin=everything including user management"
           }
         },

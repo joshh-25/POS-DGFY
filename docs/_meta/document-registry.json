@@ -62,12 +62,6 @@
       "topic": "ai_implementation_checklist",
       "expected_status": "reference",
       "expected_authority_level": "reference"
-    },
-    {
-      "path": "docs/reference/IMPLEMENTATION_CHECK LIST.md",
-      "topic": "ai_implementation_checklist",
-      "expected_status": "deprecated",
-      "expected_authority_level": "deprecated"
     }
   ]
 }

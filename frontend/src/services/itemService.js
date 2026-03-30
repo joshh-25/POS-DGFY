@@ -90,6 +90,11 @@ export const createFolder = async (folderData) => {
   return response.data.data;
 };
 
+export const updateFolder = async (folderId, payload) => {
+  const response = await api.patch(`/items/folders/${folderId}`, payload);
+  return response.data.data;
+};
+
 export const deleteFolder = async (folderId) => {
   const response = await api.delete(`/items/folders/${folderId}`);
   return response.data;

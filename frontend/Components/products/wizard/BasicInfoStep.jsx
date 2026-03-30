@@ -59,6 +59,26 @@ export default function BasicInfoStep({ data, updateData }) {
             placeholder="Select unit..."
           />
         </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <Label>VAT Type {data.product_type === 'finished_goods' ? '*' : ''}</Label>
+          <Select
+            value={data.vat_type || 'vatable'}
+            onValueChange={(val) => updateData({ vat_type: val })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vatable">Vatable (12%)</SelectItem>
+              <SelectItem value="vat_exempt">VAT Exempt</SelectItem>
+              <SelectItem value="zero_rated">Zero Rated</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-slate-500">
+            Required for finished goods sold in POS. This value is snapshotted into every POS sale line.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">

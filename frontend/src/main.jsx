@@ -30,6 +30,8 @@ const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
 const POSPage = lazy(() => import('./features/pos/pages/POSPage.jsx'))
+const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
+const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
@@ -144,6 +146,14 @@ function App() {
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
               <POSPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/sales" element={
+          <ProtectedRoute>
+            <Layout currentPageName={currentPageName}>
+              <SalesPage />
             </Layout>
           </ProtectedRoute>
         } />

@@ -5,19 +5,73 @@ import logger from '../config/logger.js';
 
 // Keep tenant lookups resilient when landlord schemas are slightly behind
 // (e.g., test fixtures not yet migrated with optional billing columns).
-const TENANT_LOOKUP_ATTRIBUTES = [
+const ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES = [
     'id',
     'name',
     'company_token',
     'db_name',
     'db_host',
     'status',
-    'plan',
+    'plan'
+];
+
+const OPTIONAL_TENANT_LOOKUP_ATTRIBUTES = [
     'subscription_status',
     'current_period_end',
     'payment_method',
     'rejection_reason'
 ];
+
+const TENANT_LOOKUP_ATTRIBUTE_CANDIDATES = [
+    ...ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES,
+    ...OPTIONAL_TENANT_LOOKUP_ATTRIBUTES
+];
+
+let tenantLookupAttributeCache = {
+    attributes: TENANT_LOOKUP_ATTRIBUTE_CANDIDATES,
+    expiresAt: 0
+};
+
+const TENANT_LOOKUP_ATTRIBUTE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const resolveTenantLookupAttributes = async () => {
+    if (tenantLookupAttributeCache.expiresAt > Date.now()) {
+        return tenantLookupAttributeCache.attributes;
+    }
+
+    try {
+        const queryInterface = sequelize.getQueryInterface();
+        const tableDef = await queryInterface.describeTable('tenants');
+        const availableColumns = new Set(Object.keys(tableDef || {}));
+
+        const resolvedAttributes = TENANT_LOOKUP_ATTRIBUTE_CANDIDATES.filter((column) => (
+            availableColumns.has(column)
+        ));
+
+        const missingOptional = OPTIONAL_TENANT_LOOKUP_ATTRIBUTES.filter((column) => !availableColumns.has(column));
+        if (missingOptional.length > 0) {
+            logger.warn(`[LandlordService] Optional tenants columns missing: ${missingOptional.join(', ')}. Compatibility fallback applied.`);
+        }
+
+        const missingEssential = ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES.filter((column) => !availableColumns.has(column));
+        if (missingEssential.length > 0) {
+            logger.error(`[LandlordService] Essential tenants columns missing: ${missingEssential.join(', ')}. Tenant lookup may be degraded.`);
+        }
+
+        tenantLookupAttributeCache = {
+            attributes: resolvedAttributes.length > 0 ? resolvedAttributes : ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES,
+            expiresAt: Date.now() + TENANT_LOOKUP_ATTRIBUTE_CACHE_TTL_MS
+        };
+        return tenantLookupAttributeCache.attributes;
+    } catch (error) {
+        logger.error(`[LandlordService] Failed to resolve tenant lookup attributes from schema: ${error.message}`);
+        tenantLookupAttributeCache = {
+            attributes: ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES,
+            expiresAt: Date.now() + TENANT_LOOKUP_ATTRIBUTE_CACHE_TTL_MS
+        };
+        return tenantLookupAttributeCache.attributes;
+    }
+};
 
 /**
  * Generate a secure random token for company invites/identification
@@ -70,9 +124,10 @@ export const createTenant = async (data) => {
  * @returns {Promise<Object|null>}
  */
 export const findTenantByToken = async (token) => {
+    const attributes = await resolveTenantLookupAttributes();
     return await Tenant.findOne({
         where: { company_token: token },
-        attributes: TENANT_LOOKUP_ATTRIBUTES
+        attributes
     });
 };
 
@@ -81,9 +136,10 @@ export const findTenantByToken = async (token) => {
  * @param {string} dbName 
  */
 export const findTenantByDbName = async (dbName) => {
+    const attributes = await resolveTenantLookupAttributes();
     return await Tenant.findOne({
         where: { db_name: dbName },
-        attributes: TENANT_LOOKUP_ATTRIBUTES
+        attributes
     });
 };
 
@@ -105,13 +161,14 @@ export const isDomainAvailable = async (domain) => {
  */
 export const findTenantsByEmail = async (email) => {
     const normalizedEmail = email.toLowerCase().trim();
+    const attributes = await resolveTenantLookupAttributes();
 
     const mappings = await UserTenantMapping.findAll({
         where: { email: normalizedEmail },
         include: [{
             model: Tenant,
             as: 'tenant',
-            attributes: TENANT_LOOKUP_ATTRIBUTES,
+            attributes,
             where: {
                 status: {
                     [sequelize.Sequelize.Op.in]: ['active', 'pending', 'inactive']

@@ -51,6 +51,15 @@ export const createItemSchema = Joi.object({
     'number.min': 'Cost per unit must be 0 or greater'
   }),
   default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
+  vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').when(Joi.object({
+    category: Joi.valid('product').required(),
+    product_type: Joi.valid('finished_goods').required()
+  }).unknown(), {
+    then: Joi.required().messages({
+      'any.required': 'VAT type is required for finished goods'
+    }),
+    otherwise: Joi.optional()
+  }),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -167,6 +176,7 @@ export const createItemDraftSchema = Joi.object({
   unit_of_measure: Joi.string().min(1).max(50).allow(null, ''),
   cost_per_unit: Joi.number().min(0).allow(null, ''),
   default_sale_price: Joi.number().min(0).precision(4).allow(null, '').optional(),
+  vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, ''),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -273,6 +283,7 @@ export const updateItemSchema = Joi.object({
   unit_of_measure: Joi.string().min(1).max(50),
   cost_per_unit: Joi.number().min(0).allow(null),
   default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
+  vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -422,4 +433,38 @@ export const validateCreateItemDraft = (req, res, next) => {
   req.validatedData = value;
   next();
 };
+
+const folderIdParamSchema = Joi.object({
+  folder_id: Joi.number().integer().positive().required()
+});
+
+const updateFolderSchema = Joi.object({
+  show_in_pos_filter: Joi.boolean().required()
+});
+
+const validateSchema = (schema, source, target) => (req, res, next) => {
+  const { error, value } = schema.validate(req[source], {
+    abortEarly: false,
+    stripUnknown: true
+  });
+
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req[target] = value;
+  return next();
+};
+
+export const validateFolderIdParam = validateSchema(folderIdParamSchema, 'params', 'validatedParams');
+export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
 

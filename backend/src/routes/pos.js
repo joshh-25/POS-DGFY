@@ -3,13 +3,23 @@ import * as posController from '../controllers/posController.js';
 import { authenticate, checkPermission, requirePremium } from '../middleware/auth.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { upload } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validatePosCatalogQuery,
+    validatePosCatalogOverridesQuery,
+    validatePosCatalogOverrideParam,
+    validateUpdatePosCatalogOverride,
     validatePosTransactionsQuery,
     validatePosTransactionIdParam,
     validateZReadingDateParam,
-    validateCloseDayBody
+    validateCloseDayBody,
+    validateTerminalCurrentShiftQuery,
+    validateTerminalDashboardTodayQuery,
+    validateShiftIdParam,
+    validateOpenTerminalShift,
+    validateCashDrawerEvent,
+    validateCloseTerminalShift
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -19,10 +29,19 @@ router.use(requirePremium);
 router.use(posLimiter);
 
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
+router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
+router.patch('/catalog-overrides/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, validateUpdatePosCatalogOverride, posController.updateCatalogOverride);
+router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, upload.single('image'), posController.uploadCatalogImage);
+router.delete('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posController.deleteCatalogImage);
 router.post('/checkouts', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosCheckout, posController.checkout);
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
-router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateCloseDayBody, posController.closeDayZReading);
+router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
+router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
+router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
+router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
+router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
+router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateCloseDayBody, posController.closeDayZReading);
 router.get('/z-reading/:date', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingDateParam, posController.getDailyZReading);
 
 export default router;

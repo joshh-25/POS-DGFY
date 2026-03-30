@@ -16,6 +16,7 @@ export {
   getItemSupplierCoverage,
   getFolders,
   createFolder,
+  updateFolder,
   deleteFolder
 } from '../modules/inventory/controllers/itemHandlers.js';
 
@@ -33,6 +34,7 @@ import {
   getItemSupplierCoverage,
   getFolders,
   createFolder,
+  updateFolder,
   deleteFolder
 } from '../modules/inventory/controllers/itemHandlers.js';
 
@@ -50,6 +52,7 @@ export default {
   getItemSupplierCoverage,
   getFolders,
   createFolder,
+  updateFolder,
   deleteFolder
 };
 

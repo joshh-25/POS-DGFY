@@ -16,7 +16,7 @@
 | `docs/AI_GUIDELINES.md` | `docs/ai/AI_GUIDELINES.md` | AI coding rules |
 | `docs/AI_MISTAKES_LOG.md` | `docs/ai/AI_MISTAKES_LOG.md` | AI learning log |
 | `docs/SETUP_ANTIGRAVITY.md` | `docs/ai/SETUP_ANTIGRAVITY.md` | AI environment setup |
-| `docs/generated/AI_CAPABILITIES.md` | `docs/ai/AI_CAPABILITIES.md` | Auto-generated AI tools |
+| `docs/generated/AI_CAPABILITIES.md` | `docs/generated/AI_CAPABILITIES.md` | Auto-generated AI tools (canonical generated output) |
 
 ## How to fix links
 If you see a broken link in your notes:

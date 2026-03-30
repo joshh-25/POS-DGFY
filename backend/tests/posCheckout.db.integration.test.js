@@ -6,6 +6,7 @@ import { Sequelize } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import { checkoutPosUseCase } from '../src/modules/pos/index.js';
+import { listPosCatalogUseCase } from '../src/modules/pos/index.js';
 import { sequelize as landlordSequelize } from '../src/models/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -104,6 +105,55 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
     };
 
+    const createRawMaterial = async (overrides = {}) => {
+        const suffix = crypto.randomUUID().slice(0, 8);
+        return models.Item.create({
+            sku_code: `RM-${suffix}`,
+            name: `RM Item ${suffix}`,
+            category: 'raw_material',
+            product_type: null,
+            current_stock: 10,
+            max_capacity: 500,
+            min_threshold: 1,
+            purchase_allowance: 100,
+            unit_of_measure: 'kg',
+            cost_per_unit: 55,
+            default_sale_price: 95,
+            fifo_enabled: false,
+            status: 'active',
+            ...overrides
+        });
+    };
+
+    const createFifoBatch = async (itemId, overrides = {}) => (
+        models.FIFOBatch.create({
+            item_id: itemId,
+            quantity: 0.2,
+            quantity_consumed: 0,
+            cost_per_unit: 55,
+            received_date: new Date(),
+            po_number: `BATCH-${crypto.randomUUID().slice(0, 8)}`,
+            ...overrides
+        })
+    );
+
+    const setSetting = async (settingKey, settingValue, dataType = null) => {
+        const row = await models.SystemSetting.findOne({ where: { setting_key: settingKey } });
+        if (!row) {
+            await models.SystemSetting.create({
+                setting_key: settingKey,
+                setting_value: settingValue,
+                data_type: dataType || 'string',
+                description: `Test-created setting for ${settingKey}`
+            });
+            return;
+        }
+
+        const updatePayload = { setting_value: settingValue };
+        if (dataType) updatePayload.data_type = dataType;
+        await row.update(updatePayload);
+    };
+
     beforeAll(async () => {
         await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
         runMigrationsForDb(dbName);
@@ -154,7 +204,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                     {
                         item_id: product.item_id,
                         quantity: 2,
-                        sale_price: 120
+                        sale_price: null
                     }
                 ]
             }
@@ -184,6 +234,74 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(refreshedItem.current_stock)).toBe(8);
     });
 
+    it('requires explicit opt-in for non-finished categories and blocks when pos_visible=false', async () => {
+        const cashier = await createCashier();
+        const rawMaterial = await createRawMaterial({ current_stock: 10, default_sale_price: 80 });
+
+        const catalogBeforeEnable = await runInTenantContext(() => listPosCatalogUseCase({
+            query: { search: rawMaterial.sku_code, limit: 50 }
+        }));
+        expect(catalogBeforeEnable.success).toBe(true);
+        expect(catalogBeforeEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);
+
+        const checkoutBeforeEnable = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: `idem-rm-default-hidden-${crypto.randomUUID()}`,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
+            }
+        }));
+        expect(checkoutBeforeEnable.success).toBe(false);
+
+        await models.PosCatalogOverride.create({
+            item_id: rawMaterial.item_id,
+            pos_visible: true
+        });
+
+        const catalogAfterEnable = await runInTenantContext(() => listPosCatalogUseCase({
+            query: { search: rawMaterial.sku_code, limit: 50 }
+        }));
+        expect(catalogAfterEnable.success).toBe(true);
+        expect(catalogAfterEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(true);
+
+        const checkoutAfterEnable = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: `idem-rm-enabled-${crypto.randomUUID()}`,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
+            }
+        }));
+        expect(checkoutAfterEnable.success).toBe(true);
+
+        await models.PosCatalogOverride.update({
+            pos_visible: false
+        }, {
+            where: { item_id: rawMaterial.item_id }
+        });
+
+        const catalogAfterHide = await runInTenantContext(() => listPosCatalogUseCase({
+            query: { search: rawMaterial.sku_code, limit: 50 }
+        }));
+        expect(catalogAfterHide.success).toBe(true);
+        expect(catalogAfterHide.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);
+
+        const checkoutAfterHide = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: `idem-rm-hidden-${crypto.randomUUID()}`,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
+            }
+        }));
+        expect(checkoutAfterHide.success).toBe(false);
+        expect(checkoutAfterHide.error.message).toContain('POS-visible active items');
+    });
+
     it('rolls back transaction when stock movement fails mid-checkout', async () => {
         const cashier = await createCashier();
         const product = await createFinishedGood({ current_stock: 10 });
@@ -201,8 +319,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 payment_type: 'cash',
                 order_method: 'dine_in',
                 lines: [
-                    { item_id: product.item_id, quantity: 6, sale_price: 110 },
-                    { item_id: product.item_id, quantity: 6, sale_price: 110 }
+                    { item_id: product.item_id, quantity: 6, sale_price: null },
+                    { item_id: product.item_id, quantity: 6, sale_price: null }
                 ]
             }
         }));
@@ -225,5 +343,105 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
         const refreshedItem = await models.Item.findByPk(product.item_id);
         expect(Number(refreshedItem.current_stock)).toBe(10);
+    });
+
+    it('auto-reconciles FIFO batch drift when current_stock is higher than open batch quantities', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({
+            fifo_enabled: true,
+            current_stock: 1,
+            unit_of_measure: 'L'
+        });
+
+        await createFifoBatch(product.item_id, {
+            quantity: 0.2,
+            quantity_consumed: 0.0
+        });
+
+        const idempotencyKey = `idem-fifo-drift-${crypto.randomUUID()}`;
+        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: idempotencyKey,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [
+                    {
+                        item_id: product.item_id,
+                        quantity: 1,
+                        sale_price: null
+                    }
+                ]
+            }
+        }));
+
+        expect(checkoutResult.success).toBe(true);
+
+        const driftBatch = await models.FIFOBatch.findOne({
+            where: {
+                item_id: product.item_id,
+                po_number: 'LEGACY-STOCK-DRIFT'
+            }
+        });
+        expect(driftBatch).not.toBeNull();
+        expect(Number(driftBatch.quantity)).toBeCloseTo(0.8, 6);
+        expect(Number(driftBatch.quantity_consumed)).toBeCloseTo(0.8, 6);
+
+        const refreshedItem = await models.Item.findByPk(product.item_id);
+        expect(Number(refreshedItem.current_stock)).toBeCloseTo(0, 6);
+    });
+
+    it('applies method fee correctly without affecting VAT buckets and supports override snapshot', async () => {
+        const cashier = await createCashier();
+        const vatableItem = await createFinishedGood({
+            vat_type: 'vatable',
+            current_stock: 10,
+            default_sale_price: 112
+        });
+
+        await setSetting(
+            'pos_order_method_fees',
+            JSON.stringify({
+                dine_in: { enabled: false, amount: 0, label: 'Dine In Fee' },
+                takeout: { enabled: false, amount: 0, label: 'Takeout Fee' },
+                delivery: { enabled: true, amount: 50, label: 'Delivery Fee' },
+                online: { enabled: false, amount: 0, label: 'Online Fee' }
+            }),
+            'json'
+        );
+
+        const idempotencyKey = `idem-method-fee-${crypto.randomUUID()}`;
+        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: idempotencyKey,
+                payment_type: 'cash',
+                order_method: 'delivery',
+                service_fee_amount: 60,
+                lines: [
+                    {
+                        item_id: vatableItem.item_id,
+                        quantity: 1,
+                        sale_price: 112
+                    }
+                ]
+            }
+        }));
+
+        expect(checkoutResult.success).toBe(true);
+        const persistedTx = await models.PosTransaction.findOne({
+            where: { idempotency_key: idempotencyKey },
+            include: [{ model: models.PosTransactionLine, as: 'lines' }]
+        });
+        expect(Number(persistedTx.subtotal_amount)).toBeCloseTo(112, 4);
+        expect(Number(persistedTx.service_fee_amount)).toBeCloseTo(60, 4);
+        expect(persistedTx.service_fee_label_snapshot).toBe('Delivery Fee');
+        expect(persistedTx.service_fee_method_snapshot).toBe('delivery');
+        expect(Boolean(persistedTx.service_fee_overridden)).toBe(true);
+        expect(Number(persistedTx.total_amount)).toBeCloseTo(172, 4);
+
+        // Fee is non-VAT, so VAT buckets remain item-only.
+        expect(Number(persistedTx.vatable_sales)).toBeCloseTo(100, 4);
+        expect(Number(persistedTx.vat_amount)).toBeCloseTo(12, 4);
     });
 });

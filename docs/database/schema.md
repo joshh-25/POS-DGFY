@@ -30,6 +30,9 @@
 - [15. Batch Transactions Table](#15-batch-transactions-table)
 - [16. Audit Logs Table](#16-audit-logs-table)
 - [17. System Settings Table](#17-system-settings-table)
+- [18. POS Catalog Overrides Table](#18-pos-catalog-overrides-table)
+- [19. POS Terminal Shifts Table](#19-pos-terminal-shifts-table)
+- [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
 
 ### Database Administration
 - [Key Indexes & Performance Optimization](#key-indexes--performance-optimization)
@@ -360,7 +363,7 @@ CREATE TABLE users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'manager', 'staff') DEFAULT 'staff',
+    role ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
     permissions JSON,                    -- Granular permission array
     is_master_admin BOOLEAN DEFAULT FALSE,
@@ -395,7 +398,36 @@ CREATE TABLE users (
 - User data is preserved for audit purposes
 - Removed users can be re-invited (creates a new user record)
 
-### 2. Items (SKU Master) Table
+**Role Contract Notes (2026-03):**
+- Expanded operational roles now include:
+  - `cashier` (POS-first transactional operations)
+  - `po` (purchase order operations)
+  - `do` (dispatch order operations)
+  - `jo` (job order operations)
+- Role assignment defaults are enforced by backend permission maps (`DEFAULT_ROLE_PERMISSIONS`).
+
+### 2. Item Folders Table
+
+```sql
+CREATE TABLE item_folders (
+    folder_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT NULL,
+    show_in_pos_filter BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_item_folders_name (name),
+    INDEX idx_item_folders_show_in_pos_filter (show_in_pos_filter)
+);
+```
+
+**Folder Visibility Contract (2026-03-30 update):**
+- `show_in_pos_filter = TRUE`: folder is available as POS category filter.
+- `show_in_pos_filter = FALSE`: folder is hidden from POS category filters.
+- Item sellability is still controlled by POS catalog override `pos_visible` at item level.
+
+### 3. Items (SKU Master) Table
 
 ```sql
 CREATE TABLE items (
@@ -437,6 +469,10 @@ CREATE TABLE items (
 );
 ```
 
+**Current Implementation Note (2026-03):**
+- `items.vat_type` is implemented as `ENUM('vatable','vat_exempt','zero_rated')` with default `vatable`.
+- POS uses this as the default tax classification source, then snapshots it at transaction-line level.
+
 **Soft Delete Notes (Items):**
 - Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
 - Default reads and mutations treat soft-deleted items as not found.
@@ -474,7 +510,7 @@ The `unit_of_measure` field uses standardized abbreviations organized into three
 - `pcs` and `units` are treated as equivalent (1:1)
 - Legacy values (e.g., "Kilogram", "liters") are normalized via migration script
 
-### 3. FIFO Batches Table
+### 4. FIFO Batches Table
 
 ```sql
 CREATE TABLE fifo_batches (
@@ -500,7 +536,7 @@ CREATE TABLE fifo_batches (
 **Special Values:**
 - `po_number = 'LEGACY-STOCK'`: Auto-created batch for legacy items that had `current_stock` but no FIFO batches. Created during JO completion when consumption is attempted on items without batches.
 
-### 4. Item Nutrition Table
+### 5. Item Nutrition Table
 
 ```sql
 CREATE TABLE item_nutrition (
@@ -773,6 +809,10 @@ CREATE TABLE stock_movements (
 );
 ```
 
+**Current Implementation Note (2026-03):**
+- Runtime movement usage includes `goods_issue` for outbound sales/dispatch.
+- `reference_type` includes `POS` in addition to dispatch and legacy reference types.
+
 ### 15. Batch Transactions Table
 
 ```sql
@@ -827,6 +867,114 @@ CREATE TABLE system_settings (
     INDEX idx_setting_key (setting_key)
 );
 ```
+
+**Current Implementation Note (2026-03):**
+- POS receipt/compliance settings are stored tenant-locally in this table:
+  - `pos_business_name`
+  - `pos_tin_branch`
+  - `pos_address`
+  - `pos_ptu_number`
+  - `pos_min_number`
+  - `pos_accreditation_number`
+  - `pos_strict_compliance_enabled`
+  - `pos_receipt_footer_message`
+  - `pos_discount_profiles` (JSON array with named percentage presets)
+  - `pos_order_method_fees` (JSON object with method fee toggles/amount/labels)
+  - `pos_petty_cash_symbol` (string, e.g. `PHP`)
+  - `pos_petty_cash_amount` (number, operational float for reconciliation)
+
+- POS discount and service-fee audit snapshots are stored in `pos_transactions`:
+  - `discount_label_snapshot` (string, nullable)
+  - `discount_rate_snapshot` (`DECIMAL(7,4)`, nullable, supports `0.0000` to `100.0000`)
+  - `service_fee_amount` (decimal, default 0)
+  - `service_fee_label_snapshot` (string, nullable)
+  - `service_fee_method_snapshot` (enum `dine_in|takeout|delivery|online`, nullable)
+  - `service_fee_overridden` (boolean, default false)
+
+### 18. POS Catalog Overrides Table
+
+```sql
+CREATE TABLE pos_catalog_overrides (
+    pos_catalog_override_id INT PRIMARY KEY AUTO_INCREMENT,
+    item_id INT NOT NULL UNIQUE,
+    pos_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    pos_image_path VARCHAR(500) NULL,
+    pos_image_url VARCHAR(500) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_item_id (item_id)
+);
+```
+
+**Current Implementation Note (2026-03):**
+- This table is tenant-local and optional-per-item.
+- POS catalog read behavior:
+  1. Base eligibility from `items` (active status/visibility constraints; all categories supported).
+  2. Apply override if row exists:
+     - `pos_visible=false` hides item from POS catalog.
+     - `pos_image_url` provides terminal/in-house POS image override.
+- Missing override row means category-aware default behavior (no image override):
+  - `product + finished_goods` => visible
+  - other categories/types => hidden until explicitly enabled
+
+### 19. POS Terminal Shifts Table
+
+```sql
+CREATE TABLE pos_terminal_shifts (
+    pos_terminal_shift_id INT PRIMARY KEY AUTO_INCREMENT,
+    terminal_id VARCHAR(100) NOT NULL,
+    opened_by INT NOT NULL,
+    opened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    opening_float_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    opening_note TEXT NULL,
+    closed_by INT NULL,
+    closed_at TIMESTAMP NULL,
+    closing_cash_amount DECIMAL(14, 4) NULL,
+    closing_note TEXT NULL,
+    expected_cash_amount DECIMAL(14, 4) NULL,
+    variance_amount DECIMAL(14, 4) NULL,
+    status ENUM('open', 'closed') NOT NULL DEFAULT 'open',
+    business_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (opened_by) REFERENCES users(user_id),
+    FOREIGN KEY (closed_by) REFERENCES users(user_id),
+    INDEX idx_terminal_id (terminal_id),
+    INDEX idx_status (status),
+    INDEX idx_business_date (business_date)
+);
+```
+
+**Current Implementation Note (2026-03):**
+- Tracks cashier/session accountability for isolated terminal workflows.
+- Checkout flow can require an active open shift before allowing POS transactions.
+
+### 20. POS Cash Drawer Events Table
+
+```sql
+CREATE TABLE pos_cash_drawer_events (
+    pos_cash_drawer_event_id INT PRIMARY KEY AUTO_INCREMENT,
+    pos_terminal_shift_id INT NOT NULL,
+    event_type ENUM('cash_in', 'cash_out') NOT NULL,
+    amount DECIMAL(14, 4) NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    recorded_by INT NOT NULL,
+    recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (pos_terminal_shift_id) REFERENCES pos_terminal_shifts(pos_terminal_shift_id) ON DELETE CASCADE,
+    FOREIGN KEY (recorded_by) REFERENCES users(user_id),
+    INDEX idx_shift_id (pos_terminal_shift_id),
+    INDEX idx_recorded_at (recorded_at)
+);
+```
+
+**Current Implementation Note (2026-03):**
+- Used for shift-level cash-in/cash-out adjustments.
+- Included in terminal cash summary and variance calculations.
 
 ---
 

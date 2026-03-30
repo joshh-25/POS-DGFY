@@ -14,7 +14,8 @@ const checkoutLineSchema = Joi.object({
     }),
     sale_price: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Sale price must be 0 or greater'
-    })
+    }),
+    price_override_reason: Joi.string().trim().max(255).allow(null, '').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -22,17 +23,36 @@ const checkoutPosSchema = Joi.object({
         'any.required': 'idempotency_key is required'
     }),
     terminal_id: Joi.string().trim().max(100).allow(null, ''),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
+    service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
+        'number.min': 'Service fee amount must be 0 or greater'
+    }),
     discount_amount: Joi.number().min(0).precision(4).default(0),
+    discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
+    discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
+}).custom((value, helpers) => {
+    const discountAmount = Number(value?.discount_amount || 0);
+    const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
+    if (discountAmount > 0 && !hasProfile) {
+        return helpers.error('any.invalid', {
+            message: 'Non-zero discount requires a configured discount profile'
+        });
+    }
+    return value;
+}).messages({
+    'any.invalid': '{{#message}}'
 });
 
 const listTransactionsQuerySchema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(200).default(20),
+    search: Joi.string().trim().allow('', null).optional(),
+    status: Joi.string().valid('completed', 'voided').optional(),
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
@@ -42,11 +62,25 @@ const listTransactionsQuerySchema = Joi.object({
 
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
-    limit: Joi.number().integer().min(1).max(500).default(100)
+    limit: Joi.number().integer().min(1).max(500).default(100),
+    folder_id: Joi.number().integer().positive().optional()
+});
+
+const posCatalogOverridesQuerySchema = Joi.object({
+    search: Joi.string().allow('', null).default(''),
+    limit: Joi.number().integer().min(1).max(1000).default(200)
 });
 
 const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
+});
+
+const posCatalogOverrideParamSchema = Joi.object({
+    item_id: Joi.number().integer().positive().required()
+});
+
+const updatePosCatalogOverrideSchema = Joi.object({
+    pos_visible: Joi.boolean().required()
 });
 
 const zReadingDateParamSchema = Joi.object({
@@ -55,6 +89,37 @@ const zReadingDateParamSchema = Joi.object({
 
 const closeDaySchema = Joi.object({
     business_date: Joi.date().iso().optional()
+});
+
+const terminalCurrentShiftQuerySchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
+const terminalDashboardTodayQuerySchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    business_date: Joi.date().iso().optional()
+});
+
+const shiftIdParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
+});
+
+const openTerminalShiftSchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).allow(null, '').default('WEB-POS-01'),
+    business_date: Joi.date().iso().optional(),
+    opening_float_amount: Joi.number().min(0).precision(4).default(0),
+    opening_note: Joi.string().trim().max(255).allow(null, '').optional()
+});
+
+const cashDrawerEventSchema = Joi.object({
+    event_type: Joi.string().valid('cash_in', 'cash_out', 'opening_adjustment', 'closing_adjustment').required(),
+    amount: Joi.number().positive().precision(4).required(),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const closeTerminalShiftSchema = Joi.object({
+    closing_cash_amount: Joi.number().min(0).precision(4).required(),
+    closing_note: Joi.string().trim().max(255).allow(null, '').optional()
 });
 
 const buildValidationErrorResponse = (error) => ({
@@ -85,6 +150,15 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
+export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
+export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
+export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
 export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'validatedData');
+export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
+export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
+export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
+export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
+export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
+export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');

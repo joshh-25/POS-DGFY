@@ -14,6 +14,8 @@
 - [Job Orders Endpoints](#job-orders-endpoints)
 - [Stock Movements Endpoints](#stock-movements-endpoints)
 - [Dispatch Orders Endpoints](#dispatch-orders-endpoints)
+- [POS Endpoints](#pos-endpoints)
+- [Unified Sales Endpoints](#unified-sales-endpoints)
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
@@ -255,6 +257,15 @@ x-company-token: <company-token>
   ]
 }
 ```
+
+**Supported Roles (Current Contract)**
+- `admin`
+- `manager`
+- `staff`
+- `cashier`
+- `po`
+- `do`
+- `jo`
 
 ### PUT /users/:user_id/role
 Update user role (Admin only)
@@ -579,6 +590,53 @@ Get item-supplier coverage statistics showing which items have/lack supplier ass
 - Products are excluded as they are manufactured, not purchased
 - Used by the PO Wizard to validate item selection
 - Used by the Item Coverage Panel on the Suppliers page
+
+### GET /items/folders
+List inventory folders.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "folder_id": 12,
+      "name": "Beverages",
+      "description": "",
+      "item_count": 8,
+      "show_in_pos_filter": true
+    }
+  ]
+}
+```
+
+### POST /items/folders
+Create a new inventory folder.
+
+**Request**
+```json
+{
+  "name": "Beverages",
+  "description": "Finished goods drinks"
+}
+```
+
+### PATCH /items/folders/:folder_id
+Update folder metadata.
+
+**Request**
+```json
+{
+  "show_in_pos_filter": false
+}
+```
+
+**Notes:**
+- `show_in_pos_filter` controls whether the folder appears as a POS category filter chip.
+- This flag does not change item sellability; item-level `pos_visible` is still authoritative.
+
+### DELETE /items/folders/:folder_id
+Delete a folder and unassign linked items.
 
 ---
 
@@ -1540,6 +1598,291 @@ Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
 ```json
 { "success": true, "message": "Dispatch Order archived" }
 ```
+
+---
+
+## POS Endpoints
+
+Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. POS writes create `goods_issue` stock movements using `reference_type='POS'`.
+
+### GET /pos/catalog
+List sellable POS-visible active items (all item categories are eligible when `pos_visible=true`).
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `search` | string | Optional item name/SKU search |
+| `limit` | number | Max rows (default 100, capped at 500) |
+| `folder_id` | number | Optional folder filter (`item_folders.folder_id`) |
+
+**Notes:**
+- POS folder chips should only show folders where `show_in_pos_filter = true`.
+- Hidden folders (`show_in_pos_filter = false`) are not listed as POS filters, but their items remain discoverable in unfiltered/search catalog results.
+- Default visibility policy when no override row exists:
+  - `category=product` + `product_type=finished_goods`: visible by default
+  - other categories/types: hidden until explicitly enabled (`pos_visible=true`)
+
+### GET /pos/catalog-overrides
+List POS catalog overrides for admin inventory/POS configuration screens.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `search` | string | Optional item name/SKU search |
+| `limit` | number | Max rows (default 200, capped at 1000) |
+
+### PATCH /pos/catalog-overrides/:item_id
+Create/update POS catalog override for an item.
+
+**Permission**: `items:edit`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "pos_visible": true
+}
+```
+
+### POST /pos/catalog-overrides/:item_id/image
+Upload/replace POS catalog image override (multipart file upload).
+
+**Permission**: `items:edit`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request**: `multipart/form-data` with `image` file field.
+
+**Image URL Contract**
+- Backend stores and returns `pos_image_url` as a path under `/uploads/...`.
+- Local frontend dev/prod-preview must proxy `/uploads` to backend target (same as `/api`) so catalog/terminal images render correctly from `localhost:5173`.
+- If `/uploads` proxy is missing, images appear as broken placeholders even when upload succeeds.
+
+### DELETE /pos/catalog-overrides/:item_id/image
+Remove POS image override and revert to default item image behavior.
+
+**Permission**: `items:edit`  
+**Plan Gate**: Premium (`requirePremium`)
+
+### POST /pos/checkouts
+Execute a POS checkout transaction (atomic). Creates:
+1. `pos_transactions` header
+2. `pos_transaction_lines` with immutable VAT snapshots
+3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`)
+
+Order-method fee policy (current contract):
+- Tenant config key: `pos_order_method_fees` (JSON matrix for `dine_in`, `takeout`, `delivery`, `online`).
+- Optional payload field: `service_fee_amount` (cashier override).
+- Service fee is stored as immutable snapshots on transaction header:
+  - `service_fee_amount`
+  - `service_fee_label_snapshot`
+  - `service_fee_method_snapshot`
+  - `service_fee_overridden`
+
+Discount policy (current contract):
+- Non-zero discount requires `discount_profile_name` from tenant-configured `pos_discount_profiles`.
+- Backend recomputes discount from the saved preset percentage and ignores client-side tampering.
+- POS transaction stores immutable snapshots:
+  - `discount_label_snapshot`
+  - `discount_rate_snapshot` (percentage, `0.0000` to `100.0000`)
+
+**Permission**: `pos:transact`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Compliance Gate (strict mode)**  
+If tenant setting `pos_strict_compliance_enabled=true`, checkout is blocked with `422` when any required POS setup field is missing:
+- `pos_business_name`
+- `pos_tin_branch`
+- `pos_address`
+- `pos_ptu_number`
+- `pos_min_number`
+- `pos_accreditation_number`
+
+**Calculation Contract**
+1. `items_subtotal = sum(line qty * line sale_price)`
+2. `discount_amount = selected_discount_percentage * items_subtotal`
+3. `net_items_total = items_subtotal - discount_amount`
+4. `service_fee_amount = configured method fee or validated override`
+5. `total_amount = net_items_total + service_fee_amount`
+
+**VAT Rule**
+- VAT buckets are computed from discounted item lines only.
+- `service_fee_amount` is treated as non-VAT for POS VAT buckets.
+
+### GET /pos/transactions
+List POS transactions with cashier metadata and pagination.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `page` | number | Page number (default 1) |
+| `limit` | number | Rows per page (default 20, max 200) |
+| `search` | string | Invoice number search |
+| `status` | string | `completed` or `voided` |
+| `cashier_id` | number | Filter by cashier user id |
+| `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
+| `order_method` | string | `dine_in`, `takeout`, `delivery`, `online` |
+| `date_from` | ISO date | Inclusive start date filter |
+| `date_to` | ISO date | Inclusive end date filter |
+
+### GET /pos/transactions/:id
+Get full POS transaction details (header + lines + item snapshots).
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+### GET /pos/terminal/shifts/current
+Get the current open shift and cash summary for a terminal.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `terminal_id` | string | Terminal identifier (e.g. `WEB-POS-01`) |
+
+### POST /pos/terminal/shifts/open
+Open a terminal shift for cashier operations.
+
+**Permission**: `pos:transact`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "terminal_id": "WEB-POS-01",
+  "opening_float_amount": 500.0,
+  "opening_note": "Start of day float"
+}
+```
+
+### POST /pos/terminal/shifts/:id/cash-events
+Record a cash drawer adjustment event for an active shift.
+
+**Permission**: `pos:cash_drawer_adjust`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "event_type": "cash_in",
+  "amount": 100.0,
+  "reason": "Petty cash top-up"
+}
+```
+
+### POST /pos/terminal/shifts/:id/close
+Close a terminal shift and lock in shift-level cash variance data.
+
+**Permission**: `pos:close_day`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "closing_cash_amount": 1200.0,
+  "closing_note": "End of shift handover"
+}
+```
+
+### GET /pos/terminal/dashboard/today
+Get today dashboard totals for terminal operations.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `terminal_id` | string | Terminal identifier (e.g. `WEB-POS-01`) |
+
+### POST /pos/z-reading/close-day
+Generate same-day Z-reading summary for completed POS transactions.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+### GET /pos/z-reading/:date
+Retrieve Z-reading summary for a specific business date (`YYYY-MM-DD`).
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+Z-reading summary includes:
+- `transaction_count`
+- `subtotal_amount`
+- `discount_amount`
+- `service_fee_total`
+- VAT buckets and `total_amount`
+- `payment_breakdown[]`
+
+### VAT Data Placement (Current Contract)
+1. Default item classification: `items.vat_type`
+2. Immutable legal snapshot per sold line:
+   - `pos_transaction_lines.vat_type_snapshot`
+   - `pos_transaction_lines.vat_rate_snapshot`
+3. Transaction-level receipt totals:
+   - `pos_transactions.vatable_sales`
+   - `pos_transactions.vat_amount`
+   - `pos_transactions.vat_exempt_sales`
+   - `pos_transactions.zero_rated_sales`
+4. Tenant POS receipt/business metadata is stored in `system_settings`:
+   - `pos_business_name`
+   - `pos_tin_branch`
+   - `pos_address`
+   - `pos_ptu_number`
+   - `pos_min_number`
+   - `pos_accreditation_number`
+   - `pos_strict_compliance_enabled`
+   - `pos_receipt_footer_message`
+   - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
+   - `pos_order_method_fees` (JSON object keyed by method with `{enabled, amount, label}`)
+   - `pos_petty_cash_symbol`
+   - `pos_petty_cash_amount`
+
+---
+
+## Unified Sales Endpoints
+
+Unified Sales is a **read-only** reporting surface that consolidates POS and Dispatch data.
+
+### Domain Boundary Note
+- Dispatch and POS remain separate write domains.
+- Unified Sales combines both domains only at query/reporting time.
+- No mutation of POS or Dispatch source records is performed by unified sales reads.
+
+### GET /sales/transactions
+List normalized sales timeline rows from:
+1. POS (`source='POS'`)
+2. Dispatch (`source='DISPATCH'`)
+
+Shared fields include date/time, reference number, source, gross sales, VAT buckets (if available), COGS, gross profit, and status.
+For POS rows, service-fee snapshots are included (`service_fee_amount`, label/method/override fields).
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `page` | number | Page number (default 1) |
+| `limit` | number | Rows per page (default 20, max 200) |
+| `source` | string | `POS`, `DISPATCH`, or omitted for both |
+| `search` | string | Search reference/customer/recipient |
+| `status` | string | Source status filter |
+| `payment_type` | string | POS-only filter |
+| `order_method` | string | POS-only filter |
+| `date_from` | ISO date | Inclusive start date |
+| `date_to` | ISO date | Inclusive end date |
+| `sort_by` | string | `occurred_at`, `gross_sales`, `cogs`, `gross_profit`, `reference_no` |
+| `sort_order` | string | `asc` or `desc` |
+| `export` | string | `csv` returns CSV download |
 
 ---
 

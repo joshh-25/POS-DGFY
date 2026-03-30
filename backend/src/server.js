@@ -36,6 +36,7 @@ import { auditRequiredIndexes } from './services/schemaIndexAuditService.js';
 import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAuditService.js';
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
+import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
 import * as aiController from './controllers/aiController.js';
 
 const app = express();
@@ -55,8 +56,13 @@ const parsePositiveInt = (value, fallback) => {
 const schemaIndexAuditEnabled = process.env.SCHEMA_INDEX_AUDIT_ENABLED !== undefined
   ? process.env.SCHEMA_INDEX_AUDIT_ENABLED === 'true'
   : process.env.NODE_ENV === 'production';
+const runtimeSchemaAuditEnabled = process.env.RUNTIME_SCHEMA_AUDIT_ENABLED !== undefined
+  ? process.env.RUNTIME_SCHEMA_AUDIT_ENABLED === 'true'
+  : true;
+const runtimeSchemaPreflightRequired = process.env.RUNTIME_SCHEMA_PREFLIGHT_REQUIRED !== 'false';
 
 const schemaIndexAuditIntervalMinutes = parsePositiveInt(process.env.SCHEMA_INDEX_AUDIT_INTERVAL_MINUTES, 360);
+const runtimeSchemaAuditIntervalMinutes = parsePositiveInt(process.env.RUNTIME_SCHEMA_AUDIT_INTERVAL_MINUTES, 30);
 const schemaIndexAuditTimeoutMs = parsePositiveInt(process.env.SCHEMA_INDEX_AUDIT_TIMEOUT_MS, 5000);
 const billingFunnelAuditEnabled = process.env.BILLING_FUNNEL_AUDIT_ENABLED !== undefined
   ? process.env.BILLING_FUNNEL_AUDIT_ENABLED === 'true'
@@ -64,7 +70,21 @@ const billingFunnelAuditEnabled = process.env.BILLING_FUNNEL_AUDIT_ENABLED !== u
 const billingFunnelAuditIntervalMinutes = parsePositiveInt(process.env.BILLING_FUNNEL_AUDIT_INTERVAL_MINUTES, 60);
 
 let schemaIndexAuditInterval = null;
+let runtimeSchemaAuditInterval = null;
 let billingFunnelAuditInterval = null;
+let runtimeSchemaAuditState = {
+  enabled: runtimeSchemaAuditEnabled,
+  preflight_required: runtimeSchemaPreflightRequired,
+  status: 'unknown',
+  message: runtimeSchemaAuditEnabled ? 'Runtime schema audit has not run yet.' : 'Runtime schema audit is disabled.',
+  last_checked_at: null,
+  missing_migration_count: 0,
+  missing_column_count: 0,
+  warning_count: 0,
+  missing_migrations: [],
+  missing_columns: [],
+  warnings: []
+};
 let schemaIndexAuditState = {
   enabled: schemaIndexAuditEnabled,
   status: 'unknown',
@@ -185,6 +205,87 @@ if (process.env.NODE_ENV === 'development') {
 
 // Rate limiting - apply general limiter to all routes
 app.use('/api', generalLimiter);
+
+const runRuntimeSchemaAudit = async () => {
+  if (!runtimeSchemaAuditEnabled) return;
+
+  try {
+    const result = await auditRuntimeSchemaReadiness({
+      sequelizeInstance: sequelize
+    });
+
+    runtimeSchemaAuditState = {
+      enabled: true,
+      preflight_required: runtimeSchemaPreflightRequired,
+      status: result.status,
+      message: result.status === 'healthy'
+        ? 'Runtime schema readiness checks passed.'
+        : 'Runtime schema readiness checks failed.',
+      last_checked_at: result.checkedAt,
+      missing_migration_count: result.missingMigrations.length,
+      missing_column_count: result.missingColumns.length,
+      warning_count: result.warningCount,
+      missing_migrations: result.missingMigrations,
+      missing_columns: result.missingColumns,
+      warnings: result.warnings
+    };
+
+    if (result.status === 'degraded') {
+      logger.error(`[RuntimeSchemaAudit] Degraded (missing_migrations=${result.missingMigrations.length}, missing_columns=${result.missingColumns.length}).`);
+      result.issues.forEach((issue) => {
+        logger.error(`[RuntimeSchemaAudit] ${issue.message}`);
+      });
+    } else {
+      logger.info(`[RuntimeSchemaAudit] Healthy (warnings=${result.warningCount}).`);
+      result.warnings.forEach((warning) => {
+        logger.warn(`[RuntimeSchemaAudit] ${warning.message}`);
+      });
+    }
+  } catch (error) {
+    runtimeSchemaAuditState = {
+      enabled: true,
+      preflight_required: runtimeSchemaPreflightRequired,
+      status: 'degraded',
+      message: `Runtime schema audit failed: ${error.message}`,
+      last_checked_at: new Date().toISOString(),
+      missing_migration_count: 0,
+      missing_column_count: 0,
+      warning_count: 0,
+      missing_migrations: [],
+      missing_columns: [],
+      warnings: []
+    };
+    logger.error('[RuntimeSchemaAudit] Failed to run audit:', error.message);
+  }
+};
+
+const scheduleRuntimeSchemaAudit = () => {
+  if (!runtimeSchemaAuditEnabled) {
+    runtimeSchemaAuditState = {
+      ...runtimeSchemaAuditState,
+      enabled: false,
+      preflight_required: runtimeSchemaPreflightRequired,
+      status: 'unknown',
+      message: 'Runtime schema audit is disabled.'
+    };
+    return;
+  }
+
+  runRuntimeSchemaAudit().catch((error) => {
+    logger.error('[RuntimeSchemaAudit] Startup audit failed:', error.message);
+  });
+
+  const intervalMs = runtimeSchemaAuditIntervalMinutes * 60 * 1000;
+  runtimeSchemaAuditInterval = setInterval(() => {
+    runRuntimeSchemaAudit().catch((error) => {
+      logger.error('[RuntimeSchemaAudit] Scheduled audit failed:', error.message);
+    });
+  }, intervalMs);
+
+  if (typeof runtimeSchemaAuditInterval.unref === 'function') {
+    runtimeSchemaAuditInterval.unref();
+  }
+};
 
 const runSchemaIndexAudit = async () => {
   if (!schemaIndexAuditEnabled) return;
@@ -355,6 +456,7 @@ app.get('/health', async (req, res) => {
     testConnectionFn: testConnection,
     isRedisConnectedFn: isRedisConnected,
     getTenantPoolStatsFn: () => tenantConnector.getPoolStats(),
+    runtimeSchemaAuditState,
     schemaIndexAuditState,
     billingFunnelAuditState,
     environment: process.env.NODE_ENV || 'development'
@@ -376,6 +478,9 @@ app.get('/metrics', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
   res.status(200).send(renderPrometheusMetrics());
 });
+
+// Static uploads (POS catalog images and other generated assets).
+app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
 app.use(tenantHandler);
@@ -399,6 +504,7 @@ import analyticsRoutes from './routes/analytics.js';
 import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
+import salesRoutes from './routes/sales.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 
@@ -419,6 +525,7 @@ app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -469,18 +576,35 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    // In development mode, sync database schema to apply any model changes
-    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    // Runtime schema preflight: fail fast when required migrations/columns are missing.
+    if (runtimeSchemaAuditEnabled) {
+      await runRuntimeSchemaAudit();
+      if (runtimeSchemaPreflightRequired && runtimeSchemaAuditState.status === 'degraded') {
+        logger.error('Runtime schema preflight failed. Apply pending migrations and retry startup.');
+        process.exit(1);
+      }
+    } else if (runtimeSchemaPreflightRequired) {
+      logger.warn('Runtime schema preflight is required but RUNTIME_SCHEMA_AUDIT_ENABLED=false. Continuing without preflight gate.');
+    }
+
+    // In development mode, only sync schema when explicitly enabled.
+    // Auto-running sync({ alter: true }) on every PM2 boot can cause transient
+    // startup failures or 5xx responses while schema alters are in progress.
+    const autoSyncEnabled = process.env.DB_AUTO_SYNC === 'true';
+    if ((process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) && autoSyncEnabled) {
       try {
         await sequelize.sync({ alter: true });
-        logger.info('📦 Database schema synced (development mode)');
+        logger.info('Database schema synced (development mode, DB_AUTO_SYNC=true)');
       } catch (syncError) {
-        logger.warn('⚠️ Database sync warning:', syncError.message);
+        logger.warn('Database sync warning:', syncError.message);
         // Don't exit - table may already be in sync
       }
+    } else if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      logger.info('Skipping sequelize.sync({ alter: true }). Set DB_AUTO_SYNC=true for controlled local sync.');
     }
 
     // Run schema index audits in the background (startup + periodic).
+    scheduleRuntimeSchemaAudit();
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
 
@@ -516,6 +640,10 @@ const startServer = async () => {
       if (schemaIndexAuditInterval) {
         clearInterval(schemaIndexAuditInterval);
         schemaIndexAuditInterval = null;
+      }
+      if (runtimeSchemaAuditInterval) {
+        clearInterval(runtimeSchemaAuditInterval);
+        runtimeSchemaAuditInterval = null;
       }
       if (billingFunnelAuditInterval) {
         clearInterval(billingFunnelAuditInterval);
@@ -581,6 +709,15 @@ export const __setSchemaIndexAuditStateForTests = (nextState) => {
 
 export const __getSchemaIndexAuditStateForTests = () => schemaIndexAuditState;
 
+export const __setRuntimeSchemaAuditStateForTests = (nextState) => {
+  runtimeSchemaAuditState = {
+    ...runtimeSchemaAuditState,
+    ...nextState
+  };
+};
+
+export const __getRuntimeSchemaAuditStateForTests = () => runtimeSchemaAuditState;
+
 export const __setBillingFunnelAuditStateForTests = (nextState) => {
   billingFunnelAuditState = {
     ...billingFunnelAuditState,
@@ -592,3 +729,4 @@ export const __getBillingFunnelAuditStateForTests = () => billingFunnelAuditStat
 
 export default app;
 // End of file
+

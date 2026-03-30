@@ -62,6 +62,10 @@ export const PERMISSIONS = {
         actions: {
             VIEW_POS: "pos:view",           // View POS transactions and reports
             TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
+            PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
+            ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
+            CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
+            REPRINT_POS_RECEIPT: "pos:reprint" // Reprint historical POS receipts
         }
     },
 
@@ -148,5 +152,45 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
         PERMISSIONS.AI.actions.AI_CHAT_VIEW, // Read-only chat
         // Explicitly NO create/edit/delete/approve/action
+    ],
+    cashier: [
+        PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.POS.actions.VIEW_POS,
+        PERMISSIONS.POS.actions.TRANSACT_POS,
+        PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER,
+        PERMISSIONS.POS.actions.CLOSE_DAY_POS,
+        PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,
+        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS
+    ],
+    po: [
+        PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.SUPPLIERS.actions.VIEW_SUPPLIERS,
+        PERMISSIONS.ORDERS.actions.VIEW_PO,
+        PERMISSIONS.ORDERS.actions.CREATE_PO,
+        PERMISSIONS.ORDERS.actions.EDIT_PO,
+        PERMISSIONS.ORDERS.actions.APPROVE_PO,
+        PERMISSIONS.ORDERS.actions.RECEIVE_PO,
+        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS
+    ],
+    do: [
+        PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.DISPATCH.actions.VIEW_DO,
+        PERMISSIONS.DISPATCH.actions.CREATE_DO,
+        PERMISSIONS.DISPATCH.actions.DISPATCH_DO,
+        PERMISSIONS.DISPATCH.actions.DELETE_DO,
+        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS
+    ],
+    jo: [
+        PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.ORDERS.actions.VIEW_JO,
+        PERMISSIONS.ORDERS.actions.CREATE_JO,
+        PERMISSIONS.ORDERS.actions.EDIT_JO,
+        PERMISSIONS.ORDERS.actions.APPROVE_JO,
+        PERMISSIONS.ORDERS.actions.COMPLETE_JO,
+        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS
     ]
 };

@@ -1,8 +1,18 @@
 import logger from '../config/logger.js';
 import { mapDomainErrorToHttp } from '../modules/shared/contracts/domainErrorMapper.js';
 
+export const shouldLogStackToConsole = () => {
+  const configured = String(process.env.ERROR_LOG_STACKS || '').trim().toLowerCase();
+
+  if (['1', 'true', 'yes', 'on'].includes(configured)) return true;
+  if (['0', 'false', 'no', 'off'].includes(configured)) return false;
+
+  return process.env.NODE_ENV === 'development';
+};
+
 export const errorHandler = (err, req, res, _next) => {
   void _next;
+  const stackLoggingEnabled = shouldLogStackToConsole();
   const mappedDomainError = mapDomainErrorToHttp(err);
   const statusCode = mappedDomainError?.statusCode || err.statusCode || 500;
   const message = mappedDomainError?.payload?.message || err.message || 'Internal Server Error';
@@ -13,7 +23,7 @@ export const errorHandler = (err, req, res, _next) => {
   // Log error with Winston
   const logData = {
     message: err.message,
-    stack: err.stack,
+    stack: statusCode >= 500 && stackLoggingEnabled ? err.stack : undefined,
     statusCode,
     method: req.method,
     path: req.path,
@@ -23,10 +33,12 @@ export const errorHandler = (err, req, res, _next) => {
     error_code: errorCode
   };
 
-  // FORCE LOG STACK TRACE TO CONSOLE
-  console.error('################# STACK TRACE START #################');
-  console.error(err.stack);
-  console.error('################# STACK TRACE END #################');
+  const emitConsoleStack = statusCode >= 500 && stackLoggingEnabled;
+  if (emitConsoleStack) {
+    console.error('################# STACK TRACE START #################');
+    console.error(err.stack);
+    console.error('################# STACK TRACE END #################');
+  }
 
   // Use appropriate log level based on status code
   if (statusCode >= 500) {

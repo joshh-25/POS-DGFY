@@ -6,7 +6,19 @@ const REQUIRED_METHODS = [
     'getTransactionById',
     'listTransactions',
     'getZReadingSummary',
-    'listCatalog'
+    'listCatalog',
+    'listCatalogOverrides',
+    'findCatalogOverrideByItemId',
+    'upsertCatalogOverride',
+    'updateCatalogImage',
+    'clearCatalogImage',
+    'findOpenTerminalShift',
+    'createTerminalShift',
+    'getTerminalShiftById',
+    'createCashDrawerEvent',
+    'listCashDrawerEventsByShiftId',
+    'getShiftCashSalesTotal',
+    'closeTerminalShift'
 ];
 
 export const assertPosRepositoryContract = (repository) => {
@@ -20,4 +32,3 @@ export const assertPosRepositoryContract = (repository) => {
         }
     }
 };
-

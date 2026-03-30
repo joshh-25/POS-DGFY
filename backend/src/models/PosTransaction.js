@@ -25,6 +25,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    shift_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     terminal_id: {
         type: DataTypes.STRING(100),
         allowNull: true
@@ -69,6 +73,32 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: 0
     },
+    discount_label_snapshot: {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    },
+    discount_rate_snapshot: {
+        type: DataTypes.DECIMAL(7, 4),
+        allowNull: true
+    },
+    service_fee_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    service_fee_label_snapshot: {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    },
+    service_fee_method_snapshot: {
+        type: DataTypes.ENUM('dine_in', 'takeout', 'delivery', 'online'),
+        allowNull: true
+    },
+    service_fee_overridden: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
     total_amount: {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false,
@@ -96,10 +126,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['invoice_number'] },
         { fields: ['idempotency_key'] },
         { fields: ['cashier_id'] },
+        { fields: ['shift_id'] },
         { fields: ['created_at'] },
         { fields: ['status'] }
     ]
 });
 
 export default PosTransaction;
-

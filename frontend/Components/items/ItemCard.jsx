@@ -7,6 +7,7 @@ import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folde
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +37,11 @@ export default function ItemCard({
   onEdit,
   onDelete,
   onMoveToFolder,
+  posConfig,
+  canConfigurePosCatalog = false,
+  onTogglePosVisibility,
+  onUploadPosImage,
+  onDeletePosImage,
   currentUserRole,
   isSelected,
   onSelect
@@ -213,6 +219,55 @@ export default function ItemCard({
               )}>
                 {format(new Date(nextExpiry), 'MMM d, yyyy')}
               </span>
+            </div>
+          )}
+          {canConfigurePosCatalog && (
+            <div className="pt-2 space-y-2">
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 px-2 py-2">
+                <span className="text-xs text-slate-600">Show in POS Menu</span>
+                <Switch
+                  checked={posConfig?.pos_visible !== false}
+                  onCheckedChange={(checked) => onTogglePosVisibility?.(item, checked)}
+                />
+              </div>
+              <div className="rounded-lg border border-slate-200 p-2 space-y-2">
+                <p className="text-xs text-slate-600">POS Menu Image</p>
+                {posConfig?.pos_image_url ? (
+                  <img
+                    src={posConfig.pos_image_url}
+                    alt={`${item.name} POS menu`}
+                    className="h-20 w-full object-cover rounded-md border border-slate-200"
+                  />
+                ) : (
+                  <p className="text-xs text-slate-400">No POS image override uploaded.</p>
+                )}
+                <div className="flex gap-2">
+                  <label className="text-xs px-2 py-1 border rounded-md cursor-pointer hover:bg-slate-50">
+                    Upload
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          onUploadPosImage?.(item, file);
+                        }
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDeletePosImage?.(item)}
+                    disabled={!posConfig?.pos_image_url}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </div>

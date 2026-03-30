@@ -44,6 +44,8 @@ const STEPS = [
 
 const defaultProductData = {
   category: 'product',
+  product_type: 'finished_goods',
+  vat_type: 'vatable',
   name: '',
   sku_code: '',
   description: '',
@@ -131,6 +133,9 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
         regulatory_compliance: parseJsonField(product.regulatory_compliance, {}),
         wizard_metadata: product.wizard_metadata || null
       };
+      if (!loadedData.vat_type) {
+        loadedData.vat_type = 'vatable';
+      }
 
       // Denormalize ingredients: User inputs "Per Batch", DB stores "Per Unit"
       // So when loading, we multiply by batch_size to show "Per Batch" values.
@@ -256,6 +261,10 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
   };
 
   const handleFinalize = () => {
+    if (productData.product_type === 'finished_goods' && !productData.vat_type) {
+      alert('VAT type is required to finalize finished goods.');
+      return;
+    }
     const finalData = {
       ...productData,
       status: 'active',
@@ -268,6 +277,10 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
   };
 
   const handleSubmit = async () => {
+    if (productData.product_type === 'finished_goods' && !productData.vat_type) {
+      alert('VAT type is required for finished goods.');
+      return;
+    }
     // Common cleanup function to ensure data validity before submission
     const getSanitizedData = (data) => {
       const sanitized = { ...data };

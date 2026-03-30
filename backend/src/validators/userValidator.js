@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { USER_ROLES } from '../config/userRoles.js';
 
 // Schema for updating user profile (username, email)
 export const updateProfileSchema = Joi.object({
@@ -31,8 +32,8 @@ export const changePasswordSchema = Joi.object({
 
 // Schema for updating user role (admin only)
 export const updateUserRoleSchema = Joi.object({
-  role: Joi.string().valid('admin', 'manager', 'staff').required().messages({
-    'any.only': 'Role must be one of: admin, manager, staff',
+  role: Joi.string().valid(...USER_ROLES).required().messages({
+    'any.only': `Role must be one of: ${USER_ROLES.join(', ')}`,
     'any.required': 'Role is required'
   })
 });
@@ -188,8 +189,8 @@ export const inviteUserSchema = Joi.object({
     'string.email': 'Please provide a valid email address',
     'any.required': 'Email is required'
   }),
-  role: Joi.string().valid('admin', 'manager', 'staff').required().messages({
-    'any.only': 'Role must be one of: admin, manager, staff',
+  role: Joi.string().valid(...USER_ROLES).required().messages({
+    'any.only': `Role must be one of: ${USER_ROLES.join(', ')}`,
     'any.required': 'Role is required'
   })
 });

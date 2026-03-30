@@ -16,6 +16,11 @@ const ItemFolder = sequelize.define('ItemFolder', {
         type: DataTypes.TEXT,
         allowNull: true
     },
+    show_in_pos_filter: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
     parent_id: {
         type: DataTypes.INTEGER,
         allowNull: true,

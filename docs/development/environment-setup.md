@@ -34,6 +34,9 @@ cp .env.example .env
 # Run migrations
 npm run migrate
 
+# Verify runtime schema readiness (must be healthy before starting app)
+npm run doctor:runtime
+
 # Seed initial data
 npm run seed
 
@@ -66,13 +69,90 @@ REFRESH_TOKEN_SECRET=your-refresh-secret-min-32-chars
 REFRESH_TOKEN_EXPIRY=7d
 CORS_ORIGIN=http://localhost:5173
 REDIS_URL=redis://localhost:6379
+DB_AUTO_SYNC=false
 ```
+
+### Startup Stability Rule (Important)
+
+- Keep `DB_AUTO_SYNC=false` for normal local + PM2 runs.
+- Do **not** rely on `sequelize.sync({ alter: true })` at server startup for schema changes.
+- Use migrations for schema evolution:
+  - `cd backend`
+  - `npm run migrate`
+- Enable `DB_AUTO_SYNC=true` only for short, controlled local experiments, then disable it again before shared testing.
+
+### Post-Restart API Smoke Checks (Required)
+
+After restarting PM2 or local dev servers, run this sequence before opening the UI:
+
+```bash
+# from repo root
+npm run doctor:runtime
+```
+
+Expected outcome: `status=healthy missing_migrations=0 missing_columns=0`.
+
+Then verify key endpoints:
+
+1. `GET http://localhost:5000/health` -> `200`
+2. `GET http://localhost:5000/api/v1/auth/validate-token/token-original` -> `200`
+3. `POST http://localhost:5000/api/v1/auth/login` with:
+   - header: `x-company-token: token-original`
+   - body: `{ "email": "admin@test.com", "password": "Admin123!" }`
+   - expected: `200`
+
+Or run the consolidated non-production smoke command:
+
+```bash
+npm run smoke:pos-local
+```
+
+This checks:
+- `/health`
+- tenant token validation
+- authenticated core endpoints (`/users/me`, dashboard, suppliers, PO, alerts, POS catalog, unified sales)
+
+Run FIFO consistency audit before POS checkout/manual UAT:
+
+```bash
+npm run audit:fifo-drift
+```
+
+Expected outcome: `summary status=healthy` with `degraded_tenants=0`.
+
+Important login contract note:
+- Do **not** send `company_token` in the login JSON body.
+- Tenant selection for login is resolved from the `x-company-token` header.
+- Sending unknown body fields causes `422 Validation failed`.
 
 ### Frontend (.env)
 
 ```
 VITE_API_URL=http://localhost:5000/api/v1
+# Optional explicit proxy target for Vite dev/preview server
+# (used for both /api and /uploads routes)
+VITE_PROXY_TARGET=http://127.0.0.1:5000
 ```
+
+### POS Frontend Routes (Current)
+
+- In-house tenant POS page: `http://localhost:5173/pos`
+- Isolated cashier terminal page: `http://localhost:5173/terminal`
+
+Both pages use the same backend API and tenant-auth contract.
+
+### Upload/Image Serving Contract (Important)
+
+- POS image overrides are served from backend static path: `/uploads/...`.
+- Vite dev/preview must proxy both:
+  - `/api` -> backend
+  - `/uploads` -> backend
+- If `/uploads` is not proxied, POS images upload successfully but render as broken images in the UI.
+
+After any frontend proxy/config change:
+1. Restart frontend process (`npm run dev` or `pm2 restart` frontend app).
+2. Hard refresh browser (`Ctrl+Shift+R`).
+3. If still stale, enable DevTools `Disable cache` and reload.
 
 ---
 
@@ -87,6 +167,9 @@ Refer to [Database Schema](../database/schema.md) for complete schema details.
 ```bash
 # Run all pending migrations
 npm run migrate
+
+# Verify schema + migration runtime readiness
+npm run doctor:runtime
 
 # Rollback last migration
 npm run migrate:undo
@@ -212,6 +295,11 @@ taskkill /PID <PID> /F  # Windows
 - Check user permissions
 - Verify connection string format
 - Review migration files for syntax errors
+
+**Auth Lookup returns 429 (Rate limit exceeded):**
+- `POST /api/v1/auth/lookup` is intentionally rate-limited.
+- Avoid rapid repeated lookup calls in smoke scripts.
+- Prefer `GET /api/v1/auth/validate-token/:token` for non-rate-limited tenant token smoke checks.
 
 ---
 

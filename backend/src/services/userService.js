@@ -4,6 +4,7 @@ import dbStore from '../utils/dbStore.js';
 import { hashPassword, comparePassword, generateToken } from './authService.js';
 import * as landlordService from './landlordService.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { ROLE_HIERARCHY, USER_ROLES, isAdminLikeRole } from '../config/userRoles.js';
 import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 
@@ -197,7 +198,7 @@ export const getAllUsers = async () => {
  * Update user role (admin only)
  * @param {number} adminUserId - ID of admin performing the action
  * @param {number} targetUserId - ID of user to update
- * @param {Object} roleData - { role: 'admin' | 'manager' | 'staff' }
+ * @param {Object} roleData - { role: 'admin' | 'manager' | 'staff' | 'cashier' | 'po' | 'do' | 'jo' }
  * @returns {Promise<Object>} Updated user data
  */
 export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
@@ -215,8 +216,25 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
     throw notFoundError('Target user not found');
   }
 
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  if (!adminUser) {
+    throw notFoundError('Admin user not found');
+  }
+
+  // Check admin has users:manage permission (unless Master Admin)
+  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+
   // Get default permissions for the new role
   const normalizedRole = roleData.role?.toLowerCase();
+  if (!USER_ROLES.includes(normalizedRole)) {
+    const error = new Error(`Invalid role: ${roleData.role}`);
+    error.statusCode = 422;
+    throw error;
+  }
+
+  validateAdminHierarchy(adminUser, targetUser, 'modify role for', normalizedRole);
   const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[normalizedRole] || [];
 
   // Build update data
@@ -226,7 +244,7 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   };
 
   // Reset master admin flag if demoting from admin
-  if (roleData.role !== 'admin') {
+  if (!isAdminLikeRole(normalizedRole)) {
     updateData.is_master_admin = false;
   }
 
@@ -262,11 +280,25 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   }
 
   const User = dbStore.get('User');
-  const targetUser = await findVisibleUserById(User, targetUserId);
+  const [adminUser, targetUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+
+  if (!adminUser) {
+    throw notFoundError('Admin user not found');
+  }
 
   if (!targetUser) {
     throw notFoundError('Target user not found');
   }
+
+  // Check admin has users:manage permission (unless Master Admin)
+  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+
+  validateAdminHierarchy(adminUser, targetUser, 'change status for');
 
   await targetUser.update({ is_active: isActive });
 
@@ -296,9 +328,6 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
     is_active: targetUser.is_active
   };
 };
-
-// Role hierarchy for permission checks (higher number = higher rank)
-const ROLE_HIERARCHY = { admin: 3, manager: 2, staff: 1 };
 
 /**
  * Remove user from company (soft delete with hierarchical access control)
@@ -447,8 +476,13 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
   if (adminUser.is_master_admin) return true;
 
   // For new invitations, check if trying to invite an admin
-  if (!targetUser && targetRole === 'admin') {
+  if (!targetUser && isAdminLikeRole(targetRole)) {
     throw createError('Only Master Admin can invite Admin users', 403);
+  }
+
+  // For role updates, regular admins cannot grant admin role
+  if (targetRole && isAdminLikeRole(targetRole)) {
+    throw createError(`Only Master Admin can ${action} to Admin role`, 403);
   }
 
   // For existing users:
@@ -459,7 +493,7 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
     }
 
     // Cannot modify other Admins
-    if (targetUser.role === 'admin') {
+    if (isAdminLikeRole(targetUser.role)) {
       throw createError(`Only Master Admin can ${action} Admin accounts`, 403);
     }
   }
@@ -476,6 +510,9 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
 export const createUserInvitation = async (adminUserId, invitationData) => {
   const { email, role: rawRole } = invitationData;
   const role = rawRole?.toLowerCase() || 'staff';
+  if (!USER_ROLES.includes(role)) {
+    throw createError(`Invalid role: ${rawRole}`, 422);
+  }
 
   const User = dbStore.get('User');
 
@@ -766,10 +803,10 @@ export const importUsersFromCSV = async (userData, adminUserId) => {
     try {
       // Normalize role
       const role = (row.role || 'staff').toLowerCase().trim();
-      if (!['staff', 'manager', 'admin'].includes(role)) {
+      if (!USER_ROLES.includes(role)) {
         results.errors.push({
           email: row.email,
-          error: `Invalid role: ${row.role}. Must be staff, manager, or admin.`
+          error: `Invalid role: ${row.role}. Must be one of: ${USER_ROLES.join(', ')}.`
         });
         continue;
       }

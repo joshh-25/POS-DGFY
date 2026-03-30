@@ -33,7 +33,8 @@ export const getTenantModels = (sequelize) => {
         'BatchLineage', 'ReceiveToken', 'ReportSnapshot', 'PendingAIAction',
         'AIConversation', 'ItemEmbedding', 'ItemFolder',
         'DispatchOrder', 'DispatchOrderLine',
-        'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter'
+        'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
+        'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent'
     ];
 
     // Re-define each model on the new connection

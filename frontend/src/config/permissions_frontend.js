@@ -51,7 +51,11 @@ export const PERMISSIONS = {
         label: "Point of Sale",
         actions: {
             VIEW_POS: "pos:view",
-            TRANSACT_POS: "pos:transact"
+            TRANSACT_POS: "pos:transact",
+            PRICE_OVERRIDE_POS: "pos:price_override",
+            ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
+            CLOSE_DAY_POS: "pos:close_day",
+            REPRINT_POS_RECEIPT: "pos:reprint"
         }
     },
     STOCK: {
@@ -144,7 +148,11 @@ export const PERMISSION_GROUPS = {
         label: "Point of Sale",
         permissions: {
             VIEW_POS: "pos:view",
-            TRANSACT_POS: "pos:transact"
+            TRANSACT_POS: "pos:transact",
+            PRICE_OVERRIDE_POS: "pos:price_override",
+            ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
+            CLOSE_DAY_POS: "pos:close_day",
+            REPRINT_POS_RECEIPT: "pos:reprint"
         }
     },
     STOCK: {

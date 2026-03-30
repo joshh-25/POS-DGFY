@@ -1,7 +1,7 @@
 # Production Readiness Audit Report
 **Date:** 2026-02-19
 **Project:** SKUpervisor (SKU-Inventory-Manager)
-**Status:** ✅ **READY FOR PRODUCTION**
+**Status:** in_progress (as of 2026-03-28; pending POS E2E UAT signoff and runtime doctor checks per environment)
 
 ## Summary
 The project has successfully resolved all critical infrastructure and deployment blockers. The QR Receive flow is now fully operational end-to-end for both Purchase Orders and Job Orders — verified by live user testing.
@@ -226,3 +226,148 @@ POS MVP hardening moved from planning into implemented and validated state for t
 
 ### 11.4 Remaining Gap (Explicit)
 - Live PayPal canary validation is still pending due missing live/sandbox canary environment credentials.
+
+## 12. POS Completion Batch Progress (2026-03-27, In Progress)
+
+### 12.1 Implemented in this pass
+1. VAT contract hardening:
+   - Item validators now accept `vat_type` (`vatable|vat_exempt|zero_rated`).
+   - Finished goods finalization now requires `vat_type`.
+   - Product wizard now captures `vat_type` in Basic Info.
+2. POS compliance strict mode:
+   - Added tenant setting `pos_strict_compliance_enabled` (migration-backed).
+   - POS checkout/transaction-detail read paths enforce required compliance fields when strict mode is enabled.
+3. POS history completion:
+   - Server-side filters wired for invoice search, status, payment type, order method, cashier id, and date range.
+4. Unified Sales completion:
+   - Backend supports sort/filter improvements and CSV export.
+   - Frontend sales page supports sort/filter/date range and CSV export action.
+
+### 12.2 Verification evidence (targeted)
+- `npm run check:architecture` -> pass
+- `npm run lint:docs` -> pass
+- Focused backend tests passed:
+  - POS transport/use-case/DB integration
+  - Sales transport
+  - Item transport
+  - CSV transport/filter regression
+
+### 12.3 Verification evidence (full + reconciliation)
+- `backend npm test` -> pass (130 suites passed, 3 skipped; 560 tests passed, 7 skipped)
+- `frontend npm test` -> pass (14 files, 51 tests)
+- `npm run build` -> pass (frontend + backend build scripts)
+- Added reconciliation coverage:
+  - `backend/tests/posSalesReconciliation.db.integration.test.js` -> pass
+
+## 13. Runtime Schema + Startup 500 Prevention Hardening (2026-03-28)
+
+### 13.1 What was added
+1. Runtime schema audit service is now part of startup and `/health` status:
+   - required migration presence check
+   - required POS/runtime column presence check
+2. New operator doctor command:
+   - `npm run doctor:runtime`
+3. Tenant lookup fail-open hardening:
+   - landlord optional-column reads are schema-aware (no hard crash on missing optional fields)
+4. POS settings JSON auto-repair:
+   - malformed/double-encoded JSON values for POS settings are normalized on read and rewritten safely
+
+### 13.2 Verification evidence (2026-03-28 local run)
+1. `npm run check:architecture` -> pass
+2. `npm run lint:docs` -> pass
+3. `npm run doctor:runtime` -> healthy (0 missing migrations, 0 missing required columns)
+4. `backend npm test` -> pass (135 passed suites, 3 skipped; 582 passed tests, 7 skipped)
+5. `frontend npm test -- --watch=false` -> pass (14 files, 51 tests)
+6. `npm run build` -> pass
+7. PM2 smoke sequence returned `200` for:
+   - `/health`
+   - `/api/v1/auth/validate-token/token-original`
+   - `/api/v1/auth/login` (header-based tenant token)
+   - `/api/v1/users/me`
+   - `/api/v1/dashboard/stats`
+   - `/api/v1/dashboard/low-stock`
+   - `/api/v1/purchase-orders`
+   - `/api/v1/suppliers`
+   - `/api/v1/alerts`
+   - `/api/v1/pos/catalog`
+   - `/api/v1/sales/transactions`
+
+### 13.3 Remaining status
+Readiness remains `in_progress` until cashier/admin manual POS E2E UAT is completed and signed off using:
+- `docs/testing/pos-e2e-uat-checklist.md`
+  - Verifies POS checkout totals reconcile with:
+    - POS daily Z-reading summary
+    - Unified Sales (`source=POS`) transaction and summary surface
+  - Verifies strict mode compliance gating:
+    - checkout blocked with deterministic `missing_fields`
+    - checkout allowed after required POS setup fields are completed
+
+### 12.4 Status
+- Workstream remains explicitly **in progress** pending manual UAT and staging deployment smoke checks.
+
+### 12.5 Manual UAT Signoff Asset
+- Added end-to-end cashier/admin signoff checklist:
+  - `docs/testing/pos-e2e-uat-checklist.md`
+- This checklist is now the required artifact to close the user-readiness gate for POS.
+
+## 14. Implementation Kickoff Sequence Validation (2026-03-28)
+
+Execution-ready kickoff sequence has been re-run and validated on current branch:
+
+1. Baseline lock gates:
+   - `npm run check:architecture` -> pass
+   - `npm run lint:docs` -> pass
+2. Targeted POS/Sales/Settings backend suites:
+   - `tests/posUsecases.applicationResult.test.js` -> pass
+   - `tests/posHandlers.transport.test.js` -> pass
+   - `tests/posCheckout.db.integration.test.js` -> pass
+   - `tests/salesHandlers.transport.test.js` -> pass
+   - `tests/settingsHandlers.transport.test.js` -> pass
+3. Full-suite regression:
+   - `backend npm test` -> pass
+   - `frontend npm test` -> pass
+   - `npm run build` -> pass
+
+Current status remains `in_progress` until manual cashier/admin UAT signoff and environment-specific deployment smoke checks are complete.
+
+## 15. Non-Production Gap Closure Update (2026-03-30)
+
+1. Runtime doctor contract extended to verify latest POS migration and schema surfaces:
+   - required migration now includes `20260328000003-add-pos-catalog-overrides-and-user-roles.cjs`
+   - required table/column checks now include:
+     - `users.role`
+     - `users.is_master_admin`
+     - `pos_catalog_overrides` core columns
+2. Local environment was remediated by applying pending migration `20260328000003` and re-running runtime doctor.
+3. Added consolidated non-production smoke command:
+   - `npm run smoke:pos-local`
+4. Added explicit non-production closure checklist:
+   - `docs/testing/nonprod-gap-closure-checklist.md`
+
+Workstream remains `in_progress` until human UAT signoff artifacts are completed.
+
+### 15.1 Automated Re-Verification Evidence (2026-03-30)
+
+Fresh rerun on local environment completed with all automated gates passing:
+
+1. `npm run doctor:runtime` -> PASS (`status=healthy`, `missing_migrations=0`, `missing_columns=0`)
+2. `npm run smoke:pos-local` -> PASS (all target endpoints returned `200`)
+3. `npm run check:architecture` -> PASS
+4. `npm run lint:docs` -> PASS
+5. `cd backend && npm test` -> PASS
+6. `cd frontend && npm test` -> PASS
+7. `npm run build` -> PASS
+8. `npm run check:frontend-budgets` -> PASS (POS-critical bundles within budget)
+
+Open item remains human-only:
+
+1. Cashier/admin UAT run and signoff evidence (`docs/testing/pos-e2e-uat-checklist.md`).
+
+### 15.2 Canonical POS Readiness Tracking
+
+To prevent status drift across multiple test/readiness documents, the canonical POS readiness state is tracked in:
+
+1. `docs/testing/pos-readiness-status.md`
+
+All POS readiness updates must be reflected there first, then referenced here.
+

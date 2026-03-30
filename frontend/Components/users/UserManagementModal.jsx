@@ -26,7 +26,7 @@ import useStore from '../../src/store/useStore.js';
 import DeleteConfirmDialog from '../ui/DeleteConfirmDialog';
 
 // Role hierarchy for permission checks (higher number = higher rank)
-const ROLE_HIERARCHY = { admin: 3, manager: 2, staff: 1 };
+const ROLE_HIERARCHY = { admin: 7, manager: 6, po: 5, do: 5, jo: 5, cashier: 4, staff: 3 };
 
 // Permission templates for bulk operations
 const PERMISSION_TEMPLATES = {
@@ -38,6 +38,7 @@ const PERMISSION_TEMPLATES = {
       'po:view', 'po:create', 'po:approve', 'po:receive',
       'jo:view', 'jo:create', 'jo:approve', 'jo:complete',
       'do:view', 'do:create', 'do:dispatch', 'do:delete',
+      'pos:view', 'pos:transact', 'pos:price_override', 'pos:cash_drawer_adjust', 'pos:close_day', 'pos:reprint',
       'stock:view', 'stock:adjust', 'batches:view', 'batches:edit',
       'reports:view',
       'ai:chat', 'ai:action',
@@ -53,6 +54,7 @@ const PERMISSION_TEMPLATES = {
       'po:view', 'po:receive',
       'jo:view', 'jo:complete',
       'do:view',
+      'pos:view',
       'stock:view'
     ]
   },
@@ -166,6 +168,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
         // Apply role filter
         if (filter === 'admin') matchesFilter = user.role === 'admin';
         else if (filter === 'manager') matchesFilter = user.role === 'manager';
+        else if (filter === 'cashier') matchesFilter = user.role === 'cashier';
+        else if (filter === 'po') matchesFilter = user.role === 'po';
+        else if (filter === 'do') matchesFilter = user.role === 'do';
+        else if (filter === 'jo') matchesFilter = user.role === 'jo';
         else if (filter === 'staff') matchesFilter = user.role === 'staff';
         // 'all' filter shows all active users (no additional filter needed)
       }
@@ -365,6 +371,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
     { key: 'all', label: 'All', icon: Users2 },
     { key: 'admin', label: 'Admins', icon: Shield },
     { key: 'manager', label: 'Managers', icon: UserCheck },
+    { key: 'cashier', label: 'Cashiers', icon: UserCheck },
+    { key: 'po', label: 'PO', icon: UserCheck },
+    { key: 'do', label: 'DO', icon: UserCheck },
+    { key: 'jo', label: 'JO', icon: UserCheck },
     { key: 'staff', label: 'Staff', icon: UserCheck },
     { key: 'inactive', label: 'Inactive', icon: UserX },
   ];
@@ -557,6 +567,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         className="w-full px-2 py-1 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       >
                         <option value="staff">Staff</option>
+                        <option value="cashier">Cashier</option>
+                        <option value="po">PO Officer</option>
+                        <option value="do">DO Officer</option>
+                        <option value="jo">JO Officer</option>
                         <option value="manager">Manager</option>
                         <option value="admin">Admin</option>
                       </select>

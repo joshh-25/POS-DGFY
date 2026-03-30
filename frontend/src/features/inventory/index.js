@@ -9,6 +9,7 @@ export {
 } from './hooks/useInventoryItems.js';
 export {
   getInventoryItemById,
-  deleteInventoryFolder
+  deleteInventoryFolder,
+  updateInventoryFolder
 } from './api/itemsApi.js';
 export { default as ItemsPage } from './pages/ItemsPage.jsx';

@@ -18,6 +18,7 @@ export const ItemRepositoryContract = Object.freeze([
     'getItemSupplierCoverage',
     'listFolders',
     'createFolder',
+    'updateFolder',
     'deleteFolder'
 ]);
 

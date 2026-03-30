@@ -26,3 +26,30 @@ Current approved claim language for subscription telemetry:
 Disallowed claim language until production longitudinal evidence exists:
 1. "This proves real-world engagement."
 2. "This proves retention or adoption causality."
+
+## POS UAT Signoff
+
+Use this checklist for final cashier/admin acceptance before changing status from `in_progress`:
+
+- `docs/testing/pos-e2e-uat-checklist.md`
+- Canonical readiness state: `docs/testing/pos-readiness-status.md`
+
+## Startup Regression Guard (PM2 + Local)
+
+Before running manual UAT after backend changes:
+
+1. Ensure `backend/.env` has `DB_AUTO_SYNC=false`.
+2. Apply DB changes through migrations (`cd backend && npm run migrate`).
+3. Run runtime doctor (`cd backend && npm run doctor:runtime`) and confirm healthy.
+4. Restart backend (`pm2 restart sku-backend`).
+5. Verify health endpoint returns `200` before opening POS flows:
+   - `http://localhost:5000/health`
+6. Verify token validation endpoint returns `200`:
+   - `http://localhost:5000/api/v1/auth/validate-token/token-original`
+7. Verify login transport contract uses header-based tenant selection:
+   - Request header: `x-company-token: token-original`
+   - Request body: `{ "email": "admin@test.com", "password": "Admin123!" }`
+   - Expected: `200`
+   - Note: sending `company_token` in body is invalid and returns `422`.
+
+This prevents transient startup-side `500` errors caused by runtime schema `alter` operations.
