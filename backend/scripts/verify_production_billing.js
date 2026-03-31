@@ -5,21 +5,24 @@ import db from '../src/models/index.js';
 
 dotenv.config();
 
-const API_BASE = 'http://localhost:5001/api/v1'; // Adjusted to match deploy.sh
+const API_PORT = process.env.PORT || '5000';
+const API_BASE = process.env.DEPLOY_VERIFY_API_BASE || `http://localhost:${API_PORT}/api/v1`;
 const { Tenant, WebhookLog, Payment } = db;
 
 async function runVerification() {
     console.log('🚀 Starting Production Subscription Verification...\n');
 
     try {
-        // 1. Verify Signature Rejection
+        // 1. Verify Signature Rejection (PayMongo path)
         console.log('Step 1: Verifying Signature Rejection...');
         try {
             await axios.post(`${API_BASE}/payments/webhook`, {
-                event_type: 'FAKE',
-                resource: { id: 'fake_resource' }
+                event_type: 'subscription.created',
+                data: {
+                    id: 'sub_fake_invalid_signature'
+                }
             }, {
-                headers: { 'paypal-transmission-id': 'fake_tx' }
+                headers: { 'x-paymongo-signature': 'fake_signature' }
             });
             console.log('❌ Error: Webhook accepted without valid signature!');
         } catch (e) {

@@ -12,13 +12,16 @@ Use this guide for:
 - SSH access to server (`root@192.53.116.33 -p 64428`)
 - Clean local git state for the commit you intend to deploy
 - Required backend env vars present on server in `backend/.env`:
-  - `PAYPAL_CLIENT_ID`
-  - `PAYPAL_CLIENT_SECRET`
-  - `PAYPAL_MODE`
-  - `PAYPAL_WEBHOOK_ID`
   - `DB_HOST`
   - `DB_USER`
   - `DB_NAME`
+  - `JWT_SECRET`
+  - Payment-provider config (default deploy mode: PayMongo)
+    - `PAYMONGO_MODE`
+    - `PAYMONGO_STANDARD_PLAN_ID`
+    - `PAYMONGO_PREMIUM_PLAN_ID`
+    - mode-resolved key pair (`PAYMONGO_*_PUBLIC_KEY` + `PAYMONGO_*_SECRET_KEY` or generic fallback)
+    - `PAYMONGO_WEBHOOK_SECRET`
 
 ## Standard Deployment (Simplified)
 Run on the production server for a one-command deploy:
@@ -55,14 +58,19 @@ What `deploy.sh` does:
 2. Pulls fast-forward only
 3. Installs deterministic dependencies (`npm ci`)
 4. Runs docs lint and architecture gates
-5. Builds frontend
+5. Builds frontend surfaces (`skupervisor`, `pos`, `store`)
 6. Runs DB migrations
 7. Skips legacy maintenance hooks by default
 8. Runs required-index self-heal (`npm run repair:indexes`)
 9. Runs strict index audit (`npm run audit:indexes`)
 10. Runs strict billing-funnel audit (`npm run audit:billing-funnel`)
 11. Runs tenant schema sync
-12. Reloads PM2 and verifies backend/frontend health
+12. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
+13. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
+  - `https://skupervisor.surebizcorp.com`
+  - `https://pos.surebizcorp.com`
+  - `https://surebizcorp.com`
+  - `https://surebizcorp.com/tenant-store`
 
 Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.log`
@@ -135,6 +143,12 @@ pm2 save
 ```
 
 Do not use `pm2 restart all` as primary deployment strategy.
+
+## Endpoint Targets
+- IMS: `https://skupervisor.surebizcorp.com`
+- POS: `https://pos.surebizcorp.com`
+- Storefront: `https://surebizcorp.com`
+- Tenant Store: `https://surebizcorp.com/tenant-store`
 
 ## Manual Fallback (Last Resort)
 Use only if deploy script itself is broken:

@@ -8,7 +8,7 @@ set -euo pipefail
 # Pushes local changes to GitHub, then SSHes into the production
 # server and runs deploy.sh in one command.
 #
-# Usage: bash scripts/deploy-remote.sh [--skip-db-backup]
+# Usage: bash scripts/deploy-remote.sh [--skip-db-backup] [--yes]
 
 # ------------------------------------------
 # Configuration
@@ -24,14 +24,25 @@ TARGET_BRANCH="master"
 # Deployment policy flags (non-secret)
 # Forwarded to remote deploy.sh
 # ------------------------------------------
-DEPLOY_REQUIRE_LIVE_PAYPAL="${DEPLOY_REQUIRE_LIVE_PAYPAL:-1}"
-DEPLOY_FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
+DEPLOY_PAYMENT_PROVIDER="${DEPLOY_PAYMENT_PROVIDER:-auto}"
+DEPLOY_REQUIRE_LIVE_PAYPAL="${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}"
+DEPLOY_REQUIRE_LIVE_PAYMONGO="${DEPLOY_REQUIRE_LIVE_PAYMONGO:-0}"
+DEPLOY_VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
+DEPLOY_STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
+DEPLOY_IMS_URL="${DEPLOY_IMS_URL:-https://skupervisor.surebizcorp.com}"
+DEPLOY_POS_URL="${DEPLOY_POS_URL:-https://pos.surebizcorp.com}"
+DEPLOY_STOREFRONT_URL="${DEPLOY_STOREFRONT_URL:-https://surebizcorp.com}"
+DEPLOY_TENANT_STORE_URL="${DEPLOY_TENANT_STORE_URL:-https://surebizcorp.com${DEPLOY_STORE_BASE_PATH%/}}"
+DEPLOY_IMS_HEALTH_URL="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
+DEPLOY_POS_HEALTH_URL="${DEPLOY_POS_HEALTH_URL:-}"
+DEPLOY_STORE_HEALTH_URL="${DEPLOY_STORE_HEALTH_URL:-}"
 DEPLOY_BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-}"
 
 # ------------------------------------------
 # Optional flags parsed from CLI
 # ------------------------------------------
 SKIP_DB_BACKUP="0"
+AUTO_CONFIRM="0"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,9 +50,13 @@ while [[ $# -gt 0 ]]; do
             SKIP_DB_BACKUP="1"
             shift
             ;;
+        --yes)
+            AUTO_CONFIRM="1"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: bash scripts/deploy-remote.sh [--skip-db-backup]"
+            echo "Usage: bash scripts/deploy-remote.sh [--skip-db-backup] [--yes]"
             exit 1
             ;;
     esac
@@ -61,13 +76,25 @@ echo -e "   Branch: ${YELLOW}$TARGET_BRANCH${NC}\n"
 if hostname -I 2>/dev/null | tr ' ' '\n' | grep -Fxq "$REMOTE_HOST"; then
     echo -e "${YELLOW}Detected execution on target server ($REMOTE_HOST).${NC}"
     echo -e "${YELLOW}Running local deploy script directly (no SSH hop).${NC}"
+    export DEPLOY_PAYMENT_PROVIDER="$DEPLOY_PAYMENT_PROVIDER"
     export DEPLOY_REQUIRE_LIVE_PAYPAL="$DEPLOY_REQUIRE_LIVE_PAYPAL"
-    if [ -n "$DEPLOY_FRONTEND_HEALTH_URL" ]; then
-        export DEPLOY_FRONTEND_HEALTH_URL="$DEPLOY_FRONTEND_HEALTH_URL"
+    export DEPLOY_REQUIRE_LIVE_PAYMONGO="$DEPLOY_REQUIRE_LIVE_PAYMONGO"
+    export DEPLOY_VERIFY_PUBLIC_ENDPOINTS="$DEPLOY_VERIFY_PUBLIC_ENDPOINTS"
+    export DEPLOY_STORE_BASE_PATH="$DEPLOY_STORE_BASE_PATH"
+    export DEPLOY_IMS_URL="$DEPLOY_IMS_URL"
+    export DEPLOY_POS_URL="$DEPLOY_POS_URL"
+    export DEPLOY_STOREFRONT_URL="$DEPLOY_STOREFRONT_URL"
+    export DEPLOY_TENANT_STORE_URL="$DEPLOY_TENANT_STORE_URL"
+    if [ -n "$DEPLOY_IMS_HEALTH_URL" ]; then
+        export DEPLOY_IMS_HEALTH_URL="$DEPLOY_IMS_HEALTH_URL"
     fi
-    if [ -n "$DEPLOY_BACKEND_HEALTH_URL" ]; then
-        export DEPLOY_BACKEND_HEALTH_URL="$DEPLOY_BACKEND_HEALTH_URL"
+    if [ -n "$DEPLOY_POS_HEALTH_URL" ]; then
+        export DEPLOY_POS_HEALTH_URL="$DEPLOY_POS_HEALTH_URL"
     fi
+    if [ -n "$DEPLOY_STORE_HEALTH_URL" ]; then
+        export DEPLOY_STORE_HEALTH_URL="$DEPLOY_STORE_HEALTH_URL"
+    fi
+    [ -n "$DEPLOY_BACKEND_HEALTH_URL" ] && export DEPLOY_BACKEND_HEALTH_URL="$DEPLOY_BACKEND_HEALTH_URL"
     deploy_extra_args=""
     if [ "$SKIP_DB_BACKUP" = "1" ]; then
         deploy_extra_args="--skip-db-backup"
@@ -79,11 +106,15 @@ fi
 # ------------------------------------------
 # Step 1: Confirm intent
 # ------------------------------------------
-read -p "Deploy to PRODUCTION? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${RED}Deployment cancelled.${NC}"
-    exit 1
+if [[ "$AUTO_CONFIRM" != "1" ]]; then
+    read -p "Deploy to PRODUCTION? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${RED}Deployment cancelled.${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}--yes supplied: skipping confirmation prompt.${NC}"
 fi
 
 # ------------------------------------------
@@ -95,18 +126,22 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     echo -e "${YELLOW}You have uncommitted local changes:${NC}"
     git status --short
     echo ""
-    read -p "Commit them now before deploying? (y/N) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "Commit message: " COMMIT_MSG
-        if [ -z "${COMMIT_MSG:-}" ]; then
-            COMMIT_MSG="chore: pre-deploy changes"
-        fi
-        git add -A
-        git commit -m "$COMMIT_MSG"
-        echo -e "${GREEN}Changes committed.${NC}"
+    if [[ "$AUTO_CONFIRM" == "1" ]]; then
+        echo -e "${YELLOW}--yes supplied: skipping auto-commit and proceeding with existing committed HEAD only.${NC}"
     else
-        echo -e "${YELLOW}Proceeding without committing local changes (they won't be deployed).${NC}"
+        read -p "Commit them now before deploying? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "Commit message: " COMMIT_MSG
+            if [ -z "${COMMIT_MSG:-}" ]; then
+                COMMIT_MSG="chore: pre-deploy changes"
+            fi
+            git add -A
+            git commit -m "$COMMIT_MSG"
+            echo -e "${GREEN}Changes committed.${NC}"
+        else
+            echo -e "${YELLOW}Proceeding without committing local changes (they won't be deployed).${NC}"
+        fi
     fi
 fi
 
@@ -152,13 +187,19 @@ if [ "$SKIP_DB_BACKUP" = "1" ]; then
 fi
 
 # Build environment exports for the remote side
-REMOTE_EXPORTS="export DEPLOY_REQUIRE_LIVE_PAYPAL=${DEPLOY_REQUIRE_LIVE_PAYPAL}"
-if [ -n "$DEPLOY_FRONTEND_HEALTH_URL" ]; then
-    REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_FRONTEND_HEALTH_URL=${DEPLOY_FRONTEND_HEALTH_URL}"
-fi
-if [ -n "$DEPLOY_BACKEND_HEALTH_URL" ]; then
-    REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_BACKEND_HEALTH_URL=${DEPLOY_BACKEND_HEALTH_URL}"
-fi
+REMOTE_EXPORTS="export DEPLOY_PAYMENT_PROVIDER='${DEPLOY_PAYMENT_PROVIDER}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_REQUIRE_LIVE_PAYPAL='${DEPLOY_REQUIRE_LIVE_PAYPAL}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_REQUIRE_LIVE_PAYMONGO='${DEPLOY_REQUIRE_LIVE_PAYMONGO}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_VERIFY_PUBLIC_ENDPOINTS='${DEPLOY_VERIFY_PUBLIC_ENDPOINTS}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_STORE_BASE_PATH='${DEPLOY_STORE_BASE_PATH}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_IMS_URL='${DEPLOY_IMS_URL}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_POS_URL='${DEPLOY_POS_URL}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_STOREFRONT_URL='${DEPLOY_STOREFRONT_URL}'"
+REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_TENANT_STORE_URL='${DEPLOY_TENANT_STORE_URL}'"
+[ -n "$DEPLOY_IMS_HEALTH_URL" ] && REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_IMS_HEALTH_URL='${DEPLOY_IMS_HEALTH_URL}'"
+[ -n "$DEPLOY_POS_HEALTH_URL" ] && REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_POS_HEALTH_URL='${DEPLOY_POS_HEALTH_URL}'"
+[ -n "$DEPLOY_STORE_HEALTH_URL" ] && REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_STORE_HEALTH_URL='${DEPLOY_STORE_HEALTH_URL}'"
+[ -n "$DEPLOY_BACKEND_HEALTH_URL" ] && REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_BACKEND_HEALTH_URL='${DEPLOY_BACKEND_HEALTH_URL}'"
 
 # ------------------------------------------
 # Step 6: SSH and run server deployment
@@ -188,7 +229,10 @@ SSH_EXIT=$?
 echo ""
 if [ $SSH_EXIT -eq 0 ]; then
     echo -e "${GREEN}Deployment finished successfully.${NC}"
-    echo -e "   App: ${CYAN}https://skupervisor.surebizcorp.com${NC}"
+    echo -e "   IMS:         ${CYAN}${DEPLOY_IMS_URL}${NC}"
+    echo -e "   POS:         ${CYAN}${DEPLOY_POS_URL}${NC}"
+    echo -e "   Storefront:  ${CYAN}${DEPLOY_STOREFRONT_URL}${NC}"
+    echo -e "   TenantStore: ${CYAN}${DEPLOY_TENANT_STORE_URL}${NC}"
 else
     echo -e "${RED}Deployment failed (SSH exited with code $SSH_EXIT).${NC}"
     echo -e "   Check server logs: ssh -p $REMOTE_PORT $REMOTE_USER@$REMOTE_HOST 'pm2 logs sku-backend --lines 50'"

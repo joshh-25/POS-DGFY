@@ -36,6 +36,12 @@ SKIP_DB_BACKUP="0"
 AUTO_MODE="0"
 RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
 DEEP_VERIFY="${DEPLOY_POST_DEPLOY_VERIFY:-0}"
+VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
+STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
+if [[ "$STORE_BASE_PATH" != /* ]]; then
+    STORE_BASE_PATH="/$STORE_BASE_PATH"
+fi
+STORE_BASE_PATH="${STORE_BASE_PATH%/}/"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -73,6 +79,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-db-backup      Skip mysqldump before migrations"
             echo "  --run-legacy-hooks    Enable legacy maintenance scripts"
             echo "  --verify              Run deep AI verification after deploy"
+            echo ""
+            echo "Environment overrides:"
+            echo "  DEPLOY_PAYMENT_PROVIDER=auto|paymongo|paypal|dual"
+            echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
+            echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             exit 0
             ;;
         *)
@@ -122,6 +133,11 @@ env_value() {
             exit
         }
     ' "$file"
+}
+
+is_http_success_code() {
+    local code="$1"
+    [[ "$code" =~ ^2[0-9][0-9]$ || "$code" =~ ^3[0-9][0-9]$ ]]
 }
 
 run_step() {
@@ -184,6 +200,63 @@ build_backend_health_candidates() {
     add_candidate "http://127.0.0.1:5001/health"
 
     printf "%s\n" "${candidates[@]}"
+}
+
+build_surface_health_candidates() {
+    local explicit_url="$1"
+    shift
+    local -a defaults=("$@")
+    local -a candidates=()
+    local -a seen=()
+
+    add_candidate() {
+        local candidate="$1"
+        [[ -z "$candidate" ]] && return 0
+        for existing in "${seen[@]+"${seen[@]}"}"; do
+            if [[ "$existing" == "$candidate" ]]; then
+                return 0
+            fi
+        done
+        seen+=("$candidate")
+        candidates+=("$candidate")
+    }
+
+    add_candidate "$explicit_url"
+    for candidate in "${defaults[@]+"${defaults[@]}"}"; do
+        add_candidate "$candidate"
+    done
+
+    printf "%s\n" "${candidates[@]}"
+}
+
+probe_url_candidates() {
+    local label="$1"
+    local out_var_name="$2"
+    local attempts="$3"
+    local delay_seconds="$4"
+    shift 4
+    local -a candidates=("$@")
+
+    local chosen_url=""
+    for candidate_url in "${candidates[@]+"${candidates[@]}"}"; do
+        for ((attempt=1; attempt<=attempts; attempt++)); do
+            http_code="$(curl -sS -L -o /dev/null -w '%{http_code}' "$candidate_url" || true)"
+            if is_http_success_code "$http_code"; then
+                chosen_url="$candidate_url"
+                break 2
+            fi
+            sleep "$delay_seconds"
+        done
+    done
+
+    if [[ -n "$chosen_url" ]]; then
+        printf -v "$out_var_name" '%s' "$chosen_url"
+        log "$label check passed: $chosen_url"
+        return 0
+    fi
+
+    warn "$label check failed. Candidates tested: ${candidates[*]}"
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -289,7 +362,7 @@ log "Target branch: $TARGET_BRANCH"
 ENV_FILE="$BACKEND_DIR/.env"
 [[ -f "$ENV_FILE" ]] || fatal "Missing backend env file: $ENV_FILE"
 
-REQUIRED_ENV_VARS=("PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "PAYPAL_MODE" "PAYPAL_WEBHOOK_ID" "DB_HOST" "DB_USER" "DB_NAME")
+REQUIRED_ENV_VARS=("DB_HOST" "DB_USER" "DB_NAME" "JWT_SECRET")
 for var in "${REQUIRED_ENV_VARS[@]}"; do
     value="$(env_value "$ENV_FILE" "$var")"
     if [[ -z "${value:-}" ]]; then
@@ -298,27 +371,131 @@ for var in "${REQUIRED_ENV_VARS[@]}"; do
 done
 log "Required env validation passed."
 
-PAYPAL_MODE_VALUE="$(env_value "$ENV_FILE" "PAYPAL_MODE")"
-if [[ "$PAYPAL_MODE_VALUE" != "live" && "$PAYPAL_MODE_VALUE" != "sandbox" ]]; then
-    fatal "PAYPAL_MODE must be either 'live' or 'sandbox'. Current value: $PAYPAL_MODE_VALUE"
-fi
-if [[ "${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}" == "1" && "$PAYPAL_MODE_VALUE" != "live" ]]; then
-    fatal "DEPLOY_REQUIRE_LIVE_PAYPAL=1 but PAYPAL_MODE is '$PAYPAL_MODE_VALUE'. Refusing production deploy."
-fi
+validate_paypal_env() {
+    local paypal_mode
+    local paypal_standard_plan
+    local paypal_premium_plan
+    local paypal_legacy_plan
+    local required_paypal_vars=("PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "PAYPAL_WEBHOOK_ID" "PAYPAL_STANDARD_PLAN_ID")
 
-PAYPAL_STANDARD_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")"
-PAYPAL_PREMIUM_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_PREMIUM_PLAN_ID")"
-PAYPAL_LEGACY_PLAN_ID_VALUE="$(env_value "$ENV_FILE" "PAYPAL_PLAN_ID")"
+    for var in "${required_paypal_vars[@]}"; do
+        value="$(env_value "$ENV_FILE" "$var")"
+        if [[ -z "${value:-}" ]]; then
+            fatal "Missing required PayPal env variable ${var} in backend/.env"
+        fi
+    done
 
-if [[ -z "${PAYPAL_STANDARD_PLAN_ID_VALUE:-}" ]]; then
-    fatal "Missing required env variable PAYPAL_STANDARD_PLAN_ID in backend/.env"
-fi
-if [[ -z "${PAYPAL_PREMIUM_PLAN_ID_VALUE:-}" && -z "${PAYPAL_LEGACY_PLAN_ID_VALUE:-}" ]]; then
-    fatal "Missing required env variable PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID) in backend/.env"
-fi
-if [[ -z "${PAYPAL_PREMIUM_PLAN_ID_VALUE:-}" && -n "${PAYPAL_LEGACY_PLAN_ID_VALUE:-}" ]]; then
-    warn "Using legacy PAYPAL_PLAN_ID fallback for premium plan. Prefer setting PAYPAL_PREMIUM_PLAN_ID."
-fi
+    paypal_mode="$(env_value "$ENV_FILE" "PAYPAL_MODE")"
+    if [[ "$paypal_mode" != "live" && "$paypal_mode" != "sandbox" ]]; then
+        fatal "PAYPAL_MODE must be either 'live' or 'sandbox'. Current value: ${paypal_mode:-<empty>}"
+    fi
+    if [[ "${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}" == "1" && "$paypal_mode" != "live" ]]; then
+        fatal "DEPLOY_REQUIRE_LIVE_PAYPAL=1 but PAYPAL_MODE is '$paypal_mode'. Refusing production deploy."
+    fi
+
+    paypal_standard_plan="$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")"
+    paypal_premium_plan="$(env_value "$ENV_FILE" "PAYPAL_PREMIUM_PLAN_ID")"
+    paypal_legacy_plan="$(env_value "$ENV_FILE" "PAYPAL_PLAN_ID")"
+
+    [[ -n "$paypal_standard_plan" ]] || fatal "Missing PAYPAL_STANDARD_PLAN_ID in backend/.env"
+    if [[ -z "$paypal_premium_plan" && -z "$paypal_legacy_plan" ]]; then
+        fatal "Missing PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID) in backend/.env"
+    fi
+    if [[ -z "$paypal_premium_plan" && -n "$paypal_legacy_plan" ]]; then
+        warn "Using legacy PAYPAL_PLAN_ID fallback for premium plan. Prefer PAYPAL_PREMIUM_PLAN_ID."
+    fi
+
+    log "PayPal env validation passed (mode=$paypal_mode)."
+}
+
+validate_paymongo_env() {
+    local paymongo_mode
+    local standard_plan
+    local premium_plan
+    local generic_public
+    local generic_secret
+    local mode_public
+    local mode_secret
+    local resolved_public
+    local resolved_secret
+    local webhook_secret
+
+    paymongo_mode="$(env_value "$ENV_FILE" "PAYMONGO_MODE")"
+    paymongo_mode="${paymongo_mode:-test}"
+    if [[ "$paymongo_mode" != "test" && "$paymongo_mode" != "live" ]]; then
+        fatal "PAYMONGO_MODE must be either 'test' or 'live'. Current value: ${paymongo_mode:-<empty>}"
+    fi
+    if [[ "${DEPLOY_REQUIRE_LIVE_PAYMONGO:-0}" == "1" && "$paymongo_mode" != "live" ]]; then
+        fatal "DEPLOY_REQUIRE_LIVE_PAYMONGO=1 but PAYMONGO_MODE is '$paymongo_mode'. Refusing production deploy."
+    fi
+
+    standard_plan="$(env_value "$ENV_FILE" "PAYMONGO_STANDARD_PLAN_ID")"
+    premium_plan="$(env_value "$ENV_FILE" "PAYMONGO_PREMIUM_PLAN_ID")"
+    [[ -n "$standard_plan" ]] || fatal "Missing PAYMONGO_STANDARD_PLAN_ID in backend/.env"
+    [[ -n "$premium_plan" ]] || fatal "Missing PAYMONGO_PREMIUM_PLAN_ID in backend/.env"
+
+    generic_public="$(env_value "$ENV_FILE" "PAYMONGO_PUBLIC_KEY")"
+    generic_secret="$(env_value "$ENV_FILE" "PAYMONGO_SECRET_KEY")"
+    if [[ "$paymongo_mode" == "live" ]]; then
+        mode_public="$(env_value "$ENV_FILE" "PAYMONGO_LIVE_PUBLIC_KEY")"
+        mode_secret="$(env_value "$ENV_FILE" "PAYMONGO_LIVE_SECRET_KEY")"
+    else
+        mode_public="$(env_value "$ENV_FILE" "PAYMONGO_TEST_PUBLIC_KEY")"
+        mode_secret="$(env_value "$ENV_FILE" "PAYMONGO_TEST_SECRET_KEY")"
+    fi
+    resolved_public="${mode_public:-$generic_public}"
+    resolved_secret="${mode_secret:-$generic_secret}"
+
+    [[ -n "$resolved_public" ]] || fatal "Missing PayMongo public key for mode '$paymongo_mode' (set mode-specific key or PAYMONGO_PUBLIC_KEY)."
+    [[ -n "$resolved_secret" ]] || fatal "Missing PayMongo secret key for mode '$paymongo_mode' (set mode-specific key or PAYMONGO_SECRET_KEY)."
+
+    webhook_secret="$(env_value "$ENV_FILE" "PAYMONGO_WEBHOOK_SECRET")"
+    if [[ "${DEPLOY_REQUIRE_PAYMENT_WEBHOOK_SECRET:-1}" == "1" && -z "$webhook_secret" ]]; then
+        fatal "PAYMONGO_WEBHOOK_SECRET is required for secure webhook verification in production deploys."
+    fi
+    if [[ -z "$webhook_secret" ]]; then
+        warn "PAYMONGO_WEBHOOK_SECRET is not set. Webhook signature verification will be bypassed."
+    fi
+
+    log "PayMongo env validation passed (mode=$paymongo_mode)."
+}
+
+PAYMENT_PROVIDER_MODE_RAW="${DEPLOY_PAYMENT_PROVIDER:-auto}"
+PAYMENT_PROVIDER_MODE="$(echo "$PAYMENT_PROVIDER_MODE_RAW" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+HAS_PAYMONGO_CONFIG="0"
+HAS_PAYPAL_CONFIG="0"
+[[ -n "$(env_value "$ENV_FILE" "PAYMONGO_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_TEST_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_LIVE_SECRET_KEY")" ]] && HAS_PAYMONGO_CONFIG="1"
+[[ -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_SECRET")" ]] && HAS_PAYPAL_CONFIG="1"
+
+case "$PAYMENT_PROVIDER_MODE" in
+    auto)
+        if [[ "$HAS_PAYMONGO_CONFIG" == "1" ]]; then
+            validate_paymongo_env
+            if [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
+                warn "PayPal env detected but deploy provider mode auto-selected PayMongo (preferred)."
+            fi
+        elif [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
+            warn "Auto mode fell back to PayPal because no PayMongo config was detected."
+            validate_paypal_env
+        else
+            fatal "No payment provider configuration detected. Set PayMongo or PayPal env vars, or DEPLOY_PAYMENT_PROVIDER."
+        fi
+        ;;
+    paymongo)
+        validate_paymongo_env
+        ;;
+    paypal)
+        validate_paypal_env
+        ;;
+    dual)
+        validate_paymongo_env
+        validate_paypal_env
+        ;;
+    *)
+        fatal "Invalid DEPLOY_PAYMENT_PROVIDER='$PAYMENT_PROVIDER_MODE_RAW'. Use: auto | paymongo | paypal | dual"
+        ;;
+esac
 
 PRE_DEPLOY_COMMIT="$(git rev-parse HEAD)"
 LAST_DEPLOYED_COMMIT="unknown"
@@ -333,6 +510,13 @@ log "Fetching latest code from origin/$TARGET_BRANCH..."
 git fetch --prune origin "$TARGET_BRANCH"
 REMOTE_COMMIT="$(git rev-parse "origin/$TARGET_BRANCH")"
 log "Remote commit: $REMOTE_COMMIT"
+
+if [[ "$AUTO_MODE" != "1" && -n "$EXPECTED_COMMIT" && "$REMOTE_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+    fatal "Expected commit mismatch. expected=$EXPECTED_COMMIT remote=$REMOTE_COMMIT. Refusing deploy."
+fi
+if [[ "$AUTO_MODE" != "1" && -z "$EXPECTED_COMMIT" ]]; then
+    warn "No --expect-commit provided. Deploy will proceed against current remote HEAD."
+fi
 
 if [[ "$AUTO_MODE" == "1" ]]; then
     log "Auto-mode enabled: skipping SHA match requirement (Target SHA: $REMOTE_COMMIT)"
@@ -462,7 +646,7 @@ run_step "Running documentation governance lint..." npm run lint:docs
 
 run_step "Running architecture gate checks..." npm run check:architecture
 
-run_step "Building frontend production artifacts..." bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build"
+run_step "Building frontend production artifacts (IMS, POS, Store)..." bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build:skupervisor && NODE_ENV=production npm run build:pos && NODE_ENV=production VITE_STORE_BASE_PATH=\"$STORE_BASE_PATH\" npm run build:store"
 
 # ===========================================================================
 # Database migrations
@@ -535,8 +719,28 @@ fi
 BACKEND_PORT="$(env_value "$ENV_FILE" "PORT")"
 BACKEND_PORT="${BACKEND_PORT:-5000}"
 BACKEND_HEALTH_URL=""
-FRONTEND_HEALTH_URL="${DEPLOY_FRONTEND_HEALTH_URL:-}"
 mapfile -t BACKEND_HEALTH_CANDIDATES < <(build_backend_health_candidates "$BACKEND_PORT")
+
+IMS_HEALTH_URL=""
+POS_HEALTH_URL=""
+STORE_HEALTH_URL=""
+IMS_PUBLIC_VERIFIED_URL=""
+POS_PUBLIC_VERIFIED_URL=""
+STOREFRONT_PUBLIC_VERIFIED_URL=""
+TENANT_STORE_PUBLIC_VERIFIED_URL=""
+
+IMS_HEALTH_OVERRIDE="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
+POS_HEALTH_OVERRIDE="${DEPLOY_POS_HEALTH_URL:-}"
+STORE_HEALTH_OVERRIDE="${DEPLOY_STORE_HEALTH_URL:-}"
+
+IMS_PUBLIC_URL="${DEPLOY_IMS_URL:-https://skupervisor.surebizcorp.com}"
+POS_PUBLIC_URL="${DEPLOY_POS_URL:-https://pos.surebizcorp.com}"
+STOREFRONT_PUBLIC_URL="${DEPLOY_STOREFRONT_URL:-https://surebizcorp.com}"
+TENANT_STORE_PUBLIC_URL="${DEPLOY_TENANT_STORE_URL:-https://surebizcorp.com${STORE_BASE_PATH%/}}"
+
+mapfile -t IMS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$IMS_HEALTH_OVERRIDE" "http://127.0.0.1:5173/")
+mapfile -t POS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$POS_HEALTH_OVERRIDE" "http://127.0.0.1:5174/")
+mapfile -t STORE_HEALTH_CANDIDATES < <(build_surface_health_candidates "$STORE_HEALTH_OVERRIDE" "http://127.0.0.1:5175${STORE_BASE_PATH}" "http://127.0.0.1:5175/")
 
 log "Waiting for services to stabilize..."
 sleep 12
@@ -587,19 +791,22 @@ fi
 
 log "Backend health check passed: $BACKEND_HEALTH_URL"
 
-if [[ -n "$FRONTEND_HEALTH_URL" ]]; then
-    frontend_ok="0"
-    for attempt in {1..10}; do
-        fe_code="$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_HEALTH_URL" || true)"
-        if [[ "$fe_code" == "200" ]]; then
-            frontend_ok="1"
-            break
-        fi
-        sleep 2
-    done
-    [[ "$frontend_ok" == "1" ]] || fatal "Frontend health check failed: $FRONTEND_HEALTH_URL"
+probe_url_candidates "IMS runtime" IMS_HEALTH_URL 12 2 "${IMS_HEALTH_CANDIDATES[@]}" || fatal "IMS runtime health check failed."
+probe_url_candidates "POS runtime" POS_HEALTH_URL 12 2 "${POS_HEALTH_CANDIDATES[@]}" || fatal "POS runtime health check failed."
+probe_url_candidates "Store runtime" STORE_HEALTH_URL 12 2 "${STORE_HEALTH_CANDIDATES[@]}" || fatal "Store runtime health check failed."
+
+if [[ "$VERIFY_PUBLIC_ENDPOINTS" == "1" ]]; then
+    mapfile -t IMS_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$IMS_PUBLIC_URL")
+    mapfile -t POS_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$POS_PUBLIC_URL")
+    mapfile -t STOREFRONT_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$STOREFRONT_PUBLIC_URL")
+    mapfile -t TENANT_STORE_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$TENANT_STORE_PUBLIC_URL" "${TENANT_STORE_PUBLIC_URL%/}/")
+
+    probe_url_candidates "Public endpoint IMS" IMS_PUBLIC_VERIFIED_URL 8 3 "${IMS_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for IMS ($IMS_PUBLIC_URL)."
+    probe_url_candidates "Public endpoint POS" POS_PUBLIC_VERIFIED_URL 8 3 "${POS_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for POS ($POS_PUBLIC_URL)."
+    probe_url_candidates "Public endpoint Storefront" STOREFRONT_PUBLIC_VERIFIED_URL 8 3 "${STOREFRONT_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Storefront ($STOREFRONT_PUBLIC_URL)."
+    probe_url_candidates "Public endpoint Tenant Store" TENANT_STORE_PUBLIC_VERIFIED_URL 8 3 "${TENANT_STORE_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Tenant Store ($TENANT_STORE_PUBLIC_URL)."
 else
-    warn "DEPLOY_FRONTEND_HEALTH_URL not set. Skipping frontend HTTP health check."
+    warn "Public endpoint checks disabled (DEPLOY_VERIFY_PUBLIC_ENDPOINTS=$VERIFY_PUBLIC_ENDPOINTS)."
 fi
 
 run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
@@ -644,7 +851,13 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "docs_changed_files=$DOCS_CHANGED_FILES"
     echo "scripts_changed_files=$SCRIPTS_CHANGED_FILES"
     echo "backend_health_url=$BACKEND_HEALTH_URL"
-    echo "frontend_health_url=$FRONTEND_HEALTH_URL"
+    echo "ims_health_url=$IMS_HEALTH_URL"
+    echo "pos_health_url=$POS_HEALTH_URL"
+    echo "store_health_url=$STORE_HEALTH_URL"
+    echo "ims_public_url=${IMS_PUBLIC_VERIFIED_URL:-not_checked}"
+    echo "pos_public_url=${POS_PUBLIC_VERIFIED_URL:-not_checked}"
+    echo "storefront_public_url=${STOREFRONT_PUBLIC_VERIFIED_URL:-not_checked}"
+    echo "tenant_store_public_url=${TENANT_STORE_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "elapsed_seconds=$ELAPSED"
 } > "$SUMMARY_FILE"
 
@@ -656,6 +869,8 @@ echo -e "${GREEN}${BOLD}║           DEPLOYMENT COMPLETED SUCCESSFULLY         
 echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}${BOLD}║${NC}  Commit  : ${GREEN}${POST_PULL_COMMIT:0:10}${NC}"
 echo -e "${GREEN}${BOLD}║${NC}  Duration: ${YELLOW}${ELAPSED_MIN}m ${ELAPSED_SEC}s${NC}"
-echo -e "${GREEN}${BOLD}║${NC}  Health  : ${GREEN}✓ Backend${NC}  ${FRONTEND_HEALTH_URL:+${GREEN}✓ Frontend${NC}}"
+echo -e "${GREEN}${BOLD}║${NC}  Health  : ${GREEN}OK Backend${NC}  ${GREEN}OK IMS${NC}  ${GREEN}OK POS${NC}  ${GREEN}OK Store${NC}"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
+
+

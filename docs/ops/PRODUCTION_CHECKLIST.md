@@ -35,6 +35,10 @@ Notes:
 - Strict gates must pass:
   - `npm run audit:indexes`
   - `npm run audit:billing-funnel`
+- Frontend builds included by deploy script:
+  - `build:skupervisor`
+  - `build:pos`
+  - `build:store` (with `/tenant-store/` base path)
 
 ## 4. If Lock Error Appears
 - [ ] Check active deploy process:
@@ -63,6 +67,11 @@ Notes:
 - [ ] `pm2 list` shows services online
 - [ ] `GET /health` returns healthy status
 - [ ] Login and critical flows work
+- [ ] Public endpoints respond with 2xx/3xx:
+  - [ ] `https://skupervisor.surebizcorp.com`
+  - [ ] `https://pos.surebizcorp.com`
+  - [ ] `https://surebizcorp.com`
+  - [ ] `https://surebizcorp.com/tenant-store`
 - [ ] Latest deploy summary exists under `logs/deploy/`
 
 ## 7. Rollback (If Needed)

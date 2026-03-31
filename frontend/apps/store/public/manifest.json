@@ -1,0 +1,17 @@
+{
+  "name": "SKUpervisor Store",
+  "short_name": "SKU Store",
+  "start_url": "/tenant-store/",
+  "scope": "/tenant-store/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f766e",
+  "description": "Discover stores, browse catalogs, and place online orders.",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

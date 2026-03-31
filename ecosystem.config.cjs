@@ -1,5 +1,3 @@
-const os = require('os');
-
 module.exports = {
     apps: [
         {
@@ -17,17 +15,41 @@ module.exports = {
             restart_delay: 5000,
             env: {
                 NODE_ENV: 'development',
-                CORS_ORIGIN: 'http://localhost:5173,https://skupervisor.surebizcorp.com',
+                CORS_ORIGIN: 'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com',
             },
             env_production: {
                 NODE_ENV: 'production',
-                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com',
+                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com',
             },
         },
         {
             name: 'sku-frontend',
             script: './node_modules/vite/bin/vite.js',
-            args: 'preview --host --port 5173',
+            args: 'preview --config apps/skupervisor/vite.config.js --host --port 5173 --strictPort',
+            cwd: './frontend',
+            env: {
+                NODE_ENV: 'production',
+            },
+            env_production: {
+                NODE_ENV: 'production',
+            },
+        },
+        {
+            name: 'sku-pos-frontend',
+            script: './node_modules/vite/bin/vite.js',
+            args: 'preview --config apps/pos/vite.config.js --host --port 5174 --strictPort',
+            cwd: './frontend',
+            env: {
+                NODE_ENV: 'production',
+            },
+            env_production: {
+                NODE_ENV: 'production',
+            },
+        },
+        {
+            name: 'sku-store-frontend',
+            script: './node_modules/vite/bin/vite.js',
+            args: 'preview --config apps/store/vite.config.js --host --port 5175 --strictPort',
             cwd: './frontend',
             env: {
                 NODE_ENV: 'production',

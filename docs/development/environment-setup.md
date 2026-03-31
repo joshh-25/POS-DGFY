@@ -2,6 +2,12 @@
 
 This guide covers setting up the development environment for the SKU Inventory Manager project.
 
+Current frontend surfaces:
+
+- `skupervisor` for tenant/admin workflows
+- `pos` for cashier and terminal operations
+- `store` for public storefront and guest checkout
+
 ---
 
 ## Prerequisites
@@ -21,11 +27,11 @@ This guide covers setting up the development environment for the SKU Inventory M
 git clone <repo-url>
 cd sku-inventory-manager
 
-# Install backend dependencies
-cd backend
-npm install
+# Install all monorepo dependencies
+npm run install:all
 
-# Create .env file
+# Create backend .env file
+cd backend
 cp .env.example .env
 
 # Configure database
@@ -40,13 +46,18 @@ npm run doctor:runtime
 # Seed initial data
 npm run seed
 
-# Start backend server
+# Start the full stack from repo root
+cd ..
 npm run dev
+```
 
-# In another terminal, start frontend
-cd ../frontend
-npm install
-npm run dev
+You can also run each surface separately from repo root:
+
+```bash
+npm run dev:backend
+npm run dev:skupervisor
+npm run dev:pos
+npm run dev:store
 ```
 
 ---
@@ -67,9 +78,23 @@ JWT_SECRET=your-secret-key-here-min-32-chars
 JWT_EXPIRY=24h
 REFRESH_TOKEN_SECRET=your-refresh-secret-min-32-chars
 REFRESH_TOKEN_EXPIRY=7d
-CORS_ORIGIN=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com
 REDIS_URL=redis://localhost:6379
 DB_AUTO_SYNC=false
+# Auto-bootstrap storefront pin for newly activated tenants
+# - latitude: -90 to 90
+# - longitude: -180 to 180
+# - delivery radius: 0.1 to 100 (km)
+# - wait minutes: 0 to 240
+STOREFRONT_DEFAULT_LOCATION_NAME=Main Branch
+STOREFRONT_DEFAULT_LOCATION_ADDRESS=Iloilo City
+STOREFRONT_DEFAULT_LATITUDE=10.699817
+STOREFRONT_DEFAULT_LONGITUDE=122.559893
+STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
+STOREFRONT_DEFAULT_WAIT_MINUTES=15
+# Optional sync retry tuning after tenant/location/settings storefront mutations
+# STOREFRONT_DISCOVERY_SYNC_RETRY_DELAYS_MS=0,250,800
+# STOREFRONT_DISCOVERY_SIGNATURE_TTL_MS=1000
 ```
 
 ### Startup Stability Rule (Important)
@@ -132,14 +157,26 @@ VITE_API_URL=http://localhost:5000/api/v1
 # Optional explicit proxy target for Vite dev/preview server
 # (used for both /api and /uploads routes)
 VITE_PROXY_TARGET=http://127.0.0.1:5000
+# Optional explicit API origin for the dedicated store app runtime
+# Useful when serving store via vite preview/PM2 on :5175
+# If omitted, store app auto-falls back to http://<host>:5000 when running on :5175.
+VITE_API_BASE_URL=http://127.0.0.1:5000
+# Store app path-base override. Use /tenant-store/ for apex-domain path hosting.
+# Keep / in local dev.
+# VITE_STORE_BASE_PATH=/tenant-store/
+# Optional build label shown on tenant storefront page for cache/runtime verification.
+# If omitted, the store build uses current ISO build timestamp.
+# VITE_BUILD_STAMP=2026-03-31T00:00:00.000Z
 ```
 
-### POS Frontend Routes (Current)
+### Frontend Surface Routes (Current)
 
-- In-house tenant POS page: `http://localhost:5173/pos`
-- Isolated cashier terminal page: `http://localhost:5173/terminal`
+- IMS app: `http://localhost:5173/`
+- POS app (dedicated): `http://localhost:5174/`
+- Storefront app (discovery): `http://localhost:5175/tenant-store`
+- Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
 
-Both pages use the same backend API and tenant-auth contract.
+All frontend surfaces share the same backend API, while storefront tenant resolution uses the store-specific tenant context contract.
 
 ### Upload/Image Serving Contract (Important)
 
