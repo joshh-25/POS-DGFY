@@ -170,6 +170,55 @@ run_optional_node_script() {
     fi
 }
 
+frontend_script_exists() {
+    local script_name="$1"
+    (
+        cd "$FRONTEND_DIR" && node -e "const pkg=require('./package.json'); process.exit(pkg?.scripts && pkg.scripts['$script_name'] ? 0 : 1);"
+    )
+}
+
+run_frontend_builds() {
+    local skupervisor_config="$FRONTEND_DIR/apps/skupervisor/vite.config.js"
+    local pos_config="$FRONTEND_DIR/apps/pos/vite.config.js"
+    local store_config="$FRONTEND_DIR/apps/store/vite.config.js"
+    local ran_any="0"
+
+    if frontend_script_exists "build:skupervisor"; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build:skupervisor)
+        ran_any="1"
+    elif [[ -f "$skupervisor_config" ]]; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production npx vite build --config apps/skupervisor/vite.config.js)
+        ran_any="1"
+    elif frontend_script_exists "build"; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build)
+        ran_any="1"
+    fi
+
+    if frontend_script_exists "build:pos"; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build:pos)
+        ran_any="1"
+    elif [[ -f "$pos_config" ]]; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production npx vite build --config apps/pos/vite.config.js)
+        ran_any="1"
+    else
+        warn "POS build surface not found (no build:pos script and no apps/pos config)."
+    fi
+
+    if frontend_script_exists "build:store"; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production VITE_STORE_BASE_PATH="$STORE_BASE_PATH" npm run build:store)
+        ran_any="1"
+    elif [[ -f "$store_config" ]]; then
+        (cd "$FRONTEND_DIR" && NODE_ENV=production VITE_STORE_BASE_PATH="$STORE_BASE_PATH" npx vite build --config apps/store/vite.config.js)
+        ran_any="1"
+    else
+        warn "Store build surface not found (no build:store script and no apps/store config)."
+    fi
+
+    if [[ "$ran_any" != "1" ]]; then
+        fatal "No frontend build path could be resolved."
+    fi
+}
+
 build_backend_health_candidates() {
     local explicit_url="${DEPLOY_BACKEND_HEALTH_URL:-}"
     local env_port="$1"
@@ -646,7 +695,7 @@ run_step "Running documentation governance lint..." npm run lint:docs
 
 run_step "Running architecture gate checks..." npm run check:architecture
 
-run_step "Building frontend production artifacts (IMS, POS, Store)..." bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build:skupervisor && NODE_ENV=production npm run build:pos && NODE_ENV=production VITE_STORE_BASE_PATH=\"$STORE_BASE_PATH\" npm run build:store"
+run_step "Building frontend production artifacts (IMS, POS, Store)..." run_frontend_builds
 
 # ===========================================================================
 # Database migrations
