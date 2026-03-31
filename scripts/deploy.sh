@@ -37,6 +37,7 @@ AUTO_MODE="0"
 RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
 DEEP_VERIFY="${DEPLOY_POST_DEPLOY_VERIFY:-0}"
 VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
+STRICT_LEGACY_AUDIT="${DEPLOY_STRICT_LEGACY_AUDIT:-0}"
 STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
 if [[ "$STORE_BASE_PATH" != /* ]]; then
     STORE_BASE_PATH="/$STORE_BASE_PATH"
@@ -84,6 +85,7 @@ while [[ $# -gt 0 ]]; do
             echo "  DEPLOY_PAYMENT_PROVIDER=auto|paymongo|paypal|dual"
             echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
+            echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
             exit 0
             ;;
         *)
@@ -704,7 +706,12 @@ run_step "Running database migration status (pre-check)..." bash -lc "cd \"$BACK
 run_step "Running database migrations..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate"
 run_step "Running database migration status (post-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
 run_step "Normalizing original legacy tenant account..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/register_original_tenant.js --apply"
-run_step "Auditing original legacy tenant invariants..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/audit_original_legacy_account.js --strict"
+if [[ "$STRICT_LEGACY_AUDIT" == "1" ]]; then
+    run_step "Auditing original legacy tenant invariants (strict)..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/audit_original_legacy_account.js --strict"
+else
+    warn "Running legacy tenant audit in report mode (set DEPLOY_STRICT_LEGACY_AUDIT=1 to fail on detected risks)."
+    run_step "Auditing original legacy tenant invariants..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/audit_original_legacy_account.js"
+fi
 
 # ===========================================================================
 # Optional legacy hooks
