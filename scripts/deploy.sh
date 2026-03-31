@@ -310,6 +310,89 @@ probe_url_candidates() {
     return 1
 }
 
+resolve_url_from_page() {
+    local page_url="$1"
+    local ref="$2"
+
+    if [[ "$ref" =~ ^https?:// ]]; then
+        printf "%s\n" "$ref"
+        return 0
+    fi
+
+    if [[ "$ref" =~ ^// ]]; then
+        printf "https:%s\n" "$ref"
+        return 0
+    fi
+
+    local page_origin
+    page_origin="$(printf '%s' "$page_url" | sed -E 's#^(https?://[^/]+).*$#\1#')"
+
+    if [[ "$ref" == /* ]]; then
+        printf "%s%s\n" "$page_origin" "$ref"
+        return 0
+    fi
+
+    local page_dir
+    page_dir="$(printf '%s' "$page_url" | sed -E 's#[?#].*$##' | sed -E 's#[^/]*$##')"
+    printf "%s%s\n" "$page_dir" "$ref"
+}
+
+verify_tenant_store_asset_integrity() {
+    local tenant_store_url="$1"
+    local html
+    html="$(curl -sS -L "$tenant_store_url" || true)"
+    if [[ -z "$html" ]]; then
+        warn "Tenant Store asset-integrity check failed: empty HTML response from $tenant_store_url"
+        return 1
+    fi
+
+    local script_ref
+    script_ref="$(printf '%s\n' "$html" | sed -nE 's@.*<script[^>]*src="([^"]+)".*@\1@p' | head -n 1)"
+    local manifest_ref
+    manifest_ref="$(printf '%s\n' "$html" | sed -nE 's@.*<link[^>]*rel="manifest"[^>]*href="([^"]+)".*@\1@p' | head -n 1)"
+
+    if [[ -z "$script_ref" ]]; then
+        warn "Tenant Store asset-integrity check failed: no <script src> found in $tenant_store_url"
+        return 1
+    fi
+    if [[ -z "$manifest_ref" ]]; then
+        warn "Tenant Store asset-integrity check failed: no manifest href found in $tenant_store_url"
+        return 1
+    fi
+
+    local script_url
+    script_url="$(resolve_url_from_page "$tenant_store_url" "$script_ref")"
+    local manifest_url
+    manifest_url="$(resolve_url_from_page "$tenant_store_url" "$manifest_ref")"
+
+    local script_code script_type manifest_code manifest_type
+    read -r script_code script_type <<<"$(curl -sS -L -o /dev/null -w '%{http_code} %{content_type}' "$script_url" || echo "000 unknown")"
+    read -r manifest_code manifest_type <<<"$(curl -sS -L -o /dev/null -w '%{http_code} %{content_type}' "$manifest_url" || echo "000 unknown")"
+    script_type="${script_type,,}"
+    manifest_type="${manifest_type,,}"
+
+    if ! is_http_success_code "$script_code"; then
+        warn "Tenant Store asset-integrity check failed: script URL returned HTTP $script_code ($script_url)"
+        return 1
+    fi
+    if [[ "$script_type" == text/html* || "$script_type" == application/xhtml* ]]; then
+        warn "Tenant Store asset-integrity check failed: script URL served HTML content-type ($script_type) ($script_url)"
+        return 1
+    fi
+
+    if ! is_http_success_code "$manifest_code"; then
+        warn "Tenant Store asset-integrity check failed: manifest URL returned HTTP $manifest_code ($manifest_url)"
+        return 1
+    fi
+    if [[ "$manifest_type" == text/html* || "$manifest_type" == application/xhtml* ]]; then
+        warn "Tenant Store asset-integrity check failed: manifest URL served HTML content-type ($manifest_type) ($manifest_url)"
+        return 1
+    fi
+
+    log "Tenant Store asset integrity check passed: script=$script_url ($script_type), manifest=$manifest_url ($manifest_type)"
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # Cleanup function — runs on both success and failure
 # ---------------------------------------------------------------------------
@@ -861,6 +944,7 @@ if [[ "$VERIFY_PUBLIC_ENDPOINTS" == "1" ]]; then
     probe_url_candidates "Public endpoint POS" POS_PUBLIC_VERIFIED_URL 8 3 "${POS_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for POS ($POS_PUBLIC_URL)."
     probe_url_candidates "Public endpoint Storefront" STOREFRONT_PUBLIC_VERIFIED_URL 8 3 "${STOREFRONT_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Storefront ($STOREFRONT_PUBLIC_URL)."
     probe_url_candidates "Public endpoint Tenant Store" TENANT_STORE_PUBLIC_VERIFIED_URL 8 3 "${TENANT_STORE_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Tenant Store ($TENANT_STORE_PUBLIC_URL)."
+    verify_tenant_store_asset_integrity "$TENANT_STORE_PUBLIC_VERIFIED_URL" || fatal "Tenant Store asset-integrity validation failed."
 else
     warn "Public endpoint checks disabled (DEPLOY_VERIFY_PUBLIC_ENDPOINTS=$VERIFY_PUBLIC_ENDPOINTS)."
 fi

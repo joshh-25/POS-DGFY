@@ -72,6 +72,10 @@ Notes:
   - [ ] `https://pos.surebizcorp.com`
   - [ ] `https://surebizcorp.com`
   - [ ] `https://surebizcorp.com/tenant-store`
+- [ ] Tenant-store asset URLs from `https://surebizcorp.com/tenant-store` resolve correctly:
+  - [ ] JS bundle URL returns JavaScript (not HTML fallback)
+  - [ ] Manifest URL returns manifest/json (not HTML fallback)
+- [ ] `surebizcorp.com` Nginx applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
 - [ ] Latest deploy summary exists under `logs/deploy/`
 
 ## 7. Rollback (If Needed)

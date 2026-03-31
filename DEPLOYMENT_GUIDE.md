@@ -150,6 +150,15 @@ Do not use `pm2 restart all` as primary deployment strategy.
 - Storefront: `https://surebizcorp.com`
 - Tenant Store: `https://surebizcorp.com/tenant-store`
 
+### Nginx Path-Base Requirement (Tenant Store)
+When store is hosted via Vite preview on port `5175` with base path `/tenant-store/`, Nginx must rewrite `/tenant-store/*` before proxying to `5175`.
+
+Required behavior:
+1. `location = /tenant-store` redirects to `/tenant-store/`
+2. `location /tenant-store/` rewrites `^/tenant-store/(.*)$` to `/$1` before `proxy_pass http://127.0.0.1:5175`
+
+Without this rewrite, tenant-store asset URLs (for example `/tenant-store/assets/*.js` and manifest) can return HTML fallback and cause blank-page + manifest syntax errors.
+
 ## Manual Fallback (Last Resort)
 Use only if deploy script itself is broken:
 
