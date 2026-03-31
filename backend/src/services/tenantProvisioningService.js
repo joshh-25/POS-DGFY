@@ -5,10 +5,91 @@ import bcrypt from 'bcryptjs';
 import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
+import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
 
 // Strict allowlist pattern for all tenant database names.
 // Guards every DDL path against invalid or maliciously crafted identifiers.
 const DB_NAME_PATTERN = /^sku_tenant_[a-z0-9]+_[a-z0-9]+$/;
+
+const readNumericEnv = (key, fallback, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) => {
+    const raw = process.env[key];
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+        return fallback;
+    }
+    if (value < min || value > max) {
+        logger.warn('[Provisioning] Invalid storefront default env value; using fallback', {
+            key,
+            providedValue: raw,
+            min,
+            max,
+            fallback
+        });
+        return fallback;
+    }
+    return value;
+};
+
+const readTextEnv = (key, fallback) => {
+    const value = String(process.env[key] || '').trim();
+    return value || fallback;
+};
+
+const DEFAULT_STOREFRONT_LOCATION = Object.freeze({
+    name: readTextEnv('STOREFRONT_DEFAULT_LOCATION_NAME', 'Main Branch'),
+    address_line: readTextEnv('STOREFRONT_DEFAULT_LOCATION_ADDRESS', 'Iloilo City'),
+    latitude: readNumericEnv('STOREFRONT_DEFAULT_LATITUDE', 10.699817, { min: -90, max: 90 }),
+    longitude: readNumericEnv('STOREFRONT_DEFAULT_LONGITUDE', 122.559893, { min: -180, max: 180 }),
+    delivery_radius_km: readNumericEnv('STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM', 5, { min: 0.1, max: 100 }),
+    current_wait_time_minutes: Math.round(readNumericEnv('STOREFRONT_DEFAULT_WAIT_MINUTES', 15, { min: 0, max: 240 }))
+});
+
+const seedDefaultStorefrontLocation = async (tenantSequelize) => {
+    const { getTenantModels } = await import('../utils/tenantModelFactory.js');
+    const { TenantLocation } = getTenantModels(tenantSequelize);
+
+    if (!TenantLocation) {
+        return { status: 'skipped', reason: 'tenant_location_model_unavailable' };
+    }
+
+    const existingCount = await TenantLocation.count();
+    if (existingCount > 0) {
+        const currentPrimary = await TenantLocation.findOne({
+            where: {
+                is_active: true,
+                is_primary_storefront: true
+            }
+        });
+        if (!currentPrimary) {
+            const fallback = await TenantLocation.findOne({
+                where: { is_active: true },
+                order: [
+                    ['is_open', 'DESC'],
+                    ['updated_at', 'DESC'],
+                    ['location_id', 'DESC']
+                ]
+            });
+            if (fallback) {
+                await fallback.update({ is_primary_storefront: true });
+                return { status: 'updated_existing_primary', locationId: fallback.location_id || null };
+            }
+        }
+        return { status: 'existing' };
+    }
+
+    const created = await TenantLocation.create({
+        ...DEFAULT_STOREFRONT_LOCATION,
+        is_open: true,
+        is_active: true,
+        is_primary_storefront: true,
+        allow_out_of_stock_sales: false,
+        supports_delivery: true,
+        supports_pickup: true,
+        supports_dine_in: true
+    });
+
+    return { status: 'created', locationId: created.location_id || null };
+};
 
 /**
  * Provision a tenant - supports both:
@@ -131,6 +212,15 @@ export const provisionTenant = async (options) => {
                 }
             );
 
+            // 4.5 Seed a default primary storefront location so every active tenant
+            // immediately has a resolvable public storefront page.
+            const locationSeed = await seedDefaultStorefrontLocation(tenantSequelize);
+            logger.info('[Provisioning] Storefront location bootstrap completed', {
+                tenantId: uuid,
+                status: locationSeed.status,
+                locationId: locationSeed.locationId || null
+            });
+
             // 5. Update tenant status to active
             const Tenant = dbStore.get('Tenant');
             await Tenant.update({ status: 'active' }, { where: { id: uuid } });
@@ -141,6 +231,20 @@ export const provisionTenant = async (options) => {
                 logger.info(`[Provisioning] Email-tenant mapping created for ${email}`);
             } catch (mappingError) {
                 logger.warn(`[Provisioning] Failed to create email-tenant mapping: ${mappingError.message}`);
+            }
+
+            // 7. Bootstrap the storefront discovery index row immediately so
+            // the tenant slug route works right after registration/approval.
+            const storefrontSync = await syncStorefrontDiscoveryWithReliability({
+                tenantId: uuid,
+                source: 'tenant_provisioning_bootstrap'
+            });
+            if (!storefrontSync.ok) {
+                logger.warn('[Provisioning] Storefront index bootstrap remained degraded after retries and fallback', {
+                    tenantId: uuid,
+                    attempts: storefrontSync.attempts,
+                    errors: storefrontSync.errors || []
+                });
             }
 
             logger.info(`[Provisioning] Tenant provisioned successfully!`);

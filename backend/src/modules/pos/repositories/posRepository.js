@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertPosRepositoryContract } from '../contracts/posRepository.contract.js';
+import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
+import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
@@ -59,10 +61,6 @@ const toPlain = (row) => (
         : row
 );
 
-const resolveDefaultPosVisibility = (item = {}) => (
-    item?.category === 'product' && item?.product_type === 'finished_goods'
-);
-
 const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
         return new Map();
@@ -100,7 +98,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
     return normalizedItems
         .map((item) => {
             const override = overrideMap.get(item.item_id);
-            const posVisible = override ? override.pos_visible !== false : resolveDefaultPosVisibility(item);
+            const posVisible = resolveCatalogVisibility({ item, override });
             return {
                 ...item,
                 pos_visible: posVisible,
@@ -122,6 +120,28 @@ const buildTransactionInclude = () => ([
                 attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure']
             }
         ]
+    },
+    {
+        model: dbStore.get('TenantLocation'),
+        as: 'location',
+        attributes: [
+            'location_id',
+            'name',
+            'address_line',
+            'delivery_radius_km',
+            'is_open',
+            'is_active'
+        ]
+    },
+    {
+        model: dbStore.get('StoreCustomer'),
+        as: 'storeCustomer',
+        attributes: ['customer_id', 'email', 'name', 'phone']
+    },
+    {
+        model: dbStore.get('User'),
+        as: 'acceptedByUser',
+        attributes: ['user_id', 'username', 'email']
     },
     {
         model: dbStore.get('User'),
@@ -279,7 +299,13 @@ export const posRepository = {
         const offset = (page - 1) * limit;
 
         const where = {};
-        if (filters.cashier_id) where.cashier_id = Number.parseInt(filters.cashier_id, 10);
+        const cashierId = Number.parseInt(filters.cashier_id, 10);
+        if (Number.isInteger(cashierId) && cashierId > 0) {
+            where[Op.or] = [
+                { cashier_id: cashierId },
+                { accepted_by: cashierId }
+            ];
+        }
         if (filters.payment_type) where.payment_type = filters.payment_type;
         if (filters.order_method) where.order_method = filters.order_method;
         if (filters.status) where.status = filters.status;
@@ -299,6 +325,11 @@ export const posRepository = {
                 {
                     model: dbStore.get('User'),
                     as: 'cashier',
+                    attributes: ['user_id', 'username']
+                },
+                {
+                    model: dbStore.get('User'),
+                    as: 'acceptedByUser',
                     attributes: ['user_id', 'username']
                 },
                 {
@@ -327,13 +358,12 @@ export const posRepository = {
         const PosTransaction = dbStore.get('PosTransaction');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-        const where = {
-            status: 'completed',
+        const where = buildFinanciallyRecognizedSalesWhere({
             created_at: {
                 [Op.gte]: startAt,
                 [Op.lt]: endAt
             }
-        };
+        });
         if (terminalId) where.terminal_id = terminalId;
         if (cashierId) where.cashier_id = cashierId;
         if (shiftId) where.shift_id = shiftId;
@@ -460,7 +490,7 @@ export const posRepository = {
             const override = overrideMap.get(payload.item_id);
             return {
                 ...payload,
-                pos_visible: override ? override.pos_visible !== false : resolveDefaultPosVisibility(payload),
+                pos_visible: resolveCatalogVisibility({ item: payload, override }),
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
                 has_override: Boolean(override)
@@ -585,12 +615,12 @@ export const posRepository = {
     async getShiftCashSalesTotal(shiftId, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const where = buildFinanciallyRecognizedSalesWhere({
+            shift_id: shiftId,
+            payment_type: 'cash'
+        });
         const [row] = await PosTransaction.findAll({
-            where: {
-                shift_id: shiftId,
-                status: 'completed',
-                payment_type: 'cash'
-            },
+            where,
             attributes: [
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'cash_sales_total']
             ],
@@ -609,6 +639,48 @@ export const posRepository = {
         if (!shift) return null;
         await shift.update(payload, { transaction: options.transaction });
         return shift;
+    },
+
+    async listIncomingOnlineOrders({ locationId = null, limit = 200 } = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const where = {
+            order_source: 'online_store',
+            fulfillment_status: {
+                [Op.in]: ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']
+            }
+        };
+        if (locationId) {
+            where.location_id = locationId;
+        }
+
+        const rows = await PosTransaction.findAll({
+            where,
+            include: buildTransactionInclude(),
+            order: [['created_at', 'ASC']],
+            limit: Math.min(Number.parseInt(limit, 10) || 200, 500)
+        });
+        return rows.map(toPlain);
+    },
+
+    async getOrderByIdForLifecycle(orderId, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const row = await PosTransaction.findByPk(orderId, {
+            include: buildTransactionInclude(),
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async updateOrderById(orderId, payload = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const row = await PosTransaction.findByPk(orderId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
     }
 };
 

@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -47,6 +47,7 @@ const orderMethodFeeEntrySchema = Joi.object({
 const posOrderMethodFeesSchema = Joi.object({
   dine_in: orderMethodFeeEntrySchema.optional(),
   takeout: orderMethodFeeEntrySchema.optional(),
+  pickup: orderMethodFeeEntrySchema.optional(),
   delivery: orderMethodFeeEntrySchema.optional(),
   online: orderMethodFeeEntrySchema.optional()
 })
@@ -99,26 +100,33 @@ export const updateSettingsSchema = Joi.object({
   min_stock_threshold_percent: Joi.number().min(0).max(100).optional(),
   purchase_allowance_percent: Joi.number().min(0).max(100).optional(),
   // POS setup settings (tenant scoped)
-  pos_business_name: Joi.string().trim().min(2).max(150).optional(),
-  pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).optional().messages({
+  pos_business_name: Joi.string().trim().min(2).max(150).allow('').optional(),
+  pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'POS TIN/Branch contains invalid characters'
   }),
-  pos_address: Joi.string().trim().max(255).optional(),
-  pos_ptu_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).optional().messages({
+  pos_address: Joi.string().trim().max(255).allow('').optional(),
+  pos_ptu_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'PTU number contains invalid characters'
   }),
-  pos_min_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).optional().messages({
+  pos_min_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'MIN number contains invalid characters'
   }),
-  pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).optional().messages({
+  pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'Accreditation number contains invalid characters'
   }),
   pos_strict_compliance_enabled: Joi.boolean().optional(),
-  pos_receipt_footer_message: Joi.string().trim().max(300).optional(),
+  pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
-  pos_petty_cash_symbol: Joi.string().trim().max(12).optional(),
-  pos_petty_cash_amount: Joi.number().min(0).precision(4).optional()
+  pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
+  pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
+  store_delivery_fee: Joi.number().min(0).precision(4).optional(),
+  store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').optional().messages({
+    'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
+  }),
+  store_is_visible: Joi.boolean().optional(),
+  pos_open_status: Joi.boolean().optional(),
+  pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -199,26 +207,33 @@ export const validateUpdateSingleSetting = (req, res, next) => {
 
   const settingKey = String(req?.params?.key || '').trim();
   const singleSettingSchemaByKey = {
-    pos_business_name: Joi.string().trim().min(2).max(150),
-    pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).messages({
+    pos_business_name: Joi.string().trim().min(2).max(150).allow(''),
+    pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'POS TIN/Branch contains invalid characters'
     }),
-    pos_address: Joi.string().trim().max(255),
-    pos_ptu_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).messages({
+    pos_address: Joi.string().trim().max(255).allow(''),
+    pos_ptu_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'PTU number contains invalid characters'
     }),
-    pos_min_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).messages({
+    pos_min_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'MIN number contains invalid characters'
     }),
-    pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).messages({
+    pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'Accreditation number contains invalid characters'
     }),
     pos_strict_compliance_enabled: Joi.boolean(),
-    pos_receipt_footer_message: Joi.string().trim().max(300),
+    pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,
-    pos_petty_cash_symbol: Joi.string().trim().max(12),
-    pos_petty_cash_amount: Joi.number().min(0).precision(4)
+    pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
+    pos_petty_cash_amount: Joi.number().min(0).precision(4),
+    store_delivery_fee: Joi.number().min(0).precision(4),
+    store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').messages({
+      'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
+    }),
+    store_is_visible: Joi.boolean(),
+    pos_open_status: Joi.boolean(),
+    pos_wait_time_minutes: Joi.number().integer().min(0).max(720)
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

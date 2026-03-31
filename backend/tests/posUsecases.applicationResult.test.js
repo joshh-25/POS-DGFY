@@ -4,9 +4,11 @@ import {
     buildGetPosTransactionByIdUseCase,
     buildGetDailyZReadingUseCase,
     buildListPosCatalogUseCase,
-    buildUpdatePosCatalogOverrideUseCase
+    buildUpdatePosCatalogOverrideUseCase,
+    buildUpdateOnlineOrderStatusUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import dbStore from '../src/utils/dbStore.js';
 
 describe('pos use-cases application result contract', () => {
     it('listPosTransactions validates query shape', async () => {
@@ -42,7 +44,13 @@ describe('pos use-cases application result contract', () => {
 
     it('listPosCatalog wraps successful repository response', async () => {
         const listCatalog = jest.fn().mockResolvedValue([
-            { item_id: 1, name: 'Sample', toJSON: () => ({ item_id: 1, name: 'Sample' }) }
+            {
+                item_id: 1,
+                name: 'Sample',
+                pos_visible: true,
+                current_stock: 5,
+                toJSON: () => ({ item_id: 1, name: 'Sample', pos_visible: true, current_stock: 5 })
+            }
         ]);
         const useCase = buildListPosCatalogUseCase({
             posRepository: { listCatalog }
@@ -52,7 +60,7 @@ describe('pos use-cases application result contract', () => {
         expect(listCatalog).toHaveBeenCalledWith({ search: 'sam', limit: 100, folder_id: undefined });
         expect(result).toEqual({
             success: true,
-            data: [{ item_id: 1, name: 'Sample' }],
+            data: [{ item_id: 1, name: 'Sample', pos_visible: true, current_stock: 5 }],
             error: null,
             message: null
         });
@@ -68,6 +76,26 @@ describe('pos use-cases application result contract', () => {
         expect(listCatalog).toHaveBeenCalledWith({ search: '', limit: 50, folder_id: 12 });
         expect(result.success).toBe(true);
         expect(result.data).toEqual([]);
+    });
+
+    it('listPosCatalog returns POS-visible items including out-of-stock rows', async () => {
+        const listCatalog = jest.fn().mockResolvedValue([
+            { item_id: 1, name: 'Visible In Stock', pos_visible: true, current_stock: 3 },
+            { item_id: 2, name: 'Visible Out Of Stock', pos_visible: true, current_stock: 0 },
+            { item_id: 3, name: 'Hidden In POS', pos_visible: false, current_stock: 10 },
+            { item_id: 4, name: 'Implicit Visible In Stock', current_stock: 1 }
+        ]);
+        const useCase = buildListPosCatalogUseCase({
+            posRepository: { listCatalog }
+        });
+
+        const result = await useCase({ query: {} });
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual([
+            { item_id: 1, name: 'Visible In Stock', pos_visible: true, current_stock: 3 },
+            { item_id: 2, name: 'Visible Out Of Stock', pos_visible: true, current_stock: 0 },
+            { item_id: 4, name: 'Implicit Visible In Stock', current_stock: 1 }
+        ]);
     });
 
     it('updatePosCatalogOverride requires items:edit permission', async () => {
@@ -96,5 +124,118 @@ describe('pos use-cases application result contract', () => {
         expect(allowedResult.success).toBe(true);
         expect(getItemById).toHaveBeenCalledWith(101);
         expect(upsertCatalogOverride).toHaveBeenCalledWith(101, { pos_visible: true });
+    });
+
+    it('updateOnlineOrderStatus deducts inventory when online order transitions to completed', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+
+        const existingOrder = {
+            pos_transaction_id: 55,
+            invoice_number: 'INV-000055',
+            tracking_pin: 'SK-AB12CD',
+            order_source: 'online_store',
+            order_method: 'pickup',
+            fulfillment_status: 'ready_for_pickup',
+            lines: [
+                { line_id: 9, item_id: 101, quantity: 2 }
+            ]
+        };
+        const updatedOrder = {
+            ...existingOrder,
+            fulfillment_status: 'completed'
+        };
+
+        const posRepository = {
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(existingOrder)
+                .mockResolvedValueOnce(updatedOrder),
+            updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
+        };
+
+        const useCase = buildUpdateOnlineOrderStatusUseCase({
+            posRepository,
+            stockMovementService
+        });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 55,
+            payload: { fulfillment_status: 'completed' },
+            user: { user_id: 7 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(
+            expect.objectContaining({
+                item_id: 101,
+                quantity: 2,
+                movement_type: 'goods_issue',
+                reference_type: 'POS',
+                reference_id: 'ONLINE:55:9'
+            }),
+            7,
+            transaction
+        );
+        expect(posRepository.updateOrderById).toHaveBeenCalledWith(
+            55,
+            { fulfillment_status: 'completed', cashier_id: 7 },
+            expect.objectContaining({ transaction, lock: true })
+        );
+    });
+
+    it('updateOnlineOrderStatus does not re-apply stock movement for already completed orders', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+
+        const completedOrder = {
+            pos_transaction_id: 56,
+            order_source: 'online_store',
+            order_method: 'delivery',
+            fulfillment_status: 'completed',
+            lines: [{ line_id: 10, item_id: 102, quantity: 1 }]
+        };
+
+        const posRepository = {
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(completedOrder)
+                .mockResolvedValueOnce(completedOrder),
+            updateOrderById: jest.fn().mockResolvedValue(completedOrder)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+
+        const useCase = buildUpdateOnlineOrderStatusUseCase({
+            posRepository,
+            stockMovementService
+        });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 56,
+            payload: { fulfillment_status: 'completed' },
+            user: { user_id: 8 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 });

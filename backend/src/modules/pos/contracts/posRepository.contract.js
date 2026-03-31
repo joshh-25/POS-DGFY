@@ -18,7 +18,10 @@ const REQUIRED_METHODS = [
     'createCashDrawerEvent',
     'listCashDrawerEventsByShiftId',
     'getShiftCashSalesTotal',
-    'closeTerminalShift'
+    'closeTerminalShift',
+    'listIncomingOnlineOrders',
+    'getOrderByIdForLifecycle',
+    'updateOrderById'
 ];
 
 export const assertPosRepositoryContract = (repository) => {

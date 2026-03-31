@@ -1,11 +1,12 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertSalesRepositoryContract } from '../contracts/salesRepository.contract.js';
+import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
 
 const toNum = (value) => Number(value || 0);
 const round4 = (value) => Math.round(toNum(value) * 10000) / 10000;
-const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
-const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
+const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000+08:00`);
+const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999+08:00`);
 
 const buildDateRange = (dateFrom, dateTo) => {
   if (!dateFrom && !dateTo) return null;
@@ -161,13 +162,17 @@ export const salesRepository = {
     let records = [];
 
     if (canViewPos && source !== 'DISPATCH') {
-      const posWhere = {};
+      let posWhere = {};
       if (status) posWhere.status = status;
       if (paymentType) posWhere.payment_type = paymentType;
       if (orderMethod) posWhere.order_method = orderMethod;
       if (dateRange) posWhere.created_at = dateRange;
       if (search) {
         posWhere.invoice_number = { [Op.like]: `%${search}%` };
+      }
+
+      if (!status || status === 'completed') {
+        posWhere = buildFinanciallyRecognizedSalesWhere(posWhere);
       }
 
       const posRows = await PosTransaction.findAll({

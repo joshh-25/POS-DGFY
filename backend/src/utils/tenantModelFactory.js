@@ -34,7 +34,8 @@ export const getTenantModels = (sequelize) => {
         'AIConversation', 'ItemEmbedding', 'ItemFolder',
         'DispatchOrder', 'DispatchOrderLine',
         'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
-        'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent'
+        'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
+        'TenantLocation', 'StoreCustomer', 'StoreCustomerAddress'
     ];
 
     // Re-define each model on the new connection

@@ -16,7 +16,9 @@ import {
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
-    buildGetTerminalTodayDashboardUseCase
+    buildGetTerminalTodayDashboardUseCase,
+    buildListIncomingOnlineOrdersUseCase,
+    buildUpdateOnlineOrderStatusUseCase
 } from './usecases/posUseCases.js';
 
 const stockMovementService = { createStockMovement };
@@ -42,3 +44,8 @@ export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCas
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
+export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
+    posRepository,
+    stockMovementService
+});

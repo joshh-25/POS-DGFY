@@ -12,6 +12,12 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
+const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
+const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
 
@@ -29,6 +35,9 @@ const rateLimitCounters = {
   auth_login: 0,
   auth_register: 0,
   auth_lookup: 0,
+  store_auth: 0,
+  store_tracking: 0,
+  storefront_discovery: 0,
   ai: 0,
   pos: 0,
   registration: 0,
@@ -39,6 +48,11 @@ const rateLimitAlertThreshold = parseInt(process.env.RATE_LIMIT_ALERT_THRESHOLD)
 const normalizeEmail = (value) => {
   if (typeof value !== 'string') return '';
   return value.trim().toLowerCase();
+};
+
+const normalizeTrackingPin = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim().toUpperCase();
 };
 
 const firstForwardedIp = (req) => {
@@ -53,6 +67,9 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/auth/login')) return 'auth_login';
   if (path.includes('/auth/register')) return 'auth_register';
   if (path.includes('/auth/lookup')) return 'auth_lookup';
+  if (path.includes('/store/auth/')) return 'store_auth';
+  if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
+  if (path.includes('/storefront/discovery')) return 'storefront_discovery';
   if (path.includes('/ai/')) return 'ai';
   if (path.includes('/pos/')) return 'pos';
   if (path.includes('/admin/tenants/register')) return 'registration';
@@ -258,6 +275,111 @@ export const authLimiter = rateLimit({
   },
 });
 
+// Store auth limiter (public storefront register/login)
+export const storeAuthLimiter = rateLimit({
+  windowMs: storeAuthWindowMs,
+  max: storeAuthMaxRequests,
+  message: createRateLimitError('Too many storefront authentication attempts, please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_auth'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const email = normalizeEmail(req.body?.email);
+    const scope = req.path?.includes('/register') ? 'register' : 'login';
+    return email ? `store_auth:${scope}:${ip}:${email}` : `store_auth:${scope}:${ip}:unknown-email`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many storefront authentication attempts, please try again later.',
+      'store_auth',
+      'ip_email'
+    );
+    logRateLimitEvent(req, 'store_auth', response.retryAfterSeconds, 'ip_email');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// Store tracking limiter (public tracking/cancellation endpoints)
+export const storeTrackingLimiter = rateLimit({
+  windowMs: storeTrackingWindowMs,
+  max: storeTrackingMaxRequests,
+  message: createRateLimitError('Too many tracking requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_tracking'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const trackingPin = normalizeTrackingPin(req.params?.tracking_pin || req.body?.tracking_pin || '');
+    return trackingPin
+      ? `store_tracking:${ip}:${trackingPin}`
+      : `store_tracking:${ip}:missing-pin`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many tracking requests. Please wait before trying again.',
+      'store_tracking',
+      'ip_tracking_pin'
+    );
+    logRateLimitEvent(req, 'store_tracking', response.retryAfterSeconds, 'ip_tracking_pin');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// Public storefront discovery limiter (search/list/map/profile lookups).
+export const storefrontDiscoveryLimiter = rateLimit({
+  windowMs: storefrontDiscoveryWindowMs,
+  max: storefrontDiscoveryMaxRequests,
+  message: createRateLimitError('Too many discovery requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('storefront_discovery'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const search = String(req.query?.search || '').trim().toLowerCase();
+    const slug = String(req.params?.slug || '').trim().toLowerCase();
+    if (slug) return `storefront_discovery:${ip}:slug:${slug}`;
+    if (search) return `storefront_discovery:${ip}:search:${search}`;
+    return `storefront_discovery:${ip}:browse`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many discovery requests. Please wait before trying again.',
+      'storefront_discovery',
+      'ip_query'
+    );
+    logRateLimitEvent(req, 'storefront_discovery', response.retryAfterSeconds, 'ip_query');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Strictest rate limiter for email lookup to prevent enumeration
 export const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -353,6 +475,9 @@ export const posLimiter = rateLimit({
 export default {
   general: generalLimiter,
   auth: authLimiter,
+  storeAuth: storeAuthLimiter,
+  storeTracking: storeTrackingLimiter,
+  storefrontDiscovery: storefrontDiscoveryLimiter,
   lookup: lookupLimiter,
   registration: tenantRegistrationLimiter,
   pos: posLimiter,

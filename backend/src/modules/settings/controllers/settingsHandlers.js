@@ -9,6 +9,8 @@ import {
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { syncStorefrontDiscoveryWithReliability } from '../../../services/storefrontDiscoverySyncReliabilityService.js';
+import logger from '../../../config/logger.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -98,6 +100,27 @@ export const getSettingByKey = async (req, res, next) => {
 export const updateSettings = async (req, res, next) => {
   try {
     const result = await updateSettingsUseCase({ settingsData: req.validatedData });
+    if (result?.ok && req.tenant?.id) {
+      syncStorefrontDiscoveryWithReliability({
+        tenantId: req.tenant.id,
+        source: 'settings_update_bulk',
+        requestId: requestId(req, res)
+      }).then((syncResult) => {
+        if (syncResult?.ok) return;
+        logger.warn('[SettingsHandlers] Storefront discovery index remained degraded after updateSettings retries', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          attempts: syncResult?.attempts || 0,
+          errors: syncResult?.errors || []
+        });
+      }).catch((error) => {
+        logger.warn('[SettingsHandlers] Storefront discovery reliability runner failed after updateSettings', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          error: error?.message || 'unknown_error'
+        });
+      });
+    }
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -135,6 +158,29 @@ export const updateSettingByKey = async (req, res, next) => {
       key: req.params.key,
       value: req.validatedData.value
     });
+    if (result?.ok && req.tenant?.id) {
+      syncStorefrontDiscoveryWithReliability({
+        tenantId: req.tenant.id,
+        source: 'settings_update_single',
+        requestId: requestId(req, res)
+      }).then((syncResult) => {
+        if (syncResult?.ok) return;
+        logger.warn('[SettingsHandlers] Storefront discovery index remained degraded after updateSettingByKey retries', {
+          tenantId: req.tenant?.id || null,
+          settingKey: req.params.key,
+          requestId: requestId(req, res),
+          attempts: syncResult?.attempts || 0,
+          errors: syncResult?.errors || []
+        });
+      }).catch((error) => {
+        logger.warn('[SettingsHandlers] Storefront discovery reliability runner failed after updateSettingByKey', {
+          tenantId: req.tenant?.id || null,
+          settingKey: req.params.key,
+          requestId: requestId(req, res),
+          error: error?.message || 'unknown_error'
+        });
+      });
+    }
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({

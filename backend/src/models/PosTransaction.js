@@ -23,7 +23,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
     },
     cashier_id: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
     },
     shift_id: {
         type: DataTypes.INTEGER,
@@ -33,10 +33,92 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.STRING(100),
         allowNull: true
     },
+    order_source: {
+        type: DataTypes.ENUM('in_store', 'online_store'),
+        allowNull: false,
+        defaultValue: 'in_store'
+    },
     order_method: {
-        type: DataTypes.ENUM('dine_in', 'takeout', 'delivery', 'online'),
+        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online'),
         allowNull: false,
         defaultValue: 'dine_in'
+    },
+    fulfillment_status: {
+        type: DataTypes.ENUM(
+            'placed',
+            'confirmed',
+            'preparing',
+            'ready_for_pickup',
+            'out_for_delivery',
+            'completed',
+            'cancelled',
+            'rejected'
+        ),
+        allowNull: true,
+        defaultValue: null
+    },
+    location_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    tracking_pin: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        unique: true
+    },
+    customer_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    customer_phone: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
+    customer_email: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    delivery_address: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    delivery_latitude: {
+        type: DataTypes.DECIMAL(10, 8),
+        allowNull: true
+    },
+    delivery_longitude: {
+        type: DataTypes.DECIMAL(11, 8),
+        allowNull: true
+    },
+    scheduled_for: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    special_instructions: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    delivery_fee: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    store_customer_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    outside_radius_flag: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    accepted_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    accepted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
     },
     payment_type: {
         type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer'),
@@ -91,7 +173,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     service_fee_method_snapshot: {
-        type: DataTypes.ENUM('dine_in', 'takeout', 'delivery', 'online'),
+        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online'),
         allowNull: true
     },
     service_fee_overridden: {
@@ -125,6 +207,11 @@ const PosTransaction = sequelize.define('PosTransaction', {
     indexes: [
         { fields: ['invoice_number'] },
         { fields: ['idempotency_key'] },
+        { fields: ['tracking_pin'] },
+        { fields: ['order_source'] },
+        { fields: ['fulfillment_status'] },
+        { fields: ['location_id'] },
+        { fields: ['store_customer_id'] },
         { fields: ['cashier_id'] },
         { fields: ['shift_id'] },
         { fields: ['created_at'] },

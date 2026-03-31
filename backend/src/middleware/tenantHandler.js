@@ -4,6 +4,7 @@ import dbStore from '../utils/dbStore.js';
 import { findTenantByToken } from '../services/landlordService.js';
 import logger from '../config/logger.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
+import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
 
 // Short-lived in-memory cache for tenant lookups.
 // Avoids a DB round-trip to the landlord database on every single API request.
@@ -11,6 +12,7 @@ import { getTenantModels } from '../utils/tenantModelFactory.js';
 const tenantCache = new Map(); // token -> { tenant, expiresAt }
 const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
 const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments)\b/i;
+const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
 
 /**
  * Middleware to resolve tenant and bind models to the request context
@@ -20,10 +22,25 @@ export const tenantHandler = async (req, res, next) => {
         const path = req.path || '';
         const isPublicWebhookRoute = path === '/api/v1/payments/webhook';
 
-        // 1. Identification Strategy: Header (x-company-token) -> Subdomain (Future) -> Auth User (Future)
-        const companyToken = req.headers['x-company-token'];
+        // 1. Identification Strategy:
+        // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
+        let companyToken = req.headers['x-company-token'];
+        const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
+        const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
 
         // 1.1 No Tenant Token?
+        if (!companyToken && allowStoreSlugResolution && storeSlug) {
+            try {
+                const tenantBySlug = await resolveTenantByStoreSlug(storeSlug);
+                if (tenantBySlug?.company_token) {
+                    companyToken = tenantBySlug.company_token;
+                    req.headers['x-company-token'] = companyToken;
+                }
+            } catch (slugResolveError) {
+                logger.warn(`[TenantHandler] Store slug resolution failed for "${storeSlug}": ${slugResolveError.message}`);
+            }
+        }
+
         if (!companyToken) {
             // For now, if no token, we default to the "Main" DB (Single User/Legacy Mode)
             // In the future, this might redirect to a "Select Company" page for unauthenticated users

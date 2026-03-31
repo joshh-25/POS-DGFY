@@ -13,7 +13,9 @@ import {
     getCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase,
     closeTerminalShiftUseCase,
-    getTerminalTodayDashboardUseCase
+    getTerminalTodayDashboardUseCase,
+    listIncomingOnlineOrdersUseCase,
+    updateOnlineOrderStatusUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -222,6 +224,49 @@ export const getTerminalTodayDashboard = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listIncomingOnlineOrders = async (req, res, next) => {
+    try {
+        const result = await listIncomingOnlineOrdersUseCase({
+            query: req.validatedQuery || req.query
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateOnlineOrderStatus = async (req, res, next) => {
+    try {
+        const result = await updateOnlineOrderStatusUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Online order status updated successfully',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -446,5 +491,7 @@ export default {
     openTerminalShift,
     recordCashDrawerEvent,
     closeTerminalShift,
-    getTerminalTodayDashboard
+    getTerminalTodayDashboard,
+    listIncomingOnlineOrders,
+    updateOnlineOrderStatus
 };

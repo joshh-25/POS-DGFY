@@ -16,10 +16,12 @@ import {
     validateCloseDayBody,
     validateTerminalCurrentShiftQuery,
     validateTerminalDashboardTodayQuery,
+    validateIncomingOnlineOrdersQuery,
     validateShiftIdParam,
     validateOpenTerminalShift,
     validateCashDrawerEvent,
-    validateCloseTerminalShift
+    validateCloseTerminalShift,
+    validateUpdateOnlineOrderStatus
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -41,6 +43,8 @@ router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRA
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
+router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
+router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateCloseDayBody, posController.closeDayZReading);
 router.get('/z-reading/:date', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingDateParam, posController.getDailyZReading);
 

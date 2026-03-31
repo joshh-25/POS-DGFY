@@ -4,10 +4,11 @@ import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
 import logger from '../../../config/logger.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const ORDER_METHOD_DEFAULT_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
+    pickup: 'Pickup Fee',
     delivery: 'Delivery Fee',
     online: 'Online Fee'
 };

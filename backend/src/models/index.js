@@ -37,16 +37,21 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
+import TenantLocation from './TenantLocation.js';
+import StoreCustomer from './StoreCustomer.js';
+import StoreCustomerAddress from './StoreCustomerAddress.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
+import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
+const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -58,6 +63,8 @@ Tenant.hasMany(Payment, { foreignKey: 'tenant_id', as: 'payments' });
 Payment.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents' });
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
+StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -195,11 +202,15 @@ User.hasMany(DispatchOrder, { foreignKey: 'created_by', as: 'createdDispatchOrde
 // POS associations
 PosTransaction.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
+PosTransaction.belongsTo(User, { foreignKey: 'accepted_by', as: 'acceptedByUser' });
 PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
+User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
@@ -211,6 +222,10 @@ PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift
 PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
 User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
 User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
+TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
+StoreCustomer.hasMany(StoreCustomerAddress, { foreignKey: 'customer_id', as: 'addresses' });
+StoreCustomerAddress.belongsTo(StoreCustomer, { foreignKey: 'customer_id', as: 'customer' });
+StoreCustomer.hasMany(PosTransaction, { foreignKey: 'store_customer_id', as: 'orders' });
 
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -263,12 +278,16 @@ const db = {
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
+  TenantLocation,
+  StoreCustomer,
+  StoreCustomerAddress,
   Tenant,
   UserTenantMapping,
   Payment,
   WebhookLog,
   EngagementEvent,
-  AiUsageLog
+  AiUsageLog,
+  StorefrontDiscoveryIndex
 };
 
 export default db;
@@ -312,12 +331,16 @@ export {
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
+  TenantLocation,
+  StoreCustomer,
+  StoreCustomerAddress,
   Tenant,
   UserTenantMapping,
   Payment,
   WebhookLog,
   EngagementEvent,
-  AiUsageLog
+  AiUsageLog,
+  StorefrontDiscoveryIndex
 };
 
 

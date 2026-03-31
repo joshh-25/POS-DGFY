@@ -9,14 +9,37 @@ import dbStore from '../../../utils/dbStore.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
-const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
+const ONLINE_ORDER_SOURCE = 'online_store';
+const ONLINE_FULFILLMENT_STATUSES = [
+    'placed',
+    'confirmed',
+    'preparing',
+    'ready_for_pickup',
+    'out_for_delivery',
+    'completed',
+    'cancelled',
+    'rejected'
+];
+const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
+    placed: ['confirmed', 'rejected'],
+    confirmed: ['preparing'],
+    preparing: ['ready_for_pickup', 'out_for_delivery'],
+    ready_for_pickup: ['completed'],
+    out_for_delivery: ['completed'],
+    completed: [],
+    cancelled: [],
+    rejected: []
+});
 const ORDER_METHOD_FEE_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
+    pickup: 'Pickup Fee',
     delivery: 'Delivery Fee',
     online: 'Online Fee'
 };
-const createDefaultOrderMethodFeeMatrix = () => ORDER_METHODS.reduce((acc, method) => {
+const createDefaultOrderMethodFeeMatrix = () => ORDER_METHOD_FEE_KEYS.reduce((acc, method) => {
     acc[method] = {
         enabled: false,
         amount: 0,
@@ -138,6 +161,84 @@ const hasPermission = (user, permission) => {
     return parseUserPermissions(user).includes(permission);
 };
 
+const normalizeOnlineFulfillmentStatus = (value) => {
+    const status = String(value || '').trim();
+    return ONLINE_FULFILLMENT_STATUSES.includes(status) ? status : null;
+};
+
+const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
+    if (currentStatus === nextStatus) {
+        return;
+    }
+
+    const allowedStatuses = ONLINE_FULFILLMENT_TRANSITIONS[currentStatus] || [];
+    if (!allowedStatuses.includes(nextStatus)) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            `Invalid fulfillment transition: ${currentStatus} -> ${nextStatus}`,
+            { statusCode: 409 }
+        );
+    }
+
+    if (nextStatus === 'out_for_delivery' && orderMethod !== 'delivery') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Only delivery orders can transition to out_for_delivery',
+            { statusCode: 409 }
+        );
+    }
+
+    if (nextStatus === 'ready_for_pickup' && orderMethod === 'delivery') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Delivery orders must transition to out_for_delivery instead of ready_for_pickup',
+            { statusCode: 409 }
+        );
+    }
+};
+
+const buildOnlineOrderStockMovements = (order = {}) => {
+    const orderId = parsePositiveInt(order?.pos_transaction_id);
+    if (!orderId) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Online order is missing a valid transaction identifier',
+            { statusCode: 409 }
+        );
+    }
+
+    const lines = Array.isArray(order?.lines) ? order.lines : [];
+    if (lines.length === 0) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Online order is missing checkout lines for inventory deduction',
+            { statusCode: 409 }
+        );
+    }
+
+    return lines.map((line, index) => {
+        const itemId = parsePositiveInt(line?.item_id);
+        const quantity = Number(line?.quantity);
+        if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `Online order line ${index + 1} has invalid inventory movement data`,
+                { statusCode: 409 }
+            );
+        }
+
+        const lineReference = parsePositiveInt(line?.line_id) || `${itemId}-${index + 1}`;
+        return {
+            item_id: itemId,
+            quantity,
+            movement_type: 'goods_issue',
+            reference_type: 'POS',
+            reference_id: `ONLINE:${orderId}:${lineReference}`,
+            notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
+        };
+    });
+};
+
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
     await getAllSettingsUseCase(),
     'Failed to retrieve POS setup settings'
@@ -201,7 +302,7 @@ const parseOrderMethodFees = (settings = {}) => {
     }
 
     const normalized = createDefaultOrderMethodFeeMatrix();
-    for (const method of ORDER_METHODS) {
+    for (const method of ORDER_METHOD_FEE_KEYS) {
         const entry = parsed?.[method];
         if (!isPlainObject(entry)) {
             continue;
@@ -350,10 +451,18 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 { statusCode: 400 }
             ));
         }
+        const normalizedOrderMethod = String(payload.order_method || 'dine_in').trim();
+        if (!ORDER_METHODS.includes(normalizedOrderMethod)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `order_method must be one of: ${ORDER_METHODS.join(', ')}`,
+                { statusCode: 422 }
+            ));
+        }
 
         const normalizedRequestPayload = {
             terminal_id: payload.terminal_id || null,
-            order_method: payload.order_method || 'dine_in',
+            order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
             service_fee_amount: payload.service_fee_amount == null ? null : round4(payload.service_fee_amount),
             discount_profile_name: String(payload.discount_profile_name || '').trim() || null,
@@ -533,7 +642,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const discountResolution = resolveCheckoutDiscount({ payload, subtotalAmount, settings });
             const discountAmount = round4(discountResolution.discountAmount);
             const netItemsTotal = round4(subtotalAmount - discountAmount);
-            const serviceFeeResolution = resolveCheckoutServiceFee({ payload, settings });
+            const serviceFeeResolution = resolveCheckoutServiceFee({
+                payload: { ...payload, order_method: normalizedOrderMethod },
+                settings
+            });
             const serviceFeeAmount = round4(serviceFeeResolution.serviceFeeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount);
             const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
@@ -585,7 +697,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     cashier_id: normalizedUserId,
                     shift_id: normalizedShiftId || null,
                     terminal_id: payload.terminal_id || null,
-                    order_method: payload.order_method || 'dine_in',
+                    order_source: 'in_store',
+                    order_method: normalizedOrderMethod,
+                    fulfillment_status: 'completed',
                     payment_type: payload.payment_type || 'cash',
                     subtotal_amount: subtotalAmount,
                     vatable_sales: vatableSales,
@@ -600,6 +714,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     service_fee_method_snapshot: serviceFeeResolution.serviceFeeMethodSnapshot,
                     service_fee_overridden: serviceFeeResolution.serviceFeeOverridden,
                     total_amount: totalAmount,
+                    delivery_fee: 0,
                     status: 'completed'
                 },
                 lines: preparedLines
@@ -731,7 +846,10 @@ export const buildListPosCatalogUseCase = ({ posRepository }) => {
                 limit: query?.limit || 100,
                 folder_id: query?.folder_id
             });
-            return ok(data.map((item) => toSerializable(item)));
+            const filtered = (Array.isArray(data) ? data : []).filter((item) => (
+                item?.pos_visible !== false
+            ));
+            return ok(filtered.map((item) => toSerializable(item)));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS catalog'));
         }
@@ -1215,6 +1333,163 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve terminal dashboard summary'));
+        }
+    };
+};
+
+export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
+    return async ({ query }) => {
+        if (query !== undefined && !isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const locationId = query?.location_id == null
+            ? null
+            : parsePositiveInt(query.location_id);
+        if (query?.location_id != null && !locationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const orders = await posRepository.listIncomingOnlineOrders({
+                locationId,
+                limit: query?.limit || 200
+            });
+            return ok({ orders });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list incoming online orders'));
+        }
+    };
+};
+
+export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMovementService }) => {
+    return async ({ posTransactionId, payload, user }) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const targetStatus = normalizeOnlineFulfillmentStatus(payload?.fulfillment_status);
+        if (!targetStatus) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'fulfillment_status is required and must be a supported status',
+                { statusCode: 422 }
+            ));
+        }
+
+        const actingUserId = parsePositiveInt(user?.user_id);
+        if (!actingUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+
+        try {
+            const existing = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
+                transaction,
+                lock: true
+            });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${normalizedTransactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+            if (existing.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only online store orders can be updated through this endpoint',
+                    { statusCode: 409 }
+                );
+            }
+
+            const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
+            if (!currentStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Current fulfillment state is invalid',
+                    { statusCode: 409 }
+                );
+            }
+
+            validateOnlineOrderTransition({
+                currentStatus,
+                nextStatus: targetStatus,
+                orderMethod: existing.order_method
+            });
+
+            if (
+                currentStatus !== 'completed'
+                && targetStatus === 'completed'
+                && stockMovementService?.createStockMovement
+            ) {
+                const stockMovements = buildOnlineOrderStockMovements(existing);
+                for (const movement of stockMovements) {
+                    await stockMovementService.createStockMovement(
+                        movement,
+                        actingUserId,
+                        transaction
+                    );
+                }
+            }
+
+            const updatePayload = {
+                fulfillment_status: targetStatus
+            };
+
+            // Online orders are created without a cashier. Capture the first staff
+            // user who handles lifecycle actions for history/accountability.
+            if (!parsePositiveInt(existing.cashier_id)) {
+                updatePayload.cashier_id = actingUserId;
+            }
+            if (currentStatus === 'placed' && (targetStatus === 'confirmed' || targetStatus === 'rejected')) {
+                updatePayload.accepted_by = actingUserId;
+                updatePayload.accepted_at = new Date();
+            }
+
+            await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {
+                transaction,
+                lock: true
+            });
+            const updated = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
+                transaction
+            });
+
+            await transaction.commit();
+            return ok({
+                order: toSerializable(updated)
+            });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update online order status'));
         }
     };
 };

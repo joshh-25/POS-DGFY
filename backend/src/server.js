@@ -3,6 +3,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,6 +38,10 @@ import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAudit
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
+import {
+  startStorefrontDiscoveryIndexReconciliationScheduler,
+  stopStorefrontDiscoveryIndexReconciliationScheduler
+} from './services/storefrontDiscoveryIndexService.js';
 import * as aiController from './controllers/aiController.js';
 
 const app = express();
@@ -143,34 +148,92 @@ if (isProduction) {
 }
 
 // CORS configuration - must be applied before helmet
-const corsOptions = {
-  // Allow requests from localhost and any network IP on port 5173 (development)
-  // For production, set CORS_ORIGIN env var to a comma-separated list of allowed origins
-  origin: process.env.CORS_ORIGIN ? (origin, callback) => {
-    const allowed = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
-    if (allowed.includes(origin) || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  } : (origin, callback) => {
-    // In development, allow localhost and any IP on ports 5173-5179 (Vite dev ports)
-    if (!origin ||
-      /^http:\/\/localhost:517[0-9]$/.test(origin) ||
-      /^http:\/\/127\.0\.0\.1:517[0-9]$/.test(origin) ||
-      /^http:\/\/127\.0\.0\.1:5000$/.test(origin) ||
-      /^http:\/\/localhost:5000$/.test(origin) ||
-      /^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:517[0-9]$/.test(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  optionsSuccessStatus: 200,
-  exposedHeaders: ['Content-Disposition', 'Content-Length']
+const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
+const matchesWildcardOrigin = (origin, wildcardPattern) => {
+  if (!origin || !wildcardPattern.startsWith('*.')) return false;
+  try {
+    const parsed = new URL(origin);
+    const suffix = wildcardPattern.slice(1).toLowerCase();
+    return parsed.hostname.toLowerCase().endsWith(suffix);
+  } catch {
+    return false;
+  }
 };
-app.use(cors(corsOptions));
+
+const isExplicitOriginAllowed = (origin) => {
+  if (!origin) return true;
+  return configuredCorsOrigins.some((allowedOrigin) => {
+    if (allowedOrigin.startsWith('*.')) {
+      return matchesWildcardOrigin(origin, allowedOrigin);
+    }
+    return allowedOrigin === origin;
+  });
+};
+
+const isDevelopmentOriginAllowed = (origin) => {
+  if (!origin) return true;
+
+  const developmentOriginPatterns = [
+    /^http:\/\/localhost:517[0-9]$/,
+    /^http:\/\/127\.0\.0\.1:517[0-9]$/,
+    /^http:\/\/localhost:5000$/,
+    /^http:\/\/127\.0\.0\.1:5000$/,
+    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:517[0-9]$/,
+    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
+    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
+  ];
+
+  if (developmentOriginPatterns.some((pattern) => pattern.test(origin))) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    const surebizcorpSurface = host === 'skupervisor.surebizcorp.com'
+      || host === 'pos.surebizcorp.com'
+      || host === 'surebizcorp.com'
+      || host === 'store.surebizcorp.com';
+    return Boolean(surebizcorpSurface);
+  } catch {
+    return false;
+  }
+};
+
+const resolveCorsAllowed = (origin) => (
+  configuredCorsOrigins.length > 0
+    ? isExplicitOriginAllowed(origin)
+    : isDevelopmentOriginAllowed(origin)
+);
+
+const corsOptionsDelegate = (req, callback) => {
+  const origin = req.headers.origin || null;
+  const allowed = resolveCorsAllowed(origin);
+
+  if (!allowed) {
+    const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
+    logger.warn('[CORS] Blocked request from disallowed origin', {
+      origin,
+      method: req.method,
+      path: req.originalUrl || req.url || '',
+      request_id: correlationId
+    });
+    callback(new Error('Not allowed by CORS'));
+    return;
+  }
+
+  callback(null, {
+    origin: true,
+    credentials: true,
+    optionsSuccessStatus: 200,
+    exposedHeaders: ['Content-Disposition', 'Content-Length']
+  });
+};
+app.use(cors(corsOptionsDelegate));
 
 // Security middleware - applied after CORS
 app.use(helmet({
@@ -505,6 +568,9 @@ import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
 import salesRoutes from './routes/sales.js';
+import tenantLocationRoutes from './routes/tenantLocations.js';
+import storeRoutes from './routes/store.js';
+import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 
@@ -526,6 +592,9 @@ app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/sales', salesRoutes);
+app.use('/api/v1/tenant-locations', tenantLocationRoutes);
+app.use('/api/v1/store', storeRoutes);
+app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -607,6 +676,7 @@ const startServer = async () => {
     scheduleRuntimeSchemaAudit();
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
+    startStorefrontDiscoveryIndexReconciliationScheduler();
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)
     if (process.env.REDIS_URL) {
@@ -649,6 +719,7 @@ const startServer = async () => {
         clearInterval(billingFunnelAuditInterval);
         billingFunnelAuditInterval = null;
       }
+      stopStorefrontDiscoveryIndexReconciliationScheduler();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

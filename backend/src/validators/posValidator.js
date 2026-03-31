@@ -1,7 +1,9 @@
 import Joi from 'joi';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 
 const checkoutLineSchema = Joi.object({
     item_id: Joi.number().integer().positive().required().messages({
@@ -57,7 +59,7 @@ const listTransactionsQuerySchema = Joi.object({
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
-    order_method: Joi.string().valid(...ORDER_METHODS).optional()
+    order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional()
 });
 
 const posCatalogQuerySchema = Joi.object({
@@ -100,6 +102,11 @@ const terminalDashboardTodayQuerySchema = Joi.object({
     business_date: Joi.date().iso().optional()
 });
 
+const incomingOnlineOrdersQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().min(1).max(500).default(200)
+});
+
 const shiftIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
@@ -120,6 +127,10 @@ const cashDrawerEventSchema = Joi.object({
 const closeTerminalShiftSchema = Joi.object({
     closing_cash_amount: Joi.number().min(0).precision(4).required(),
     closing_note: Joi.string().trim().max(255).allow(null, '').optional()
+});
+
+const updateOnlineOrderStatusSchema = Joi.object({
+    fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
 });
 
 const buildValidationErrorResponse = (error) => ({
@@ -158,7 +169,9 @@ export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema,
 export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
+export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
+export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');

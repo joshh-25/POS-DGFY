@@ -17,7 +17,9 @@ export {
     openTerminalShift,
     recordCashDrawerEvent,
     closeTerminalShift,
-    getTerminalTodayDashboard
+    getTerminalTodayDashboard,
+    listIncomingOnlineOrders,
+    updateOnlineOrderStatus
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
@@ -35,7 +37,9 @@ import {
     openTerminalShift,
     recordCashDrawerEvent,
     closeTerminalShift,
-    getTerminalTodayDashboard
+    getTerminalTodayDashboard,
+    listIncomingOnlineOrders,
+    updateOnlineOrderStatus
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
@@ -53,5 +57,7 @@ export default {
     openTerminalShift,
     recordCashDrawerEvent,
     closeTerminalShift,
-    getTerminalTodayDashboard
+    getTerminalTodayDashboard,
+    listIncomingOnlineOrders,
+    updateOnlineOrderStatus
 };

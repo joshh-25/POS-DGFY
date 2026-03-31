@@ -11,7 +11,15 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260328000002-widen-pos-discount-rate-snapshot.cjs' },
         { name: '20260328000003-add-pos-catalog-overrides-and-user-roles.cjs' },
         { name: '20260330000001-add-pos-terminal-shifts-and-cash-events.cjs' },
-        { name: '20260330000002-add-show-in-pos-filter-to-item-folders.cjs' }
+        { name: '20260330000002-add-show-in-pos-filter-to-item-folders.cjs' },
+        { name: '20260330000003-create-tenant-locations.cjs' },
+        { name: '20260330000004-add-storefront-operational-settings.cjs' },
+        { name: '20260330000005-add-pickup-to-pos-order-method-enums.cjs' },
+        { name: '20260330000006-expand-pos-transactions-for-online-orders.cjs' },
+        { name: '20260330000007-create-store-customers-and-addresses.cjs' },
+        { name: '20260331000008-make-pos-cashier-nullable-for-online-store.cjs' },
+        { name: '20260331000009-create-storefront-discovery-index.cjs' },
+        { name: '20260331000010-add-primary-storefront-location.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -52,12 +60,21 @@ const buildHealthySequelizeMock = () => ({
                 },
                 pos_transactions: {
                     pos_transaction_id: {},
+                    cashier_id: { allowNull: true },
                     discount_rate_snapshot: {},
                     service_fee_amount: {},
                     service_fee_label_snapshot: {},
                     service_fee_method_snapshot: {},
                     service_fee_overridden: {},
-                    shift_id: {}
+                    shift_id: {},
+                    order_source: {},
+                    fulfillment_status: {},
+                    location_id: {},
+                    tracking_pin: {},
+                    delivery_fee: {},
+                    store_customer_id: {},
+                    accepted_by: {},
+                    accepted_at: {}
                 },
                 pos_transaction_lines: {
                     line_id: {},
@@ -85,6 +102,36 @@ const buildHealthySequelizeMock = () => ({
                     setting_key: {},
                     setting_value: {},
                     data_type: {}
+                },
+                tenant_locations: {
+                    location_id: {},
+                    tenant_id: {},
+                    name: {},
+                    address_line: {},
+                    latitude: {},
+                    longitude: {},
+                    is_active: {},
+                    is_primary_storefront: {}
+                },
+                store_customers: {
+                    customer_id: {},
+                    email: {},
+                    password_hash: {},
+                    name: {},
+                    is_active: {}
+                },
+                customer_addresses: {
+                    address_id: {},
+                    customer_id: {},
+                    address_line: {},
+                    is_default: {}
+                },
+                storefront_discovery_index: {
+                    storefront_discovery_index_id: {},
+                    tenant_id: {},
+                    slug: {},
+                    is_visible: {},
+                    last_synced_at: {}
                 }
             };
 
@@ -139,6 +186,36 @@ describe('runtimeSchemaAuditService', () => {
             expect.objectContaining({ table: 'users', column: 'role' }),
             expect.objectContaining({ table: 'pos_catalog_overrides', column: 'pos_visible' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' })
+        ]));
+    });
+
+    it('returns degraded when cashier_id nullability contract drifts from online-store requirements', async () => {
+        const mock = buildHealthySequelizeMock();
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_transactions') {
+                    return {
+                        ...table,
+                        cashier_id: { allowNull: false }
+                    };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'invalid_column_contract',
+                table: 'pos_transactions',
+                column: 'cashier_id'
+            })
         ]));
     });
 

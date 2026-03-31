@@ -11,7 +11,15 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260328000002-widen-pos-discount-rate-snapshot.cjs',
     '20260328000003-add-pos-catalog-overrides-and-user-roles.cjs',
     '20260330000001-add-pos-terminal-shifts-and-cash-events.cjs',
-    '20260330000002-add-show-in-pos-filter-to-item-folders.cjs'
+    '20260330000002-add-show-in-pos-filter-to-item-folders.cjs',
+    '20260330000003-create-tenant-locations.cjs',
+    '20260330000004-add-storefront-operational-settings.cjs',
+    '20260330000005-add-pickup-to-pos-order-method-enums.cjs',
+    '20260330000006-expand-pos-transactions-for-online-orders.cjs',
+    '20260330000007-create-store-customers-and-addresses.cjs',
+    '20260331000008-make-pos-cashier-nullable-for-online-store.cjs',
+    '20260331000009-create-storefront-discovery-index.cjs',
+    '20260331000010-add-primary-storefront-location.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -22,17 +30,36 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url'],
     pos_transactions: [
         'pos_transaction_id',
+        'cashier_id',
         'discount_rate_snapshot',
         'service_fee_amount',
         'service_fee_label_snapshot',
         'service_fee_method_snapshot',
         'service_fee_overridden',
-        'shift_id'
+        'shift_id',
+        'order_source',
+        'fulfillment_status',
+        'location_id',
+        'tracking_pin',
+        'delivery_fee',
+        'store_customer_id',
+        'accepted_by',
+        'accepted_at'
     ],
     pos_transaction_lines: ['line_id', 'vat_type_snapshot', 'vat_rate_snapshot', 'sale_price_overridden', 'price_override_reason'],
     pos_terminal_shifts: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id', 'status'],
     pos_cash_drawer_events: ['pos_cash_drawer_event_id', 'pos_terminal_shift_id', 'event_type', 'amount', 'recorded_by'],
-    system_settings: ['setting_id', 'setting_key', 'setting_value', 'data_type']
+    system_settings: ['setting_id', 'setting_key', 'setting_value', 'data_type'],
+    tenant_locations: ['location_id', 'name', 'address_line', 'latitude', 'longitude', 'is_active', 'is_primary_storefront'],
+    store_customers: ['customer_id', 'email', 'password_hash', 'name', 'is_active'],
+    customer_addresses: ['address_id', 'customer_id', 'address_line', 'is_default'],
+    storefront_discovery_index: ['storefront_discovery_index_id', 'tenant_id', 'slug', 'is_visible', 'last_synced_at']
+});
+
+const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+    pos_transactions: {
+        cashier_id: { allowNull: true }
+    }
 });
 
 const OPTIONAL_TABLE_COLUMNS = Object.freeze({
@@ -55,7 +82,8 @@ export const auditRuntimeSchemaReadiness = async ({
     sequelizeInstance,
     requiredMigrations = REQUIRED_RUNTIME_MIGRATIONS,
     requiredTableColumns = REQUIRED_TABLE_COLUMNS,
-    optionalTableColumns = OPTIONAL_TABLE_COLUMNS
+    optionalTableColumns = OPTIONAL_TABLE_COLUMNS,
+    requiredColumnContracts = REQUIRED_COLUMN_CONTRACTS
 } = {}) => {
     if (!sequelizeInstance) {
         throw new Error('sequelizeInstance is required');
@@ -134,6 +162,26 @@ export const auditRuntimeSchemaReadiness = async ({
                     column: optionalColumn,
                     message: `Optional column missing ${tableName}.${optionalColumn} (compatibility fallback may apply)`
                 });
+            }
+        }
+
+        const tableContracts = requiredColumnContracts?.[tableName] || {};
+        for (const [columnName, contract] of Object.entries(tableContracts)) {
+            if (!hasColumn(tableDef, columnName)) continue;
+
+            if (Object.prototype.hasOwnProperty.call(contract, 'allowNull')) {
+                const actualAllowNull = Boolean(tableDef[columnName]?.allowNull);
+                if (actualAllowNull !== Boolean(contract.allowNull)) {
+                    issues.push({
+                        scope: 'schema',
+                        type: 'invalid_column_contract',
+                        table: tableName,
+                        column: columnName,
+                        expected: { allowNull: Boolean(contract.allowNull) },
+                        actual: { allowNull: actualAllowNull },
+                        message: `Column contract mismatch for ${tableName}.${columnName}: expected allowNull=${Boolean(contract.allowNull)}, got allowNull=${actualAllowNull}`
+                    });
+                }
             }
         }
     }
