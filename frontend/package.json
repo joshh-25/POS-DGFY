@@ -4,7 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:skupervisor": "vite --config apps/skupervisor/vite.config.js --host",
+    "dev:pos": "vite --config apps/pos/vite.config.js --host",
+    "dev:store": "vite --config apps/store/vite.config.js --host",
     "build": "vite build",
+    "build:skupervisor": "vite build --config apps/skupervisor/vite.config.js",
+    "build:pos": "vite build --config apps/pos/vite.config.js",
+    "build:store": "vite build --config apps/store/vite.config.js",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx",
     "test": "vitest run"
@@ -20,6 +26,7 @@
     "date-fns": "^2.30.0",
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.33",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
