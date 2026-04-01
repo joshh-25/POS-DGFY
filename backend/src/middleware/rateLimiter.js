@@ -62,6 +62,63 @@ const firstForwardedIp = (req) => {
   return first || null;
 };
 
+const normalizeCompanyTokenHeader = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
+const normalizeHostHeader = (value) => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('[')) {
+    const closingBracketIdx = trimmed.indexOf(']');
+    if (closingBracketIdx !== -1) {
+      return trimmed.slice(0, closingBracketIdx + 1);
+    }
+    return trimmed;
+  }
+  return trimmed.split(':')[0] || '';
+};
+
+const companyTokenFromValidatePath = (pathValue) => {
+  if (typeof pathValue !== 'string') return '';
+  const match = pathValue.match(/\/auth\/validate-token\/([^/?#]+)/i);
+  if (!match?.[1]) return '';
+  try {
+    return decodeURIComponent(match[1]).trim();
+  } catch {
+    return match[1].trim();
+  }
+};
+
+const decodeJwtPayloadUnsafe = (token) => {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  const payloadPart = parts[1]
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = payloadPart + '='.repeat((4 - (payloadPart.length % 4 || 4)) % 4);
+  try {
+    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    const payload = JSON.parse(decoded);
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+const userKeyFromAuthHeader = (authHeader) => {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return '';
+  const token = authHeader.slice(7).trim();
+  if (!token) return '';
+  const payload = decodeJwtPayloadUnsafe(token);
+  if (!payload) return '';
+  const userIdCandidate = payload.user_id ?? payload.sub ?? payload.id ?? '';
+  return String(userIdCandidate || '').trim();
+};
+
 const getScopeFromRequest = (req, fallbackScope) => {
   const path = req.path || '';
   if (path.includes('/auth/login')) return 'auth_login';
@@ -217,7 +274,17 @@ export const generalLimiter = rateLimit({
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   validate: { trustProxy: false },
   store: new DynamicStore('general'),
-  keyGenerator: (req) => firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip',
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const host = normalizeHostHeader(req.hostname || req.headers.host || '');
+    const companyToken = normalizeCompanyTokenHeader(req.headers['x-company-token'])
+      || companyTokenFromValidatePath(req.path || req.originalUrl || '');
+    const userKey = userKeyFromAuthHeader(req.headers.authorization);
+    if (host || companyToken || userKey) {
+      return `general:${host || 'unknown-host'}:${companyToken || 'default'}:${userKey || 'anonymous'}:${ip}`;
+    }
+    return ip;
+  },
   handler: (req, res, _next, options) => {
     const scope = getScopeFromRequest(req, 'other');
     const response = buildRateLimitResponse(
