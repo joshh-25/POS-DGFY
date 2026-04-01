@@ -42,6 +42,7 @@ import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
+import StoreLocationPickerMap from '../src/components/maps/StoreLocationPickerMap.jsx';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import { useSearchParams } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection } from '../src/utils/subscriptionUi.js';
@@ -89,6 +90,13 @@ const mapLocationToForm = (location) => ({
   supports_pickup: location?.supports_pickup !== false,
   supports_dine_in: location?.supports_dine_in !== false
 });
+
+const parseCoordinate = (value, min, max) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed < min || parsed > max) return null;
+  return Number(parsed.toFixed(6));
+};
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -388,6 +396,14 @@ export default function Settings() {
     setStoreLocationForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleStoreLocationMapChange = useCallback(({ latitude, longitude }) => {
+    setStoreLocationForm((prev) => ({
+      ...prev,
+      latitude,
+      longitude
+    }));
+  }, []);
+
   const handleSaveStoreLocation = async () => {
     if (!canEditSettings) {
       toast.error('You do not have permission to edit store locations.');
@@ -662,6 +678,9 @@ export default function Settings() {
       setIsMigratingToPayMongo(false);
     }
   };
+
+  const parsedLatitude = parseCoordinate(storeLocationForm.latitude, -90, 90);
+  const parsedLongitude = parseCoordinate(storeLocationForm.longitude, -180, 180);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -1343,6 +1362,16 @@ export default function Settings() {
                     value={storeLocationForm.address_line}
                     onChange={(e) => handleStoreLocationFormChange('address_line', e.target.value)}
                     placeholder="Complete customer-facing address"
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>OpenStreetMap Location Picker</Label>
+                  <StoreLocationPickerMap
+                    latitude={parsedLatitude}
+                    longitude={parsedLongitude}
+                    deliveryRadiusKm={storeLocationForm.delivery_radius_km}
+                    onCoordinatesChange={handleStoreLocationMapChange}
                     disabled={!canEditSettings}
                   />
                 </div>
