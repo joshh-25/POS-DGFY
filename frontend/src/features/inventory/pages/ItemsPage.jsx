@@ -170,7 +170,23 @@ export default function Items() {
 
   const canConfigurePosCatalog = can('items:edit');
   const canViewPosCatalog = can('pos:view');
-  const shouldLoadPosCatalogOverrides = !permissionsLoading && tenantPlan === 'premium' && canViewPosCatalog;
+  const hasPremiumFeatureAccess = useMemo(() => {
+    if (tenantPlan !== 'premium') return false;
+
+    const subscriptionStatus = String(currentUser?.company?.subscription_status || '').toLowerCase();
+    if (subscriptionStatus === 'active') return true;
+
+    if (subscriptionStatus === 'past_due') {
+      const gracePeriodEnd = currentUser?.company?.grace_period_end;
+      if (!gracePeriodEnd) return false;
+      const graceDate = new Date(gracePeriodEnd);
+      return Number.isFinite(graceDate.getTime()) && graceDate > new Date();
+    }
+
+    return false;
+  }, [currentUser?.company?.grace_period_end, currentUser?.company?.subscription_status, tenantPlan]);
+
+  const shouldLoadPosCatalogOverrides = !permissionsLoading && canViewPosCatalog && hasPremiumFeatureAccess;
 
   const getDefaultPosVisibility = useCallback((item) => (
     item?.category === 'product' && item?.product_type === 'finished_goods'

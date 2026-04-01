@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings as SettingsIcon,
   Save,
@@ -23,7 +23,8 @@ import {
   History,
   XCircle,
   Plus,
-  Trash2
+  Trash2,
+  MapPin
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ import { usePermission } from '../src/hooks/usePermission';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
+import * as tenantLocationService from '../src/services/tenantLocationService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import { useSearchParams } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection } from '../src/utils/subscriptionUi.js';
@@ -59,6 +61,34 @@ const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((
   };
   return acc;
 }, {});
+
+const createEmptyStoreLocationForm = () => ({
+  location_id: null,
+  name: '',
+  address_line: '',
+  latitude: '',
+  longitude: '',
+  delivery_radius_km: 5,
+  is_open: true,
+  is_primary_storefront: true,
+  supports_delivery: true,
+  supports_pickup: true,
+  supports_dine_in: true
+});
+
+const mapLocationToForm = (location) => ({
+  location_id: location?.location_id ?? null,
+  name: String(location?.name || ''),
+  address_line: String(location?.address_line || ''),
+  latitude: location?.latitude ?? '',
+  longitude: location?.longitude ?? '',
+  delivery_radius_km: Number(location?.delivery_radius_km ?? 5),
+  is_open: location?.is_open !== false,
+  is_primary_storefront: location?.is_primary_storefront === true,
+  supports_delivery: location?.supports_delivery !== false,
+  supports_pickup: location?.supports_pickup !== false,
+  supports_dine_in: location?.supports_dine_in !== false
+});
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -105,6 +135,7 @@ export default function Settings() {
   const [companyInfo, setCompanyInfo] = useState(null);
   const { currentUser, setCurrentUser } = useStore();
   const { can } = usePermission();
+  const canEditSettings = can('settings:edit');
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -115,6 +146,11 @@ export default function Settings() {
   const [paymongoSubscriptionIdInput, setPaymongoSubscriptionIdInput] = useState('');
   const [isStartingPayMongoSetup, setIsStartingPayMongoSetup] = useState(false);
   const [pendingPlanInfo, setPendingPlanInfo] = useState(null);
+  const [storeLocations, setStoreLocations] = useState([]);
+  const [selectedStoreLocationId, setSelectedStoreLocationId] = useState('new');
+  const [storeLocationForm, setStoreLocationForm] = useState(createEmptyStoreLocationForm);
+  const [loadingStoreLocations, setLoadingStoreLocations] = useState(false);
+  const [savingStoreLocation, setSavingStoreLocation] = useState(false);
 
   // Fetch current user and system settings on mount
   useEffect(() => {
@@ -303,6 +339,111 @@ export default function Settings() {
     setProfileSettings(prev => ({ ...prev, [key]: value }));
     // Clear error for this field
     setProfileErrors(prev => ({ ...prev, [key]: '' }));
+  };
+
+  const loadStoreLocations = useCallback(async () => {
+    setLoadingStoreLocations(true);
+    try {
+      const rows = await tenantLocationService.listTenantLocations({ include_inactive: true });
+      const normalized = Array.isArray(rows) ? rows : [];
+      setStoreLocations(normalized);
+
+      const active = normalized.filter((row) => row?.is_active !== false);
+      const preferred = active.find((row) => row?.is_primary_storefront === true) || active[0] || null;
+      if (preferred) {
+        setSelectedStoreLocationId(String(preferred.location_id));
+        setStoreLocationForm(mapLocationToForm(preferred));
+      } else {
+        setSelectedStoreLocationId('new');
+        setStoreLocationForm(createEmptyStoreLocationForm());
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to load store locations');
+      setStoreLocations([]);
+    } finally {
+      setLoadingStoreLocations(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentTab === 'pos') {
+      loadStoreLocations();
+    }
+  }, [currentTab, loadStoreLocations]);
+
+  const handleStoreLocationSelection = (value) => {
+    setSelectedStoreLocationId(value);
+    if (value === 'new') {
+      setStoreLocationForm(createEmptyStoreLocationForm());
+      return;
+    }
+
+    const selected = storeLocations.find((row) => String(row?.location_id) === String(value));
+    if (selected) {
+      setStoreLocationForm(mapLocationToForm(selected));
+    }
+  };
+
+  const handleStoreLocationFormChange = (key, value) => {
+    setStoreLocationForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveStoreLocation = async () => {
+    if (!canEditSettings) {
+      toast.error('You do not have permission to edit store locations.');
+      return;
+    }
+
+    const payload = {
+      name: String(storeLocationForm.name || '').trim(),
+      address_line: String(storeLocationForm.address_line || '').trim(),
+      latitude: Number(storeLocationForm.latitude),
+      longitude: Number(storeLocationForm.longitude),
+      delivery_radius_km: Number(storeLocationForm.delivery_radius_km || 0),
+      is_open: Boolean(storeLocationForm.is_open),
+      is_active: true,
+      is_primary_storefront: Boolean(storeLocationForm.is_primary_storefront),
+      supports_delivery: Boolean(storeLocationForm.supports_delivery),
+      supports_pickup: Boolean(storeLocationForm.supports_pickup),
+      supports_dine_in: Boolean(storeLocationForm.supports_dine_in)
+    };
+
+    if (!payload.name) {
+      toast.error('Store location name is required.');
+      return;
+    }
+    if (!payload.address_line) {
+      toast.error('Store location address is required.');
+      return;
+    }
+    if (!Number.isFinite(payload.latitude) || payload.latitude < -90 || payload.latitude > 90) {
+      toast.error('Latitude must be between -90 and 90.');
+      return;
+    }
+    if (!Number.isFinite(payload.longitude) || payload.longitude < -180 || payload.longitude > 180) {
+      toast.error('Longitude must be between -180 and 180.');
+      return;
+    }
+    if (!Number.isFinite(payload.delivery_radius_km) || payload.delivery_radius_km < 0 || payload.delivery_radius_km > 100) {
+      toast.error('Delivery radius must be between 0 and 100 km.');
+      return;
+    }
+
+    setSavingStoreLocation(true);
+    try {
+      if (selectedStoreLocationId === 'new') {
+        await tenantLocationService.createTenantLocation(payload);
+        toast.success('Store location created.');
+      } else {
+        await tenantLocationService.updateTenantLocation(selectedStoreLocationId, payload);
+        toast.success('Store location updated.');
+      }
+      await loadStoreLocations();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to save store location');
+    } finally {
+      setSavingStoreLocation(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1146,6 +1287,132 @@ export default function Settings() {
                     )}
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-teal-600" />
+                Store Location (Storefront)
+              </CardTitle>
+              <CardDescription>
+                Set the branch address and coordinates used by storefront discovery, tenant store routing, and delivery scope.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <div className="flex-1 space-y-2">
+                  <Label>Location Record</Label>
+                  <select
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={selectedStoreLocationId}
+                    onChange={(e) => handleStoreLocationSelection(e.target.value)}
+                    disabled={loadingStoreLocations}
+                  >
+                    <option value="new">Create New Location</option>
+                    {storeLocations
+                      .filter((location) => location?.is_active !== false)
+                      .map((location) => (
+                        <option key={location.location_id} value={String(location.location_id)}>
+                          {location.name}{location.is_primary_storefront ? ' (Primary)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <Button type="button" variant="outline" onClick={loadStoreLocations} disabled={loadingStoreLocations}>
+                  <RefreshCw className={cn('mr-2 h-4 w-4', loadingStoreLocations && 'animate-spin')} />
+                  Refresh
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Store Name</Label>
+                  <Input
+                    value={storeLocationForm.name}
+                    onChange={(e) => handleStoreLocationFormChange('name', e.target.value)}
+                    placeholder="e.g. Main Branch"
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Store Address</Label>
+                  <Input
+                    value={storeLocationForm.address_line}
+                    onChange={(e) => handleStoreLocationFormChange('address_line', e.target.value)}
+                    placeholder="Complete customer-facing address"
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Latitude</Label>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    min="-90"
+                    max="90"
+                    value={storeLocationForm.latitude}
+                    onChange={(e) => handleStoreLocationFormChange('latitude', e.target.value)}
+                    placeholder="e.g. 14.5995"
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Longitude</Label>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    min="-180"
+                    max="180"
+                    value={storeLocationForm.longitude}
+                    onChange={(e) => handleStoreLocationFormChange('longitude', e.target.value)}
+                    placeholder="e.g. 120.9842"
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Delivery Radius (km)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={storeLocationForm.delivery_radius_km}
+                    onChange={(e) => handleStoreLocationFormChange('delivery_radius_km', e.target.value)}
+                    disabled={!canEditSettings}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Primary Storefront Location</Label>
+                  <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 px-3">
+                    <span className="text-sm text-slate-600">Use this branch as the primary storefront</span>
+                    <Switch
+                      checked={storeLocationForm.is_primary_storefront === true}
+                      onCheckedChange={(checked) => handleStoreLocationFormChange('is_primary_storefront', checked)}
+                      disabled={!canEditSettings}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {!canEditSettings && (
+                <p className="text-xs text-amber-700">
+                  You currently have view-only access. Ask an admin with <code>settings:edit</code> permission to update store location.
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={handleSaveStoreLocation}
+                  disabled={!canEditSettings || savingStoreLocation || loadingStoreLocations}
+                  className="bg-teal-600 hover:bg-teal-700"
+                >
+                  {savingStoreLocation ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Store Location
+                </Button>
               </div>
             </CardContent>
           </Card>
