@@ -3,13 +3,23 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { getStockForecast } from '@/services/forecastService';
 import { cn } from "@/lib/utils";
+import { usePermission } from '@/hooks/usePermission';
 
 export default function ForecastWidget() {
+    const { tenantPlan, loading: permissionsLoading } = usePermission();
     const [forecasts, setForecasts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (permissionsLoading) return;
+        if (tenantPlan !== 'premium') {
+            setForecasts([]);
+            setError(null);
+            setLoading(false);
+            return;
+        }
+
         const fetchForecasts = async () => {
             try {
                 const response = await getStockForecast(30);
@@ -21,7 +31,7 @@ export default function ForecastWidget() {
                     return;
                 }
                 if (status === 403) {
-                    setError('Forecast access is restricted for this account.');
+                    setError('Forecasts are available on Premium plan only.');
                     return;
                 }
                 console.warn('Failed to load forecasts:', err);
@@ -32,9 +42,9 @@ export default function ForecastWidget() {
         };
 
         fetchForecasts();
-    }, []);
+    }, [permissionsLoading, tenantPlan]);
 
-    if (loading) {
+    if (loading || permissionsLoading) {
         return (
             <Card className="h-full">
                 <CardHeader>
@@ -45,6 +55,16 @@ export default function ForecastWidget() {
                 </CardHeader>
                 <CardContent className="flex items-center justify-center min-h-[200px]">
                     <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (tenantPlan !== 'premium') {
+        return (
+            <Card className="h-full border-amber-200 bg-amber-50">
+                <CardContent className="flex items-center justify-center min-h-[200px] text-amber-800 font-medium">
+                    Forecasting is available on Premium plan.
                 </CardContent>
             </Card>
         );

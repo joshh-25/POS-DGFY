@@ -44,9 +44,9 @@ export default function TerminalPage() {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
   });
-  const [locked, setLocked] = useState(() => !localStorage.getItem('authToken'));
+  const [locked, setLocked] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(() => !localStorage.getItem('authToken'));
-  const [loadingUser, setLoadingUser] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(true);
   const [terminalUser, setTerminalUser] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [terminalMeta, setTerminalMeta] = useState({
@@ -189,6 +189,7 @@ export default function TerminalPage() {
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(true);
+      setLoadingUser(false);
       return;
     }
 
@@ -218,18 +219,20 @@ export default function TerminalPage() {
   }, [hydrateUser]);
 
   useEffect(() => {
+    if (loadingUser) return;
     if (!locked) {
       hydrateTerminalMeta();
       return;
     }
     setTerminalMeta((prev) => ({ ...prev, loading: false }));
-  }, [hydrateTerminalMeta, locked]);
+  }, [hydrateTerminalMeta, loadingUser, locked]);
 
   useEffect(() => {
+    if (loadingUser) return;
     if (!locked) {
       refreshOperationalContext();
     }
-  }, [locked, refreshOperationalContext]);
+  }, [loadingUser, locked, refreshOperationalContext]);
 
   useEffect(() => {
     if (shiftState.shift) return;
@@ -276,12 +279,14 @@ export default function TerminalPage() {
     return 'Single-screen cashier workflow for checkout, history, receipts, and shift controls.';
   }, [loadingUser, locked]);
 
+  const sessionLocked = locked || loadingUser;
+
   const checkoutBlockedReason = useMemo(() => {
-    if (locked) return 'Terminal is locked. Login from the right panel.';
+    if (sessionLocked) return 'Terminal is locked. Login from the right panel.';
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a terminal shift before processing checkout transactions.';
     return '';
-  }, [canTransactPos, locked, shiftState.shift]);
+  }, [canTransactPos, sessionLocked, shiftState.shift]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const handleLogin = async (event) => {
@@ -439,21 +444,21 @@ export default function TerminalPage() {
           </div>
           <div
             className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-              locked
+              sessionLocked
                 ? 'border-amber-200 bg-amber-50 text-amber-700'
                 : 'border-emerald-200 bg-emerald-50 text-emerald-700'
             }`}
           >
-            {locked ? 'Terminal Locked' : 'Terminal Active'}
+            {sessionLocked ? 'Terminal Locked' : 'Terminal Active'}
           </div>
         </div>
       </div>
 
       <div className={`grid grid-cols-1 gap-4 p-4 ${sidebarCollapsed ? 'xl:grid-cols-[1fr_72px]' : 'xl:grid-cols-[1fr_360px]'}`}>
-        <div className={`transition ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}>
+        <div className={`transition ${sessionLocked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}>
           <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
             <POSCheckoutTerminal
-              sessionLocked={locked}
+              sessionLocked={sessionLocked}
               canViewHistory={canViewPos}
               activeShiftId={activeShiftId}
               checkoutBlockedReason={checkoutBlockedReason}
@@ -467,7 +472,7 @@ export default function TerminalPage() {
             isCollapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
             terminalUser={terminalUser}
-            locked={locked}
+            locked={sessionLocked}
             terminalMeta={terminalMeta}
             shiftState={shiftState}
             todayDashboard={todayDashboard}
@@ -491,7 +496,7 @@ export default function TerminalPage() {
         </Suspense>
       </div>
 
-      {locked && <div className="fixed inset-0 bg-slate-900/20 pointer-events-none" />}
+      {sessionLocked && <div className="fixed inset-0 bg-slate-900/20 pointer-events-none" />}
 
       <Suspense fallback={null}>
         <TerminalLockDrawer

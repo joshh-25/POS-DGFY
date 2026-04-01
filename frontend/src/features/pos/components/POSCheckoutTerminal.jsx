@@ -111,6 +111,7 @@ export default function POSCheckoutTerminal({
 }) {
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
+    const canViewCatalog = Boolean(canViewHistory);
     const [viewMode, setViewMode] = useState('checkout');
     const [catalog, setCatalog] = useState([]);
     const [posFolders, setPosFolders] = useState([]);
@@ -146,7 +147,7 @@ export default function POSCheckoutTerminal({
     const [imagePreview, setImagePreview] = useState(null);
 
     const loadCatalog = useCallback(async () => {
-        if (sessionLocked) {
+        if (sessionLocked || !canViewCatalog) {
             setCatalog([]);
             setCatalogLoading(false);
             return;
@@ -158,14 +159,24 @@ export default function POSCheckoutTerminal({
             const data = await fetchPosCatalog(params);
             setCatalog(data || []);
         } catch (error) {
+            if (error?.response?.status === 403) {
+                setCatalog([]);
+                return;
+            }
             toast.error(error?.response?.data?.message || 'Failed to load POS catalog');
         } finally {
             setCatalogLoading(false);
         }
-    }, [search, selectedFolderId, sessionLocked]);
+    }, [canViewCatalog, search, selectedFolderId, sessionLocked]);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
+            setPosFolders([]);
+            setPosFoldersLoading(false);
+            setPosFoldersError('');
+            return;
+        }
+        if (!canViewCatalog) {
             setPosFolders([]);
             setPosFoldersLoading(false);
             setPosFoldersError('');
@@ -186,14 +197,18 @@ export default function POSCheckoutTerminal({
             setPosFolders(visible);
         } catch (error) {
             setPosFolders([]);
+            if (error?.response?.status === 403) {
+                setPosFoldersError('POS view permission is required to load category filters.');
+                return;
+            }
             setPosFoldersError(error?.response?.data?.message || 'Failed to load POS categories.');
         } finally {
             setPosFoldersLoading(false);
         }
-    }, [sessionLocked]);
+    }, [canViewCatalog, sessionLocked]);
 
     const loadReceiptSettings = useCallback(async () => {
-        if (sessionLocked) {
+        if (sessionLocked || !canViewCatalog) {
             setReceiptSettings({});
             setDiscountProfiles([]);
             setOrderMethodFees(createDefaultOrderMethodFees());
@@ -217,7 +232,7 @@ export default function POSCheckoutTerminal({
             setDiscountProfiles([]);
             setOrderMethodFees(createDefaultOrderMethodFees());
         }
-    }, [sessionLocked]);
+    }, [canViewCatalog, sessionLocked]);
 
     const loadHistory = useCallback(async (page = 1) => {
         if (sessionLocked || !canViewHistory) {
@@ -702,8 +717,15 @@ export default function POSCheckoutTerminal({
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search POS-visible items..."
                         className="sm:max-w-xs"
+                        disabled={!canViewCatalog}
                     />
                 </div>
+
+                {!canViewCatalog && (
+                    <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        POS view permission is required to load catalog data.
+                    </p>
+                )}
 
                 <div className="mb-4">
                     <div className="flex items-center justify-between gap-2">
@@ -778,7 +800,9 @@ export default function POSCheckoutTerminal({
                     )}
                 </div>
 
-                {catalogLoading ? (
+                {!canViewCatalog ? (
+                    <p className="text-sm text-slate-600">Catalog data is hidden for this account.</p>
+                ) : catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
