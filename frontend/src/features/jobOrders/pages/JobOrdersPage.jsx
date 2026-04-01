@@ -55,6 +55,18 @@ const statusConfig = {
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
 };
 
+const formatIngredientIssue = (ingredientIssue) => {
+  if (!ingredientIssue) return 'Unknown ingredient issue';
+  if (ingredientIssue.message) return ingredientIssue.message;
+  if (ingredientIssue.item_name) {
+    const required = formatNumber(ingredientIssue.required ?? 0, 2);
+    const available = formatNumber(ingredientIssue.available ?? 0, 2);
+    const unit = ingredientIssue.unit || '';
+    return `${ingredientIssue.item_name}: need ${required} ${unit}, available ${available} ${unit}`.trim();
+  }
+  return 'Ingredient stock validation failed';
+};
+
 export default function JobOrdersPage() {
   const createIntent = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -67,7 +79,9 @@ export default function JobOrdersPage() {
 
   const [showArchivedTab, setShowArchivedTab] = useState(false);
   const { jobOrders, loading, error, refetch } = useFeatureJobOrders({ archived: showArchivedTab ? 'true' : 'false' });
-  const { items, loading: itemsLoading } = useFeatureJobOrderItems({ limit: 1000, fields: 'dropdown' });
+  // NOTE: JO creation needs product ingredients to compute stock requirements.
+  // `fields: 'dropdown'` omits recipe composition, causing backend 400 on create.
+  const { items, loading: itemsLoading } = useFeatureJobOrderItems({ limit: 1000 });
   const { createJobOrder } = useFeatureCreateJobOrder();
   const { completeJobOrder } = useFeatureCompleteJobOrder();
   const { createJobOrderDraft } = useFeatureCreateJobOrderDraft();
@@ -113,6 +127,25 @@ export default function JobOrdersPage() {
     setShowDetailsModal(true);
   };
 
+  const showIngredientIssuesToast = (errorData, fallbackMessage) => {
+    const insufficientIngredients = errorData?.insufficientIngredients || errorData?.errors;
+    if (Array.isArray(insufficientIngredients) && insufficientIngredients.length > 0) {
+      toast.error(
+        <div>
+          <p className="font-semibold">{errorData?.message || fallbackMessage}</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {insufficientIngredients.map((ing, idx) => (
+              <li key={idx}>- {formatIngredientIssue(ing)}</li>
+            ))}
+          </ul>
+        </div>,
+        { duration: 6000 },
+      );
+      return true;
+    }
+    return false;
+  };
+
   const handleCreateJO = async (joData) => {
     try {
       if (Array.isArray(joData)) {
@@ -125,7 +158,10 @@ export default function JobOrdersPage() {
             successCount += 1;
           } catch (err) {
             console.error('Failed to create JO:', err);
-            errors.push(data.product_id);
+            errors.push({
+              productId: data.product_id,
+              message: err?.response?.data?.message || err?.message || 'Unknown error',
+            });
           }
         }
 
@@ -136,7 +172,10 @@ export default function JobOrdersPage() {
         }
 
         if (errors.length > 0) {
-          toast.error(`Failed to create ${errors.length} orders. Please check stock and try again.`);
+          const firstError = errors[0];
+          const failedProduct = products.find((p) => (p.id || p.item_id) === firstError.productId);
+          const failedName = failedProduct?.name || `Product ID ${firstError.productId}`;
+          toast.error(`Failed to create ${errors.length} order(s). ${failedName}: ${firstError.message}`);
         }
       } else {
         await createJobOrder(joData);
@@ -146,20 +185,8 @@ export default function JobOrdersPage() {
       }
     } catch (error) {
       const errorData = error.response?.data;
-
-      if (errorData?.insufficientIngredients) {
-        toast.error(
-          <div>
-            <p className="font-semibold">{errorData.message}</p>
-            <ul className="mt-2 space-y-1 text-sm">
-              {errorData.insufficientIngredients.map((ing, idx) => (
-                <li key={idx}>- {ing.message}</li>
-              ))}
-            </ul>
-          </div>,
-          { duration: 6000 },
-        );
-      } else {
+      const renderedIngredientError = showIngredientIssuesToast(errorData, 'Failed to create job order');
+      if (!renderedIngredientError) {
         toast.error(errorData?.message || error.message || 'Failed to create job order');
       }
     }
@@ -193,19 +220,8 @@ export default function JobOrdersPage() {
       refetch();
     } catch (error) {
       const errorData = error.response?.data;
-      if (errorData?.insufficientIngredients) {
-        toast.error(
-          <div>
-            <p className="font-semibold">{errorData.message}</p>
-            <ul className="mt-2 space-y-1 text-sm">
-              {errorData.insufficientIngredients.map((ing, idx) => (
-                <li key={idx}>- {ing.message}</li>
-              ))}
-            </ul>
-          </div>,
-          { duration: 6000 },
-        );
-      } else {
+      const renderedIngredientError = showIngredientIssuesToast(errorData, 'Failed to start production');
+      if (!renderedIngredientError) {
         toast.error(errorData?.message || error.message || 'Failed to start production');
       }
     }

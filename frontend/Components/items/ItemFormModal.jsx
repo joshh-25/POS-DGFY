@@ -32,6 +32,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
     description: '',
     unit_of_measure: 'kg',
     cost_per_unit: 0,
+    vat_type: 'vatable',
     max_capacity: 0,
     current_stock: 0,
     fifo_enabled: false,
@@ -69,6 +70,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
         description: item.description || '',
         unit_of_measure: item.unit_of_measure || 'kg',
         cost_per_unit: parseNum(item.cost_per_unit, 0),
+        vat_type: item.vat_type || 'vatable',
         max_capacity: parseNum(item.max_capacity, 0),
         current_stock: parseNum(item.current_stock, 0),
         min_threshold: parseNum(item.min_threshold, 0),
@@ -136,6 +138,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
         description: '',
         unit_of_measure: 'kg',
         cost_per_unit: 0,
+        vat_type: 'vatable',
         max_capacity: 0,
         current_stock: 0,
         min_threshold: 0,
@@ -281,6 +284,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
       description: cleanedData.description || '',
       unit_of_measure: cleanedData.unit_of_measure || 'kg',
       cost_per_unit: toNumberOrNull(cleanedData.cost_per_unit),
+      vat_type: cleanedData.vat_type || 'vatable',
       max_capacity: Number(cleanedData.max_capacity) || null, // Allow null for drafts
       min_threshold: toNumberOrNull(cleanedData.min_threshold),
       purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
@@ -434,7 +438,7 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cost">Cost per Unit (₱)</Label>
                 <Input
@@ -444,6 +448,22 @@ export default function ItemFormModal({ item, open, onClose, onSave, onSaveDraft
                   value={formData.cost_per_unit ?? ''}
                   onChange={(e) => handleChange('cost_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>VAT Type</Label>
+                <Select
+                  value={formData.vat_type || 'vatable'}
+                  onValueChange={(v) => handleChange('vat_type', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vatable">Vatable (12%)</SelectItem>
+                    <SelectItem value="vat_exempt">VAT Exempt</SelectItem>
+                    <SelectItem value="zero_rated">Zero Rated</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="capacity">Max Capacity</Label>

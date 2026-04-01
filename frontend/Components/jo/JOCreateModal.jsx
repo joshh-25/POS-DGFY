@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,12 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertTriangle, CheckCircle, Package, Plus, Search } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
-import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { toast } from 'sonner';
-import { convertQuantity, areCompatible, normalizeUom, getUomShortLabel } from '../../src/utils/uomConverter';
+import { convertQuantity, areCompatible, normalizeUom } from '../../src/utils/uomConverter';
 
 /**
  * Calculate suggested production quantity to bring stock to healthy level
@@ -39,39 +38,22 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
   // If editing an existing JO, we operate in single-mode
   const isEditing = !!jobOrder;
   const isEditingDraft = jobOrder?.status === 'draft';
+  const initialProductIdNumber = !isEditing && initialProductId ? Number.parseInt(initialProductId, 10) : null;
+  const hasInitialProduct = Number.isInteger(initialProductIdNumber) && initialProductIdNumber > 0;
 
   // Selection state for new JOs (Bulk Mode)
-  const [selectedProductIds, setSelectedProductIds] = useState([]);
-  const [quantities, setQuantities] = useState({}); // { [productId]: quantity }
+  const [selectedProductIds, setSelectedProductIds] = useState(() => (
+    hasInitialProduct ? [initialProductIdNumber] : []
+  ));
+  const [quantities, setQuantities] = useState(() => (
+    hasInitialProduct ? { [initialProductIdNumber]: 1 } : {}
+  )); // { [productId]: quantity }
 
   // Selection state for editing (Single Mode)
-  const [singleSelectedProduct, setSingleSelectedProduct] = useState('');
-  const [singleQuantity, setSingleQuantity] = useState(1);
+  const [singleSelectedProduct] = useState(() => (isEditing ? jobOrder.product_id : ''));
+  const [singleQuantity, setSingleQuantity] = useState(() => (isEditing ? jobOrder.quantity_to_produce : 1));
 
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Initialize state when opening
-  useEffect(() => {
-    if (open) {
-      if (isEditing) {
-        setSingleSelectedProduct(jobOrder.product_id);
-        setSingleQuantity(jobOrder.quantity_to_produce);
-      } else {
-        if (initialProductId) {
-          const pid = parseInt(initialProductId);
-          setSelectedProductIds([pid]);
-          setQuantities({ [pid]: 1 });
-        } else {
-          setSelectedProductIds([]);
-          setQuantities({});
-        }
-      }
-      setIsDirty(false);
-      setSearchQuery('');
-    }
-  }, [open, jobOrder, isEditing, initialProductId]);
 
   // Identify low stock products (only if threshold is set)
   const lowStockProducts = useMemo(() => {
@@ -157,7 +139,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       return;
     }
 
-    const qty = parseInt(rawValue);
+    const qty = parseInt(rawValue, 10);
     // Only update if it's a valid number
     if (!isNaN(qty)) {
       setQuantities(prev => ({
@@ -253,6 +235,10 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       if (!singleSelectedProduct) return;
 
       const product = products.find(p => (p.id || p.item_id) === singleSelectedProduct);
+      if (!isDraft && (!product?.ingredients || product.ingredients.length === 0)) {
+        toast.error(`Cannot create job order for ${product?.name || 'this product'}: recipe ingredients are missing.`);
+        return;
+      }
       const ingredients = product?.ingredients?.map(ing => {
         const item = items.find(i => i.id === ing.item_id);
         const reqQty = ing.quantity * singleQuantity;
@@ -281,6 +267,18 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       if (selectedProductIds.length === 0) {
         toast.error("Please select at least one product");
         return;
+      }
+
+      if (!isDraft) {
+        const missingRecipeProducts = selectedProductIds
+          .map((pid) => products.find((p) => (p.id || p.item_id) === pid))
+          .filter((product) => !product?.ingredients || product.ingredients.length === 0);
+
+        if (missingRecipeProducts.length > 0) {
+          const names = missingRecipeProducts.map((p) => p?.name || 'Unknown Product').join(', ');
+          toast.error(`Cannot create job order. Missing recipe ingredients for: ${names}`);
+          return;
+        }
       }
 
       if (!isDraft && hasInsufficientStock) {
@@ -456,7 +454,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                       value={singleQuantity}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setSingleQuantity(val === '' ? '' : parseInt(val));
+                        setSingleQuantity(val === '' ? '' : parseInt(val, 10));
                       }}
                     />
                     {products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure && (

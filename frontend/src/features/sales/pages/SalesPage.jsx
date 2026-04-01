@@ -146,8 +146,9 @@ export default function SalesPage() {
               <option value="all">All Order Methods</option>
               <option value="dine_in">Dine In</option>
               <option value="takeout">Takeout</option>
+              <option value="pickup">Pickup</option>
               <option value="delivery">Delivery</option>
-              <option value="online">Online</option>
+              <option value="online">Online (Legacy)</option>
             </select>
             <select
               value={sortBy}

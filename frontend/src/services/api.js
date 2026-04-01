@@ -113,10 +113,12 @@ if (authChannel) {
 // Re-broadcast deliberate logout to other tabs.
 // authService.js dispatches 'auth:logout' locally; we forward it via BroadcastChannel
 // so other open tabs can show the session-expired banner.
-window.addEventListener('auth:logout', (event) => {
-  if (event?.detail?.broadcast === false) return;
-  authChannel?.postMessage({ type: 'auth:logout' });
-});
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:logout', (event) => {
+    if (event?.detail?.broadcast === false) return;
+    authChannel?.postMessage({ type: 'auth:logout' });
+  });
+}
 
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(

@@ -32,11 +32,13 @@ const VAT_TYPE_LABEL = {
 const ORDER_METHOD_FEE_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
+    pickup: 'Pickup Fee',
     delivery: 'Delivery Fee',
     online: 'Online Fee'
 };
-const ORDER_METHODS = ['dine_in', 'takeout', 'delivery', 'online'];
-const createDefaultOrderMethodFees = () => ORDER_METHODS.reduce((acc, method) => {
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
+const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_KEYS.reduce((acc, method) => {
     acc[method] = {
         enabled: false,
         amount: 0,
@@ -57,7 +59,7 @@ const normalizeOrderMethodFees = (rawFees) => {
     const defaults = createDefaultOrderMethodFees();
     if (!parsed || typeof parsed !== 'object') return defaults;
 
-    ORDER_METHODS.forEach((method) => {
+    ORDER_METHOD_FEE_KEYS.forEach((method) => {
         const entry = parsed?.[method];
         if (!entry || typeof entry !== 'object') return;
         const amount = Number(entry.amount);
@@ -96,6 +98,9 @@ const buildMissingFieldsMessage = (error) => {
     if (!Array.isArray(missingFields) || missingFields.length === 0) return null;
     return `Missing POS setup fields: ${missingFields.join(', ')}`;
 };
+const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
+    `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
+);
 
 const createIdempotencyKey = () => {
     if (window?.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -107,11 +112,16 @@ export default function POSCheckoutTerminal({
     canViewHistory = true,
     activeShiftId = null,
     onCheckoutCompleted = null,
-    checkoutBlockedReason = ''
+    checkoutBlockedReason = '',
+    viewMode: controlledViewMode = null,
+    onViewModeChange = null,
+    externalReceiptTransactionId = null,
+    onExternalReceiptHydrated = null,
+    externalHistoryQuery = '',
+    onExternalHistoryHydrated = null
 }) {
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
-    const canViewCatalog = Boolean(canViewHistory);
     const [viewMode, setViewMode] = useState('checkout');
     const [catalog, setCatalog] = useState([]);
     const [posFolders, setPosFolders] = useState([]);
@@ -145,9 +155,20 @@ export default function POSCheckoutTerminal({
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
     const [imagePreview, setImagePreview] = useState(null);
+    const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
+    const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
+
+    const setCurrentViewMode = useCallback((nextMode) => {
+        if (!isViewModeControlled) {
+            setViewMode(nextMode);
+        }
+        if (typeof onViewModeChange === 'function') {
+            onViewModeChange(nextMode);
+        }
+    }, [isViewModeControlled, onViewModeChange]);
 
     const loadCatalog = useCallback(async () => {
-        if (sessionLocked || !canViewCatalog) {
+        if (sessionLocked) {
             setCatalog([]);
             setCatalogLoading(false);
             return;
@@ -159,24 +180,14 @@ export default function POSCheckoutTerminal({
             const data = await fetchPosCatalog(params);
             setCatalog(data || []);
         } catch (error) {
-            if (error?.response?.status === 403) {
-                setCatalog([]);
-                return;
-            }
             toast.error(error?.response?.data?.message || 'Failed to load POS catalog');
         } finally {
             setCatalogLoading(false);
         }
-    }, [canViewCatalog, search, selectedFolderId, sessionLocked]);
+    }, [search, selectedFolderId, sessionLocked]);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
-            setPosFolders([]);
-            setPosFoldersLoading(false);
-            setPosFoldersError('');
-            return;
-        }
-        if (!canViewCatalog) {
             setPosFolders([]);
             setPosFoldersLoading(false);
             setPosFoldersError('');
@@ -197,18 +208,14 @@ export default function POSCheckoutTerminal({
             setPosFolders(visible);
         } catch (error) {
             setPosFolders([]);
-            if (error?.response?.status === 403) {
-                setPosFoldersError('POS view permission is required to load category filters.');
-                return;
-            }
             setPosFoldersError(error?.response?.data?.message || 'Failed to load POS categories.');
         } finally {
             setPosFoldersLoading(false);
         }
-    }, [canViewCatalog, sessionLocked]);
+    }, [sessionLocked]);
 
     const loadReceiptSettings = useCallback(async () => {
-        if (sessionLocked || !canViewCatalog) {
+        if (sessionLocked) {
             setReceiptSettings({});
             setDiscountProfiles([]);
             setOrderMethodFees(createDefaultOrderMethodFees());
@@ -232,7 +239,7 @@ export default function POSCheckoutTerminal({
             setDiscountProfiles([]);
             setOrderMethodFees(createDefaultOrderMethodFees());
         }
-    }, [canViewCatalog, sessionLocked]);
+    }, [sessionLocked]);
 
     const loadHistory = useCallback(async (page = 1) => {
         if (sessionLocked || !canViewHistory) {
@@ -274,18 +281,64 @@ export default function POSCheckoutTerminal({
         sessionLocked
     ]);
 
-    const openHistoryDetail = async (posTransactionId) => {
+    const openHistoryDetail = async (posTransactionId, { switchToReceipt = true } = {}) => {
         setHistoryDetailLoading(true);
         try {
             const detail = await fetchPosTransactionById(posTransactionId);
             setLastReceipt(detail || null);
-            setViewMode('receipt');
+            if (switchToReceipt) {
+                setCurrentViewMode('receipt');
+            }
         } catch (error) {
             toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load selected transaction');
         } finally {
             setHistoryDetailLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (sessionLocked) return;
+        const id = Number(externalReceiptTransactionId);
+        if (!Number.isInteger(id) || id <= 0) return;
+
+        let cancelled = false;
+        const loadExternalReceipt = async () => {
+            setHistoryDetailLoading(true);
+            try {
+                const detail = await fetchPosTransactionById(id);
+                if (cancelled) return;
+                setLastReceipt(detail || null);
+                setCurrentViewMode('receipt');
+            } catch (error) {
+                if (!cancelled) {
+                    toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load selected transaction');
+                }
+            } finally {
+                if (!cancelled) {
+                    setHistoryDetailLoading(false);
+                    if (typeof onExternalReceiptHydrated === 'function') {
+                        onExternalReceiptHydrated();
+                    }
+                }
+            }
+        };
+        loadExternalReceipt();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [externalReceiptTransactionId, onExternalReceiptHydrated, sessionLocked, setCurrentViewMode]);
+
+    useEffect(() => {
+        if (sessionLocked) return;
+        const query = String(externalHistoryQuery || '').trim();
+        if (!query) return;
+        setHistorySearch(query);
+        setCurrentViewMode('history');
+        if (typeof onExternalHistoryHydrated === 'function') {
+            onExternalHistoryHydrated();
+        }
+    }, [externalHistoryQuery, onExternalHistoryHydrated, sessionLocked, setCurrentViewMode]);
 
     useEffect(() => {
         if (sessionLocked) return;
@@ -302,16 +355,16 @@ export default function POSCheckoutTerminal({
     }, [loadCatalog, sessionLocked]);
 
     useEffect(() => {
-        if (!sessionLocked && viewMode === 'history') {
+        if (!sessionLocked && currentViewMode === 'history') {
             loadHistory(1);
         }
-    }, [viewMode, loadHistory, sessionLocked]);
+    }, [currentViewMode, loadHistory, sessionLocked]);
 
     useEffect(() => {
-        if (!canViewHistory && viewMode === 'history') {
-            setViewMode('checkout');
+        if (!canViewHistory && currentViewMode === 'history') {
+            setCurrentViewMode('checkout');
         }
-    }, [canViewHistory, viewMode]);
+    }, [canViewHistory, currentViewMode, setCurrentViewMode]);
 
     useEffect(() => {
         if (!selectedFolderId) return;
@@ -413,15 +466,50 @@ export default function POSCheckoutTerminal({
         () => round4(netItemsTotal + serviceFeeAmount),
         [netItemsTotal, serviceFeeAmount]
     );
+    const itemStockById = useMemo(
+        () => new Map((catalog || []).map((item) => {
+            const stock = Number(item?.current_stock);
+            return [
+                Number(item?.item_id),
+                Number.isFinite(stock) ? Math.max(0, stock) : 0
+            ];
+        })),
+        [catalog]
+    );
 
     const addToCart = (item) => {
+        const stockFromCatalog = itemStockById.get(Number(item.item_id));
+        const maxStock = Number.isFinite(stockFromCatalog)
+            ? stockFromCatalog
+            : Math.max(0, Number(item.current_stock) || 0);
+        if (maxStock <= 0) {
+            toast.error(buildStockExceededMessage({
+                itemName: item.name,
+                requestedQty: 1,
+                availableStock: maxStock,
+                unit: item.unit_of_measure || ''
+            }));
+            return;
+        }
+
         const defaultPrice = Number(item.default_sale_price ?? item.cost_per_unit ?? 0);
+        let stockWarning = '';
         setCart((prev) => {
             const existing = prev.find((line) => line.item_id === item.item_id);
             if (existing) {
+                const requestedQty = Number(existing.quantity) + 1;
+                const safeQty = round4(Math.min(requestedQty, maxStock));
+                if (requestedQty > maxStock) {
+                    stockWarning = buildStockExceededMessage({
+                        itemName: item.name,
+                        requestedQty,
+                        availableStock: maxStock,
+                        unit: item.unit_of_measure || ''
+                    });
+                }
                 return prev.map((line) => (
                     line.item_id === item.item_id
-                        ? { ...line, quantity: Number(line.quantity) + 1, vat_type: line.vat_type || item.vat_type || 'vatable' }
+                        ? { ...line, quantity: safeQty, vat_type: line.vat_type || item.vat_type || 'vatable' }
                         : line
                 ));
             }
@@ -430,7 +518,7 @@ export default function POSCheckoutTerminal({
                 {
                     item_id: item.item_id,
                     item_name: item.name,
-                    quantity: 1,
+                    quantity: round4(Math.min(1, maxStock)),
                     base_sale_price: defaultPrice,
                     sale_price: defaultPrice,
                     price_override_reason: '',
@@ -439,6 +527,9 @@ export default function POSCheckoutTerminal({
                 }
             ];
         });
+        if (stockWarning) {
+            toast.error(stockWarning);
+        }
     };
 
     const updateCartLine = (itemId, patch) => {
@@ -447,6 +538,34 @@ export default function POSCheckoutTerminal({
                 ? { ...line, ...patch }
                 : line
         )));
+    };
+    const updateCartQuantity = (itemId, requestedQuantity) => {
+        const parsedQty = Number(requestedQuantity);
+        if (!Number.isFinite(parsedQty)) return;
+
+        let stockWarning = '';
+        setCart((prev) => prev
+            .map((line) => {
+                if (line.item_id !== itemId) return line;
+                const maxStock = itemStockById.get(Number(itemId));
+                const safeMax = Number.isFinite(maxStock) ? maxStock : Number.POSITIVE_INFINITY;
+                const safeQty = round4(Math.max(0, Math.min(parsedQty, safeMax)));
+                if (parsedQty > safeMax) {
+                    stockWarning = buildStockExceededMessage({
+                        itemName: line.item_name,
+                        requestedQty: parsedQty,
+                        availableStock: safeMax,
+                        unit: line.unit_of_measure || ''
+                    });
+                }
+                if (safeQty <= 0) return null;
+                return { ...line, quantity: safeQty };
+            })
+            .filter(Boolean));
+
+        if (stockWarning) {
+            toast.error(stockWarning);
+        }
     };
 
     const removeCartLine = (itemId) => {
@@ -529,24 +648,23 @@ export default function POSCheckoutTerminal({
                 <div className="flex flex-wrap items-center gap-2">
                 <Button
                     type="button"
-                    variant={viewMode === 'checkout' ? 'default' : 'outline'}
-                    onClick={() => setViewMode('checkout')}
+                    variant={currentViewMode === 'checkout' ? 'default' : 'outline'}
+                    onClick={() => setCurrentViewMode('checkout')}
                 >
                     Checkout
                 </Button>
                 <Button
                     type="button"
-                    variant={viewMode === 'history' ? 'default' : 'outline'}
-                    onClick={() => setViewMode('history')}
+                    variant={currentViewMode === 'history' ? 'default' : 'outline'}
+                    onClick={() => setCurrentViewMode('history')}
                     disabled={!canViewHistory}
                 >
                     History
                 </Button>
                 <Button
                     type="button"
-                    variant={viewMode === 'receipt' ? 'default' : 'outline'}
-                    onClick={() => setViewMode('receipt')}
-                    disabled={!lastReceipt}
+                    variant={currentViewMode === 'receipt' ? 'default' : 'outline'}
+                    onClick={() => setCurrentViewMode('receipt')}
                 >
                     Receipt Preview
                 </Button>
@@ -556,7 +674,7 @@ export default function POSCheckoutTerminal({
                 </p>
             </div>
 
-            {viewMode === 'history' && (
+            {currentViewMode === 'history' && (
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                         <div>
@@ -597,11 +715,12 @@ export default function POSCheckoutTerminal({
                             onChange={(event) => setHistoryOrderMethod(event.target.value)}
                             className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
                         >
-                            <option value="all">All Order Methods</option>
-                            <option value="dine_in">Dine In</option>
-                            <option value="takeout">Takeout</option>
-                            <option value="delivery">Delivery</option>
-                            <option value="online">Online</option>
+                                <option value="all">All Order Methods</option>
+                                <option value="dine_in">Dine In</option>
+                                <option value="takeout">Takeout</option>
+                                <option value="pickup">Pickup</option>
+                                <option value="delivery">Delivery</option>
+                                <option value="online">Online (Legacy)</option>
                         </select>
                         <Input
                             type="number"
@@ -650,7 +769,11 @@ export default function POSCheckoutTerminal({
                                         <tr key={row.pos_transaction_id} className="border-b border-slate-100">
                                             <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
                                             <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
-                                            <td className="py-2 text-slate-600">{row.cashier?.username || '-'}</td>
+                                            <td className="py-2 text-slate-600">
+                                                {row.cashier?.username
+                                                    || row.acceptedByUser?.username
+                                                    || (row.order_source === 'online_store' ? 'Awaiting Staff' : '-')}
+                                            </td>
                                             <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
                                             <td className="py-2 text-slate-600">
                                                 {row.discount_label_snapshot
@@ -704,9 +827,9 @@ export default function POSCheckoutTerminal({
                 </section>
             )}
 
-            {(viewMode === 'checkout' || viewMode === 'receipt') && (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            <section className="xl:col-span-9 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+            {currentViewMode === 'checkout' && (
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:h-[calc(100vh-13.5rem)] xl:min-h-[40rem] xl:max-h-[calc(100vh-13.5rem)]">
+            <section className="xl:col-span-9 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden">
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
                     <div>
                         <h2 className="text-xl font-bold text-slate-900">POS Catalog</h2>
@@ -717,15 +840,13 @@ export default function POSCheckoutTerminal({
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search POS-visible items..."
                         className="sm:max-w-xs"
-                        disabled={!canViewCatalog}
                     />
                 </div>
-
-                {!canViewCatalog && (
-                    <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        POS view permission is required to load catalog data.
-                    </p>
-                )}
+                <div className="mb-2 flex justify-end">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Scroll Zone: Catalog
+                    </span>
+                </div>
 
                 <div className="mb-4">
                     <div className="flex items-center justify-between gap-2">
@@ -800,26 +921,39 @@ export default function POSCheckoutTerminal({
                     )}
                 </div>
 
-                {!canViewCatalog ? (
-                    <p className="text-sm text-slate-600">Catalog data is hidden for this account.</p>
-                ) : catalogLoading ? (
+                <div className="relative flex-1 min-h-0">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
+                    <div className="h-full overflow-y-auto pr-1 xl:overscroll-contain">
+                {catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {catalog.map((item) => (
-                            <div
-                                key={item.item_id}
-                                onClick={() => addToCart(item)}
-                                onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault();
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
+                        {catalog.map((item) => {
+                            const isOutOfStock = Number(item.current_stock || 0) <= 0;
+                            return (
+                                <div
+                                    key={item.item_id}
+                                    onClick={() => {
+                                        if (isOutOfStock) return;
                                         addToCart(item);
-                                    }
-                                }}
-                                role="button"
-                                tabIndex={0}
-                                className="text-left border border-slate-200 rounded-xl p-3 hover:-translate-y-0.5 hover:border-teal-400 hover:bg-teal-50 transition-all shadow-sm hover:shadow-md cursor-pointer"
-                            >
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (isOutOfStock) return;
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            addToCart(item);
+                                        }
+                                    }}
+                                    role={isOutOfStock ? 'group' : 'button'}
+                                    tabIndex={isOutOfStock ? -1 : 0}
+                                    aria-disabled={isOutOfStock}
+                                    className={`text-left border border-slate-200 rounded-xl p-3 transition-all shadow-sm ${
+                                        isOutOfStock
+                                            ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
+                                            : 'cursor-pointer hover:-translate-y-0.5 hover:border-teal-400 hover:bg-teal-50 hover:shadow-md'
+                                    }`}
+                                >
                                 <div className="mb-2">
                                     <button
                                         type="button"
@@ -847,7 +981,14 @@ export default function POSCheckoutTerminal({
                                         )}
                                     </button>
                                 </div>
-                                <p className="text-lg font-semibold text-slate-900 leading-tight">{item.name}</p>
+                                <div className="flex items-start justify-between gap-2">
+                                    <p className="text-lg font-semibold text-slate-900 leading-tight">{item.name}</p>
+                                    {isOutOfStock && (
+                                        <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+                                            Out of stock
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-xs font-semibold tracking-wide bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500 bg-clip-text text-transparent">
                                     {item.sku_code}
                                 </p>
@@ -860,8 +1001,14 @@ export default function POSCheckoutTerminal({
                                 <p className="mt-1 text-[11px] font-semibold bg-gradient-to-r from-indigo-700 via-sky-700 to-cyan-700 bg-clip-text text-transparent">
                                     VAT: {VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}
                                 </p>
+                                {isOutOfStock && (
+                                    <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                        Visible in catalog but unavailable for checkout.
+                                    </p>
+                                )}
                             </div>
-                        ))}
+                            );
+                        })}
                         {catalog.length === 0 && (
                             <p className="text-sm text-slate-600 col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
                                 No POS-visible items found. Enable items from Inventory first.
@@ -869,11 +1016,22 @@ export default function POSCheckoutTerminal({
                         )}
                     </div>
                 )}
+                    </div>
+                </div>
             </section>
 
-            <section className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+            <section className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden">
                 <h2 className="text-xl font-bold text-slate-900 mb-1">Current Sale</h2>
                 <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
+                <div className="mb-2 flex justify-end">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Scroll Zone: Current Sale
+                    </span>
+                </div>
+                <div className="relative flex-1 min-h-0">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
+                    <div className="h-full overflow-y-auto pr-1 xl:overscroll-contain">
                 <div className="space-y-3 mb-4">
                     <label className="text-xs text-slate-500 block">
                         Order Method
@@ -884,8 +1042,8 @@ export default function POSCheckoutTerminal({
                         >
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
+                            <option value="pickup">Pickup</option>
                             <option value="delivery">Delivery</option>
-                            <option value="online">Online</option>
                         </select>
                     </label>
 
@@ -925,7 +1083,7 @@ export default function POSCheckoutTerminal({
                     )}
                 </div>
 
-                <div className="space-y-3 max-h-72 overflow-auto mb-4">
+                <div className="space-y-3 mb-4">
                     {cart.map((line) => (
                         <div key={line.item_id} className="border border-slate-200 rounded-lg p-3">
                             <div className="flex items-center justify-between gap-2">
@@ -942,7 +1100,7 @@ export default function POSCheckoutTerminal({
                                         min="0.0001"
                                         step="0.0001"
                                         value={line.quantity}
-                                        onChange={(event) => updateCartLine(line.item_id, { quantity: Number(event.target.value || 0) })}
+                                        onChange={(event) => updateCartQuantity(line.item_id, event.target.value || 0)}
                                     />
                                 </label>
                                 <label className="text-xs text-slate-500">
@@ -1099,12 +1257,38 @@ export default function POSCheckoutTerminal({
                         Print Last Receipt
                     </Button>
                 </div>
+                    </div>
+                </div>
             </section>
 
-            <section className="xl:col-span-3">
-                <ReceiptPrintView transaction={lastReceipt} businessSettings={receiptSettings} />
-            </section>
                 </div>
+            )}
+
+            {currentViewMode === 'receipt' && (
+                <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div className="mb-4">
+                        <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
+                        <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
+                    </div>
+                    {lastReceipt ? (
+                        <ReceiptPrintView transaction={lastReceipt} businessSettings={receiptSettings} />
+                    ) : (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                            <p className="text-base font-semibold text-slate-900">No receipt selected yet.</p>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Open transaction history and select a record to load its receipt preview.
+                            </p>
+                            <Button
+                                type="button"
+                                className="mt-4"
+                                onClick={() => setCurrentViewMode('history')}
+                                disabled={!canViewHistory}
+                            >
+                                Go to History
+                            </Button>
+                        </div>
+                    )}
+                </section>
             )}
 
             {imagePreview && (

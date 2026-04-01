@@ -59,6 +59,16 @@ export const fetchTerminalTodayDashboard = async (params = {}) => {
     return response.data?.data;
 };
 
+export const fetchIncomingOnlineOrders = async (params = {}) => {
+    const response = await api.get('/pos/incoming-orders', { params });
+    return response.data?.data;
+};
+
+export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) => {
+    const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload);
+    return response.data?.data;
+};
+
 export default {
     fetchPosCatalog,
     createPosCheckout,
@@ -70,5 +80,7 @@ export default {
     openTerminalShift,
     recordCashDrawerEvent,
     closeTerminalShift,
-    fetchTerminalTodayDashboard
+    fetchTerminalTodayDashboard,
+    fetchIncomingOnlineOrders,
+    updateOnlineOrderStatus
 };

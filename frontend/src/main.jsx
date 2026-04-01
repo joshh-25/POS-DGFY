@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense } from 'react'
+﻿import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
@@ -7,12 +7,13 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PermissionProvider } from './store/PermissionContext.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import api from './services/api.js'
+import { clearClientSession } from './services/sessionCleanup.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
-// Lazy-loaded pages — each page is a separate JS chunk downloaded on first visit
+// Lazy-loaded pages â€” each page is a separate JS chunk downloaded on first visit
 const Dashboard = lazy(() => import('../Pages/Dashboard.jsx'))
 const Items = lazy(() => import('./features/inventory/pages/ItemsPage.jsx'))
 const Suppliers = lazy(() => import('../Pages/Suppliers.jsx'))
@@ -48,19 +49,32 @@ function App() {
    */
   useEffect(() => {
     const validateCompanyToken = async () => {
+      const authToken = localStorage.getItem('authToken');
+      const refreshToken = localStorage.getItem('refreshToken');
       const companyToken = localStorage.getItem('companyToken');
-      if (companyToken) {
-        try {
-          // Check if token is still valid. 
-          // Endpoint returns 404 if invalid/expired
-          await api.get(`/auth/validate-token/${companyToken}`);
-        } catch (error) {
-          if (error.response?.status === 404 || error.response?.status === 400) {
-            console.warn('⚠️ [Auth] Stored company token is invalid, clearing storage.');
-            localStorage.removeItem('companyToken');
-            // If they are on a protected route that relies on this, 
-            // the interceptor or protected route logic will handle the redirect.
-          }
+
+      if ((authToken || refreshToken) && !companyToken) {
+        clearClientSession({
+          reason: 'tenant_context_missing',
+          broadcast: true,
+          emitAuthEvents: true,
+          redirectTo: '/login?reason=tenant_context_missing'
+        });
+        return;
+      }
+
+      if (!companyToken) return;
+
+      try {
+        await api.get(`/auth/validate-token/${companyToken}`);
+      } catch (error) {
+        if (error.response?.status === 404 || error.response?.status === 400) {
+          clearClientSession({
+            reason: 'tenant_context_invalid',
+            broadcast: true,
+            emitAuthEvents: true,
+            redirectTo: '/login?reason=tenant_context_invalid'
+          });
         }
       }
     };
@@ -206,4 +220,5 @@ ReactDOM.createRoot(rootElement).render(
     </ErrorBoundary>
   </React.StrictMode>,
 )
+
 
