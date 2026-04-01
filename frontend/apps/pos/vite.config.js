@@ -5,12 +5,25 @@ import path from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = ['pos.surebizcorp.com', 'localhost', '127.0.0.1'];
 
 export default defineConfig({
   root: __dirname,
   plugins: [react()],
+  resolve: {
+    alias: [
+      { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
+      { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },
+      { find: '@/Pages', replacement: path.resolve(frontendRoot, 'Pages') },
+      { find: '@/Entities', replacement: path.resolve(frontendRoot, 'Entities') },
+      { find: '@/lib', replacement: path.resolve(frontendRoot, 'src/lib') },
+      { find: '@/services', replacement: path.resolve(frontendRoot, 'src/services') },
+      { find: '@', replacement: frontendRoot }
+    ],
+    extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
+  },
   server: {
     port: 5174,
     allowedHosts,
