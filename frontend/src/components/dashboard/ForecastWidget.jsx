@@ -15,7 +15,16 @@ export default function ForecastWidget() {
                 const response = await getStockForecast(30);
                 setForecasts(response.data.forecasts || []);
             } catch (err) {
-                console.error('Failed to load forecasts:', err);
+                const status = err?.response?.status;
+                if (status === 401) {
+                    setError('Session expired. Please login again.');
+                    return;
+                }
+                if (status === 403) {
+                    setError('Forecast access is restricted for this account.');
+                    return;
+                }
+                console.warn('Failed to load forecasts:', err);
                 setError('Failed to load forecast data');
             } finally {
                 setLoading(false);

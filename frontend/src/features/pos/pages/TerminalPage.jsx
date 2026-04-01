@@ -218,8 +218,12 @@ export default function TerminalPage() {
   }, [hydrateUser]);
 
   useEffect(() => {
-    hydrateTerminalMeta();
-  }, [hydrateTerminalMeta]);
+    if (!locked) {
+      hydrateTerminalMeta();
+      return;
+    }
+    setTerminalMeta((prev) => ({ ...prev, loading: false }));
+  }, [hydrateTerminalMeta, locked]);
 
   useEffect(() => {
     if (!locked) {
@@ -449,6 +453,7 @@ export default function TerminalPage() {
         <div className={`transition ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}>
           <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
             <POSCheckoutTerminal
+              sessionLocked={locked}
               canViewHistory={canViewPos}
               activeShiftId={activeShiftId}
               checkoutBlockedReason={checkoutBlockedReason}

@@ -44,6 +44,7 @@ const buildWelcomeMessage = () => ({
 export default function AiChat() {
     const navigate = useNavigate();
     const { can, tenantPlan, loading } = usePermission();
+    const hasAiChatAccess = tenantPlan === 'premium' && can('ai:chat');
 
     // State management
     const [messages, setMessages] = useState([]);
@@ -86,9 +87,16 @@ export default function AiChat() {
             const response = await aiService.getConversations();
             setConversations(response.data?.conversations || []);
         } catch (err) {
-            console.error('Failed to load conversations:', err);
+            const status = err?.response?.status;
+            if (status === 403) {
+                setConversations([]);
+                return;
+            }
+            if (status !== 429) {
+                console.warn('Failed to load conversations:', err);
+            }
             if (showErrorToast) {
-                const isRateLimited = err?.response?.status === 429;
+                const isRateLimited = status === 429;
                 const message = isRateLimited
                     ? getRateLimitMessage(err, 'Recent conversations are temporarily rate-limited.')
                     : 'Failed to refresh recent conversations.';
@@ -101,10 +109,13 @@ export default function AiChat() {
 
     // Load conversations when permission checks pass
     useEffect(() => {
-        if (!loading && tenantPlan === 'premium') {
+        if (!loading && hasAiChatAccess) {
             loadConversations();
+            return;
         }
-    }, [loading, tenantPlan, loadConversations]);
+        setConversations([]);
+        setIsLoadingConversations(false);
+    }, [hasAiChatAccess, loading, loadConversations]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -256,6 +267,10 @@ export default function AiChat() {
     };
 
     const handleSendMessage = async () => {
+        if (!hasAiChatAccess) {
+            toast.error('AI chat access is restricted for this account.');
+            return;
+        }
         if (!inputValue.trim() || isTyping) return;
 
         // Build file metadata for display in chat bubble
@@ -854,7 +869,7 @@ export default function AiChat() {
             )}
 
             {/* Premium Lock Overlay */}
-            {tenantPlan !== 'premium' && (
+            {!hasAiChatAccess && (
                 <div className="absolute inset-0 z-[60] backdrop-blur-sm bg-white/60 flex items-center justify-center">
                     <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl shadow-2xl border border-slate-200 text-center space-y-6">
                         <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20 transform rotate-3">
@@ -862,19 +877,25 @@ export default function AiChat() {
                         </div>
 
                         <div className="space-y-2">
-                            <h2 className="text-2xl font-bold text-slate-900">Premium Feature</h2>
+                            <h2 className="text-2xl font-bold text-slate-900">
+                                {tenantPlan !== 'premium' ? 'Premium Feature' : 'AI Access Restricted'}
+                            </h2>
                             <p className="text-slate-600">
-                                The AI Assistant is available exclusively for Premium plan subscribers. Upgrade your workspace to unlock intelligent inventory management.
+                                {tenantPlan !== 'premium'
+                                    ? 'The AI Assistant is available exclusively for Premium plan subscribers. Upgrade your workspace to unlock intelligent inventory management.'
+                                    : 'Your current role does not include AI chat permission. Contact your admin to request access.'}
                             </p>
                         </div>
 
                         <div className="flex flex-col gap-3">
-                            <Button
-                                onClick={() => navigate('/settings/billing')}
-                                className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/20 h-11 text-base font-medium"
-                            >
-                                Upgrade to Premium
-                            </Button>
+                            {tenantPlan !== 'premium' && (
+                                <Button
+                                    onClick={() => navigate('/settings/billing')}
+                                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/20 h-11 text-base font-medium"
+                                >
+                                    Upgrade to Premium
+                                </Button>
+                            )}
                             <Button
                                 variant="ghost"
                                 onClick={() => navigate('/dashboard')}

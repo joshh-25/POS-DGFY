@@ -103,6 +103,7 @@ const createIdempotencyKey = () => {
 };
 
 export default function POSCheckoutTerminal({
+    sessionLocked = false,
     canViewHistory = true,
     activeShiftId = null,
     onCheckoutCompleted = null,
@@ -145,6 +146,11 @@ export default function POSCheckoutTerminal({
     const [imagePreview, setImagePreview] = useState(null);
 
     const loadCatalog = useCallback(async () => {
+        if (sessionLocked) {
+            setCatalog([]);
+            setCatalogLoading(false);
+            return;
+        }
         setCatalogLoading(true);
         try {
             const params = { search: search || '', limit: 200 };
@@ -156,9 +162,15 @@ export default function POSCheckoutTerminal({
         } finally {
             setCatalogLoading(false);
         }
-    }, [search, selectedFolderId]);
+    }, [search, selectedFolderId, sessionLocked]);
 
     const loadPosFolders = useCallback(async () => {
+        if (sessionLocked) {
+            setPosFolders([]);
+            setPosFoldersLoading(false);
+            setPosFoldersError('');
+            return;
+        }
         setPosFoldersLoading(true);
         setPosFoldersError('');
         try {
@@ -178,9 +190,15 @@ export default function POSCheckoutTerminal({
         } finally {
             setPosFoldersLoading(false);
         }
-    }, []);
+    }, [sessionLocked]);
 
     const loadReceiptSettings = useCallback(async () => {
+        if (sessionLocked) {
+            setReceiptSettings({});
+            setDiscountProfiles([]);
+            setOrderMethodFees(createDefaultOrderMethodFees());
+            return;
+        }
         try {
             const allSettings = await getAllSettings();
             setReceiptSettings({
@@ -199,10 +217,10 @@ export default function POSCheckoutTerminal({
             setDiscountProfiles([]);
             setOrderMethodFees(createDefaultOrderMethodFees());
         }
-    }, []);
+    }, [sessionLocked]);
 
     const loadHistory = useCallback(async (page = 1) => {
-        if (!canViewHistory) {
+        if (sessionLocked || !canViewHistory) {
             setHistoryRows([]);
             setHistoryPagination(null);
             return;
@@ -237,7 +255,8 @@ export default function POSCheckoutTerminal({
         historyOrderMethod,
         historyPaymentType,
         historySearch,
-        historyStatus
+        historyStatus,
+        sessionLocked
     ]);
 
     const openHistoryDetail = async (posTransactionId) => {
@@ -254,22 +273,24 @@ export default function POSCheckoutTerminal({
     };
 
     useEffect(() => {
+        if (sessionLocked) return;
         loadReceiptSettings();
         loadPosFolders();
-    }, [loadReceiptSettings, loadPosFolders]);
+    }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
 
     useEffect(() => {
+        if (sessionLocked) return undefined;
         const timeout = setTimeout(() => {
             loadCatalog();
         }, 250);
         return () => clearTimeout(timeout);
-    }, [loadCatalog]);
+    }, [loadCatalog, sessionLocked]);
 
     useEffect(() => {
-        if (viewMode === 'history') {
+        if (!sessionLocked && viewMode === 'history') {
             loadHistory(1);
         }
-    }, [viewMode, loadHistory]);
+    }, [viewMode, loadHistory, sessionLocked]);
 
     useEffect(() => {
         if (!canViewHistory && viewMode === 'history') {

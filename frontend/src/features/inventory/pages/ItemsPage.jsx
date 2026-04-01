@@ -62,6 +62,8 @@ export default function Items() {
   const { createItemDraft } = useInventoryCreateItemDraft();
   const {
     can,
+    tenantPlan,
+    loading: permissionsLoading,
     canCreate,
     canEdit,
     canDelete: canDeletePermission,
@@ -167,13 +169,15 @@ export default function Items() {
   }, []);
 
   const canConfigurePosCatalog = can('items:edit');
+  const canViewPosCatalog = can('pos:view');
+  const shouldLoadPosCatalogOverrides = !permissionsLoading && tenantPlan === 'premium' && canViewPosCatalog;
 
   const getDefaultPosVisibility = useCallback((item) => (
     item?.category === 'product' && item?.product_type === 'finished_goods'
   ), []);
 
   const fetchPosOverrides = useCallback(async () => {
-    if (!canConfigurePosCatalog) {
+    if (!shouldLoadPosCatalogOverrides) {
       setPosCatalogOverrides({});
       return;
     }
@@ -186,9 +190,13 @@ export default function Items() {
       });
       setPosCatalogOverrides(map);
     } catch (error) {
-      console.error('Failed to load POS catalog overrides:', error);
+      if (error?.response?.status === 403) {
+        setPosCatalogOverrides({});
+        return;
+      }
+      console.warn('Failed to load POS catalog overrides:', error);
     }
-  }, [canConfigurePosCatalog]);
+  }, [shouldLoadPosCatalogOverrides]);
 
   useEffect(() => {
     fetchPosOverrides();
