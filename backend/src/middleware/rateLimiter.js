@@ -12,6 +12,8 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const adminAuthWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const adminAuthMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
 const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
@@ -342,6 +344,39 @@ export const authLimiter = rateLimit({
   },
 });
 
+// Strict admin auth limiter. Uses ip + username keying to reduce brute-force risk.
+export const adminAuthLimiter = rateLimit({
+  windowMs: adminAuthWindowMs,
+  max: adminAuthMaxRequests,
+  message: createRateLimitError('Too many admin authentication attempts, please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('admin_auth'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const username = normalizeEmail(req.body?.username);
+    return username ? `admin_auth:${ip}:${username}` : `admin_auth:${ip}:unknown-username`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many admin authentication attempts, please try again later.',
+      'admin_auth',
+      'ip_username'
+    );
+    logRateLimitEvent(req, 'admin_auth', response.retryAfterSeconds, 'ip_username');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Store auth limiter (public storefront register/login)
 export const storeAuthLimiter = rateLimit({
   windowMs: storeAuthWindowMs,
@@ -542,6 +577,7 @@ export const posLimiter = rateLimit({
 export default {
   general: generalLimiter,
   auth: authLimiter,
+  adminAuth: adminAuthLimiter,
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,

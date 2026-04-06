@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shouldShowMigrateToPayMongoSection } from '../../utils/subscriptionUi.js';
 
 describe('Settings subscription visibility helpers', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_SUBSCRIPTIONS_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('shows migrate section for standard manual tenants when user is master admin', () => {
     const visible = shouldShowMigrateToPayMongoSection({
       company: { plan: 'standard', payment_method: 'manual' },
@@ -32,6 +40,16 @@ describe('Settings subscription visibility helpers', () => {
   it('hides migrate section when tenant already uses PayMongo', () => {
     const visible = shouldShowMigrateToPayMongoSection({
       company: { plan: 'standard', payment_method: 'paymongo' },
+      isMasterAdmin: true
+    });
+
+    expect(visible).toBe(false);
+  });
+
+  it('hides migrate section when subscriptions are disabled', () => {
+    vi.stubEnv('VITE_SUBSCRIPTIONS_ENABLED', 'false');
+    const visible = shouldShowMigrateToPayMongoSection({
+      company: { plan: 'standard', payment_method: 'manual' },
       isMasterAdmin: true
     });
 

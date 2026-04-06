@@ -1,6 +1,6 @@
 # Non-Production Gap Closure Checklist (POS)
 
-Date: 2026-03-30  
+Date: 2026-03-31  
 Status: in_progress  
 Scope: local/staging-like validation only (no production rollout).
 
@@ -17,6 +17,9 @@ Canonical readiness source:
 - `missing_columns=0`
 
 ## 2) Local Endpoint Smoke
+
+Precondition:
+1. Backend API is running locally (for example `npm run dev:backend`).
 
 1. Run `npm run smoke:pos-local`
 2. Expect all checks `PASS` including:
@@ -51,32 +54,32 @@ Canonical readiness source:
 
 Keep status as `in_progress` until all 4 sections above are complete with evidence.
 
-## 6) Latest Evidence Run (2026-03-30)
+## 6) Latest Evidence Run (2026-04-03)
 
-Automated verification completed on 2026-03-30 with the following outcomes:
+Automated verification completed on 2026-04-03 with the following outcomes:
 
-1. `npm run doctor:runtime` -> PASS
+1. `npm run install:all` -> PASS
+2. `npm --prefix backend run migrate` -> PASS
+   - `No migrations were executed, database schema was already up to date`
+3. `npm run doctor:runtime` -> PASS
    - `status=healthy`
    - `missing_migrations=0`
    - `missing_columns=0`
-2. `npm run smoke:pos-local` -> PASS
-   - `/health` 200
-   - `/api/v1/auth/validate-token/:token` 200
-   - `/api/v1/auth/login` 200
-   - `/api/v1/users/me` 200
-   - `/api/v1/dashboard/stats` 200
-   - `/api/v1/dashboard/low-stock` 200
-   - `/api/v1/purchase-orders` 200
-   - `/api/v1/suppliers` 200
-   - `/api/v1/alerts` 200
-   - `/api/v1/pos/catalog` 200
-   - `/api/v1/sales/transactions` 200
-3. `npm run check:architecture` -> PASS
-4. `npm run lint:docs` -> PASS
-5. `cd backend && npm test` -> PASS
-6. `cd frontend && npm test` -> PASS
-7. `npm run build` -> PASS
-8. `npm run check:frontend-budgets` -> PASS
+4. `npm run smoke:pos-local` -> PASS
+   - Precondition satisfied: backend server started before invoking smoke script
+   - All checks returned `PASS` (`/health`, auth token validation, login, users/me, dashboard stats, dashboard low-stock, purchase-orders, suppliers, alerts, pos/catalog, sales/transactions)
+5. `npm run check:architecture` -> PASS
+6. `npm run lint:docs` -> PASS
+7. `cd backend && npm run lint` -> PASS
+8. `cd frontend && npm run lint` -> PASS
+9. `cd backend && npm test` -> PASS (`147 passed suites / 149 total`, `621 passed tests / 624 total`)
+10. `cd frontend && npm test -- --run` -> PASS (`17 files / 64 tests`)
+11. `npm run build:frontend` -> PASS
+12. `npm run build:skupervisor` -> PASS
+13. `npm run build:pos` -> PASS
+14. `npm run build:store` -> PASS
+15. `npm run check:frontend-budgets` -> PASS
+16. `npm --prefix backend run audit:indexes` -> PASS (`status=healthy`, `missing=0`)
 
 Remaining blocker before closure:
 

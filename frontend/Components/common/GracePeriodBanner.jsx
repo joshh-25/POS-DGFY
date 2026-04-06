@@ -3,9 +3,11 @@ import { AlertTriangle } from 'lucide-react';
 import useStore from '../../src/store/useStore.js';
 
 export default function GracePeriodBanner() {
+  const paymentsEnabled = import.meta.env.VITE_PAYMENTS_ENABLED === 'true';
   const { currentUser } = useStore();
   const company = currentUser?.company;
 
+  if (!paymentsEnabled) return null;
   if (!company || company.subscription_status !== 'past_due') return null;
 
   const graceEnd = company.grace_period_end

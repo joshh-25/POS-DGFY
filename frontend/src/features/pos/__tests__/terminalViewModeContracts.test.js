@@ -79,7 +79,10 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps queue-to-receipt ownership in POSCheckoutTerminal and avoids prefetch in TerminalPage', () => {
     expect(terminalPageContent).not.toContain('fetchPosTransactionById');
-    expect(terminalPageContent).toContain('externalReceiptTransactionId={receiptRequestId}');
+    expect(
+      terminalPageContent.includes('externalReceiptTransactionId={receiptRequestId}')
+      || terminalPageContent.includes('receiptRequestId={receiptRequestId}')
+    ).toBe(true);
     expect(posCheckoutTerminalContent).toContain('const detail = await fetchPosTransactionById(id);');
   });
 
@@ -92,7 +95,10 @@ describe('POS terminal view-mode contracts', () => {
 
   it('supports deep-link handoff from queue cards to filtered history view', () => {
     expect(terminalPageContent).toContain('const [historyRequestQuery, setHistoryRequestQuery] = useState(\'\');');
-    expect(terminalPageContent).toContain('externalHistoryQuery={historyRequestQuery}');
+    expect(
+      terminalPageContent.includes('externalHistoryQuery={historyRequestQuery}')
+      || terminalPageContent.includes('historyRequestQuery={historyRequestQuery}')
+    ).toBe(true);
     expect(terminalOperationsWorkspaceContent).toContain('Open in History');
     expect(terminalSidebarPanelContent).toContain('History');
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');

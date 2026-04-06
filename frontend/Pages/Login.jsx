@@ -30,7 +30,6 @@ export default function Login() {
   const [tenantStatus, setTenantStatus] = useState(null); // 'inactive' | 'rejected' | null
   const [rejectionReason, setRejectionReason] = useState('');
   const [identifiedToken, setIdentifiedToken] = useState('');
-  const [identifiedPlan, setIdentifiedPlan] = useState('standard');
   const [isActioning, setIsActioning] = useState(false);
   const [actionSent, setActionSent] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -69,7 +68,6 @@ export default function Login() {
     setTenantStatus(null);
     setRejectionReason('');
     setIdentifiedToken('');
-    setIdentifiedPlan('standard');
     setActionSent(false);
     setActionError('');
     let resolvedToken = null;
@@ -96,7 +94,6 @@ export default function Login() {
       } else {
         resolvedToken = data.company_token;
         setIdentifiedToken(data.company_token);
-        setIdentifiedPlan(data.plan || 'standard');
         setError('');
         setFormData(prev => ({ ...prev, companyToken: data.company_token }));
         setShowTokenField(false);
@@ -312,7 +309,6 @@ export default function Login() {
                       const selected = availableTenants.find(t => t.company_token === value);
                       if (selected) {
                         setIdentifiedToken(value);
-                        setIdentifiedPlan(selected.plan || 'standard');
                         setActionSent(false);
                         setActionError('');
                         if (selected.status === 'inactive') {
@@ -395,16 +391,17 @@ export default function Login() {
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-amber-800">Account Inactive</p>
                   <p className="text-xs text-amber-700 mt-1">
-                    Your company account is currently inactive. Reactivate or request admin access.
+                    Your company account is currently inactive. Subscription reactivation is currently unavailable.
                   </p>
                   <Button
                     type="button"
                     size="sm"
-                    className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
-                    onClick={() => navigate(`/reactivate?token=${identifiedToken}&plan=${identifiedPlan}`)}
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => navigate('/register-company')}
                   >
                     <ArrowRight className="w-3 h-3 mr-1" />
-                    Reactivate Account
+                    Contact Your Administrator
                   </Button>
                 </div>
               </div>

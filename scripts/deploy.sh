@@ -82,7 +82,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --verify              Run deep AI verification after deploy"
             echo ""
             echo "Environment overrides:"
-            echo "  DEPLOY_PAYMENT_PROVIDER=auto|paymongo|paypal|dual"
+            echo "  PAYMENTS_ENABLED=true|false (read from backend/.env; default false)"
             echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
@@ -594,42 +594,49 @@ validate_paymongo_env() {
     log "PayMongo env validation passed (mode=$paymongo_mode)."
 }
 
-PAYMENT_PROVIDER_MODE_RAW="${DEPLOY_PAYMENT_PROVIDER:-auto}"
-PAYMENT_PROVIDER_MODE="$(echo "$PAYMENT_PROVIDER_MODE_RAW" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+PAYMENTS_ENABLED_RAW="$(env_value "$ENV_FILE" "PAYMENTS_ENABLED")"
+PAYMENTS_ENABLED_NORMALIZED="$(echo "${PAYMENTS_ENABLED_RAW:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 
-HAS_PAYMONGO_CONFIG="0"
-HAS_PAYPAL_CONFIG="0"
-[[ -n "$(env_value "$ENV_FILE" "PAYMONGO_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_TEST_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_LIVE_SECRET_KEY")" ]] && HAS_PAYMONGO_CONFIG="1"
-[[ -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_SECRET")" ]] && HAS_PAYPAL_CONFIG="1"
+if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
+    PAYMENT_PROVIDER_MODE_RAW="${DEPLOY_PAYMENT_PROVIDER:-auto}"
+    PAYMENT_PROVIDER_MODE="$(echo "$PAYMENT_PROVIDER_MODE_RAW" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 
-case "$PAYMENT_PROVIDER_MODE" in
-    auto)
-        if [[ "$HAS_PAYMONGO_CONFIG" == "1" ]]; then
-            validate_paymongo_env
-            if [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
-                warn "PayPal env detected but deploy provider mode auto-selected PayMongo (preferred)."
+    HAS_PAYMONGO_CONFIG="0"
+    HAS_PAYPAL_CONFIG="0"
+    [[ -n "$(env_value "$ENV_FILE" "PAYMONGO_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_TEST_SECRET_KEY")" || -n "$(env_value "$ENV_FILE" "PAYMONGO_LIVE_SECRET_KEY")" ]] && HAS_PAYMONGO_CONFIG="1"
+    [[ -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_STANDARD_PLAN_ID")" || -n "$(env_value "$ENV_FILE" "PAYPAL_CLIENT_SECRET")" ]] && HAS_PAYPAL_CONFIG="1"
+
+    case "$PAYMENT_PROVIDER_MODE" in
+        auto)
+            if [[ "$HAS_PAYMONGO_CONFIG" == "1" ]]; then
+                validate_paymongo_env
+                if [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
+                    warn "PayPal env detected but deploy provider mode auto-selected PayMongo (preferred)."
+                fi
+            elif [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
+                warn "Auto mode fell back to PayPal because no PayMongo config was detected."
+                validate_paypal_env
+            else
+                fatal "No payment provider configuration detected. Set PayMongo or PayPal env vars, or DEPLOY_PAYMENT_PROVIDER."
             fi
-        elif [[ "$HAS_PAYPAL_CONFIG" == "1" ]]; then
-            warn "Auto mode fell back to PayPal because no PayMongo config was detected."
+            ;;
+        paymongo)
+            validate_paymongo_env
+            ;;
+        paypal)
             validate_paypal_env
-        else
-            fatal "No payment provider configuration detected. Set PayMongo or PayPal env vars, or DEPLOY_PAYMENT_PROVIDER."
-        fi
-        ;;
-    paymongo)
-        validate_paymongo_env
-        ;;
-    paypal)
-        validate_paypal_env
-        ;;
-    dual)
-        validate_paymongo_env
-        validate_paypal_env
-        ;;
-    *)
-        fatal "Invalid DEPLOY_PAYMENT_PROVIDER='$PAYMENT_PROVIDER_MODE_RAW'. Use: auto | paymongo | paypal | dual"
-        ;;
-esac
+            ;;
+        dual)
+            validate_paymongo_env
+            validate_paypal_env
+            ;;
+        *)
+            fatal "Invalid DEPLOY_PAYMENT_PROVIDER='$PAYMENT_PROVIDER_MODE_RAW'. Use: auto | paymongo | paypal | dual"
+            ;;
+    esac
+else
+    log "PAYMENTS_ENABLED is not true in backend/.env; skipping payment provider validation."
+fi
 
 PRE_DEPLOY_COMMIT="$(git rev-parse HEAD)"
 LAST_DEPLOYED_COMMIT="unknown"
@@ -819,7 +826,11 @@ fi
 
 run_step "Running schema/index audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:indexes"
 
-run_step "Running billing-funnel telemetry audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:billing-funnel"
+if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
+    run_step "Running billing-funnel telemetry audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:billing-funnel"
+else
+    log "Skipping billing-funnel telemetry audit because PAYMENTS_ENABLED is not true."
+fi
 
 # ===========================================================================
 # Tenant schema sync
@@ -830,6 +841,7 @@ if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
 else
     warn "sync-tenant-schemas.js not found; skipped."
 fi
+run_step "Backfilling legacy role permissions across tenant databases..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/backfill-role-permissions.js"
 
 # ===========================================================================
 # PM2 reload

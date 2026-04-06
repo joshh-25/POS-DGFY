@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Send,
@@ -28,11 +28,13 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import * as aiService from '@/services/aiService';
 import ConfirmActionDialog from '@/Components/ai/ConfirmActionDialog';
 import ActionResultCard from '@/Components/ai/ActionResultCard';
-import { MarkdownRenderer } from '@/Components/ai/MarkdownRenderer';
-import AiDiagnosticsPanel from '@/Components/ai/AiDiagnosticsPanel';
 import DeleteConfirmDialog from '@/Components/ui/DeleteConfirmDialog';
 import { usePermission } from '@/hooks/usePermission';
 import { toast } from 'sonner';
+import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
+
+const MarkdownRenderer = lazy(() => import('@/Components/ai/MarkdownRenderer'));
+const AiDiagnosticsPanel = lazy(() => import('@/Components/ai/AiDiagnosticsPanel'));
 
 const buildWelcomeMessage = () => ({
     id: 'welcome',
@@ -43,8 +45,8 @@ const buildWelcomeMessage = () => ({
 
 export default function AiChat() {
     const navigate = useNavigate();
+    const subscriptionFeaturesEnabled = subscriptionsEnabled();
     const { can, tenantPlan, loading } = usePermission();
-    const hasAiChatAccess = tenantPlan === 'premium' && can('ai:chat');
 
     // State management
     const [messages, setMessages] = useState([]);
@@ -87,16 +89,9 @@ export default function AiChat() {
             const response = await aiService.getConversations();
             setConversations(response.data?.conversations || []);
         } catch (err) {
-            const status = err?.response?.status;
-            if (status === 403) {
-                setConversations([]);
-                return;
-            }
-            if (status !== 429) {
-                console.warn('Failed to load conversations:', err);
-            }
+            console.error('Failed to load conversations:', err);
             if (showErrorToast) {
-                const isRateLimited = status === 429;
+                const isRateLimited = err?.response?.status === 429;
                 const message = isRateLimited
                     ? getRateLimitMessage(err, 'Recent conversations are temporarily rate-limited.')
                     : 'Failed to refresh recent conversations.';
@@ -109,13 +104,10 @@ export default function AiChat() {
 
     // Load conversations when permission checks pass
     useEffect(() => {
-        if (!loading && hasAiChatAccess) {
+        if (!loading && tenantPlan === 'premium') {
             loadConversations();
-            return;
         }
-        setConversations([]);
-        setIsLoadingConversations(false);
-    }, [hasAiChatAccess, loading, loadConversations]);
+    }, [loading, tenantPlan, loadConversations]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -267,10 +259,6 @@ export default function AiChat() {
     };
 
     const handleSendMessage = async () => {
-        if (!hasAiChatAccess) {
-            toast.error('AI chat access is restricted for this account.');
-            return;
-        }
         if (!inputValue.trim() || isTyping) return;
 
         // Build file metadata for display in chat bubble
@@ -300,7 +288,6 @@ export default function AiChat() {
         try {
             const response = await aiService.sendMessage(inputValue, conversationId, attachments);
             setAttachments([]); // Clear attachments after sending
-            console.log("DEBUG: AI Raw Response", JSON.stringify(response, null, 2));
 
             // Update conversation ID if this is a new conversation
             if (response.data?.conversationId && !conversationId) {
@@ -310,7 +297,6 @@ export default function AiChat() {
 
             // Handle different response types
             if (response.data?.type === 'confirmation_required') {
-                console.log("DEBUG: Confirmation required detected", response.data);
                 // Store pending action for confirmation dialog
                 // Use snake_case to match what ConfirmActionDialog expects
                 setPendingAction({
@@ -565,7 +551,11 @@ export default function AiChat() {
             {/* Diagnostics Modal */}
             <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
                 <DialogContent className="max-w-2xl p-0 overflow-hidden bg-slate-50">
-                    <AiDiagnosticsPanel onClose={() => setShowDiagnostics(false)} />
+                    {showDiagnostics && (
+                        <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading diagnostics...</div>}>
+                            <AiDiagnosticsPanel onClose={() => setShowDiagnostics(false)} />
+                        </Suspense>
+                    )}
                 </DialogContent>
             </Dialog>
 
@@ -669,7 +659,9 @@ export default function AiChat() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <MarkdownRenderer content={msg.content} />
+                                        <Suspense fallback={<div className="whitespace-pre-wrap">{msg.content}</div>}>
+                                            <MarkdownRenderer content={msg.content} />
+                                        </Suspense>
                                     )}
 
                                     {/* Show action result card if this message has result data */}
@@ -869,7 +861,7 @@ export default function AiChat() {
             )}
 
             {/* Premium Lock Overlay */}
-            {!hasAiChatAccess && (
+            {tenantPlan !== 'premium' && (
                 <div className="absolute inset-0 z-[60] backdrop-blur-sm bg-white/60 flex items-center justify-center">
                     <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl shadow-2xl border border-slate-200 text-center space-y-6">
                         <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20 transform rotate-3">
@@ -877,25 +869,20 @@ export default function AiChat() {
                         </div>
 
                         <div className="space-y-2">
-                            <h2 className="text-2xl font-bold text-slate-900">
-                                {tenantPlan !== 'premium' ? 'Premium Feature' : 'AI Access Restricted'}
-                            </h2>
+                            <h2 className="text-2xl font-bold text-slate-900">Premium Feature</h2>
                             <p className="text-slate-600">
-                                {tenantPlan !== 'premium'
-                                    ? 'The AI Assistant is available exclusively for Premium plan subscribers. Upgrade your workspace to unlock intelligent inventory management.'
-                                    : 'Your current role does not include AI chat permission. Contact your admin to request access.'}
+                                The AI Assistant is available exclusively for Premium plan subscribers. Upgrade your workspace to unlock intelligent inventory management.
                             </p>
                         </div>
 
                         <div className="flex flex-col gap-3">
-                            {tenantPlan !== 'premium' && (
-                                <Button
-                                    onClick={() => navigate('/settings/billing')}
-                                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/20 h-11 text-base font-medium"
-                                >
-                                    Upgrade to Premium
-                                </Button>
-                            )}
+                            <Button
+                                onClick={() => navigate('/settings?tab=subscription')}
+                                disabled={!subscriptionFeaturesEnabled}
+                                className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/20 h-11 text-base font-medium"
+                            >
+                                {subscriptionFeaturesEnabled ? 'Upgrade to Premium' : 'Upgrades temporarily disabled'}
+                            </Button>
                             <Button
                                 variant="ghost"
                                 onClick={() => navigate('/dashboard')}

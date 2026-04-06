@@ -43,6 +43,7 @@ import {
   stopStorefrontDiscoveryIndexReconciliationScheduler
 } from './services/storefrontDiscoveryIndexService.js';
 import * as aiController from './controllers/aiController.js';
+import { paymentsEnabled } from './config/paymentsFeature.js';
 
 const app = express();
 
@@ -693,7 +694,11 @@ const startServer = async () => {
       logger.info(`🌐 API Base URL: ${isProduction ? process.env.FRONTEND_URL || 'production' : 'http://localhost:' + PORT}/api/v1`);
 
       // Start Billing Scheduler
-      initBillingScheduler();
+      if (paymentsEnabled) {
+        initBillingScheduler();
+      } else {
+        logger.info('Billing scheduler disabled because PAYMENTS_ENABLED is not true.');
+      }
       aiController.startAiCleanupScheduler?.();
 
       // Start periodic tenant connection pool cleanup

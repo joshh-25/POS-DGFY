@@ -19,8 +19,18 @@ import {
     reactivateWithPayMongo
 } from '../controllers/paymentController.js';
 import { authenticate } from '../middleware/auth.js';
+import { paymentsEnabled, paymentsDisabledMessage } from '../config/paymentsFeature.js';
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+    if (paymentsEnabled) return next();
+    return res.status(503).json({
+        success: false,
+        message: paymentsDisabledMessage,
+        code: 'PAYMENTS_DISABLED'
+    });
+});
 
 /**
  * Public Webhook endpoint for PayPal

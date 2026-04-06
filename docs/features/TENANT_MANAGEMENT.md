@@ -6,15 +6,10 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 
 ## Tenant Lifecycle
 
-### 1. Registration (Pending vs. Instant)
-- **Standard Account**: Uses the traditional "Pending" flow. User fills registration -> Record created as `pending` -> Awaits Admin approval.
-- **Premium Account (PayPal)**: Uses the **Instant Approval** flow.
-    1. User selects Premium and completes PayPal payment.
-    2. System verifies subscription (via backend service).
-    3. If verified, the system triggers **Immediate Provisioning** (bypasses Pending state).
-    4. User is automatically logged in and redirected to their new Dashboard.
-    5. Database is created and seeded in real-time.
-- **Mocking (Dev)**: In development, setting `MOCK_PAYPAL=true` in `backend/.env` allows bypassing real payment verification.
+### 1. Registration (Current Policy)
+- **Standard Account**: Uses the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
+- **Premium/Subscription Onboarding**: Disabled for this phase. Requests that require subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
+- **Provisioning Trigger**: Database provisioning runs only after explicit admin approval for standard onboarding.
 
 ### 2. Approval & Provisioning (Active)
 - Admin clicks **Approve** in the Tenant Manager (for Standard accounts).
@@ -45,24 +40,29 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
     2. **Prefix Enforcement**: For security, the backend ONLY allows dropping databases that start with the `sku_tenant_` prefix.
 - **Legacy Note**: Databases created with non-standard naming conventions (e.g., `tenant_standard`) cannot be deleted via the UI and require manual script intervention.
 
-## Subscription Plans
+## Subscription Plans (Current Policy)
 
-Tenants can be assigned a plan, which can be toggled by the Admin via the Admin Portal.
+Tenants still store plan metadata, but billing/subscription workflows are hard-disabled in this phase.
 
 - **Standard**: Core features (Inventory, Suppliers, Purchase/Job Orders, Reports, Settings).
-- **Premium**: All Standard features + AI Chat Assistant, AI Demand Forecasting.
+- **Premium**: Reserved plan tier metadata for gated features.
 - **Enterprise**: Reserved for future expansion.
+
+Current policy notes:
+1. Payment/subscription endpoints return `503` with `PAYMENTS_DISABLED`.
+2. Admin subscription actions (plan change/setup) are disabled in the admin UI.
+3. Premium registration via provider verification is disabled.
 
 ### Feature Gating
 
 | Feature | Standard | Premium |
 |---------|:--------:|:-------:|
-| Dashboard & Stats | ✅ | ✅ |
-| Items / Suppliers / Orders | ✅ | ✅ |
-| Stock Movements & Reports | ✅ | ✅ |
-| Settings & User Management | ✅ | ✅ |
-| **AI Chat Assistant** | ❌ (upgrade prompt) | ✅ |
-| **AI Demand Forecasting** | ❌ (upgrade prompt) | ✅ |
+| Dashboard & Stats | Yes | Yes |
+| Items / Suppliers / Orders | Yes | Yes |
+| Stock Movements & Reports | Yes | Yes |
+| Settings & User Management | Yes | Yes |
+| **AI Chat Assistant** | No (upgrade prompt) | Yes |
+| **AI Demand Forecasting** | No (upgrade prompt) | Yes |
 
 ### Gating Implementation
 - **Frontend**: `PermissionContext.jsx` exposes `tenantPlan` from the user's company record. Components check `tenantPlan === 'premium'` to show/hide premium features.

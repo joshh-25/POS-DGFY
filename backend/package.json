@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand",
+    "test:legacy:payments": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --testPathIgnorePatterns=^$ --runTestsByPath tests/paypalUpgradeValidation.legacy.test.js tests/paymentSubscriptionLifecycle.usecases.legacy.test.js tests/billingFunnelTelemetry.usecases.legacy.test.js tests/paypalSandboxCanary.e2e.legacy.test.js",
     "test:frontend-session-e2e": "cross-env RUN_BROWSER_E2E=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.sessionIsolation.e2e.test.js",
     "test:integration": "cross-env TEST_TYPE=integration node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --forceExit --testPathPattern=token_refresh_race_integration",
     "test:watch": "jest --watch",

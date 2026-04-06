@@ -1606,7 +1606,7 @@ Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
 Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. POS writes create `goods_issue` stock movements using `reference_type='POS'`.
 
 ### GET /pos/catalog
-List sellable POS-visible active items (all item categories are eligible when `pos_visible=true`).
+List sellable POS catalog items.
 
 **Permission**: `pos:view`  
 **Plan Gate**: Premium (`requirePremium`)
@@ -1619,8 +1619,10 @@ List sellable POS-visible active items (all item categories are eligible when `p
 | `folder_id` | number | Optional folder filter (`item_folders.folder_id`) |
 
 **Notes:**
+- Response enforces `pos_visible !== false`.
+- Response includes out-of-stock rows; POS clients should display unavailable state for `current_stock <= 0`.
 - POS folder chips should only show folders where `show_in_pos_filter = true`.
-- Hidden folders (`show_in_pos_filter = false`) are not listed as POS filters, but their items remain discoverable in unfiltered/search catalog results.
+- Hidden folders (`show_in_pos_filter = false`) are not listed as POS filters, but their eligible items remain discoverable in unfiltered/search catalog results.
 - Default visibility policy when no override row exists:
   - `category=product` + `product_type=finished_goods`: visible by default
   - other categories/types: hidden until explicitly enabled (`pos_visible=true`)
@@ -1676,7 +1678,7 @@ Execute a POS checkout transaction (atomic). Creates:
 3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`)
 
 Order-method fee policy (current contract):
-- Tenant config key: `pos_order_method_fees` (JSON matrix for `dine_in`, `takeout`, `delivery`, `online`).
+- Tenant config key: `pos_order_method_fees` (JSON matrix for `dine_in`, `takeout`, `pickup`, `delivery`; legacy `online` key is read-compatible only).
 - Optional payload field: `service_fee_amount` (cashier override).
 - Service fee is stored as immutable snapshots on transaction header:
   - `service_fee_amount`
@@ -1729,7 +1731,7 @@ List POS transactions with cashier metadata and pagination.
 | `status` | string | `completed` or `voided` |
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
-| `order_method` | string | `dine_in`, `takeout`, `delivery`, `online` |
+| `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
 | `date_from` | ISO date | Inclusive start date filter |
 | `date_to` | ISO date | Inclusive end date filter |
 
@@ -1805,6 +1807,50 @@ Get today dashboard totals for terminal operations.
 |------|------|-------------|
 | `terminal_id` | string | Terminal identifier (e.g. `WEB-POS-01`) |
 
+### GET /pos/incoming-orders
+List incoming online orders for POS fulfillment queue.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | number | Optional active location filter |
+| `limit` | number | Optional row limit (default 200, max 500) |
+
+**Response Notes**
+1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
+2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
+
+### PATCH /pos/orders/:id/status
+Update online order fulfillment status from POS terminal operations.
+
+**Permission**: `pos:transact`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "fulfillment_status": "confirmed"
+}
+```
+
+**Supported Status Values**
+- `placed`
+- `confirmed`
+- `preparing`
+- `ready_for_pickup`
+- `out_for_delivery`
+- `completed`
+- `cancelled`
+- `rejected`
+
+**Transition Notes**
+1. Allowed transitions are lifecycle-validated server-side.
+2. Delivery orders must progress to `out_for_delivery` (not `ready_for_pickup`).
+3. Non-delivery orders must use `ready_for_pickup` where applicable.
+
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
 
@@ -1824,6 +1870,95 @@ Z-reading summary includes:
 - `service_fee_total`
 - VAT buckets and `total_amount`
 - `payment_breakdown[]`
+
+---
+
+## Storefront Discovery And Guest Store Endpoints
+
+### GET /storefront/discovery
+List publicly discoverable stores for list/grid/map storefront views.
+
+**Auth**: Public  
+**Tenant Context**: Not required for this discovery endpoint
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `search` | string | Optional keyword against store name/slug/address/location or tenant catalog item name |
+| `latitude` | number | Optional user latitude for distance sorting |
+| `longitude` | number | Optional user longitude for distance sorting |
+| `page` | number | Page number (default 1) |
+| `limit` | number | Rows per page (default 20, max 100) |
+
+**Search Notes**
+- Item-name search includes tenants that have matching catalog items.
+- Item-name matching considers storefront-visible items regardless of stock.
+- Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+
+### GET /storefront/discovery/:slug
+Resolve one storefront profile by tenant slug for public storefront entry.
+
+**Auth**: Public  
+**Tenant Context**: Not required
+
+**Security Note**: Discovery payloads do not expose `company_token`.
+
+### GET /store/catalog
+List tenant storefront catalog items (public read).
+
+**Auth**: Public  
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `search` | string | Optional item name filter |
+| `limit` | number | Row limit (default 60, max 200) |
+
+Catalog rows include:
+- `item_id`, `name`, `category`, `unit_of_measure`
+- `current_stock`
+- `default_sale_price`, `cost_per_unit`
+- `vat_type`
+- `image_url` (from POS catalog override when available)
+
+**Catalog Search Note**
+- `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.
+- Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+
+### GET /store/locations
+List active tenant fulfillment locations for a specific storefront tenant page.
+
+**Auth**: Public  
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+
+**Response Notes**
+1. Returns active locations only.
+2. Includes `primary_location_id`.
+3. Discovery (`/storefront/discovery`) remains one row per tenant.
+4. Storefront UI may additionally resolve `/store/locations` per tenant and rank/map by nearest active branch pin while still opening the same tenant page.
+
+### POST /store/cart/quote
+Compute quote totals for guest or store-customer checkout.
+
+**Auth**: Optional store customer (`Store JWT`)  
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+
+**Validation Note**
+- When requested quantity exceeds current stock, response is `422` with machine-readable stock violation details in `errors`.
+
+### POST /store/checkout
+Create online-store order and return tracking metadata.
+
+**Auth**: Optional store customer (`Store JWT`)  
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+
+### GET /store/track/:tracking_pin
+Track online-store order status for public users.
+
+**Auth**: Public  
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)  
+**Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`
@@ -1877,7 +2012,7 @@ For POS rows, service-fee snapshots are included (`service_fee_amount`, label/me
 | `search` | string | Search reference/customer/recipient |
 | `status` | string | Source status filter |
 | `payment_type` | string | POS-only filter |
-| `order_method` | string | POS-only filter |
+| `order_method` | string | POS-only filter (`dine_in`, `takeout`, `pickup`, `delivery`; legacy `online` accepted for historical rows) |
 | `date_from` | ISO date | Inclusive start date |
 | `date_to` | ISO date | Inclusive end date |
 | `sort_by` | string | `occurred_at`, `gross_sales`, `cogs`, `gross_profit`, `reference_no` |
@@ -2281,131 +2416,31 @@ Download a temporary CSV export generated by the AI assistant.
 
 ## Payments & Subscription Endpoints
 
-> **Added in Phase 65.** These endpoints manage subscription lifecycle, PayPal integration, and plan changes.
+> Status update (2026-04-03): Subscription/payment workflows are disabled by default.
+> Unless `PAYMENTS_ENABLED=true` is explicitly set on the backend and matching frontend flags are enabled, all `/payments/*` endpoints are treated as unavailable.
 
-### POST /payments/migrate-to-paypal
-Migrate a manually-billed active tenant to PayPal recurring billing.
+### `/payments/*` route behavior in default mode
 
-**Access:** Private (JWT required)
-
-**Request**
-```json
-{ "subscriptionId": "I-XXXXXXXXXXXX" }
-```
-
-**Response (200)**
+**Response (503)**
 ```json
 {
-  "success": true,
-  "message": "Successfully migrated to PayPal recurring billing.",
-  "data": {
-    "payment_method": "paypal",
-    "paypal_subscription_id": "I-XXXXXXXXXXXX",
-    "current_period_end": "2026-04-10T00:00:00.000Z"
-  }
+  "success": false,
+  "message": "Payments are temporarily disabled while the billing direction is being updated.",
+  "code": "PAYMENTS_DISABLED"
 }
 ```
 
-**Errors**: 409 if already on PayPal; 400 if subscription not active or PayPal verify fails.
-
----
-
-### POST /payments/change-plan
-Request a plan change. For PayPal tenants, initiates a revision requiring user re-consent. For manually-billed tenants (admin `immediate=true`), applies immediately.
-
-**Access:** Private (JWT required)
-
-**Request**
-```json
-{ "newPlan": "premium" }
-```
-
-**Response (200) — PayPal tenant**
-```json
-{
-  "success": true,
-  "data": { "requiresConsent": true, "approvalUrl": "https://www.paypal.com/...", "pending_plan": "premium" }
-}
-```
-
-**Response (200) — Manual tenant**
-```json
-{ "success": true, "data": { "plan": "standard", "immediate": true } }
-```
-
-**Errors**: 403 if account not active; 409 if already on plan or pending change exists.
-
----
-
-### GET /payments/pending-plan
-Get the current pending plan change details (if any).
-
-**Access:** Private (JWT required)
-
-**Response (200)**
-```json
-{
-  "success": true,
-  "data": {
-    "pending_plan": "premium",
-    "pending_plan_change_date": "2026-03-10T00:00:00.000Z",
-    "pending_plan_approved": false
-  }
-}
-```
-
----
-
-### POST /payments/request-reactivation
-Request reactivation of an inactive account. **Public endpoint** — authenticated only by `x-company-token` header (no JWT required).
-
-**Access:** x-company-token header only
-
-**Response (200)**
-```json
-{ "success": true, "message": "Reactivation request submitted." }
-```
-
-**Errors**: 400 if account is not inactive.
-
----
-
-### POST /payments/reactivate-with-paypal
-Self-service reactivation for an inactive account using a newly-approved PayPal subscription. **Public endpoint** - authenticated only by `x-company-token` header (no JWT required).
-
-**Access:** `x-company-token` header only
-
-**Request**
-```json
-{ "subscriptionId": "I-XXXXXXXXXXXX" }
-```
-
-**Response (200)**
-```json
-{
-  "success": true,
-  "message": "Account reactivated successfully.",
-  "data": {
-    "message": "Account reactivated successfully.",
-    "plan": "standard"
-  }
-}
-```
-
-**Errors**:
-- 400 if company token is missing, subscription ID is missing, tenant is not inactive, PayPal subscription is not active, or plan cannot be resolved
-- 404 if tenant is not found
-- 500 if PayPal plan IDs are not configured on the server
-- 503 if PayPal verification is unavailable
-
-**Notes**
-1. Plan resolution accepts PayPal response variants where `plan_id` may be at:
-   - `plan_id`
-   - `plan.id`
-   - `plan.plan_id`
-   - `billing_info.plan_id`
-   - `billing_info.last_payment.plan_id`
-2. Manual recovery remains available via `POST /payments/request-reactivation`.
+Applies to public and private payment routes, including but not limited to:
+- `POST /payments/webhook`
+- `POST /payments/request-reactivation`
+- `POST /payments/reactivate-with-paypal`
+- `POST /payments/reactivate-with-paymongo`
+- `POST /payments/migrate-to-paypal`
+- `POST /payments/migrate-to-paymongo`
+- `POST /payments/change-plan`
+- `POST /payments/setup-paymongo-recurring`
+- `GET /payments/history`
+- `GET /payments/pending-plan`
 
 ---
 ### POST /admin/tenants/resubmit
@@ -2423,26 +2458,27 @@ Re-submit a rejected registration for review. Resets status to `pending` and cle
 ---
 
 ### POST /admin/tenants/:id/setup-paypal-recurring
-Admin-initiated: generate a PayPal subscription approval link for a manually-billed tenant and send it via email. Link expires in 72 hours.
+Legacy billing endpoint. In default mode (`PAYMENTS_ENABLED=false`), this endpoint is disabled.
 
 **Access:** Admin JWT required
 
 **Request**: No body required.
 
-**Response (200)**
+**Response (503)**
 ```json
 {
-  "success": true,
-  "data": { "approvalUrl": "https://www.paypal.com/...", "expiresIn": "72 hours" }
+  "success": false,
+  "message": "Payments are temporarily disabled while the billing direction is being updated.",
+  "code": "PAYMENTS_DISABLED"
 }
 ```
 
-**Errors**: 409 if tenant is already on PayPal; 400 if tenant is not active.
+Enable payment workflows first before using this endpoint in non-default mode.
 
 ---
 
 ### POST /admin/tenants/:id/change-plan
-Admin-initiated immediate plan change (bypasses PayPal revision flow). Sets new plan, resets subscription period, clears any pending plan.
+Legacy billing endpoint. In default mode (`PAYMENTS_ENABLED=false`), this endpoint is disabled.
 
 **Access:** Admin JWT required
 
@@ -2451,12 +2487,16 @@ Admin-initiated immediate plan change (bypasses PayPal revision flow). Sets new 
 { "plan": "standard" }
 ```
 
-**Response (200)**
+**Response (503)**
 ```json
-{ "success": true, "data": { "plan": "standard", "immediate": true } }
+{
+  "success": false,
+  "message": "Payments are temporarily disabled while the billing direction is being updated.",
+  "code": "PAYMENTS_DISABLED"
+}
 ```
 
-**Errors**: 403 if tenant not active; 409 if already on that plan.
+Enable payment workflows first before using this endpoint in non-default mode.
 
 ---
 
@@ -2479,6 +2519,8 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 ## Admin Tenant Management Endpoints
 
 > **Note**: These endpoints are for the Developer Portal (superadmin) and are NOT tenant-isolated. They manage company registrations across the entire platform.
+>
+> **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
 
 ### GET /admin/tenants
 List all tenant registrations with their status.
@@ -2767,4 +2809,5 @@ APP_URL=https://your-domain.com
 1. Enable 2-Factor Authentication on your Google account
 2. Generate an App Password at: https://myaccount.google.com/apppasswords
 3. Use the 16-character app password as `SMTP_PASS`
+
 

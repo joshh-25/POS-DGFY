@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Folder, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,10 @@ import {
     fetchPosTransactionById
 } from '../services/posService';
 import { getFolders } from '@/services/itemService.js';
-import ReceiptPrintView from './ReceiptPrintView';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
+
+const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -124,6 +125,7 @@ export default function POSCheckoutTerminal({
     const canOverridePrice = can('pos:price_override');
     const [viewMode, setViewMode] = useState('checkout');
     const [catalog, setCatalog] = useState([]);
+    const [catalogError, setCatalogError] = useState('');
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
@@ -170,21 +172,34 @@ export default function POSCheckoutTerminal({
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
             setCatalog([]);
+            setCatalogError('');
+            setCatalogLoading(false);
+            return;
+        }
+        if (!canViewHistory) {
+            setCatalog([]);
+            setCatalogError('You need POS view permission to load the POS catalog.');
             setCatalogLoading(false);
             return;
         }
         setCatalogLoading(true);
+        setCatalogError('');
         try {
             const params = { search: search || '', limit: 200 };
             if (selectedFolderId) params.folder_id = selectedFolderId;
             const data = await fetchPosCatalog(params);
             setCatalog(data || []);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to load POS catalog');
+            const apiMessage = error?.response?.data?.message;
+            const message = error?.response?.status === 403
+                ? (apiMessage || 'You need POS view permission to load the POS catalog.')
+                : (apiMessage || 'Failed to load POS catalog');
+            setCatalogError(message);
+            toast.error(message);
         } finally {
             setCatalogLoading(false);
         }
-    }, [search, selectedFolderId, sessionLocked]);
+    }, [canViewHistory, search, selectedFolderId, sessionLocked]);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
@@ -914,7 +929,12 @@ export default function POSCheckoutTerminal({
                             </Button>
                         </div>
                     )}
-                    {!posFoldersLoading && !posFoldersError && posFolders.length === 0 && (
+                    {!posFoldersLoading && !posFoldersError && !canViewHistory && (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                            You need POS view permission to load POS categories.
+                        </p>
+                    )}
+                    {!posFoldersLoading && !posFoldersError && canViewHistory && posFolders.length === 0 && (
                         <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
                             No POS folder filters available yet.
                         </p>
@@ -1009,7 +1029,12 @@ export default function POSCheckoutTerminal({
                             </div>
                             );
                         })}
-                        {catalog.length === 0 && (
+                        {catalogError && (
+                            <p className="text-sm text-amber-700 col-span-full rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                {catalogError}
+                            </p>
+                        )}
+                        {!catalogError && catalog.length === 0 && (
                             <p className="text-sm text-slate-600 col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
                                 No POS-visible items found. Enable items from Inventory first.
                             </p>
@@ -1271,7 +1296,9 @@ export default function POSCheckoutTerminal({
                         <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
                     </div>
                     {lastReceipt ? (
-                        <ReceiptPrintView transaction={lastReceipt} businessSettings={receiptSettings} />
+                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
+                            <ReceiptPrintView transaction={lastReceipt} businessSettings={receiptSettings} />
+                        </Suspense>
                     ) : (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                             <p className="text-base font-semibold text-slate-900">No receipt selected yet.</p>

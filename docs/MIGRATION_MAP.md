@@ -18,6 +18,16 @@
 | `docs/SETUP_ANTIGRAVITY.md` | `docs/ai/SETUP_ANTIGRAVITY.md` | AI environment setup |
 | `docs/generated/AI_CAPABILITIES.md` | `docs/generated/AI_CAPABILITIES.md` | Auto-generated AI tools (canonical generated output) |
 
+## April 2026 Workspace Cleanup Notes
+
+These are not doc relocations, but important path updates for local workspace hygiene:
+
+| Path | Current Handling | Notes |
+|------|------------------|-------|
+| `dist-apps/` | Generated build output | Safe to delete and regenerate via build scripts |
+| `frontend/dist/` | Generated build output | Safe to delete and regenerate via frontend builds |
+| `nul` | Removed stray temp file | Not a source artifact |
+
 ## How to fix links
 If you see a broken link in your notes:
 1. Copy the filename.

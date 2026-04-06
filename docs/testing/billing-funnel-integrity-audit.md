@@ -1,5 +1,8 @@
 # Billing Funnel Integrity Audit
 
+> Status update (2026-04-03): Subscription/payment workflows are disabled by default (`PAYMENTS_ENABLED=false`).
+> Treat this audit as legacy guidance and do not use it as a required release gate unless payments are explicitly re-enabled.
+
 This audit is a data-integrity guard for billing-funnel telemetry. It is not proof of real-world engagement.
 
 ## What It Checks

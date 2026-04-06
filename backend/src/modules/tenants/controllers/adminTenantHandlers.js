@@ -16,12 +16,24 @@ import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/i
 import * as emailService from '../../../services/emailService.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { paymentsEnabled, paymentsDisabledMessage } from '../../../config/paymentsFeature.js';
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
  * No authentication required
  */
 export const registerCompanyRequest = async (req, res) => {
+    const requestedPlan = typeof req.body?.plan === 'string' ? req.body.plan.toLowerCase() : 'standard';
+    const requestsSubscriptionFlow = requestedPlan === 'premium' || Boolean(req.body?.subscriptionId);
+
+    if (!paymentsEnabled && requestsSubscriptionFlow) {
+        return res.status(503).json({
+            success: false,
+            message: paymentsDisabledMessage,
+            code: 'PAYMENTS_DISABLED'
+        });
+    }
+
     const correlationId = req.requestId || req.headers['x-request-id'] || uuidv4();
     const result = await registerCompanyRequestUseCase({
         body: req.body,
@@ -204,6 +216,13 @@ export const deleteTenant = async (req, res) => {
  * Generates an approval link to email the tenant
  */
 export const setupPayPalRecurring = async (req, res) => {
+    if (!paymentsEnabled) {
+        return res.status(503).json({
+            success: false,
+            message: paymentsDisabledMessage,
+            code: 'PAYMENTS_DISABLED'
+        });
+    }
     const result = await setupPayPalRecurringUseCase({
         tenantId: req.params?.id
     });
@@ -216,6 +235,13 @@ export const setupPayPalRecurring = async (req, res) => {
  * ADMIN: Change a tenant's plan immediately (admin-override, no PayPal re-consent)
  */
 export const adminChangePlan = async (req, res) => {
+    if (!paymentsEnabled) {
+        return res.status(503).json({
+            success: false,
+            message: paymentsDisabledMessage,
+            code: 'PAYMENTS_DISABLED'
+        });
+    }
     const result = await changePlanUseCase({
         tenantId: req.params?.id,
         newPlan: req.body?.plan,

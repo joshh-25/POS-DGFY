@@ -252,6 +252,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
         permissions: permissionsArray,
         is_master_admin: isMasterAdmin
       });
+      window.dispatchEvent(new CustomEvent('auth:login'));
       toast.success('Permissions updated successfully');
       setShowPermissionMatrix(false);
       fetchUsers();

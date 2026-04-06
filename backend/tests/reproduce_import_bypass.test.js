@@ -5,17 +5,41 @@ import { jest } from '@jest/globals';
 const mockVerifyToken = jest.fn();
 const mockIsTokenBlacklisted = jest.fn().mockResolvedValue(false);
 
-// Manual mock of auth middleware to bypass real token verification
-jest.unstable_mockModule('../src/middleware/auth.js', () => ({
-    authenticate: (req, res, next) => {
-        req.user = { user_id: 1, role: 'admin' };
-        next();
-    },
-    checkPermission: () => (req, res, next) => next(),
-    requirePremium: (req, res, next) => next(),
-    requireMasterAdmin: (req, res, next) => next(),
-    authenticateAdmin: (req, res, next) => next()
-}));
+const mockInvalidateUserAuthCache = jest.fn();
+const requiredAuthMockExports = [
+    'authenticate',
+    'checkPermission',
+    'requirePremium',
+    'requireMasterAdmin',
+    'authenticateAdmin',
+    'invalidateUserAuthCache'
+];
+
+const buildAuthModuleMock = () => {
+    const authMock = {
+        authenticate: (req, res, next) => {
+            req.user = { user_id: 1, role: 'admin' };
+            next();
+        },
+        checkPermission: () => (req, res, next) => next(),
+        requirePremium: (req, res, next) => next(),
+        requireMasterAdmin: (req, res, next) => next(),
+        authenticateAdmin: (req, res, next) => next(),
+        invalidateUserAuthCache: mockInvalidateUserAuthCache
+    };
+
+    for (const exportName of requiredAuthMockExports) {
+        if (typeof authMock[exportName] !== 'function') {
+            throw new Error(`[reproduce_import_bypass] auth mock missing required export: ${exportName}`);
+        }
+    }
+
+    return authMock;
+};
+
+// Resilient auth module mock:
+// enforce required exports in one place so auth-module changes fail fast here, not deep in server import.
+jest.unstable_mockModule('../src/middleware/auth.js', () => buildAuthModuleMock());
 
 // Manual mock of authService
 jest.unstable_mockModule('../src/services/authService.js', () => ({

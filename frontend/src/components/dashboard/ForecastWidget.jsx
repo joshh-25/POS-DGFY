@@ -16,12 +16,13 @@ export default function ForecastWidget() {
                 setForecasts(response.data.forecasts || []);
             } catch (err) {
                 const status = err?.response?.status;
+                const apiMessage = err?.response?.data?.message;
                 if (status === 401) {
                     setError('Session expired. Please login again.');
                     return;
                 }
                 if (status === 403) {
-                    setError('Forecast access is restricted for this role.');
+                    setError(apiMessage || 'Forecast access is restricted for this role.');
                     return;
                 }
                 console.warn('Failed to load forecasts:', err);

@@ -44,7 +44,7 @@ import * as tenantLocationService from '../src/services/tenantLocationService.js
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import OpenStreetMapPinPicker from '../src/components/maps/OpenStreetMapPinPicker.jsx';
 import { useSearchParams } from 'react-router-dom';
-import { shouldShowMigrateToPayMongoSection } from '../src/utils/subscriptionUi.js';
+import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
 
 const ORDER_METHOD_FEE_DEFINITIONS = [
   { key: 'dine_in', label: 'Dine In', defaultFeeLabel: 'Dine In Fee' },
@@ -116,6 +116,7 @@ const createDefaultLocationForm = () => ({
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'profile';
+  const subscriptionFeaturesEnabled = subscriptionsEnabled();
 
   const [settings, setSettings] = useState({
     defaultMinThreshold: 40,
@@ -273,11 +274,15 @@ export default function Settings() {
 
   // Fetch billing data when tab changes to subscription
   useEffect(() => {
+    if (!subscriptionFeaturesEnabled && currentTab === 'subscription') {
+      setSearchParams({ tab: 'profile' });
+      return;
+    }
     if (currentTab === 'subscription') {
       fetchBillingHistory();
       fetchPendingPlan();
     }
-  }, [currentTab]);
+  }, [currentTab, setSearchParams, subscriptionFeaturesEnabled]);
 
   const fetchPendingPlan = async () => {
     try {
@@ -841,10 +846,10 @@ export default function Settings() {
       </div>
 
       <Tabs value={currentTab} onValueChange={(v) => setSearchParams({ tab: v })} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:w-[760px] mb-8">
+        <TabsList className={`grid w-full ${subscriptionFeaturesEnabled ? 'grid-cols-5 lg:w-[760px]' : 'grid-cols-4 lg:w-[620px]'} mb-8`}>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="company">Company</TabsTrigger>
-          <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          {subscriptionFeaturesEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
           <TabsTrigger value="pos">POS Setup</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
@@ -971,6 +976,8 @@ export default function Settings() {
           )}
         </TabsContent>
 
+        {subscriptionFeaturesEnabled && (
+        <>
         {/* Subscription Tab */}
         <TabsContent value="subscription" className="space-y-6">
           <Card className="overflow-hidden">
@@ -1223,6 +1230,8 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
+        </>
+        )}
 
         {/* System Tab */}
         <TabsContent value="pos" className="space-y-6">

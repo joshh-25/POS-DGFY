@@ -18,6 +18,7 @@ const ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES = [
 const OPTIONAL_TENANT_LOOKUP_ATTRIBUTES = [
     'subscription_status',
     'current_period_end',
+    'grace_period_end',
     'payment_method',
     'rejection_reason'
 ];

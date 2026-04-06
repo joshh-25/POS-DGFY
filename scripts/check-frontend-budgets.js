@@ -18,8 +18,12 @@ const jsFiles = fs.readdirSync(assetsDir)
   .filter((name) => name.endsWith('.js'))
   .map((name) => {
     const fullPath = path.join(assetsDir, name);
-    const size = fs.statSync(fullPath).size;
-    return { name, size };
+    const stats = fs.statSync(fullPath);
+    return {
+      name,
+      size: stats.size,
+      mtimeMs: stats.mtimeMs
+    };
   });
 
 const routeBudgets = [
@@ -34,7 +38,12 @@ const toKb = (bytes) => Number((bytes / 1024).toFixed(2));
 const errors = [];
 const warnings = [];
 
-const findByPrefix = (prefix) => jsFiles.find((f) => f.name.startsWith(prefix));
+const findByPrefix = (prefix) => {
+  const matches = jsFiles
+    .filter((f) => f.name.startsWith(prefix))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return matches[0];
+};
 
 for (const budget of routeBudgets) {
   const match = findByPrefix(budget.prefix);

@@ -6,6 +6,14 @@ jest.unstable_mockModule('../src/modules/adminAuth/index.js', () => ({
   adminLoginUseCase: mockAdminLoginUseCase
 }));
 
+jest.unstable_mockModule('../src/config/logger.js', () => ({
+  default: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  }
+}));
+
 let adminLogin;
 
 beforeAll(async () => {
@@ -43,7 +51,8 @@ describe('adminAuthHandlers.adminLogin', () => {
 
     expect(mockAdminLoginUseCase).toHaveBeenCalledWith({
       username: 'skupervisor',
-      password: '252378'
+      password: '252378',
+      sourceIp: 'unknown-ip'
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({

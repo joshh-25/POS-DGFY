@@ -2,6 +2,26 @@ import axios from 'axios';
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 
+const isTestEnvironment = (() => {
+  try {
+    return import.meta.env?.MODE === 'test';
+  } catch {
+    return false;
+  }
+})();
+
+const logDebug = (...args) => {
+  if (!isTestEnvironment) console.debug(...args);
+};
+
+const logWarn = (...args) => {
+  if (!isTestEnvironment) console.warn(...args);
+};
+
+const logError = (...args) => {
+  if (!isTestEnvironment) console.error(...args);
+};
+
 const resolveApiBaseUrl = () => {
   const configured = (import.meta.env.VITE_API_URL || '').trim();
   if (!configured) return '/api/v1';
@@ -15,7 +35,7 @@ const resolveApiBaseUrl = () => {
       const configuredLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
       const runtimeLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
       if (configuredLocal && !runtimeLocal) {
-        console.warn('[API] VITE_API_URL points to localhost on a non-local host. Falling back to /api/v1.');
+        logWarn('[API] VITE_API_URL points to localhost on a non-local host. Falling back to /api/v1.');
         return '/api/v1';
       }
     } catch {
@@ -199,7 +219,7 @@ api.interceptors.response.use(
           ? { headers: { 'x-company-token': companyToken } }
           : {};
 
-        console.debug('🔄 [Auth] Refreshing token...', { companyToken });
+        logDebug('🔄 [Auth] Refreshing token...', { companyToken });
 
         axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
@@ -224,7 +244,7 @@ api.interceptors.response.use(
             resolve(api(originalRequest));
           })
           .catch(err => {
-            console.error('❌ [Auth] Token refresh failed:', err);
+            logError('❌ [Auth] Token refresh failed:', err);
             processQueue(err, null); // fail all queued requests in this tab
             authChannel?.postMessage({ type: 'session-expired' }); // lock other tabs as well
             clearClientSession({
@@ -250,7 +270,7 @@ api.interceptors.response.use(
     // Handle stale tenant context (Tenant no longer exists or user removed)
     if (error.response?.status === 404 &&
       (error.response?.data?.message?.includes('Tenant') || error.response?.data?.message?.includes('company token'))) {
-      console.warn('⚠️ [Auth] Stale company token detected, clearing...');
+      logWarn('⚠️ [Auth] Stale company token detected, clearing...');
       localStorage.removeItem('companyToken');
       // Don't necessarily redirect to login here, just clear the token
       // Most protected routes will redirect if they need a tenant
@@ -258,9 +278,11 @@ api.interceptors.response.use(
 
     // Log detailed validation errors for 422 responses
     if (error.response?.status === 422) {
-      console.error('❌ API 422 Validation Error:', error.response.data);
+      logError('❌ API 422 Validation Error:', error.response.data);
       if (error.response.data.errors) {
-        console.table(error.response.data.errors);
+        if (!isTestEnvironment) {
+          console.table(error.response.data.errors);
+        }
       }
     }
 

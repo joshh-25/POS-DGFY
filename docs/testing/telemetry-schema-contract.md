@@ -1,6 +1,7 @@
 # Telemetry Schema Contract
 
 This document defines the current `engagement_events` schema contract for billing-funnel telemetry and limited product-usage telemetry.
+Billing-funnel clauses apply only when payment workflows are enabled.
 
 ## Current Interpretation
 

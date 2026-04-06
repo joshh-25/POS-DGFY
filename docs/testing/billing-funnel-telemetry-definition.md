@@ -1,5 +1,8 @@
 # Billing Funnel Telemetry Definition
 
+> Status update (2026-04-03): Subscription/payment workflows are disabled by default (`PAYMENTS_ENABLED=false`).
+> Billing-funnel telemetry below is legacy/optional and applies only if payments are intentionally re-enabled.
+
 ## Purpose
 This document defines what the current `engagement_events` implementation actually measures.
 
@@ -50,7 +53,7 @@ Today, the project may claim:
 - "We record billing and registration funnel telemetry."
 - "We record limited backend-observed product usage telemetry for selected core workflows."
 - "We can verify selected backend funnel transitions and persisted evidence."
-- "We have sandbox coverage for live subscription verification on the upgrade route."
+- "Provider-connected billing verification is available only through legacy opt-in suites when payments are intentionally re-enabled."
 
 The project may not yet claim:
 - "This measures real-world engagement."

@@ -27,9 +27,8 @@ What it does:
 10. Skips optional legacy maintenance hooks by default
 11. Repairs required indexes (`npm run repair:indexes`)
 12. Runs strict index audit (`npm run audit:indexes`)
-13. Runs strict billing-funnel audit (`npm run audit:billing-funnel`)
-14. Runs tenant schema sync
-15. Reloads PM2 and runs health checks
+13. Runs tenant schema sync
+14. Reloads PM2 and runs health checks
 
 Optional flag:
 ```bash
@@ -78,21 +77,7 @@ Exit code:
 - non-zero: degraded
 
 ## 5. `backend/scripts/audit-billing-funnel.js`
-Strict telemetry integrity gate for billing funnel events.
-
-Usage:
-```bash
-cd backend
-npm run audit:billing-funnel
-```
-
-Common failure:
-- `webhook_without_telemetry` due to synthetic `test_webhook_*` rows in `webhook_logs`.
-
-Cleanup example:
-```bash
-mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
-```
+Legacy script for subscription-billing telemetry integrity. Do not include this as a required deploy gate while `PAYMENTS_ENABLED=false`.
 
 ## 6. `backend/scripts/cleanup-duplicate-indexes.js`
 Removes duplicate indexes (e.g., `email_2`, `sku_code_3`) that accumulate from repeated Sequelize syncs and hit the MySQL 64-key limit.

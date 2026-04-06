@@ -2,6 +2,7 @@
 
 ## Scope
 This catalog documents the current server-side events written to `engagement_events`.
+Subscription/payment events are legacy and emitted only when payment workflows are enabled.
 
 ## Event Contract
 Every emitted row should include:
@@ -29,6 +30,8 @@ Shared top-level fields used by newer events:
 - `platform`
 
 ## Event List
+
+### Legacy Billing Events (payments-enabled mode only)
 
 ### `company_registration_attempted`
 - Producer: `registerCompanyRequestUseCase`

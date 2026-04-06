@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
 
 export default function AdminPricing() {
+    const billingDisabled = true;
     const [settings, setSettings] = useState({
         premium_plan_price: '',
         standard_plan_price: '',
@@ -90,7 +91,7 @@ export default function AdminPricing() {
                             Plan Pricing
                         </h1>
                         <p className="text-slate-500 text-sm mt-1">
-                            Configure subscription plans and PayPal product integration
+                            Subscription billing controls are currently disabled.
                         </p>
                     </div>
                 </div>
@@ -114,6 +115,12 @@ export default function AdminPricing() {
                                 {error}
                             </div>
                         )}
+                        {billingDisabled && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-2 text-amber-900">
+                                <AlertCircle className="w-5 h-5 shrink-0" />
+                                Subscription pricing and payment integration are temporarily disabled.
+                            </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">
@@ -129,6 +136,7 @@ export default function AdminPricing() {
                                         onChange={handleChange}
                                         className="pl-7"
                                         placeholder="0.00"
+                                        disabled={billingDisabled}
                                     />
                                 </div>
                                 <p className="text-xs text-slate-500 flex items-center gap-1">
@@ -151,6 +159,7 @@ export default function AdminPricing() {
                                         onChange={handleChange}
                                         className="pl-7"
                                         placeholder="29.99"
+                                        disabled={billingDisabled}
                                     />
                                 </div>
                                 <p className="text-xs text-slate-500 flex items-center gap-1">
@@ -166,7 +175,7 @@ export default function AdminPricing() {
                     <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                             <RefreshCw className="w-5 h-5 text-slate-400" />
-                            PayPal Integration (DISABLED - switching to PayMongo)
+                            Legacy Billing Integration (Disabled)
                         </h2>
                     </div>
 
@@ -192,7 +201,7 @@ export default function AdminPricing() {
                 <div className="flex justify-end">
                     <Button
                         type="submit"
-                        disabled={saving}
+                        disabled={saving || billingDisabled}
                         className="bg-green-600 hover:bg-green-700 h-11 px-8"
                     >
                         {saving ? (

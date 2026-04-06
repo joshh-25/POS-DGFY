@@ -15,11 +15,6 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('@paypal/react-paypal-js', () => ({
-  PayPalScriptProvider: ({ children }) => React.createElement(React.Fragment, null, children),
-  PayPalButtons: () => React.createElement('div', null, 'PayPal Buttons')
-}));
-
 vi.mock('../../store/useStore.js', () => ({
   default: () => mockedStoreState
 }));
@@ -41,11 +36,11 @@ vi.mock('../../services/settingsService.js', () => ({
 vi.mock('../../services/paymentService.js', () => ({
   getPendingPlan: vi.fn(),
   getBillingHistory: vi.fn(),
-  migrateToPayPal: vi.fn(),
-  changePlan: vi.fn(),
-  syncSubscription: vi.fn(),
-  cancelSubscription: vi.fn(),
-  upgradeToPremium: vi.fn()
+  migrateToPayMongo: vi.fn(),
+  changePayMongoPlan: vi.fn(),
+  syncPayMongoSubscription: vi.fn(),
+  cancelPayMongoSubscription: vi.fn(),
+  setupPayMongoRecurring: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
@@ -65,38 +60,24 @@ import Settings from '../../../Pages/Settings.jsx';
 describe('Settings subscription visibility (component)', () => {
   beforeEach(() => {
     mockedStoreState = {
-      currentUser: null,
+      currentUser: {
+        is_master_admin: true,
+        role: 'admin',
+        company: {
+          plan: 'standard',
+          payment_method: 'manual',
+          subscription_status: 'active'
+        }
+      },
       setCurrentUser: vi.fn()
     };
   });
 
-  it('renders Link PayMongo Subscription for standard manual master admin', () => {
-    mockedStoreState.currentUser = {
-      is_master_admin: true,
-      role: 'admin',
-      company: {
-        plan: 'standard',
-        payment_method: 'manual',
-        subscription_status: 'active'
-      }
-    };
-
+  it('hides subscription tab and payment sections when subscriptions are disabled', () => {
     const html = renderToStaticMarkup(<Settings />);
-    expect(html).toContain('Link PayMongo Subscription');
-  });
-
-  it('hides Link PayMongo Subscription when tenant already uses PayMongo', () => {
-    mockedStoreState.currentUser = {
-      is_master_admin: true,
-      role: 'admin',
-      company: {
-        plan: 'standard',
-        payment_method: 'paymongo',
-        subscription_status: 'active'
-      }
-    };
-
-    const html = renderToStaticMarkup(<Settings />);
+    expect(html).not.toContain('Subscription');
     expect(html).not.toContain('Link PayMongo Subscription');
+    expect(html).not.toContain('Billing History');
   });
 });
+

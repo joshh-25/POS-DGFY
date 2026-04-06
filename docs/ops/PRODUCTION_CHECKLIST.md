@@ -34,7 +34,6 @@ Notes:
   ```
 - Strict gates must pass:
   - `npm run audit:indexes`
-  - `npm run audit:billing-funnel`
 - Frontend builds included by deploy script:
   - `build:skupervisor`
   - `build:pos`
@@ -51,19 +50,7 @@ Notes:
   DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
   ```
 
-## 5. If Billing Audit Fails (`webhook_without_telemetry`)
-- [ ] Remove synthetic test webhook rows:
-  ```bash
-  mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
-  ```
-- [ ] Verify audit returns healthy:
-  ```bash
-  cd backend
-  npm run audit:billing-funnel
-  cd ..
-  ```
-
-## 6. Post-Deploy Verification
+## 5. Post-Deploy Verification
 - [ ] `pm2 list` shows services online
 - [ ] `GET /health` returns healthy status
 - [ ] Login and critical flows work
@@ -78,7 +65,7 @@ Notes:
 - [ ] `surebizcorp.com` Nginx applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
 - [ ] Latest deploy summary exists under `logs/deploy/`
 
-## 7. Rollback (If Needed)
+## 6. Rollback (If Needed)
 1. Revert safely with a new commit:
    ```bash
    git revert --no-edit <deployed_commit_sha>

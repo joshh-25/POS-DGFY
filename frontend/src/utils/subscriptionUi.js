@@ -1,3 +1,5 @@
+export const subscriptionsEnabled = (env = import.meta.env || {}) => env?.VITE_SUBSCRIPTIONS_ENABLED === 'true';
+
 const normalizePlan = (plan) => {
   const normalized = String(plan || 'standard').toLowerCase();
   return normalized === 'premium' ? 'premium' : 'standard';
@@ -11,6 +13,15 @@ const getPayPalPlanId = (plan, env) => {
 };
 
 export const resolveReactivatePayPalConfig = ({ plan, env } = {}) => {
+  if (!subscriptionsEnabled(env)) {
+    return {
+      canRender: false,
+      clientId: '',
+      planId: '',
+      reason: 'Subscription billing is currently disabled.'
+    };
+  }
+
   const selectedPlan = normalizePlan(plan);
   const clientId = env?.VITE_PAYPAL_CLIENT_ID || '';
   const planId = getPayPalPlanId(selectedPlan, env || {});
@@ -42,6 +53,7 @@ export const resolveReactivatePayPalConfig = ({ plan, env } = {}) => {
 };
 
 export const shouldShowMigrateToPayMongoSection = ({ company, isMasterAdmin }) => {
+  if (!subscriptionsEnabled()) return false;
   const paymentMethod = String(company?.payment_method || 'manual').toLowerCase();
   return Boolean(isMasterAdmin && paymentMethod === 'manual');
 };

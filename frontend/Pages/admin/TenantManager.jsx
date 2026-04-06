@@ -15,9 +15,7 @@ import {
     Edit2,
     Trash2,
     AlertTriangle,
-    CreditCard,
-    RotateCcw,
-    ArrowUpDown
+    RotateCcw
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -237,23 +235,6 @@ export default function TenantManager() {
     };
     */
 
-    const handleAdminChangePlan = async (tenantId, plan) => {
-        if (!confirm(`Change this tenant's plan to "${plan}"? This takes effect immediately.`)) return;
-        setActionLoading(tenantId);
-        try {
-            await adminService.adminChangePlan(tenantId, plan);
-            loadTenants();
-            toast.success(`Plan changed to ${plan}`);
-        } catch (err) {
-            const normalized = normalizeApiError(err);
-            if (!normalized.isGlobalCandidate) {
-                toast.error(`Failed to change plan: ${normalized.message}`);
-            }
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
     const handleReactivate = async (tenantId, tenantName) => {
         if (!confirm(`Reactivate "${tenantName}"? This will restore their access for 30 days.`)) return;
         setActionLoading(tenantId);
@@ -330,6 +311,9 @@ export default function TenantManager() {
                         </div>
                         <div className="text-sm text-red-700">Rejected</div>
                     </div>
+                </div>
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Subscription plan-change and billing setup actions are disabled in the admin portal.
                 </div>
             </div>
 
@@ -505,19 +489,6 @@ export default function TenantManager() {
                                                         )}
                                                     </Button>
                                                 )} */}
-                                                <Button
-                                                    onClick={() => {
-                                                        const newPlan = tenant.plan === 'premium' ? 'standard' : 'premium';
-                                                        handleAdminChangePlan(tenant.id, newPlan);
-                                                    }}
-                                                    disabled={isProcessing}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="text-slate-600"
-                                                >
-                                                    <ArrowUpDown className="w-4 h-4 mr-1" />
-                                                    {tenant.plan === 'premium' ? 'To Standard' : 'To Premium'}
-                                                </Button>
                                                 <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"

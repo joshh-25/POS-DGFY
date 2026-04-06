@@ -1,12 +1,22 @@
 import jwt from 'jsonwebtoken';
+import { jest } from '@jest/globals';
+import bcrypt from 'bcryptjs';
 import { buildAdminLoginUseCase } from '../src/modules/adminAuth/usecases/adminLoginUseCase.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 describe('buildAdminLoginUseCase', () => {
+  const passwordHash = bcrypt.hashSync('252378', 10);
+  const buildUseCase = (overrides = {}) => buildAdminLoginUseCase({
+    jwtSecretProvider: () => 'test-secret',
+    adminCredentialsProvider: () => ({
+      username: 'skupervisor',
+      passwordHash
+    }),
+    ...overrides
+  });
+
   it('returns validation failure when username/password are missing', async () => {
-    const useCase = buildAdminLoginUseCase({
-      jwtSecretProvider: () => 'test-secret'
-    });
+    const useCase = buildUseCase();
 
     const result = await useCase({ username: '', password: '' });
 
@@ -16,9 +26,7 @@ describe('buildAdminLoginUseCase', () => {
   });
 
   it('returns authentication failure on invalid credentials', async () => {
-    const useCase = buildAdminLoginUseCase({
-      jwtSecretProvider: () => 'test-secret'
-    });
+    const useCase = buildUseCase();
 
     const result = await useCase({ username: 'wrong', password: 'wrong' });
 
@@ -28,9 +36,7 @@ describe('buildAdminLoginUseCase', () => {
   });
 
   it('returns signed token on valid credentials', async () => {
-    const useCase = buildAdminLoginUseCase({
-      jwtSecretProvider: () => 'test-secret'
-    });
+    const useCase = buildUseCase();
 
     const result = await useCase({
       username: 'skupervisor',
@@ -45,7 +51,7 @@ describe('buildAdminLoginUseCase', () => {
   });
 
   it('returns internal error when token signing fails', async () => {
-    const useCase = buildAdminLoginUseCase({
+    const useCase = buildUseCase({
       jwtSecretProvider: () => undefined
     });
 
@@ -57,5 +63,28 @@ describe('buildAdminLoginUseCase', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.INTERNAL_ERROR);
     expect(result.error.statusCode).toBe(500);
+  });
+
+  it('returns lockout response after too many failed attempts for same identity', async () => {
+    const lockoutPolicy = {
+      check: jest.fn()
+        .mockReturnValueOnce({ locked: false, retryAfterMs: 0 })
+        .mockReturnValueOnce({ locked: true, retryAfterMs: 60000 }),
+      registerFailure: jest.fn(),
+      clear: jest.fn()
+    };
+    const useCase = buildUseCase({ lockoutPolicy });
+
+    const first = await useCase({ username: 'skupervisor', password: 'wrong', sourceIp: '127.0.0.1' });
+    const second = await useCase({ username: 'skupervisor', password: 'wrong', sourceIp: '127.0.0.1' });
+
+    expect(first.success).toBe(false);
+    expect(first.error.code).toBe(DomainErrorCode.AUTHENTICATION_FAILED);
+    expect(lockoutPolicy.registerFailure).toHaveBeenCalledTimes(1);
+
+    expect(second.success).toBe(false);
+    expect(second.error.code).toBe(DomainErrorCode.AUTHENTICATION_FAILED);
+    expect(second.error.statusCode).toBe(429);
+    expect(second.error.details).toEqual({ retry_after_ms: 60000 });
   });
 });

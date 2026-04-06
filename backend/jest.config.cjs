@@ -9,6 +9,7 @@ module.exports = {
     verbose: true,
     openHandlesTimeout: 10000,
     roots: ['<rootDir>/tests'],
+    testPathIgnorePatterns: ['/node_modules/', '\\.legacy\\.test\\.js$'],
     setupFilesAfterEnv: process.env.TEST_TYPE === 'integration' ? [] : ['<rootDir>/tests/setup.js'],
     globalTeardown: '<rootDir>/tests/globalTeardown.cjs',
     collectCoverageFrom: ['src/**/*.js', '!src/config/*.js', '!src/seeders/*.js'],

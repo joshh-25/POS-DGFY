@@ -92,6 +92,17 @@ STOREFRONT_DEFAULT_LATITUDE=10.699817
 STOREFRONT_DEFAULT_LONGITUDE=122.559893
 STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
 STOREFRONT_DEFAULT_WAIT_MINUTES=15
+# Subscription/payment system toggle (default-off).
+# Set to true only when subscription workflows are intentionally re-enabled.
+PAYMENTS_ENABLED=false
+# Admin portal auth hardening (credentials are env-backed + bcrypt hash)
+# Default username remains "skupervisor"; default hash matches password "252378"
+# ADMIN_USERNAME=skupervisor
+# ADMIN_PASSWORD_HASH=$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK
+# Admin lockout policy (Redis-backed when REDIS_URL is configured; in-memory fallback otherwise)
+# ADMIN_LOGIN_LOCKOUT_MAX_ATTEMPTS=5
+# ADMIN_LOGIN_LOCKOUT_WINDOW_MS=900000
+# ADMIN_LOGIN_LOCKOUT_DURATION_MS=900000
 # Optional sync retry tuning after tenant/location/settings storefront mutations
 # STOREFRONT_DISCOVERY_SYNC_RETRY_DELAYS_MS=0,250,800
 # STOREFRONT_DISCOVERY_SIGNATURE_TTL_MS=1000
@@ -161,6 +172,9 @@ VITE_PROXY_TARGET=http://127.0.0.1:5000
 # Useful when serving store via vite preview/PM2 on :5175
 # If omitted, store app auto-falls back to http://<host>:5000 when running on :5175.
 VITE_API_BASE_URL=http://127.0.0.1:5000
+# Subscription/payment UI toggles (default-off; must stay aligned with backend PAYMENTS_ENABLED)
+VITE_PAYMENTS_ENABLED=false
+VITE_SUBSCRIPTIONS_ENABLED=false
 # Store app path-base override. Use /tenant-store/ for apex-domain path hosting.
 # Keep / in local dev.
 # VITE_STORE_BASE_PATH=/tenant-store/
@@ -244,7 +258,7 @@ sudo systemctl start redis
 ```
 
 **Windows:**
-- See [REDIS_SETUP.md](../../REDIS_SETUP.md) for detailed Windows options:
+- See [Redis Setup](../setup/REDIS_SETUP.md) for detailed Windows options:
   - Memurai (native Windows)
   - Docker: `docker run -d -p 6379:6379 redis`
   - WSL (Windows Subsystem for Linux)
@@ -376,6 +390,6 @@ After setting up the environment:
 2. Read [Development Guidelines](./guidelines.md) for coding standards
 3. Check [API Specification](../api/specification.md) for API details
 4. Review [Database Schema](../database/schema.md) for data structure
-5. See [PREREQUISITES.md](../../PREREQUISITES.md) for local vs hosting setup
-6. See [TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) for common errors
+5. See root-level `PREREQUISITES.md` for local vs hosting setup reference
+6. See root-level `TROUBLESHOOTING.md` for common errors reference
 

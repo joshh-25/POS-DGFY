@@ -19,6 +19,7 @@ Inventory folders organize items and drive filter UX in both Inventory and POS.
 - If no override row:
   - `category=product` + `product_type=finished_goods` => visible by default
   - other categories => hidden by default until enabled
+6. POS catalog responses return POS-visible items regardless of stock, and out-of-stock rows are shown as unavailable in the POS UI.
 
 ## UI Operations
 

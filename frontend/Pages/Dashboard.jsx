@@ -25,8 +25,10 @@ import { usePurchaseOrders } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useExpiryAlerts } from '@/hooks/useAlerts.js';
 import { usePermission } from '../src/hooks/usePermission';
+import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
 
 export default function Dashboard() {
+  const subscriptionFeaturesEnabled = subscriptionsEnabled();
   const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
   const { items: lowStockItems, loading: lowStockLoading } = useLowStockItems();
   const { movements: recentMovements, loading: movementsLoading } = useRecentMovements(10);
@@ -255,9 +257,15 @@ export default function Dashboard() {
             <p className="text-slate-300 text-sm mb-6 max-w-xs">
               Upgrade to Premium to unlock AI-powered demand prediction and stock optimization.
             </p>
-            <Link to="/settings?tab=subscription" className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white rounded-lg text-sm font-medium transition-colors">
-              Upgrade Now
-            </Link>
+            {subscriptionFeaturesEnabled ? (
+              <Link to="/settings?tab=subscription" className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white rounded-lg text-sm font-medium transition-colors">
+                Upgrade Now
+              </Link>
+            ) : (
+              <span className="px-4 py-2 bg-slate-700 text-slate-200 rounded-lg text-sm font-medium">
+                Upgrades temporarily disabled
+              </span>
+            )}
           </div>
         )}
       </div>

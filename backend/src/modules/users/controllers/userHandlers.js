@@ -11,6 +11,7 @@ import {
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { invalidateUserAuthCache } from '../../../middleware/auth.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -157,6 +158,11 @@ export const updateUserRole = async (req, res, next) => {
       roleData: req.validatedData
     });
 
+    invalidateUserAuthCache({
+      companyToken: req.headers['x-company-token'] || null,
+      userId: Number.parseInt(req.params.user_id, 10) || null
+    });
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
@@ -180,6 +186,11 @@ export const updateUserStatus = async (req, res, next) => {
       adminUserId: req.user.user_id,
       targetUserId: req.params.user_id,
       isActive
+    });
+
+    invalidateUserAuthCache({
+      companyToken: req.headers['x-company-token'] || null,
+      userId: Number.parseInt(req.params.user_id, 10) || null
     });
 
     return sendUseCaseResult(res, result, {
@@ -206,6 +217,11 @@ export const updateUserPermissions = async (req, res, next) => {
       targetUserId: req.params.user_id,
       permissions,
       isMasterAdmin
+    });
+
+    invalidateUserAuthCache({
+      companyToken: req.headers['x-company-token'] || null,
+      userId: Number.parseInt(req.params.user_id, 10) || null
     });
 
     return sendUseCaseResult(res, result, {

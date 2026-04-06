@@ -21,12 +21,6 @@ DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EX
 cd /var/www/skupervisor/backend
 npm run repair:indexes
 npm run audit:indexes
-npm run audit:billing-funnel
-```
-
-## Billing Audit Drift Cleanup
-```bash
-mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
 ```
 
 ## PM2 Operations

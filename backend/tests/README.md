@@ -98,14 +98,18 @@ npm test -- tests/permissionsRoleMatrix.test.js
 
 ---
 
-### PayPal Sandbox Canary (`paypalSandboxCanary.e2e.test.js`)
+### PayPal Sandbox Canary Legacy Suite (`paypalSandboxCanary.e2e.legacy.test.js`)
 
-**Purpose**: Scheduled end-to-end canary that validates live PayPal sandbox subscription verification plus `/api/v1/payments/upgrade`, `/api/v1/payments/migrate-to-paypal`, and `/api/v1/payments/reactivate-with-paypal` billing-funnel telemetry persistence against real external endpoints.
+**Purpose**: Optional legacy end-to-end canary that validates live PayPal sandbox subscription verification and payment lifecycle telemetry behavior.
 
-**How to run locally**:
+**Default policy**:
+1. Default backend test runs ignore `*.legacy.test.js`.
+2. Legacy payment suites only run by explicit opt-in.
+
+**How to run locally (opt-in)**:
 ```bash
 cd backend
-npm test -- paypalSandboxCanary.e2e.test.js
+npm run test:legacy:payments
 ```
 
 **Required environment variables**:
@@ -120,7 +124,7 @@ npm test -- paypalSandboxCanary.e2e.test.js
 
 **Behavior contract**:
 - Local runs: test auto-skips if required sandbox variables are missing.
-- CI scheduled canary (`.github/workflows/paypal-sandbox-canary.yml`): runs in strict mode and fails when variables are missing or flow validation fails.
+- Legacy suites are not part of default CI gates while payments are disabled.
 
 **What it validates**:
 1. OAuth token retrieval from PayPal sandbox.
@@ -142,9 +146,9 @@ See:
 
 ---
 
-### Payment Lifecycle Integration (`paymentLifecycle.integration.test.js`)
+### Payment Disabled Contract Integration (`paymentLifecycle.integration.test.js`)
 
-**Purpose**: Route-level DB integration for migration/reactivation contracts using mocked PayPal transport and real landlord persistence.
+**Purpose**: Route-level integration that verifies disabled payment lifecycle routes return the canonical disabled contract (`503` + `PAYMENTS_DISABLED`) in default mode.
 
 **How to run locally**:
 ```bash
@@ -153,9 +157,12 @@ npm test -- paymentLifecycle.integration.test.js
 ```
 
 **What it validates**:
-1. `/api/v1/payments/migrate-to-paypal` updates tenant billing state and writes attempted+succeeded telemetry pair.
-2. `/api/v1/payments/reactivate-with-paypal` restores inactive tenant state and writes attempted+succeeded telemetry pair.
-3. Telemetry rows preserve `source` and `correlation_id` route contracts.
+1. `/api/v1/payments/migrate-to-paypal` returns `503` with `code=PAYMENTS_DISABLED`.
+2. `/api/v1/payments/reactivate-with-paypal` returns `503` with `code=PAYMENTS_DISABLED`.
+3. Default test suite behavior matches the current hard-disabled payment policy.
+
+**Legacy note**:
+- Provider-specific lifecycle and telemetry suites were moved to `.legacy.test.js` and are only run via `npm run test:legacy:payments`.
 
 ---
 

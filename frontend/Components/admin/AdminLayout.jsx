@@ -95,6 +95,10 @@ export default function AdminLayout() {
 
                         {/* Login Form */}
                         <form onSubmit={handleLogin} className="p-6 space-y-4">
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 text-sm">
+                                Temporary admin credentials are in use for this phase and all login attempts are monitored.
+                            </div>
+
                             {sessionExpired && (
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2 text-amber-800 text-sm">
                                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -233,6 +237,9 @@ export default function AdminLayout() {
 
             {/* Main Content */}
             <main className="flex-1 p-6 overflow-auto">
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Admin access is on temporary credential mode during hardening. Avoid sharing credentials and report unexpected login activity immediately.
+                </div>
                 <Outlet />
             </main>
         </div>

@@ -22,6 +22,34 @@ const shouldBypassSubscriptionGate = (req) => {
   return req.baseUrl === '/api/v1/payments' && SUBSCRIPTION_GATE_BYPASS_ROUTES.has(routeKey);
 };
 
+export const invalidateUserAuthCache = ({ companyToken, userId } = {}) => {
+  // Targeted eviction whenever possible to keep perf benefits of short-lived cache.
+  if (userId != null) {
+    if (companyToken) {
+      _userCache.delete(`${companyToken}:${userId}`);
+      return;
+    }
+    for (const key of _userCache.keys()) {
+      if (key.endsWith(`:${userId}`)) {
+        _userCache.delete(key);
+      }
+    }
+    return;
+  }
+
+  if (companyToken) {
+    const prefix = `${companyToken}:`;
+    for (const key of _userCache.keys()) {
+      if (key.startsWith(prefix)) {
+        _userCache.delete(key);
+      }
+    }
+    return;
+  }
+
+  _userCache.clear();
+};
+
 export const authenticate = async (req, res, next) => {
   try {
     // Get token from header

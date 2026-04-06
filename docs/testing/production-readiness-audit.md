@@ -3,8 +3,13 @@
 **Project:** SKUpervisor (SKU-Inventory-Manager)
 **Status:** in_progress (as of 2026-03-28; pending POS E2E UAT signoff and runtime doctor checks per environment)
 
+> Addendum (2026-04-03): Subscription/payment workflows are now disabled by default.
+> Billing-funnel and PayPal canary references in this historical report are no longer active release gates.
+> Addendum (2026-04-03): Provider-specific legacy payment suites were moved to opt-in execution (`npm --prefix backend run test:legacy:payments`).
+> Addendum (2026-04-03): Fresh full-gate rerun passed (`check:architecture`, docs/backend/frontend lint, backend/frontend tests, frontend/skupervisor/pos/store builds, `check:frontend-budgets`, `doctor:runtime`, `audit:indexes`, `smoke:pos-local` with backend started).
+
 ## Summary
-The project has successfully resolved all critical infrastructure and deployment blockers. The QR Receive flow is now fully operational end-to-end for both Purchase Orders and Job Orders — verified by live user testing.
+The project has resolved major infrastructure and deployment blockers, and key operational flows (including QR Receive) have end-to-end verification evidence. Overall readiness remains `in_progress` until all non-production gates remain green and manual cashier/admin UAT is formally signed off.
 
 ## Resolved Critical Issues
 
@@ -130,7 +135,9 @@ All 10 tests pass in ~2.5 seconds.
 16 orphaned MySQL databases were dropped (all empty, created by incomplete provisioning attempts). The `sku` database (pointed to by `DB_NAME=SKU` in `.env`) was confirmed intact with all 36 tables. The `sku.tenants` table was confirmed empty — the system was operating in default fallback mode. The correct tenant registration flow via `/register-company` → admin approval → dedicated database provisioning is now the documented path forward.
 
 ## Conclusion
-The system is now **fully stable** and ready for live user traffic. The QR Receive flow is fully functional for both Purchase Orders and Job Orders without requiring user authentication on the mobile scanning page. The token refresh race condition is fully resolved — both single-tab and multi-tab scenarios — with 15 automated tests (9 frontend + 6 backend). The local development environment is clean with a single `sku` database as the source of truth.
+The system is **operationally stable for non-production validation** with strong automated coverage across architecture, runtime schema, and critical POS flows. The QR Receive flow is functional for both Purchase Orders and Job Orders without requiring user authentication on the mobile scanning page. The token refresh race condition is resolved for both single-tab and multi-tab scenarios with dedicated automated coverage.
+
+Release status remains `in_progress` until manual cashier/admin UAT evidence is complete and current automated quality gates (including frontend bundle budget checks) remain passing.
 
 ---
 

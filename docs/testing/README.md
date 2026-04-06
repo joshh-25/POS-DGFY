@@ -14,14 +14,15 @@ Use this table to avoid over-claiming what a green test run proves.
 | Syntax / unit mocks | isolated use-case/service unit tests | Branch logic, error mapping, payload shaping | Real network/provider behavior, real user behavior |
 | Transport/controller tests | handler transport contract tests | HTTP wiring, token/header forwarding, status/payload contracts | Provider reality, DB persistence parity in production |
 | DB integration tests | `supertest` + real test DB suites | Route-level state transitions and telemetry persistence in controlled env | Production ingress parity, adoption/retention |
-| Live sandbox tests | PayPal sandbox canary E2E suites | Real provider verification flow + backend transition contracts | Production traffic behavior, customer engagement depth |
+| Live sandbox tests (legacy/opt-in) | PayPal sandbox canary E2E suites | Real provider verification flow + backend transition contracts when payments are explicitly re-enabled | Production traffic behavior, customer engagement depth |
 | Production evidence | reconciliation dashboards, longitudinal audits | Real-world behavior over time in deployed environment | Causal impact without controlled experiments |
 
 ## Claim Guardrail
 
 Current approved claim language for subscription telemetry:
-1. "Billing funnel telemetry integrity is validated across unit, transport, integration, and sandbox layers."
-2. "Selected backend-observed product usage events are recorded."
+1. "Payment/subscription workflows are disabled by default; default quality gates validate the disabled contract."
+2. "Legacy provider-specific billing telemetry checks exist as opt-in suites for explicitly re-enabled payment workflows."
+3. "Selected backend-observed product usage events are recorded."
 
 Disallowed claim language until production longitudinal evidence exists:
 1. "This proves real-world engagement."
