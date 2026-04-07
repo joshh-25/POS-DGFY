@@ -8,6 +8,15 @@ related_adr: 0007-dual-mode-pos-compliance-program.md
 
 # Warning Noise Remediation Plan (Evidence-Driven)
 
+## Current Implementation Status
+As of `master` commit `2c3a8a23c713abef01055899a1d4e2c72f4aec93` (CI run `24062846216`, succeeded):
+1. Plan status: `open` (not yet fully implemented end-to-end).
+2. Known warning sources remain observable in backend test output:
+   - tenant optional-route token warnings,
+   - compliance audit-log FK warning paths,
+   - FIFO drift repair warnings.
+3. No compliance fail-closed behavior was relaxed as part of CI stabilization or schema-alignment fixes.
+
 ## Scope
 Reduce high-volume warning noise while preserving true risk signals in compliance, tenant resolution, and stock movement flows.
 

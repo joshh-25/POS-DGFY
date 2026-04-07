@@ -1,5 +1,5 @@
 ---
-status: reference
+status: historical
 owner: compliance
 last_reviewed: 2026-04-07
 topic: compliance_pr_merge_packet
@@ -7,6 +7,14 @@ related_adr: 0007-dual-mode-pos-compliance-program.md
 ---
 
 # Compliance PR Body, Strict Latest-State Merge Checklist, and Parallel Backlog
+
+## Historical Record Note
+This document is retained for traceability of the April 7, 2026 cleanup lane.
+
+Final merged state:
+1. Merged commit on `master`: `2c3a8a23c713abef01055899a1d4e2c72f4aec93`
+2. CI status: passed (GitHub Actions run `24062846216`)
+3. Branch-specific instructions in this file (`feat/compliance-clean`, `wip/parallel-changes`) are historical and no longer active workflow guidance.
 
 ## Authoritative Basis
 1. `docs/START_HERE.md` (authoritative, last_reviewed 2026-03-06)

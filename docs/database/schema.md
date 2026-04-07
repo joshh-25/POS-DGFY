@@ -86,9 +86,20 @@ CREATE TABLE tenants (
     pending_plan_approved BOOLEAN DEFAULT false,
     pending_paypal_subscription_id VARCHAR(255) NULL,
     paypal_setup_initiated_at DATE NULL,
-    payment_method ENUM('manual', 'paypal') DEFAULT 'manual',
+    pending_paymongo_subscription_id VARCHAR(255) NULL,
+    paymongo_setup_initiated_at DATE NULL,
+    paymongo_subscription_id VARCHAR(255) NULL,
+    paymongo_source_id VARCHAR(255) NULL,
+    payment_method ENUM('manual', 'paypal', 'paymongo') DEFAULT 'manual',
     reactivation_requested_at DATE NULL,
     rejection_reason VARCHAR(500) NULL,
+    compliance_mode_state ENUM('non_compliant_active', 'compliant_pending', 'compliant_active') NULL,
+    compliance_mode_choice_required BOOLEAN NOT NULL DEFAULT true,
+    compliance_mode_selected_at DATETIME NULL,
+    compliance_mode_selected_by VARCHAR(120) NULL,
+    compliance_activated_at DATETIME NULL,
+    compliance_policy_version VARCHAR(40) NULL,
+    compliance_profile JSON NULL,
     settings JSON,
     admin_email VARCHAR(255),
     admin_password_hash VARCHAR(255),
@@ -101,11 +112,19 @@ Subscription notes:
 - Tenant DB credentials are environment-driven at runtime (`DB_USER`, `DB_PASSWORD`); tenant-row plaintext credential columns are intentionally removed.
 - `billing_cycle_anchor` backfill migration (`20260303000005-backfill-missing-billing-anchor.cjs`) only updates premium tenants with non-null `current_period_end` and null anchor.
 - Phase 65 fields added via `20260309000001-extend-tenant-subscription-fields.cjs` (idempotent `describeTable` guard):
-  - `payment_method`: `'manual'` = admin-invoiced; `'paypal'` = PayPal recurring
+  - `payment_method`: `'manual'` = admin-invoiced; `'paypal'` = PayPal recurring; `'paymongo'` = PayMongo recurring
   - `pending_plan*` fields: track a queued plan change awaiting PayPal user re-consent
   - `pending_paypal_subscription_id` / `paypal_setup_initiated_at`: track admin-initiated PayPal setup links (72h TTL)
+  - `pending_paymongo_subscription_id` / `paymongo_setup_initiated_at`: track admin-initiated PayMongo setup links
+  - `paymongo_subscription_id` / `paymongo_source_id`: active PayMongo billing references
   - `reactivation_requested_at`: set when an inactive tenant requests reactivation
   - `rejection_reason`: populated by `rejectTenantUseCase`; surfaced in email lookup response
+- Compliance lifecycle fields are landlord-tenant scoped and enforced in runtime + DB:
+  - `compliance_mode_state`, `compliance_mode_choice_required`
+  - `compliance_mode_selected_*`, `compliance_activated_at`
+  - `compliance_policy_version`, `compliance_profile`
+- Drift-alignment migrations:
+  - `20260407000003-align-tenant-schema-with-model.cjs` aligns tenant landlord schema with active runtime model (including admin fields and enum normalization).
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -721,12 +740,12 @@ CREATE TABLE po_line_items (
 ```sql
 CREATE TABLE job_orders (
     jo_id INT PRIMARY KEY AUTO_INCREMENT,
-    jo_number VARCHAR(50) UNIQUE NOT NULL,
+    jo_number VARCHAR(50) UNIQUE NULL,
     product_id INT NOT NULL,
-    quantity_to_produce DECIMAL(12, 2) NOT NULL,
+    quantity_to_produce DECIMAL(24, 12) NOT NULL,
     status ENUM('draft', 'in_progress', 'partial', 'completed', 'cancelled') DEFAULT 'draft',
-    quantity_produced DECIMAL(12, 2) DEFAULT 0,
-    quality_check ENUM('pass', 'fail') NULL,
+    quantity_produced DECIMAL(24, 12) NOT NULL DEFAULT 0,
+    quality_check ENUM('pass', 'fail', 'pending') NULL,
     completed_by INT NULL,
     archived_by INT NULL,
     archived_at TIMESTAMP NULL,
@@ -757,6 +776,9 @@ CREATE TABLE job_orders (
 - `quantity_produced` tracks how much has been produced so far
 - Multiple completion operations can be performed until `quantity_produced = quantity_to_produce`
 - Each partial completion consumes proportional ingredients
+
+**Alignment Note (2026-04-07):**
+- `20260407000004-align-job-orders-schema-with-model.cjs` adds missing `quality_check` and aligns `quantity_produced` precision with the runtime model contract.
 
 ### 13. JO Ingredients Table
 

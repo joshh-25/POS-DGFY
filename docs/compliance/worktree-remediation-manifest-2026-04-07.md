@@ -1,4 +1,20 @@
+---
+status: historical
+owner: compliance
+last_reviewed: 2026-04-07
+topic: worktree_remediation_manifest
+related_adr: 0007-dual-mode-pos-compliance-program.md
+---
+
 # Worktree Remediation Manifest (2026-04-07)
+
+## Historical Record Note
+This manifest documents the branch-splitting strategy used during the April 7, 2026 remediation.
+It is retained as evidence only and is not the current branch operation guide.
+
+Final outcome:
+1. Compliance fixes merged to `master` at `2c3a8a23c713abef01055899a1d4e2c72f4aec93`
+2. CI passed for merged head (`24062846216`)
 
 ## Purpose
 Freeze lane classification used to split a mixed dirty worktree into compliance delivery and parked parallel work.
