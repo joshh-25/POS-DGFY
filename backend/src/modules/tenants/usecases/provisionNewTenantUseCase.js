@@ -4,12 +4,15 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
     return async ({ body }) => {
         try {
-            const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId } = body || {};
+            const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId, complianceMode } = body || {};
+            const normalizedComplianceMode = typeof complianceMode === 'string'
+                ? complianceMode.trim().toLowerCase()
+                : '';
 
-            if (!name || !adminEmail || !adminPassword) {
+            if (!name || !adminEmail || !adminPassword || !['non_compliant', 'compliant'].includes(normalizedComplianceMode)) {
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword',
+                    'Missing required fields: name, adminEmail, adminPassword, complianceMode',
                     { statusCode: 400 }
                 ));
             }
@@ -19,7 +22,8 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 adminEmail,
                 adminPassword,
                 plan,
-                subscriptionId
+                subscriptionId,
+                complianceMode: normalizedComplianceMode
             });
 
             return ok({

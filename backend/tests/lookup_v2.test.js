@@ -16,6 +16,7 @@ const baseData = (label) => ({
     adminEmail: makeEmail(label),
     adminPassword: 'TestPassword123!',
     plan: 'standard',
+    complianceMode: 'non_compliant'
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -124,12 +125,24 @@ describe('Company Token Lookup — full coverage', () => {
 
             const reg1 = await request(app)
                 .post('/api/v1/admin/tenants/register')
-                .send({ name: `Multi Corp A ${ts}`, adminEmail: sharedEmail, adminPassword: 'TestPassword123!', plan: 'standard' })
+                .send({
+                    name: `Multi Corp A ${ts}`,
+                    adminEmail: sharedEmail,
+                    adminPassword: 'TestPassword123!',
+                    plan: 'standard',
+                    complianceMode: 'non_compliant'
+                })
                 .expect(201);
 
             const reg2 = await request(app)
                 .post('/api/v1/admin/tenants/register')
-                .send({ name: `Multi Corp B ${ts}`, adminEmail: sharedEmail, adminPassword: 'TestPassword123!', plan: 'standard' })
+                .send({
+                    name: `Multi Corp B ${ts}`,
+                    adminEmail: sharedEmail,
+                    adminPassword: 'TestPassword123!',
+                    plan: 'standard',
+                    complianceMode: 'non_compliant'
+                })
                 .expect(201);
 
             const tokenA = reg1.body.data.company_token;

@@ -234,6 +234,7 @@ export const posRepository = {
     async nextInvoiceNumber(counterKey, options = {}) {
         const PosInvoiceCounter = dbStore.get('PosInvoiceCounter');
         const transaction = options.transaction;
+        const prefix = String(options.prefix || 'INV').trim().toUpperCase() || 'INV';
 
         let counter = await PosInvoiceCounter.findByPk(counterKey, {
             transaction,
@@ -255,7 +256,7 @@ export const posRepository = {
             { transaction }
         );
 
-        return `INV-${String(nextValue).padStart(6, '0')}`;
+        return `${prefix}-${String(nextValue).padStart(6, '0')}`;
     },
 
     async createTransactionWithLines({ header, lines }, options = {}) {

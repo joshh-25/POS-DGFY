@@ -12,6 +12,11 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         unique: true
     },
+    document_type: {
+        type: DataTypes.ENUM('non_fiscal_slip', 'fiscal_invoice'),
+        allowNull: false,
+        defaultValue: 'non_fiscal_slip'
+    },
     idempotency_key: {
         type: DataTypes.STRING(120),
         allowNull: false,
@@ -206,6 +211,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
     updatedAt: 'updated_at',
     indexes: [
         { fields: ['invoice_number'] },
+        { fields: ['document_type'] },
         { fields: ['idempotency_key'] },
         { fields: ['tracking_pin'] },
         { fields: ['order_source'] },

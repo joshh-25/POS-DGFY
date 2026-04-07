@@ -46,12 +46,18 @@ import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
+import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
+import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
+const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
+const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -65,6 +71,12 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantComplianceArtifact, { foreignKey: 'tenant_id', as: 'complianceArtifacts' });
+TenantComplianceArtifact.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compliancePeripherals' });
+TenantCompliancePeripheral.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantComplianceAuditLog, { foreignKey: 'tenant_id', as: 'complianceAuditLogs' });
+TenantComplianceAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -287,7 +299,10 @@ const db = {
   WebhookLog,
   EngagementEvent,
   AiUsageLog,
-  StorefrontDiscoveryIndex
+  StorefrontDiscoveryIndex,
+  TenantComplianceArtifact,
+  TenantCompliancePeripheral,
+  TenantComplianceAuditLog
 };
 
 export default db;
@@ -340,7 +355,10 @@ export {
   WebhookLog,
   EngagementEvent,
   AiUsageLog,
-  StorefrontDiscoveryIndex
+  StorefrontDiscoveryIndex,
+  TenantComplianceArtifact,
+  TenantCompliancePeripheral,
+  TenantComplianceAuditLog
 };
 
 

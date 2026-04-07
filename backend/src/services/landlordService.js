@@ -20,7 +20,14 @@ const OPTIONAL_TENANT_LOOKUP_ATTRIBUTES = [
     'current_period_end',
     'grace_period_end',
     'payment_method',
-    'rejection_reason'
+    'rejection_reason',
+    'compliance_mode_state',
+    'compliance_mode_choice_required',
+    'compliance_mode_selected_at',
+    'compliance_mode_selected_by',
+    'compliance_activated_at',
+    'compliance_policy_version',
+    'compliance_profile'
 ];
 
 const TENANT_LOOKUP_ATTRIBUTE_CANDIDATES = [

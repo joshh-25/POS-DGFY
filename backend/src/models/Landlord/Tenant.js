@@ -42,6 +42,35 @@ export default (sequelize) => {
             type: DataTypes.ENUM('pending', 'active', 'inactive', 'rejected', 'archived'),
             defaultValue: 'pending'
         },
+        compliance_mode_state: {
+            type: DataTypes.ENUM('non_compliant_active', 'compliant_pending', 'compliant_active'),
+            allowNull: true
+        },
+        compliance_mode_choice_required: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true
+        },
+        compliance_mode_selected_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        compliance_mode_selected_by: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        compliance_activated_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        compliance_policy_version: {
+            type: DataTypes.STRING(40),
+            allowNull: true
+        },
+        compliance_profile: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         // Store admin details for deferred provisioning (before approval)
         admin_email: {
             type: DataTypes.STRING,

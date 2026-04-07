@@ -11,6 +11,7 @@ import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js'
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { syncStorefrontDiscoveryWithReliability } from '../../../services/storefrontDiscoverySyncReliabilityService.js';
 import logger from '../../../config/logger.js';
+import { invalidateTenantLookupCache } from '../../../middleware/tenantHandler.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -23,6 +24,13 @@ const defaultErrorPayload = (req, res, failure) => ({
   request_id: requestId(req, res),
   timestamp: timestamp()
 });
+
+const invalidateTenantCache = (req) => {
+  invalidateTenantLookupCache({
+    companyToken: req.headers['x-company-token'] || null,
+    tenantId: req.tenant?.id || null
+  });
+};
 
 /**
  * @route   GET /api/v1/settings
@@ -99,7 +107,13 @@ export const getSettingByKey = async (req, res, next) => {
  */
 export const updateSettings = async (req, res, next) => {
   try {
-    const result = await updateSettingsUseCase({ settingsData: req.validatedData });
+    const result = await updateSettingsUseCase({
+      settingsData: req.validatedData,
+      actorUser: req.user
+    });
+    if (result?.success) {
+      invalidateTenantCache(req);
+    }
     if (result?.ok && req.tenant?.id) {
       syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,
@@ -156,8 +170,12 @@ export const updateSettingByKey = async (req, res, next) => {
   try {
     const result = await updateSettingByKeyUseCase({
       key: req.params.key,
-      value: req.validatedData.value
+      value: req.validatedData.value,
+      actorUser: req.user
     });
+    if (result?.success) {
+      invalidateTenantCache(req);
+    }
     if (result?.ok && req.tenant?.id) {
       syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,

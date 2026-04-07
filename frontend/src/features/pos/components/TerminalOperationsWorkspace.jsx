@@ -572,9 +572,7 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <p className="text-xs text-slate-500">Compliance</p>
-          <p className={`text-sm font-semibold ${terminalMeta.strictCompliance ? 'text-emerald-700' : 'text-amber-700'}`}>
-            {terminalMeta.strictCompliance ? 'Enabled' : 'Disabled'}
-          </p>
+          <p className="text-sm font-semibold text-emerald-700">Dual-mode policy</p>
         </div>
       </div>
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">

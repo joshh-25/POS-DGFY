@@ -104,6 +104,7 @@ export const provisionTenant = async (options) => {
         adminPassword,
         plan = 'standard',        // Default to standard if not provided
         subscriptionId = null,    // Optional subscription ID for manual entry
+        complianceMode = 'non_compliant',
         // Option 2: Approval provisioning (new workflow)
         tenantId,
         dbName: providedDbName,
@@ -133,6 +134,13 @@ export const provisionTenant = async (options) => {
         logger.info(`[Provisioning] Approving existing tenant: ${tenantId} (DB: ${dbName})`);
     } else {
         // Legacy/Manual provisioning flow
+        const normalizedComplianceMode = typeof complianceMode === 'string'
+            ? complianceMode.trim().toLowerCase()
+            : '';
+        const complianceModeState = normalizedComplianceMode === 'compliant'
+            ? 'compliant_pending'
+            : 'non_compliant_active';
+
         uuid = uuidv4();
         const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
         dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
@@ -172,7 +180,13 @@ export const provisionTenant = async (options) => {
                 plan: plan,
                 subscription_status: subscriptionStatus,
                 paypal_subscription_id: subscriptionId,
-                current_period_end: currentPeriodEnd
+                current_period_end: currentPeriodEnd,
+                compliance_mode_state: complianceModeState,
+                compliance_mode_choice_required: false,
+                compliance_mode_selected_at: new Date(),
+                compliance_mode_selected_by: 'legacy_provisioning',
+                compliance_policy_version: '2026.04.06',
+                compliance_profile: {}
             }, { transaction });
             await transaction.commit();
         } catch (error) {

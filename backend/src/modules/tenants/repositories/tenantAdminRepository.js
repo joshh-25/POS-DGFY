@@ -8,6 +8,23 @@ const getPaymentModel = () => dbStore.get('Payment');
 const getEngagementEventModel = () => dbStore.get('EngagementEvent');
 const getAiUsageLogModel = () => dbStore.get('AiUsageLog');
 
+const COMPLIANCE_TRANSITIONS = Object.freeze({
+    non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
+    compliant_pending: new Set(['compliant_pending', 'compliant_active']),
+    compliant_active: new Set(['compliant_active'])
+});
+
+const assertComplianceTransition = ({ previousState, nextState }) => {
+    if (!nextState || previousState == null || previousState === nextState) {
+        return;
+    }
+
+    const allowed = COMPLIANCE_TRANSITIONS[previousState];
+    if (!allowed || !allowed.has(nextState)) {
+        throw new Error(`Compliance mode transition blocked: ${previousState} -> ${nextState}`);
+    }
+};
+
 export const tenantAdminRepository = {
     findTenantByName(name) {
         const Tenant = getTenantModel();
@@ -26,10 +43,29 @@ export const tenantAdminRepository = {
         return Tenant.findAll({
             where,
             order: [['createdAt', 'DESC']],
-            attributes: ['id', 'name', 'domain', 'company_token', 'status', 'admin_email', 'plan', 'createdAt']
+            attributes: [
+                'id',
+                'name',
+                'domain',
+                'company_token',
+                'status',
+                'admin_email',
+                'plan',
+                'createdAt',
+                'compliance_mode_state',
+                'compliance_mode_choice_required',
+                'compliance_activated_at',
+                'compliance_policy_version'
+            ]
         });
     },
     updateTenant(tenant, payload) {
+        if (payload && Object.prototype.hasOwnProperty.call(payload, 'compliance_mode_state')) {
+            assertComplianceTransition({
+                previousState: tenant.compliance_mode_state || null,
+                nextState: payload.compliance_mode_state
+            });
+        }
         return tenant.update(payload);
     },
     async removeTenantDependencies(tenantId) {

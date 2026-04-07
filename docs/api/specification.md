@@ -1662,7 +1662,7 @@ Upload/replace POS catalog image override (multipart file upload).
 
 **Image URL Contract**
 - Backend stores and returns `pos_image_url` as a path under `/uploads/...`.
-- Local frontend dev/prod-preview must proxy `/uploads` to backend target (same as `/api`) so catalog/terminal images render correctly from `localhost:5173`.
+- Local frontend dev/prod-preview surfaces must proxy `/uploads` to backend target (same as `/api`) so catalog/terminal/storefront images render correctly from local app hosts (for example `localhost:5173`, `localhost:5174`, `localhost:5175`).
 - If `/uploads` proxy is missing, images appear as broken placeholders even when upload succeeds.
 
 ### DELETE /pos/catalog-overrides/:item_id/image
@@ -1696,14 +1696,15 @@ Discount policy (current contract):
 **Permission**: `pos:transact`  
 **Plan Gate**: Premium (`requirePremium`)
 
-**Compliance Gate (strict mode)**  
-If tenant setting `pos_strict_compliance_enabled=true`, checkout is blocked with `422` when any required POS setup field is missing:
-- `pos_business_name`
-- `pos_tin_branch`
-- `pos_address`
-- `pos_ptu_number`
-- `pos_min_number`
-- `pos_accreditation_number`
+**Compliance Gate (dual-mode, fail-closed for compliant mode)**  
+Checkout is evaluated by the compliance policy engine:
+1. `compliance_mode_choice_required=true` blocks checkout and terminal operations (`LEGACY_MODE_SELECTION_REQUIRED`).
+2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`).
+3. `compliant_pending` allows operations, but fiscal output remains blocked until activation checklist is complete.
+4. `compliant_active` fails closed when checklist controls are unmet:
+   - incomplete profile/settings (`COMPLIANCE_PROFILE_INCOMPLETE`)
+   - unverified/missing artifacts (`COMPLIANCE_ARTIFACTS_INCOMPLETE`)
+   - missing terminal-qualified accredited peripherals (`TERMINAL_DEVICE_MISMATCH` or `ACCREDITED_PERIPHERAL_REQUIRED`)
 
 **Calculation Contract**
 1. `items_subtotal = sum(line qty * line sale_price)`
@@ -1921,6 +1922,8 @@ Catalog rows include:
 - `default_sale_price`, `cost_per_unit`
 - `vat_type`
 - `image_url` (from POS catalog override when available)
+  - may be an absolute URL or backend-relative `/uploads/...` path
+  - storefront/POS clients should gracefully show a placeholder when image load fails
 
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.
@@ -1977,12 +1980,12 @@ Track online-store order status for public users.
    - `pos_ptu_number`
    - `pos_min_number`
    - `pos_accreditation_number`
-   - `pos_strict_compliance_enabled`
    - `pos_receipt_footer_message`
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (JSON object keyed by method with `{enabled, amount, label}`)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
+5. Compliance lifecycle/profile is tenant-level (`tenants` + compliance module tables), not controlled by a strict-toggle setting.
 
 ---
 
@@ -2809,5 +2812,3 @@ APP_URL=https://your-domain.com
 1. Enable 2-Factor Authentication on your Google account
 2. Generate an App Password at: https://myaccount.google.com/apppasswords
 3. Use the 16-character app password as `SMTP_PASS`
-
-

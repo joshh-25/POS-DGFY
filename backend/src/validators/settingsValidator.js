@@ -114,7 +114,6 @@ export const updateSettingsSchema = Joi.object({
   pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'Accreditation number contains invalid characters'
   }),
-  pos_strict_compliance_enabled: Joi.boolean().optional(),
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
@@ -221,7 +220,6 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'Accreditation number contains invalid characters'
     }),
-    pos_strict_compliance_enabled: Joi.boolean(),
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,

@@ -12,6 +12,7 @@ import {
 import { login as loginWithCredentials, getCurrentUser as fetchCurrentUser } from '@/services/authService.js';
 import { getAllSettings } from '@/services/settingsService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
+import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 
@@ -104,8 +105,11 @@ export default function TerminalPage() {
     pettyCashSymbol: DEFAULT_CURRENCY,
     pettyCashAmount: 0,
     activeDiscountCount: 0,
-    enabledFeeMethods: [],
-    strictCompliance: false
+    enabledFeeMethods: []
+  });
+  const [complianceGate, setComplianceGate] = useState({
+    loading: false,
+    modeChoiceRequired: false
   });
   const [formData, setFormData] = useState({
     email: '',
@@ -184,7 +188,6 @@ export default function TerminalPage() {
       const allSettings = await getAllSettings();
       const pettyCashSymbol = String(allSettings?.pos_petty_cash_symbol?.value || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
       const pettyCashAmount = Number(allSettings?.pos_petty_cash_amount?.value ?? 0);
-      const strictCompliance = Boolean(allSettings?.pos_strict_compliance_enabled?.value);
 
       let discountProfiles = allSettings?.pos_discount_profiles?.value || [];
       if (typeof discountProfiles === 'string') {
@@ -215,13 +218,30 @@ export default function TerminalPage() {
         pettyCashSymbol,
         pettyCashAmount: Number.isFinite(pettyCashAmount) ? pettyCashAmount : 0,
         activeDiscountCount,
-        enabledFeeMethods,
-        strictCompliance
+        enabledFeeMethods
       });
     } catch {
       setTerminalMeta((prev) => ({ ...prev, loading: false }));
     }
   }, []);
+
+  const refreshComplianceGate = useCallback(async () => {
+    if (locked) {
+      setComplianceGate({ loading: false, modeChoiceRequired: false });
+      return;
+    }
+
+    setComplianceGate((prev) => ({ ...prev, loading: true }));
+    try {
+      const profile = await getComplianceProfile();
+      setComplianceGate({
+        loading: false,
+        modeChoiceRequired: profile?.mode_choice_required === true
+      });
+    } catch {
+      setComplianceGate((prev) => ({ ...prev, loading: false }));
+    }
+  }, [locked]);
 
   const refreshOperationalContext = useCallback(async () => {
     if (locked || !canViewPos) {
@@ -404,6 +424,14 @@ export default function TerminalPage() {
   }, [locked, refreshTenantLocations]);
 
   useEffect(() => {
+    if (!locked) {
+      refreshComplianceGate();
+      return;
+    }
+    setComplianceGate({ loading: false, modeChoiceRequired: false });
+  }, [locked, refreshComplianceGate]);
+
+  useEffect(() => {
     if (locked || !canViewPos) {
       refreshIncomingOrders({ silent: true });
       return undefined;
@@ -462,10 +490,11 @@ export default function TerminalPage() {
 
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
+    if (complianceGate.modeChoiceRequired) return 'Compliance mode selection is required. Ask tenant master admin to select mode in Settings > Compliance.';
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
     return '';
-  }, [canTransactPos, locked, shiftState.shift]);
+  }, [canTransactPos, complianceGate.modeChoiceRequired, locked, shiftState.shift]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const handleLogin = async (event) => {
@@ -493,7 +522,7 @@ export default function TerminalPage() {
 
       await loginWithCredentials({ email, password, companyToken });
       await hydrateUser();
-      await Promise.all([hydrateTerminalMeta(), refreshOperationalContext()]);
+      await Promise.all([hydrateTerminalMeta(), refreshOperationalContext(), refreshComplianceGate()]);
       setFormData((prev) => ({ ...prev, password: '' }));
       toast.success('Terminal unlocked.');
     } catch (error) {
@@ -516,6 +545,10 @@ export default function TerminalPage() {
   };
 
   const handleOpenShift = async () => {
+    if (complianceGate.modeChoiceRequired) {
+      toast.error('Compliance mode selection is required before terminal operations can continue.');
+      return;
+    }
     if (!canTransactPos) {
       toast.error('Your account does not have permission to open a shift.');
       return;
@@ -547,6 +580,10 @@ export default function TerminalPage() {
   };
 
   const handleRecordCashEvent = async () => {
+    if (complianceGate.modeChoiceRequired) {
+      toast.error('Compliance mode selection is required before terminal operations can continue.');
+      return;
+    }
     if (!activeShiftId) {
       toast.error('Open a shift first before recording cash drawer events.');
       return;
@@ -580,6 +617,10 @@ export default function TerminalPage() {
   };
 
   const handleCloseShift = async () => {
+    if (complianceGate.modeChoiceRequired) {
+      toast.error('Compliance mode selection is required before terminal operations can continue.');
+      return;
+    }
     if (!activeShiftId) {
       toast.error('No active shift to close.');
       return;
