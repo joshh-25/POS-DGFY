@@ -62,7 +62,7 @@ jobs:
         run: npm run check:compliance
 
       - name: Prepare test schema
-        run: npm run migrate
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -103,7 +103,7 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Run migrations for schema audit
-        run: npm run migrate
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
         env:
           NODE_ENV: test
           DB_HOST: localhost
