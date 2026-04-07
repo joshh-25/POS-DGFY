@@ -231,29 +231,29 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(parsedSettings.rejection_reason).toBe(reason);
     });
 
-    it('updates non-pending tenant status and plan directly', async () => {
+    it('updates non-pending tenant status directly when plan change is not requested', async () => {
         const tenant = await createAdminTestTenant({ status: 'active', plan: 'standard' });
 
         const response = await request(app)
             .put(`/api/v1/admin/tenants/${tenant.id}`)
             .set('Authorization', `Bearer ${adminApiToken}`)
-            .send({ status: 'inactive', plan: 'premium' });
+            .send({ status: 'inactive' });
 
         expect(response.status).toBe(200);
         expect(response.body.message).toBe('Tenant updated successfully');
 
         const refreshed = await Tenant.findByPk(tenant.id);
         expect(refreshed.status).toBe('inactive');
-        expect(refreshed.plan).toBe('premium');
+        expect(refreshed.plan).toBe('standard');
     });
 
-    it('updates pending tenant to active via provisioning path', async () => {
+    it('updates pending tenant to active via provisioning path without changing plan', async () => {
         const tenant = await createAdminTestTenant({ status: 'pending', plan: 'standard' });
 
         const response = await request(app)
             .put(`/api/v1/admin/tenants/${tenant.id}`)
             .set('Authorization', `Bearer ${adminApiToken}`)
-            .send({ status: 'active', plan: 'premium' });
+            .send({ status: 'active' });
 
         expect(response.status).toBe(200);
         expect(response.body.message).toBe('Tenant approved and provisioned successfully.');
@@ -267,7 +267,24 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         }));
 
         const refreshed = await Tenant.findByPk(tenant.id);
-        expect(refreshed.plan).toBe('premium');
+        expect(refreshed.plan).toBe('standard');
+    });
+
+    it('rejects tenant plan upgrade requests when payments are disabled', async () => {
+        const tenant = await createAdminTestTenant({ status: 'active', plan: 'standard' });
+
+        const response = await request(app)
+            .put(`/api/v1/admin/tenants/${tenant.id}`)
+            .set('Authorization', `Bearer ${adminApiToken}`)
+            .send({ plan: 'premium' });
+
+        expect(response.status).toBe(503);
+        expect(response.body.success).toBe(false);
+        expect(response.body.code).toBe('PAYMENTS_DISABLED');
+        expect(mockProvisionTenant).not.toHaveBeenCalled();
+
+        const refreshed = await Tenant.findByPk(tenant.id);
+        expect(refreshed.plan).toBe('standard');
     });
 
     it('deletes tenant and calls DB drop helper', async () => {
