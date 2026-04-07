@@ -13,25 +13,42 @@ import {
     tenantAdminRepository
 } from '../index.js';
 import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/index.js';
+import {
+    listComplianceArtifactsUseCase,
+    listCompliancePeripheralsUseCase,
+    updateComplianceArtifactVerificationUseCase,
+    updateCompliancePeripheralVerificationUseCase
+} from '../../compliance/index.js';
 import * as emailService from '../../../services/emailService.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { paymentsEnabled, paymentsDisabledMessage } from '../../../config/paymentsFeature.js';
+
+const hasSubscriptionFlowRequest = ({ plan, subscriptionId }) => {
+    const requestedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
+    return requestedPlan === 'premium' || Boolean(subscriptionId);
+};
+
+const sendPaymentsDisabled = (res) => (
+    res.status(503).json({
+        success: false,
+        message: paymentsDisabledMessage,
+        code: 'PAYMENTS_DISABLED'
+    })
+);
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
  * No authentication required
  */
 export const registerCompanyRequest = async (req, res) => {
-    const requestedPlan = typeof req.body?.plan === 'string' ? req.body.plan.toLowerCase() : 'standard';
-    const requestsSubscriptionFlow = requestedPlan === 'premium' || Boolean(req.body?.subscriptionId);
+    const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
+        plan: req.body?.plan,
+        subscriptionId: req.body?.subscriptionId
+    });
 
     if (!paymentsEnabled && requestsSubscriptionFlow) {
-        return res.status(503).json({
-            success: false,
-            message: paymentsDisabledMessage,
-            code: 'PAYMENTS_DISABLED'
-        });
+        return sendPaymentsDisabled(res);
     }
 
     const correlationId = req.requestId || req.headers['x-request-id'] || uuidv4();
@@ -115,6 +132,15 @@ export const rejectTenant = async (req, res) => {
  * Requires admin auth
  */
 export const provisionNewTenant = async (req, res) => {
+    const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
+        plan: req.body?.plan,
+        subscriptionId: req.body?.subscriptionId
+    });
+
+    if (!paymentsEnabled && requestsSubscriptionFlow) {
+        return sendPaymentsDisabled(res);
+    }
+
     const result = await provisionNewTenantUseCase({
         body: req.body
     });
@@ -172,6 +198,16 @@ export const updatePricingSettings = async (req, res) => {
  * ADMIN: Update tenant details (status, plan)
  */
 export const updateTenant = async (req, res) => {
+    const tenantPlanChangeRequested = typeof req.body?.plan === 'string';
+    const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
+        plan: req.body?.plan,
+        subscriptionId: null
+    });
+
+    if (!paymentsEnabled && tenantPlanChangeRequested && requestsSubscriptionFlow) {
+        return sendPaymentsDisabled(res);
+    }
+
     const result = await updateTenantUseCase({
         id: req.params?.id,
         body: req.body
@@ -217,11 +253,7 @@ export const deleteTenant = async (req, res) => {
  */
 export const setupPayPalRecurring = async (req, res) => {
     if (!paymentsEnabled) {
-        return res.status(503).json({
-            success: false,
-            message: paymentsDisabledMessage,
-            code: 'PAYMENTS_DISABLED'
-        });
+        return sendPaymentsDisabled(res);
     }
     const result = await setupPayPalRecurringUseCase({
         tenantId: req.params?.id
@@ -236,11 +268,7 @@ export const setupPayPalRecurring = async (req, res) => {
  */
 export const adminChangePlan = async (req, res) => {
     if (!paymentsEnabled) {
-        return res.status(503).json({
-            success: false,
-            message: paymentsDisabledMessage,
-            code: 'PAYMENTS_DISABLED'
-        });
+        return sendPaymentsDisabled(res);
     }
     const result = await changePlanUseCase({
         tenantId: req.params?.id,
@@ -294,6 +322,70 @@ export const adminReactivateTenant = async (req, res) => {
 };
 
 /**
+ * ADMIN: List tenant compliance artifacts for review
+ */
+export const adminListComplianceArtifacts = async (req, res) => {
+    const result = await listComplianceArtifactsUseCase({
+        tenantId: req.params?.id
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to list tenant compliance artifacts'
+    });
+};
+
+/**
+ * ADMIN: List tenant compliance peripherals for review
+ */
+export const adminListCompliancePeripherals = async (req, res) => {
+    const result = await listCompliancePeripheralsUseCase({
+        tenantId: req.params?.id
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to list tenant compliance peripherals'
+    });
+};
+
+/**
+ * ADMIN: Verify/reject/revoke tenant compliance artifact
+ */
+export const adminUpdateComplianceArtifactVerification = async (req, res) => {
+    const result = await updateComplianceArtifactVerificationUseCase({
+        tenantId: req.params?.id,
+        artifactId: req.params?.artifact_id,
+        payload: req.validatedData || req.body,
+        actorUser: {
+            is_platform_admin: true,
+            username: req.admin?.username || 'platform_admin'
+        }
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to update tenant compliance artifact verification'
+    });
+};
+
+/**
+ * ADMIN: Verify/reject/revoke tenant compliance peripheral
+ */
+export const adminUpdateCompliancePeripheralVerification = async (req, res) => {
+    const result = await updateCompliancePeripheralVerificationUseCase({
+        tenantId: req.params?.id,
+        peripheralId: req.params?.peripheral_id,
+        payload: req.validatedData || req.body,
+        actorUser: {
+            is_platform_admin: true,
+            username: req.admin?.username || 'platform_admin'
+        }
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to update tenant compliance peripheral verification'
+    });
+};
+
+/**
  * PUBLIC: Re-submit a rejected registration for re-review
  * Uses x-company-token; no JWT required
  */
@@ -319,5 +411,9 @@ export default {
     setupPayPalRecurring,
     adminChangePlan,
     adminReactivateTenant,
+    adminListComplianceArtifacts,
+    adminListCompliancePeripherals,
+    adminUpdateComplianceArtifactVerification,
+    adminUpdateCompliancePeripheralVerification,
     resubmitRegistration
 };

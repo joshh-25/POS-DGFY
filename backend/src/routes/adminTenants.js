@@ -12,10 +12,19 @@ import {
     setupPayPalRecurring,
     adminChangePlan,
     adminReactivateTenant,
+    adminListComplianceArtifacts,
+    adminListCompliancePeripherals,
+    adminUpdateComplianceArtifactVerification,
+    adminUpdateCompliancePeripheralVerification,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
+import {
+    validateComplianceArtifactIdParam,
+    validateCompliancePeripheralIdParam,
+    validateComplianceVerificationAction
+} from '../validators/complianceValidator.js';
 
 const router = express.Router();
 
@@ -46,6 +55,14 @@ router.post('/:id/change-plan', authenticateAdmin, adminChangePlan);
 
 // ADMIN: Reactivate an inactive tenant
 router.post('/:id/reactivate', authenticateAdmin, adminReactivateTenant);
+
+// ADMIN: Compliance review reads (platform admin)
+router.get('/:id/compliance/artifacts', authenticateAdmin, adminListComplianceArtifacts);
+router.get('/:id/compliance/peripherals', authenticateAdmin, adminListCompliancePeripherals);
+
+// ADMIN: Compliance verification operations (platform admin)
+router.post('/:id/compliance/artifacts/:artifact_id/verification', authenticateAdmin, validateComplianceArtifactIdParam, validateComplianceVerificationAction, adminUpdateComplianceArtifactVerification);
+router.post('/:id/compliance/peripherals/:peripheral_id/verification', authenticateAdmin, validateCompliancePeripheralIdParam, validateComplianceVerificationAction, adminUpdateCompliancePeripheralVerification);
 
 // ADMIN: Update tenant details (status, plan)
 router.put('/:id', authenticateAdmin, updateTenant);

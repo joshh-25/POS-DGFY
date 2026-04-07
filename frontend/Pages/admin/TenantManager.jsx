@@ -15,7 +15,10 @@ import {
     Edit2,
     Trash2,
     AlertTriangle,
-    RotateCcw
+    RotateCcw,
+    ShieldCheck,
+    FileCheck2,
+    HardDrive
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +34,12 @@ const STATUS_CONFIG = {
     failed: { label: 'Failed', color: 'text-red-600 bg-red-50 border-red-200', icon: XCircle },
 };
 
+const COMPLIANCE_MODE_LABELS = {
+    non_compliant_active: 'Non-compliant',
+    compliant_pending: 'Compliant (Pending)',
+    compliant_active: 'Compliant (Active)'
+};
+
 export default function TenantManager() {
     const [tenants, setTenants] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -41,12 +50,13 @@ export default function TenantManager() {
     // Add Tenant Modal State
     const [showAddModal, setShowAddModal] = useState(false);
     const [addLoading, setAddLoading] = useState(false);
+    const billingControlsDisabled = true;
     const [addForm, setAddForm] = useState({
         name: '',
         adminEmail: '',
         adminPassword: '',
         plan: 'standard',
-        subscriptionId: ''
+        complianceMode: 'non_compliant'
     });
 
     // Edit Tenant Modal State
@@ -67,6 +77,14 @@ export default function TenantManager() {
         confirmName: ''
     });
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [showComplianceModal, setShowComplianceModal] = useState(false);
+    const [selectedComplianceTenant, setSelectedComplianceTenant] = useState(null);
+    const [complianceLoading, setComplianceLoading] = useState(false);
+    const [complianceActionLoading, setComplianceActionLoading] = useState('');
+    const [complianceArtifacts, setComplianceArtifacts] = useState([]);
+    const [compliancePeripherals, setCompliancePeripherals] = useState([]);
+    const [verificationNote, setVerificationNote] = useState('');
+    const [verificationEvidenceRef, setVerificationEvidenceRef] = useState('');
 
     useEffect(() => {
         loadTenants();
@@ -135,7 +153,7 @@ export default function TenantManager() {
                 adminEmail: '',
                 adminPassword: '',
                 plan: 'standard',
-                subscriptionId: ''
+                complianceMode: 'non_compliant'
             });
             loadTenants();
             toast.success('Tenant created successfully');
@@ -163,10 +181,11 @@ export default function TenantManager() {
         e.preventDefault();
         setEditLoading(true);
         try {
-            await adminService.updateTenant(editForm.id, {
-                status: editForm.status,
-                plan: editForm.plan
-            });
+            const payload = { status: editForm.status };
+            if (!billingControlsDisabled) {
+                payload.plan = editForm.plan;
+            }
+            await adminService.updateTenant(editForm.id, payload);
             setShowEditModal(false);
             loadTenants();
             toast.success('Tenant updated successfully');
@@ -249,6 +268,96 @@ export default function TenantManager() {
             }
         } finally {
             setActionLoading(null);
+        }
+    };
+
+    const loadTenantComplianceData = async (tenantId) => {
+        setComplianceLoading(true);
+        try {
+            const [artifactsResponse, peripheralsResponse] = await Promise.all([
+                adminService.listTenantComplianceArtifacts(tenantId),
+                adminService.listTenantCompliancePeripherals(tenantId)
+            ]);
+
+            setComplianceArtifacts(artifactsResponse?.data?.artifacts || []);
+            setCompliancePeripherals(peripheralsResponse?.data?.peripherals || []);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to load compliance records: ${normalized.message}`);
+            }
+            setComplianceArtifacts([]);
+            setCompliancePeripherals([]);
+        } finally {
+            setComplianceLoading(false);
+        }
+    };
+
+    const openComplianceModal = async (tenant) => {
+        setSelectedComplianceTenant(tenant);
+        setShowComplianceModal(true);
+        setVerificationNote('');
+        setVerificationEvidenceRef('');
+        await loadTenantComplianceData(tenant.id);
+    };
+
+    const closeComplianceModal = () => {
+        setShowComplianceModal(false);
+        setSelectedComplianceTenant(null);
+        setComplianceArtifacts([]);
+        setCompliancePeripherals([]);
+        setVerificationNote('');
+        setVerificationEvidenceRef('');
+        setComplianceActionLoading('');
+    };
+
+    const getVerificationPayload = (action) => ({
+        action,
+        verification_note: verificationNote.trim() || null,
+        verification_evidence_ref: verificationEvidenceRef.trim() || null
+    });
+
+    const handleArtifactVerification = async (artifactId, action) => {
+        if (!selectedComplianceTenant?.id) return;
+        const actionKey = `artifact:${artifactId}:${action}`;
+        setComplianceActionLoading(actionKey);
+        try {
+            await adminService.updateTenantComplianceArtifactVerification(
+                selectedComplianceTenant.id,
+                artifactId,
+                getVerificationPayload(action)
+            );
+            toast.success(`Artifact ${action} successful`);
+            await loadTenantComplianceData(selectedComplianceTenant.id);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed artifact ${action}: ${normalized.message}`);
+            }
+        } finally {
+            setComplianceActionLoading('');
+        }
+    };
+
+    const handlePeripheralVerification = async (peripheralId, action) => {
+        if (!selectedComplianceTenant?.id) return;
+        const actionKey = `peripheral:${peripheralId}:${action}`;
+        setComplianceActionLoading(actionKey);
+        try {
+            await adminService.updateTenantCompliancePeripheralVerification(
+                selectedComplianceTenant.id,
+                peripheralId,
+                getVerificationPayload(action)
+            );
+            toast.success(`Peripheral ${action} successful`);
+            await loadTenantComplianceData(selectedComplianceTenant.id);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed peripheral ${action}: ${normalized.message}`);
+            }
+        } finally {
+            setComplianceActionLoading('');
         }
     };
 
@@ -414,9 +523,18 @@ export default function TenantManager() {
                                                 )}
                                                 {tenant.pending_plan && (
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
-                                                        → {tenant.pending_plan}
+                                                        {'->'} {tenant.pending_plan}
                                                     </span>
                                                 )}
+                                                {tenant.compliance_mode_choice_required ? (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+                                                        Mode Selection Required
+                                                    </span>
+                                                ) : tenant.compliance_mode_state ? (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                                                        {COMPLIANCE_MODE_LABELS[tenant.compliance_mode_state] || tenant.compliance_mode_state}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </div>
                                     </div>
@@ -449,6 +567,16 @@ export default function TenantManager() {
                                                 >
                                                     <X className="w-4 h-4 mr-1" />
                                                     Reject
+                                                </Button>
+                                                <Button
+                                                    onClick={() => openComplianceModal(tenant)}
+                                                    disabled={isProcessing}
+                                                    variant="outline"
+                                                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                                                    size="sm"
+                                                >
+                                                    <ShieldCheck className="w-4 h-4 mr-1" />
+                                                    Compliance
                                                 </Button>
                                             </div>
                                         ) : (
@@ -490,6 +618,15 @@ export default function TenantManager() {
                                                     </Button>
                                                 )} */}
                                                 <Button
+                                                    onClick={() => openComplianceModal(tenant)}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                                                >
+                                                    <ShieldCheck className="w-4 h-4 mr-1" />
+                                                    Compliance
+                                                </Button>
+                                                <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"
                                                     size="sm"
@@ -515,6 +652,164 @@ export default function TenantManager() {
                     })
                 )}
             </div>
+
+            {/* Compliance Review Modal */}
+            {showComplianceModal && selectedComplianceTenant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-slate-50">
+                            <div>
+                                <h3 className="font-semibold text-lg text-slate-900 flex items-center gap-2">
+                                    <ShieldCheck className="w-5 h-5 text-indigo-700" />
+                                    Compliance Verification Review
+                                </h3>
+                                <p className="text-sm text-slate-600 mt-1">
+                                    Tenant: <strong>{selectedComplianceTenant.name}</strong>
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                    Mode: {COMPLIANCE_MODE_LABELS[selectedComplianceTenant.compliance_mode_state] || selectedComplianceTenant.compliance_mode_state || 'Not selected'}
+                                </p>
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={closeComplianceModal}>
+                                <X className="w-5 h-5 text-slate-400" />
+                            </Button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="grid md:grid-cols-3 gap-3">
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs text-slate-500">Artifacts</div>
+                                    <div className="text-lg font-semibold text-slate-900">{complianceArtifacts.length}</div>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs text-slate-500">Peripherals</div>
+                                    <div className="text-lg font-semibold text-slate-900">{compliancePeripherals.length}</div>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs text-slate-500">Verified Records</div>
+                                    <div className="text-lg font-semibold text-slate-900">
+                                        {complianceArtifacts.filter((entry) => entry.verification_status === 'verified').length
+                                            + compliancePeripherals.filter((entry) => entry.verification_status === 'verified').length}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Verification Note (optional)</label>
+                                    <textarea
+                                        className="w-full min-h-[82px] px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                        value={verificationNote}
+                                        onChange={(event) => setVerificationNote(event.target.value)}
+                                        placeholder="Reason or reviewer context"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Evidence Reference (optional)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                        value={verificationEvidenceRef}
+                                        onChange={(event) => setVerificationEvidenceRef(event.target.value)}
+                                        placeholder="Ticket ID, file URL, or memo reference"
+                                    />
+                                    <p className="text-xs text-slate-500">
+                                        This payload is sent with every verify, reject, or revoke action.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {complianceLoading ? (
+                                <div className="rounded-lg border border-slate-200 p-6 text-center">
+                                    <RefreshCw className="w-6 h-6 text-slate-400 animate-spin mx-auto mb-2" />
+                                    <p className="text-sm text-slate-600">Loading tenant compliance records...</p>
+                                </div>
+                            ) : (
+                                <div className="grid lg:grid-cols-2 gap-4">
+                                    <div className="rounded-lg border border-slate-200">
+                                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                                            <FileCheck2 className="w-4 h-4 text-slate-600" />
+                                            <h4 className="text-sm font-semibold text-slate-900">Artifacts</h4>
+                                        </div>
+                                        <div className="p-4 space-y-3">
+                                            {complianceArtifacts.length === 0 ? (
+                                                <p className="text-sm text-slate-500">No artifacts submitted.</p>
+                                            ) : complianceArtifacts.map((artifact) => {
+                                                const artifactId = artifact.tenant_compliance_artifact_id;
+                                                return (
+                                                    <div key={artifactId} className="rounded-lg border border-slate-200 p-3">
+                                                        <p className="text-sm font-semibold text-slate-900">{artifact.artifact_name}</p>
+                                                        <p className="text-xs text-slate-500">Type: {artifact.artifact_type}</p>
+                                                        <p className="text-xs text-slate-500">Status: {artifact.status} | Verification: {artifact.verification_status}</p>
+                                                        <p className="text-xs text-slate-500">Verified at: {artifact.verified_at ? formatDate(artifact.verified_at) : 'N/A'}</p>
+                                                        <div className="mt-2 flex flex-wrap gap-2">
+                                                            {['verify', 'reject', 'revoke'].map((action) => (
+                                                                <Button
+                                                                    key={`${artifactId}-${action}`}
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    disabled={complianceActionLoading === `artifact:${artifactId}:${action}`}
+                                                                    onClick={() => handleArtifactVerification(artifactId, action)}
+                                                                >
+                                                                    {complianceActionLoading === `artifact:${artifactId}:${action}` ? (
+                                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : action}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-lg border border-slate-200">
+                                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                                            <HardDrive className="w-4 h-4 text-slate-600" />
+                                            <h4 className="text-sm font-semibold text-slate-900">Peripherals</h4>
+                                        </div>
+                                        <div className="p-4 space-y-3">
+                                            {compliancePeripherals.length === 0 ? (
+                                                <p className="text-sm text-slate-500">No peripherals submitted.</p>
+                                            ) : compliancePeripherals.map((peripheral) => {
+                                                const peripheralId = peripheral.tenant_compliance_peripheral_id;
+                                                return (
+                                                    <div key={peripheralId} className="rounded-lg border border-slate-200 p-3">
+                                                        <p className="text-sm font-semibold text-slate-900">
+                                                            {peripheral.brand} {peripheral.model}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500">Class: {peripheral.device_class}</p>
+                                                        <p className="text-xs text-slate-500">Serial: {peripheral.serial_number}</p>
+                                                        <p className="text-xs text-slate-500">
+                                                            Terminal: {peripheral.terminal_id || 'shared/unbound'} | Shared: {peripheral.is_shared ? 'yes' : 'no'}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500">Status: {peripheral.status} | Verification: {peripheral.verification_status}</p>
+                                                        <div className="mt-2 flex flex-wrap gap-2">
+                                                            {['verify', 'reject', 'revoke'].map((action) => (
+                                                                <Button
+                                                                    key={`${peripheralId}-${action}`}
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    disabled={complianceActionLoading === `peripheral:${peripheralId}:${action}`}
+                                                                    onClick={() => handlePeripheralVerification(peripheralId, action)}
+                                                                >
+                                                                    {complianceActionLoading === `peripheral:${peripheralId}:${action}` ? (
+                                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : action}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add Tenant Modal */}
             {showAddModal && (
@@ -565,14 +860,29 @@ export default function TenantManager() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-700">Plan</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                                        value="Standard"
+                                        readOnly
+                                    />
+                                    <p className="text-xs text-slate-500">
+                                        Premium plan assignment is disabled while subscription billing is paused.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Compliance Mode</label>
                                     <select
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                        value={addForm.plan}
-                                        onChange={e => setAddForm({ ...addForm, plan: e.target.value })}
+                                        value={addForm.complianceMode}
+                                        onChange={e => setAddForm({ ...addForm, complianceMode: e.target.value })}
                                     >
-                                        <option value="standard">Standard</option>
-                                        <option value="premium">Premium</option>
+                                        <option value="non_compliant">Non-compliant POS</option>
+                                        <option value="compliant">Compliant POS (Pending Activation)</option>
                                     </select>
+                                    <p className="text-xs text-slate-500">
+                                        Compliant mode is irreversible after activation.
+                                    </p>
                                 </div>
                             </div>
 
@@ -648,14 +958,15 @@ export default function TenantManager() {
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">Plan</label>
-                                <select
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                    value={editForm.plan}
-                                    onChange={e => setEditForm({ ...editForm, plan: e.target.value })}
-                                >
-                                    <option value="standard">Standard</option>
-                                    <option value="premium">Premium</option>
-                                </select>
+                                <input
+                                    type="text"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                                    value={editForm.plan || 'standard'}
+                                    readOnly
+                                />
+                                <p className="text-xs text-slate-500">
+                                    Plan edits are disabled while subscription billing is paused.
+                                </p>
                             </div>
 
                             <div className="flex gap-3 pt-4">

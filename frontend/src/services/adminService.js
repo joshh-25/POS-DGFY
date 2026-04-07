@@ -310,4 +310,60 @@ export const adminReactivateTenant = async (tenantId) => {
     return response.data;
 };
 
+/**
+ * List tenant compliance artifacts for platform-admin review
+ */
+export const listTenantComplianceArtifacts = async (tenantId) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/compliance/artifacts`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+/**
+ * List tenant compliance peripherals for platform-admin review
+ */
+export const listTenantCompliancePeripherals = async (tenantId) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/compliance/peripherals`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+/**
+ * Platform-admin verification action for tenant compliance artifact
+ */
+export const updateTenantComplianceArtifactVerification = async (tenantId, artifactId, payload) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/artifacts/${artifactId}/verification`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
+ * Platform-admin verification action for tenant compliance peripheral
+ */
+export const updateTenantCompliancePeripheralVerification = async (tenantId, peripheralId, payload) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/peripherals/${peripheralId}/verification`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
 

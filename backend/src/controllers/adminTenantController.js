@@ -15,6 +15,10 @@ export {
     setupPayPalRecurring,
     adminChangePlan,
     adminReactivateTenant,
+    adminListComplianceArtifacts,
+    adminListCompliancePeripherals,
+    adminUpdateComplianceArtifactVerification,
+    adminUpdateCompliancePeripheralVerification,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -31,6 +35,10 @@ import {
     setupPayPalRecurring,
     adminChangePlan,
     adminReactivateTenant,
+    adminListComplianceArtifacts,
+    adminListCompliancePeripherals,
+    adminUpdateComplianceArtifactVerification,
+    adminUpdateCompliancePeripheralVerification,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -47,5 +55,9 @@ export default {
     setupPayPalRecurring,
     adminChangePlan,
     adminReactivateTenant,
+    adminListComplianceArtifacts,
+    adminListCompliancePeripherals,
+    adminUpdateComplianceArtifactVerification,
+    adminUpdateCompliancePeripheralVerification,
     resubmitRegistration
 };
