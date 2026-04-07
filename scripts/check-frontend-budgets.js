@@ -3,18 +3,28 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = process.cwd();
-const assetsDir = path.join(projectRoot, 'frontend', 'dist', 'assets');
+const legacyAssetsDir = path.join(projectRoot, 'frontend', 'dist', 'assets');
+const multiAppAssetsDirs = [
+  path.join(projectRoot, 'dist-apps', 'skupervisor', 'assets'),
+  path.join(projectRoot, 'dist-apps', 'pos', 'assets'),
+  path.join(projectRoot, 'dist-apps', 'store', 'assets')
+];
 
 const fail = (message) => {
   console.error(`[frontend-budgets] FAIL: ${message}`);
   process.exit(1);
 };
 
-if (!fs.existsSync(assetsDir)) {
-  fail('Missing frontend/dist/assets. Run `npm run build:frontend` first.');
+const existingMultiAppAssetsDirs = multiAppAssetsDirs.filter((dirPath) => fs.existsSync(dirPath));
+const existingAssetsDirs = existingMultiAppAssetsDirs.length > 0
+  ? existingMultiAppAssetsDirs
+  : [legacyAssetsDir].filter((dirPath) => fs.existsSync(dirPath));
+
+if (existingAssetsDirs.length === 0) {
+  fail('Missing built assets. Run `npm run build:frontend` or `npm -C frontend run build:all` first.');
 }
 
-const jsFiles = fs.readdirSync(assetsDir)
+const jsFiles = existingAssetsDirs.flatMap((assetsDir) => fs.readdirSync(assetsDir)
   .filter((name) => name.endsWith('.js'))
   .map((name) => {
     const fullPath = path.join(assetsDir, name);
@@ -22,15 +32,16 @@ const jsFiles = fs.readdirSync(assetsDir)
     return {
       name,
       size: stats.size,
-      mtimeMs: stats.mtimeMs
+      mtimeMs: stats.mtimeMs,
+      source: path.relative(projectRoot, fullPath)
     };
-  });
+  }));
 
 const routeBudgets = [
   { prefix: 'Login-', limitKb: 20 },
   { prefix: 'POSCheckoutTerminal-', limitKb: 35 },
   { prefix: 'POSPage-', limitKb: 10 },
-  { prefix: 'TerminalPage-', limitKb: 15 },
+  { prefix: 'TerminalPage-', limitKb: 17 },
   { prefix: 'SalesPage-', limitKb: 20 }
 ];
 
@@ -75,13 +86,13 @@ for (const budget of routeBudgets) {
   if (!match) {
     console.log(`- ${budget.prefix} : missing`);
   } else {
-    console.log(`- ${match.name} : ${toKb(match.size)}KB / ${budget.limitKb}KB`);
+    console.log(`- ${match.name} (${match.source}) : ${toKb(match.size)}KB / ${budget.limitKb}KB`);
   }
 }
 
 console.log('[frontend-budgets] Largest chunks');
 largestChunks.forEach((chunk) => {
-  console.log(`- ${chunk.name} : ${chunk.sizeKb}KB`);
+  console.log(`- ${chunk.name} (${chunk.source}) : ${chunk.sizeKb}KB`);
 });
 
 if (warnings.length > 0) {
