@@ -8,11 +8,12 @@
     "dev:pos": "vite --config apps/pos/vite.config.js --host",
     "dev:store": "vite --config apps/store/vite.config.js --host",
     "build": "vite build",
+    "build:all": "npm run build:skupervisor && npm run build:pos && npm run build:store",
     "build:skupervisor": "vite build --config apps/skupervisor/vite.config.js",
     "build:pos": "vite build --config apps/pos/vite.config.js",
     "build:store": "vite build --config apps/store/vite.config.js",
     "preview": "vite preview",
-    "lint": "eslint src --ext .js,.jsx",
+    "lint": "eslint src apps --ext .js,.jsx",
     "test": "vitest run"
   },
   "dependencies": {

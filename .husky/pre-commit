@@ -22,6 +22,14 @@ if [ -n "$ARCH_FILES" ]; then
   echo "[pre-commit] Architecture guardrails passed."
 fi
 
+COMPLIANCE_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(backend/src/modules/(pos|payments|settings|compliance)/|backend/src/middleware/compliancePolicy.js|backend/src/routes/(payments|pos|compliance).js|backend/src/validators/complianceValidator.js|frontend/src/features/pos/|frontend/src/pages/Settings|frontend/Pages/Settings.jsx|frontend/src/services/(paymentService|complianceService|adminService).js|frontend/Pages/admin/TenantManager.jsx)" || true)"
+if [ -n "$COMPLIANCE_FILES" ]; then
+  echo "[pre-commit] Compliance-sensitive files changed. Running compliance impact guardrail..."
+  echo "$COMPLIANCE_FILES"
+  npm run check:compliance -- --staged
+  echo "[pre-commit] Compliance impact guardrail passed."
+fi
+
 DOC_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(docs/|AGENTS.md|scripts/lint-docs.js|.github/workflows/ci.yml|package.json)" || true)"
 if [ -n "$DOC_FILES" ]; then
   echo "[pre-commit] Documentation-sensitive files changed. Running docs lint..."

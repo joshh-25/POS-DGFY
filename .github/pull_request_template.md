@@ -16,6 +16,12 @@
 - [ ] No new allowlist entry, or removal plan attached
 - Validation output summary:
 
+## Compliance Evidence
+- [ ] `npm run check:compliance` passed
+- [ ] Compliance declaration front matter is complete and accurate
+- [ ] Declaration surfaces match changed compliance-sensitive files
+- [ ] Runtime preflight contract updated if API behavior changed
+
 ## Testing Evidence
 - [ ] Unit tests updated/added
 - [ ] Integration tests updated/added
