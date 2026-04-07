@@ -60,6 +60,19 @@ jobs:
 
       - name: Enforce compliance impact declarations
         run: npm run check:compliance
+
+      - name: Prepare test schema
+        run: npm run migrate
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
       
       - name: Run tests
         run: npm test
@@ -68,6 +81,7 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 3306
           DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
           DB_USER: root
           DB_PASSWORD: testpassword
           REDIS_URL: redis://localhost:6379
@@ -81,6 +95,7 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 3306
           DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
           DB_USER: root
           DB_PASSWORD: testpassword
           REDIS_URL: redis://localhost:6379
@@ -94,6 +109,7 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 3306
           DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
           DB_USER: root
           DB_PASSWORD: testpassword
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
@@ -106,6 +122,7 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 3306
           DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
           DB_USER: root
           DB_PASSWORD: testpassword
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
