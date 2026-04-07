@@ -33,9 +33,18 @@ Define accountable operating cadence for regulator-source verification and relea
 4. Compliance-focused backend/frontend tests pass.
 5. Latest impact declaration includes:
    - declaration ID
+   - computed classification rationale
    - preflight evidence reference
    - policy version
    - rollback note
+
+## Local Readiness Index-Audit Hygiene
+1. Run local index audit in safe mode first (cleanup dry-run + audit):
+   - `npm -C backend run audit:indexes:local`
+2. Use explicit destructive cleanup only when stale local test tenants must be removed:
+   - `npm -C backend run audit:indexes:local:apply-cleanup`
+3. Production/CI index audit must remain broad (no silent exclusions):
+   - `npm -C backend run audit:indexes`
 
 ## Escalation Rule
 If source deltas imply new runtime-blocking controls, pause release and open ADR update path before implementation.

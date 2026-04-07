@@ -33,6 +33,7 @@ Reference URLs:
 
 ## Mandatory Workflow
 1. Classify requested work surfaces (`pos`, `terminal`, `settings`, `payments`, `compliance`).
+   - Classification floor is computed from changed paths/surfaces (see `docs/compliance/compliance-classification-matrix.md`).
 2. Prepare `impact_declaration` payload with:
    - `declaration_id`
    - `classification`
@@ -47,6 +48,11 @@ Reference URLs:
    - `result=no_breach`, `can_proceed=true`.
 5. Block implementation when response is:
    - `result=breach` or `result=review_required`.
+
+### Runtime Scope Clarification
+1. This preflight protocol is a feature-development governance control, not an end-user runtime UX gate.
+2. Product runtime operations remain enforced by compliance policy decisions in use-cases and middleware.
+3. Do not add implicit UI preflight prompts for normal tenant/admin operations unless ADR/governance explicitly changes scope.
 
 ## API Contract Summary
 - Endpoint: `POST /api/v1/compliance/preflight`
@@ -68,6 +74,8 @@ Reference URLs:
 
 ## CI/Developer Gates
 1. `npm run check:compliance` enforces declaration quality for sensitive file changes.
+   - Enforces computed minimum classification floor from changed paths/surfaces.
+   - Enforces strict preflight evidence semantics for `major|regulatory` declarations.
 2. `.husky/pre-commit` enforces declaration checks on staged sensitive files.
 3. CI runs compliance check before backend tests.
 

@@ -76,6 +76,17 @@ Exit code:
 - `0`: healthy
 - non-zero: degraded
 
+Local readiness variants:
+```bash
+cd backend
+npm run audit:indexes:local
+npm run audit:indexes:local:apply-cleanup
+```
+
+Notes:
+- `audit:indexes:local` is safe-by-default: runs test-tenant cleanup in dry-run mode, then audits with local/test-only exclusion settings.
+- `audit:indexes:local:apply-cleanup` is destructive: removes stale `test_tenant_*` landlord rows/databases before audit and should only be used intentionally.
+
 ## 5. `backend/scripts/audit-billing-funnel.js`
 Legacy script for subscription-billing telemetry integrity. Do not include this as a required deploy gate while `PAYMENTS_ENABLED=false`.
 

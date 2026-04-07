@@ -35,7 +35,7 @@ Canonical planning entry:
 ## Current Focus Areas
 - Storefront and tenant-location rollout docs are primarily under `docs/api`, `docs/testing`, and `docs/reference`.
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
-- Compliance governance and PH regulatory mapping are under `docs/compliance`.
+- Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Architecture and planning authority remain under `docs/architecture` and `docs/START_HERE.md`.
 
 ## Current Repository Notes

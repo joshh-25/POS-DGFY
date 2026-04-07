@@ -19,6 +19,9 @@
 ## Compliance Evidence
 - [ ] `npm run check:compliance` passed
 - [ ] Compliance declaration ID is included in this PR
+- Compliance declaration ID:
+- Computed classification rationale (path/surface floor):
+- Preflight evidence reference (required for `major|regulatory`):
 - [ ] Compliance declaration front matter is complete and accurate
 - [ ] Declaration surfaces match changed compliance-sensitive files
 - [ ] Preflight evidence reference is included (required for `major|regulatory`)

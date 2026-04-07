@@ -4,6 +4,7 @@
 Accepted (2026-04-06)
 Updated: 2026-04-07
 Update note (2026-04-07): regulatory source chain refreshed to include BIR RR 7-2024, RR 11-2025, RR 26-2025, and BSP PSOF/MORPS context without changing lifecycle architecture decisions.
+Update note (2026-04-07): compliance declaration guardrail semantics tightened with path/surface-computed minimum classification floors and strict major/regulatory preflight evidence validation, without changing route/API contracts.
 
 ## Context
 The product must support both:

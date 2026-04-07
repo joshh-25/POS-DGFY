@@ -17,6 +17,7 @@ Start here for all planning and implementation work:
 - `docs/architecture`: architecture boundaries, governance, ADRs
 - `docs/api`: API specs and integration guides
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
+  - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
 - `docs/database`: schema contracts
 - `docs/development`: environment setup and workflow docs
 - `docs/features`: feature behavior docs

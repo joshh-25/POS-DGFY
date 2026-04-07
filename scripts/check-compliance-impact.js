@@ -16,23 +16,146 @@ const useStaged = args.has('--staged');
 const REPO_ROOT = path.resolve(__dirname, '..');
 process.chdir(REPO_ROOT);
 
-const SENSITIVE_FILE_PATTERNS = [
-  /^backend\/src\/modules\/pos\//,
-  /^backend\/src\/modules\/payments\//,
-  /^backend\/src\/modules\/settings\//,
-  /^backend\/src\/modules\/compliance\//,
-  /^backend\/src\/middleware\/compliancePolicy\.js$/,
-  /^backend\/src\/routes\/payments\.js$/,
-  /^backend\/src\/routes\/pos\.js$/,
-  /^backend\/src\/routes\/compliance\.js$/,
-  /^backend\/src\/validators\/complianceValidator\.js$/,
-  /^frontend\/src\/features\/pos\//,
-  /^frontend\/src\/pages\/Settings(?:\/|\.|$)/,
-  /^frontend\/Pages\/Settings\.jsx$/,
-  /^frontend\/src\/services\/paymentService\.js$/,
-  /^frontend\/src\/services\/complianceService\.js$/,
-  /^frontend\/src\/services\/adminService\.js$/,
-  /^frontend\/Pages\/admin\/TenantManager\.jsx$/
+const CLASSIFICATION_RANK = Object.freeze({
+  minor: 0,
+  major: 1,
+  regulatory: 2
+});
+
+const SURFACE_MIN_CLASSIFICATION = Object.freeze({
+  pos: 'major',
+  terminal: 'major',
+  settings: 'major',
+  payments: 'major',
+  compliance: 'regulatory'
+});
+
+const COMPLIANCE_SENSITIVE_RULES = [
+  {
+    pattern: /^backend\/src\/modules\/pos\//,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/modules\/payments\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/modules\/settings\//,
+    surfaces: ['settings'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/modules\/compliance\//,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/middleware\/compliancePolicy\.js$/,
+    surfaces: ['compliance', 'settings', 'payments', 'pos'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/routes\/payments\.js$/,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/routes\/pos\.js$/,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/routes\/settings\.js$/,
+    surfaces: ['settings'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^backend\/src\/routes\/compliance\.js$/,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/routes\/adminTenants\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/validators\/complianceValidator\.js$/,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/controllers\/complianceController\.js$/,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/controllers\/adminTenantController\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/modules\/tenants\/controllers\/adminTenantHandlers\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/modules\/tenants\/usecases\/registerCompanyRequestUseCase\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/modules\/tenants\/usecases\/provisionNewTenantUseCase\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^backend\/src\/modules\/tenants\/repositories\/tenantAdminRepository\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^frontend\/src\/features\/pos\//,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^frontend\/src\/features\/compliance\//,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^frontend\/src\/pages\/Settings(?:\/|\.|$)/,
+    surfaces: ['settings'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^frontend\/Pages\/Settings\.jsx$/,
+    surfaces: ['settings'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^frontend\/src\/services\/paymentService\.js$/,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^frontend\/src\/services\/complianceService\.js$/,
+    surfaces: ['compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^frontend\/src\/services\/adminService\.js$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
+    pattern: /^frontend\/Pages\/admin\/TenantManager\.jsx$/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  }
 ];
 
 const DECLARATION_FILE_PATTERN = /^docs\/compliance\/impact-declarations\/.+\.md$/;
@@ -61,24 +184,6 @@ const REQUIRED_PREFLIGHT_FRONTMATTER_KEYS = [
   'preflight_request_ref'
 ];
 
-const FILE_SURFACE_RULES = [
-  { surface: 'pos', pattern: /^backend\/src\/modules\/pos\// },
-  { surface: 'payments', pattern: /^backend\/src\/modules\/payments\// },
-  { surface: 'settings', pattern: /^backend\/src\/modules\/settings\// },
-  { surface: 'compliance', pattern: /^backend\/src\/modules\/compliance\// },
-  { surface: 'pos', pattern: /^backend\/src\/routes\/pos\.js$/ },
-  { surface: 'payments', pattern: /^backend\/src\/routes\/payments\.js$/ },
-  { surface: 'settings', pattern: /^backend\/src\/routes\/settings\.js$/ },
-  { surface: 'compliance', pattern: /^backend\/src\/routes\/compliance\.js$/ },
-  { surface: 'compliance', pattern: /^backend\/src\/validators\/complianceValidator\.js$/ },
-  { surface: 'compliance', pattern: /^backend\/src\/middleware\/compliancePolicy\.js$/ },
-  { surface: 'pos', pattern: /^frontend\/src\/features\/pos\// },
-  { surface: 'settings', pattern: /^frontend\/src\/pages\/Settings(?:\/|\.|$)/ },
-  { surface: 'settings', pattern: /^frontend\/Pages\/Settings\.jsx$/ },
-  { surface: 'compliance', pattern: /^frontend\/src\/services\/complianceService\.js$/ },
-  { surface: 'payments', pattern: /^frontend\/src\/services\/paymentService\.js$/ }
-];
-
 const runCommand = (command, { allowFail = false } = {}) => {
   try {
     return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -99,19 +204,31 @@ const splitLines = (raw) => (
 
 const unique = (values) => [...new Set(values)];
 
+const parseChangedFilesFromEnv = (value) => (
+  String(value || '')
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+);
+
+const getMatchingRules = (filePath) => COMPLIANCE_SENSITIVE_RULES.filter((rule) => rule.pattern.test(filePath));
+
 const resolveChangedFiles = () => {
   if (useStaged) {
+    const stagedFilesFromEnv = parseChangedFilesFromEnv(process.env.COMPLIANCE_STAGED_FILES);
+    if (stagedFilesFromEnv.length > 0) {
+      return unique(stagedFilesFromEnv);
+    }
     return splitLines(runCommand('git diff --cached --name-only', { allowFail: true }));
   }
 
   let files = [];
 
   if (process.env.COMPLIANCE_CHANGED_FILES) {
-    const normalized = process.env.COMPLIANCE_CHANGED_FILES
-      .split(/[\n,]/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (normalized.length > 0) files = unique(normalized);
+    const normalized = parseChangedFilesFromEnv(process.env.COMPLIANCE_CHANGED_FILES);
+    if (normalized.length > 0) {
+      return unique(normalized);
+    }
   }
 
   if (files.length === 0) {
@@ -144,7 +261,7 @@ const resolveChangedFiles = () => {
   return unique([...files, ...untracked]);
 };
 
-const isSensitiveFile = (filePath) => SENSITIVE_FILE_PATTERNS.some((pattern) => pattern.test(filePath));
+const isSensitiveFile = (filePath) => getMatchingRules(filePath).length > 0;
 const isDeclarationFile = (filePath) => DECLARATION_FILE_PATTERN.test(filePath) && !/\/README\.md$/i.test(filePath);
 
 const parseFrontMatter = (content) => {
@@ -174,24 +291,86 @@ const parseCsvField = (value) => (
     .filter(Boolean)
 );
 
+const normalizeClassification = (value) => String(value || '').trim().toLowerCase();
+
+const toClassificationRank = (value) => {
+  const normalized = normalizeClassification(value);
+  if (!Object.prototype.hasOwnProperty.call(CLASSIFICATION_RANK, normalized)) {
+    return null;
+  }
+  return CLASSIFICATION_RANK[normalized];
+};
+
+const classificationAtLeast = (actualClassification, minimumClassification) => {
+  const actualRank = toClassificationRank(actualClassification);
+  const minimumRank = toClassificationRank(minimumClassification);
+  if (actualRank == null || minimumRank == null) return false;
+  return actualRank >= minimumRank;
+};
+
+const maxClassification = (classifications = []) => {
+  let selected = 'minor';
+  let selectedRank = toClassificationRank(selected);
+  for (const classification of classifications) {
+    const rank = toClassificationRank(classification);
+    if (rank == null) continue;
+    if (rank > selectedRank) {
+      selected = normalizeClassification(classification);
+      selectedRank = rank;
+    }
+  }
+  return selected;
+};
+
 const isValidIsoDateTime = (value) => {
   const text = String(value || '').trim();
   if (!text) return false;
   if (!/^\d{4}-\d{2}-\d{2}T/.test(text)) return false;
+  if (!/(Z|[+-]\d{2}:\d{2})$/.test(text)) return false;
   const parsed = new Date(text);
   return !Number.isNaN(parsed.getTime());
+};
+
+const isValidPreflightRequestRef = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return false;
+
+  const patterns = [
+    /^[A-Z]{2,10}-\d{1,8}$/,
+    /^PR-\d{1,8}$/,
+    /^#\d{1,8}$/,
+    /^[A-Z0-9]+(?:-[A-Z0-9]+){2,}$/,
+    /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/
+  ];
+
+  return patterns.some((pattern) => pattern.test(text));
 };
 
 const inferSurfacesFromSensitiveFiles = (files) => {
   const set = new Set();
   for (const file of files) {
-    for (const rule of FILE_SURFACE_RULES) {
-      if (rule.pattern.test(file)) {
-        set.add(rule.surface);
+    for (const rule of getMatchingRules(file)) {
+      for (const surface of rule.surfaces || []) {
+        set.add(surface);
       }
     }
   }
   return [...set];
+};
+
+const inferMinimumClassificationFromSensitiveFiles = (files) => {
+  const perFileMinimums = [];
+  for (const file of files) {
+    for (const rule of getMatchingRules(file)) {
+      if (rule.minimumClassification) {
+        perFileMinimums.push(rule.minimumClassification);
+      }
+    }
+  }
+
+  const surfaces = inferSurfacesFromSensitiveFiles(files);
+  const perSurfaceMinimums = surfaces.map((surface) => SURFACE_MIN_CLASSIFICATION[surface]).filter(Boolean);
+  return maxClassification([...perFileMinimums, ...perSurfaceMinimums, 'major']);
 };
 
 const validateDeclarationFile = (filePath) => {
@@ -229,6 +408,13 @@ const validateDeclarationFile = (filePath) => {
     failures.push(`Invalid classification "${frontMatter.classification}" in ${filePath}`);
   }
 
+  const minimumClassification = inferMinimumClassificationFromSensitiveFiles(sensitiveFiles);
+  if (classification && !classificationAtLeast(classification, minimumClassification)) {
+    failures.push(
+      `Classification "${classification}" in ${filePath} is below computed minimum "${minimumClassification}" for changed compliance-sensitive files`
+    );
+  }
+
   const declaredSurfaces = parseCsvField(frontMatter.surfaces);
   const impactedSurfaces = inferSurfacesFromSensitiveFiles(sensitiveFiles);
   const missingSurfaces = impactedSurfaces.filter((surface) => !declaredSurfaces.includes(surface));
@@ -264,9 +450,21 @@ const validateDeclarationFile = (filePath) => {
       );
     }
 
+    if (!/^[A-Z0-9_]+$/.test(String(frontMatter.preflight_reason_code || '').trim())) {
+      failures.push(
+        `Invalid preflight_reason_code "${frontMatter.preflight_reason_code || ''}" in ${filePath}. Expected uppercase reason code token`
+      );
+    }
+
     if (!isValidIsoDateTime(frontMatter.preflight_run_at)) {
       failures.push(
         `Invalid preflight_run_at "${frontMatter.preflight_run_at || ''}" in ${filePath}. Expected ISO datetime`
+      );
+    }
+
+    if (!isValidPreflightRequestRef(frontMatter.preflight_request_ref)) {
+      failures.push(
+        `Invalid preflight_request_ref "${frontMatter.preflight_request_ref || ''}" in ${filePath}. Expected ticket/PR reference token`
       );
     }
   }
