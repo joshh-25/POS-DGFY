@@ -255,13 +255,11 @@ export default function TerminalSidebarPanel({
             <span className="font-semibold text-slate-900">{terminalMeta.enabledFeeMethods.length}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Compliance Blocking</span>
-            <span className={`font-semibold ${terminalMeta.strictCompliance ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {terminalMeta.strictCompliance ? 'Enabled' : 'Disabled'}
-            </span>
+            <span className="text-slate-600">Compliance Policy</span>
+            <span className="font-semibold text-emerald-700">Dual-mode</span>
           </div>
           <p className="text-[11px] text-slate-500">
-            Managed by tenant admin in Settings &gt; POS Setup.
+            Managed by tenant compliance mode and verification controls.
           </p>
           {terminalMeta.loading && (
             <p className="text-[11px] text-slate-400">Refreshing setup context...</p>

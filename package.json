@@ -33,6 +33,7 @@
     "audit:fifo-drift:repair": "cd backend && npm run audit:fifo-drift:repair",
     "smoke:pos-local": "cd backend && npm run smoke:pos-local",
     "check:architecture": "cd backend && npm run check:architecture-guardrails && npm run check:controller-boundaries",
+    "check:compliance": "node scripts/check-compliance-impact.js",
     "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\"",
     "kill:dev": "bash scripts/kill-dev.sh",
     "deploy": "bash scripts/deploy.sh",

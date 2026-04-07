@@ -108,6 +108,42 @@ const createIdempotencyKey = () => {
     return `pos-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+const inferReceiptContract = (transaction, fallbackContract = null) => {
+    if (fallbackContract?.document_type) {
+        return fallbackContract;
+    }
+
+    const documentType = String(transaction?.document_type || '').toLowerCase();
+    if (documentType === 'non_fiscal_slip') {
+        return {
+            document_type: 'non_fiscal_slip',
+            label: 'NON-FISCAL SLIP'
+        };
+    }
+    if (documentType === 'fiscal_invoice') {
+        return {
+            document_type: 'fiscal_invoice',
+            label: 'FISCAL INVOICE'
+        };
+    }
+
+    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
+    if (invoiceNumber.startsWith('NFS-')) {
+        return {
+            document_type: 'non_fiscal_slip',
+            label: 'NON-FISCAL SLIP'
+        };
+    }
+    if (invoiceNumber.startsWith('INV-')) {
+        return {
+            document_type: 'fiscal_invoice',
+            label: 'FISCAL INVOICE'
+        };
+    }
+
+    return null;
+};
+
 export default function POSCheckoutTerminal({
     sessionLocked = false,
     canViewHistory = true,
@@ -143,6 +179,7 @@ export default function POSCheckoutTerminal({
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [closingDay, setClosingDay] = useState(false);
     const [lastReceipt, setLastReceipt] = useState(null);
+    const [lastReceiptContract, setLastReceiptContract] = useState(null);
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
@@ -301,6 +338,7 @@ export default function POSCheckoutTerminal({
         try {
             const detail = await fetchPosTransactionById(posTransactionId);
             setLastReceipt(detail || null);
+            setLastReceiptContract(inferReceiptContract(detail));
             if (switchToReceipt) {
                 setCurrentViewMode('receipt');
             }
@@ -323,6 +361,7 @@ export default function POSCheckoutTerminal({
                 const detail = await fetchPosTransactionById(id);
                 if (cancelled) return;
                 setLastReceipt(detail || null);
+                setLastReceiptContract(inferReceiptContract(detail));
                 setCurrentViewMode('receipt');
             } catch (error) {
                 if (!cancelled) {
@@ -624,6 +663,7 @@ export default function POSCheckoutTerminal({
 
             const data = await createPosCheckout(payload);
             setLastReceipt(data?.transaction || null);
+            setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
             setCart([]);
             setSelectedDiscountProfile('');
             setServiceFeeEdited(false);
@@ -632,8 +672,8 @@ export default function POSCheckoutTerminal({
             }
             toast.success(
                 data?.idempotent_replay
-                    ? 'Checkout replayed from idempotent request'
-                    : 'Checkout completed successfully'
+                    ? `Checkout replayed from idempotent request (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
+                    : `Checkout completed successfully (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
             );
             loadCatalog();
         } catch (error) {
@@ -1026,7 +1066,7 @@ export default function POSCheckoutTerminal({
                                         Visible in catalog but unavailable for checkout.
                                     </p>
                                 )}
-                            </div>
+                                </div>
                             );
                         })}
                         {catalogError && (
@@ -1296,9 +1336,20 @@ export default function POSCheckoutTerminal({
                         <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
                     </div>
                     {lastReceipt ? (
-                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                            <ReceiptPrintView transaction={lastReceipt} businessSettings={receiptSettings} />
-                        </Suspense>
+                        <div className="space-y-3">
+                            {lastReceiptContract?.label && (
+                                <div className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700">
+                                    {lastReceiptContract.label}
+                                </div>
+                            )}
+                            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
+                                <ReceiptPrintView
+                                    transaction={lastReceipt}
+                                    businessSettings={receiptSettings}
+                                    receiptContract={lastReceiptContract}
+                                />
+                            </Suspense>
+                        </div>
                     ) : (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                             <p className="text-base font-semibold text-slate-900">No receipt selected yet.</p>
@@ -1344,6 +1395,11 @@ export default function POSCheckoutTerminal({
                                     src={imagePreview.src}
                                     alt={imagePreview.alt}
                                     className="max-h-[70vh] w-full rounded-lg object-contain"
+                                    onError={() => {
+                                        setImagePreview((previous) => (
+                                            previous ? { ...previous, hasImage: false } : previous
+                                        ));
+                                    }}
                                 />
                             ) : (
                                 <div className="flex h-72 w-72 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white">

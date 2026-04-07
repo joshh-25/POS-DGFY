@@ -64,9 +64,9 @@ describe('Settings subscription visibility (component)', () => {
         is_master_admin: true,
         role: 'admin',
         company: {
-          plan: 'standard',
-          payment_method: 'manual',
-          subscription_status: 'active'
+          plan: 'premium',
+          payment_method: 'paymongo',
+          subscription_status: 'past_due'
         }
       },
       setCurrentUser: vi.fn()
@@ -78,6 +78,6 @@ describe('Settings subscription visibility (component)', () => {
     expect(html).not.toContain('Subscription');
     expect(html).not.toContain('Link PayMongo Subscription');
     expect(html).not.toContain('Billing History');
+    expect(html).not.toContain('Upgrade to Premium');
   });
 });
-

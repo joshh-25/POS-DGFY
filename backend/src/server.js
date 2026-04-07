@@ -574,6 +574,7 @@ import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
+import complianceRoutes from './routes/compliance.js';
 
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
@@ -603,6 +604,7 @@ app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
+app.use('/api/v1/compliance', complianceRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
@@ -805,4 +807,3 @@ export const __getBillingFunnelAuditStateForTests = () => billingFunnelAuditStat
 
 export default app;
 // End of file
-

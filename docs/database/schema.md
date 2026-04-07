@@ -876,12 +876,12 @@ CREATE TABLE system_settings (
   - `pos_ptu_number`
   - `pos_min_number`
   - `pos_accreditation_number`
-  - `pos_strict_compliance_enabled`
   - `pos_receipt_footer_message`
   - `pos_discount_profiles` (JSON array with named percentage presets)
   - `pos_order_method_fees` (JSON object with method fee toggles/amount/labels)
   - `pos_petty_cash_symbol` (string, e.g. `PHP`)
   - `pos_petty_cash_amount` (number, operational float for reconciliation)
+- Compliance lifecycle is tenant-level (`tenants.compliance_mode_state`, `tenants.compliance_mode_choice_required`, `tenants.compliance_profile`) and no longer driven by a strict-toggle setting.
 
 - POS discount and service-fee audit snapshots are stored in `pos_transactions`:
   - `discount_label_snapshot` (string, nullable)

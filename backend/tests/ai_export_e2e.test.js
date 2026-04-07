@@ -42,7 +42,8 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             subscription_status: 'active'
         };
         next();
-    }
+    },
+    invalidateTenantLookupCache: jest.fn()
 }));
 
 const { default: app } = await import('../src/server.js');

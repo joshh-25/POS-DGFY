@@ -2,30 +2,54 @@ import React from 'react';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
-export default function ReceiptPrintView({ transaction, businessSettings = {} }) {
+const resolveDocumentType = ({ transaction, receiptContract }) => {
+    const contractType = String(receiptContract?.document_type || '').toLowerCase();
+    if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') {
+        return contractType;
+    }
+
+    const stored = String(transaction?.document_type || '').toLowerCase();
+    if (stored === 'fiscal_invoice' || stored === 'non_fiscal_slip') {
+        return stored;
+    }
+
+    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
+    if (invoiceNumber.startsWith('INV-')) return 'fiscal_invoice';
+    return 'non_fiscal_slip';
+};
+
+export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null }) {
     if (!transaction) return null;
 
     const printedAt = transaction.created_at
         ? new Date(transaction.created_at).toLocaleString()
         : '-';
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
+    const documentType = resolveDocumentType({ transaction, receiptContract });
+    const isFiscal = documentType === 'fiscal_invoice';
+    const documentLabel = isFiscal ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP';
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl p-4 print:border-none print:rounded-none print:p-0">
             <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3">
                 <p className="font-semibold text-slate-900">{businessSettings.pos_business_name || 'Digital Receipt'}</p>
-                {businessSettings.pos_tin_branch && (
+                {isFiscal && businessSettings.pos_tin_branch && (
                     <p className="text-xs text-slate-600">TIN/Branch: {businessSettings.pos_tin_branch}</p>
                 )}
                 {businessSettings.pos_address && (
                     <p className="text-xs text-slate-600">{businessSettings.pos_address}</p>
                 )}
-                <div className="text-xs text-slate-500 mt-1 space-y-0.5">
-                    {businessSettings.pos_ptu_number && <p>PTU: {businessSettings.pos_ptu_number}</p>}
-                    {businessSettings.pos_min_number && <p>MIN: {businessSettings.pos_min_number}</p>}
-                    {businessSettings.pos_accreditation_number && <p>Accreditation: {businessSettings.pos_accreditation_number}</p>}
-                </div>
-                <h3 className="font-semibold text-slate-900 mt-2">Digital Receipt</h3>
+                {isFiscal && (
+                    <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                        {businessSettings.pos_ptu_number && <p>PTU: {businessSettings.pos_ptu_number}</p>}
+                        {businessSettings.pos_min_number && <p>MIN: {businessSettings.pos_min_number}</p>}
+                        {businessSettings.pos_accreditation_number && <p>Accreditation: {businessSettings.pos_accreditation_number}</p>}
+                    </div>
+                )}
+                <h3 className="font-semibold text-slate-900 mt-2">{documentLabel}</h3>
+                {!isFiscal && (
+                    <p className="text-[11px] uppercase tracking-wide text-amber-700">This document is not a fiscal invoice.</p>
+                )}
                 <p className="text-xs text-slate-500">{transaction.invoice_number}</p>
                 <p className="text-xs text-slate-500">{printedAt}</p>
             </div>

@@ -11,8 +11,22 @@ import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.j
 // TTL of 60 seconds: tenant tokens rarely change, and 1-minute stale is acceptable.
 const tenantCache = new Map(); // token -> { tenant, expiresAt }
 const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
-const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments)\b/i;
+const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments|compliance|settings)\b/i;
 const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
+
+export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
+    if (companyToken) {
+        tenantCache.delete(String(companyToken));
+    }
+
+    if (tenantId) {
+        for (const [key, entry] of tenantCache.entries()) {
+            if (entry?.tenant?.id === tenantId) {
+                tenantCache.delete(key);
+            }
+        }
+    }
+};
 
 /**
  * Middleware to resolve tenant and bind models to the request context
@@ -141,6 +155,13 @@ export const tenantHandler = async (req, res, next) => {
             tenantSubscriptionStatus: tenant.subscription_status,
             tenantGracePeriodEnd: tenant.grace_period_end,
             tenantPaymentMethod: tenant.payment_method,
+            tenantComplianceModeState: tenant.compliance_mode_state || null,
+            tenantComplianceModeChoiceRequired: tenant.compliance_mode_choice_required === true,
+            tenantComplianceModeSelectedAt: tenant.compliance_mode_selected_at || null,
+            tenantComplianceModeSelectedBy: tenant.compliance_mode_selected_by || null,
+            tenantComplianceActivatedAt: tenant.compliance_activated_at || null,
+            tenantCompliancePolicyVersion: tenant.compliance_policy_version || null,
+            tenantComplianceProfile: tenant.compliance_profile || null,
             ...tenantModels
         };
 

@@ -43,6 +43,7 @@ import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import OpenStreetMapPinPicker from '../src/components/maps/OpenStreetMapPinPicker.jsx';
+import ComplianceProgramPanel from '../src/features/compliance/components/ComplianceProgramPanel.jsx';
 import { useSearchParams } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
 
@@ -132,7 +133,6 @@ export default function Settings() {
     posPtuNumber: '',
     posMinNumber: '',
     posAccreditationNumber: '',
-    posStrictComplianceEnabled: false,
     posReceiptFooterMessage: '',
     posDiscountProfiles: [],
     posOrderMethodFees: createDefaultOrderMethodFees(),
@@ -239,7 +239,6 @@ export default function Settings() {
           posPtuNumber: systemSettings.pos_ptu_number?.value || '',
           posMinNumber: systemSettings.pos_min_number?.value || '',
           posAccreditationNumber: systemSettings.pos_accreditation_number?.value || '',
-          posStrictComplianceEnabled: systemSettings.pos_strict_compliance_enabled?.value ?? false,
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
           posOrderMethodFees: normalizeOrderMethodFees(systemSettings.pos_order_method_fees?.value),
@@ -643,7 +642,6 @@ export default function Settings() {
         pos_ptu_number: settings.posPtuNumber,
         pos_min_number: settings.posMinNumber,
         pos_accreditation_number: settings.posAccreditationNumber,
-        pos_strict_compliance_enabled: settings.posStrictComplianceEnabled,
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
         pos_order_method_fees: posOrderMethodFees,
@@ -702,7 +700,6 @@ export default function Settings() {
       posPtuNumber: '',
       posMinNumber: '',
       posAccreditationNumber: '',
-      posStrictComplianceEnabled: false,
       posReceiptFooterMessage: '',
       posDiscountProfiles: [],
       posOrderMethodFees: createDefaultOrderMethodFees(),
@@ -851,6 +848,7 @@ export default function Settings() {
           <TabsTrigger value="company">Company</TabsTrigger>
           {subscriptionFeaturesEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
           <TabsTrigger value="pos">POS Setup</TabsTrigger>
+          <TabsTrigger value="compliance">Compliance</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
@@ -1294,16 +1292,6 @@ export default function Settings() {
                     onChange={(e) => handleChange('posAccreditationNumber', e.target.value)}
                     placeholder="BIR accreditation reference"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>Strict POS Compliance Blocking</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Block POS checkout when required compliance fields are incomplete</span>
-                    <Switch
-                      checked={settings.posStrictComplianceEnabled}
-                      onCheckedChange={(v) => handleChange('posStrictComplianceEnabled', v)}
-                    />
-                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Receipt Footer Message</Label>
@@ -1753,6 +1741,10 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="compliance" className="space-y-6">
+          <ComplianceProgramPanel isMasterAdmin={currentUser?.is_master_admin === true} />
         </TabsContent>
 
         {/* System Tab */}

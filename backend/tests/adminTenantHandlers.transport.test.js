@@ -48,12 +48,18 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 let listTenants;
 let approveTenant;
 let getPricingSettings;
+let registerCompanyRequest;
+let provisionNewTenant;
+let updateTenant;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/tenants/controllers/adminTenantHandlers.js');
   listTenants = mod.listTenants;
   approveTenant = mod.approveTenant;
   getPricingSettings = mod.getPricingSettings;
+  registerCompanyRequest = mod.registerCompanyRequest;
+  provisionNewTenant = mod.provisionNewTenant;
+  updateTenant = mod.updateTenant;
 });
 
 const createRes = () => {
@@ -149,5 +155,65 @@ describe('adminTenantHandlers transport contracts', () => {
       surface: 'admin_tenants',
       action: 'view_pricing_settings'
     }));
+  });
+
+  it('registerCompanyRequest rejects subscription-driven payloads when payments are disabled', async () => {
+    const req = {
+      body: {
+        name: 'Tenant A',
+        adminEmail: 'owner@example.com',
+        adminPassword: 'Password123!',
+        plan: 'premium',
+        subscriptionId: 'sub_123'
+      }
+    };
+    const res = createRes();
+
+    await registerCompanyRequest(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      code: 'PAYMENTS_DISABLED'
+    }));
+    expect(mockRegisterCompanyRequestUseCase).not.toHaveBeenCalled();
+  });
+
+  it('provisionNewTenant rejects premium provisioning payloads when payments are disabled', async () => {
+    const req = {
+      body: {
+        name: 'Tenant A',
+        adminEmail: 'owner@example.com',
+        adminPassword: 'Password123!',
+        plan: 'premium'
+      }
+    };
+    const res = createRes();
+
+    await provisionNewTenant(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      code: 'PAYMENTS_DISABLED'
+    }));
+    expect(mockProvisionNewTenantUseCase).not.toHaveBeenCalled();
+  });
+
+  it('updateTenant rejects premium plan changes when payments are disabled', async () => {
+    const req = {
+      params: { id: 'tenant-1' },
+      body: { status: 'active', plan: 'premium' }
+    };
+    const res = createRes();
+
+    await updateTenant(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      code: 'PAYMENTS_DISABLED'
+    }));
+    expect(mockUpdateTenantUseCase).not.toHaveBeenCalled();
   });
 });

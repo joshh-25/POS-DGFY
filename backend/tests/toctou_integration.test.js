@@ -33,7 +33,8 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             subscription_status: 'active'
         };
         next();
-    }
+    },
+    invalidateTenantLookupCache: jest.fn()
 }));
 
 // 2. Import dependencies

@@ -15,8 +15,23 @@ export const buildRegisterCompanyRequestUseCase = ({
     logger
 }) => {
     return async ({ body, correlationId }) => {
-        const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId } = body || {};
+        const {
+            name,
+            adminEmail,
+            adminPassword,
+            plan = 'standard',
+            subscriptionId,
+            complianceMode
+        } = body || {};
         const normalizedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
+        const normalizedComplianceMode = typeof complianceMode === 'string'
+            ? complianceMode.trim().toLowerCase()
+            : '';
+        const complianceModeState = normalizedComplianceMode === 'compliant'
+            ? 'compliant_pending'
+            : normalizedComplianceMode === 'non_compliant'
+                ? 'non_compliant_active'
+                : null;
         const adminEmailDomain = typeof adminEmail === 'string' && adminEmail.includes('@')
             ? adminEmail.split('@')[1].toLowerCase()
             : null;
@@ -29,7 +44,8 @@ export const buildRegisterCompanyRequestUseCase = ({
             correlationId,
             baseMetadata: {
                 plan: normalizedPlan,
-                email_domain: adminEmailDomain
+                email_domain: adminEmailDomain,
+                compliance_mode: normalizedComplianceMode || null
             }
         });
         let tenant = null;
@@ -42,7 +58,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                 const missingFields = [
                     !name ? 'name' : null,
                     !adminEmail ? 'adminEmail' : null,
-                    !adminPassword ? 'adminPassword' : null
+                    !adminPassword ? 'adminPassword' : null,
+                    !complianceModeState ? 'complianceMode' : null
                 ].filter(Boolean);
 
                 await tracker.failed({
@@ -56,7 +73,24 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword',
+                    'Missing required fields: name, adminEmail, adminPassword, complianceMode',
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (!['non_compliant', 'compliant'].includes(normalizedComplianceMode)) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'invalid_compliance_mode',
+                    httpStatus: 400,
+                    metadata: {
+                        compliance_mode: complianceMode
+                    }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'complianceMode must be either non_compliant or compliant.',
                     { statusCode: 400 }
                 ));
             }
@@ -183,7 +217,13 @@ export const buildRegisterCompanyRequestUseCase = ({
                 paypal_subscription_id: validatedSubscriptionId,
                 current_period_end: currentPeriodEnd,
                 billing_cycle_anchor: billingCycleAnchor,
-                payment_method: paymentMethod
+                payment_method: paymentMethod,
+                compliance_mode_state: complianceModeState,
+                compliance_mode_choice_required: false,
+                compliance_mode_selected_at: new Date(),
+                compliance_mode_selected_by: 'registration',
+                compliance_policy_version: '2026.04.06',
+                compliance_profile: {}
             });
 
             try {
@@ -232,6 +272,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                             name: tenant.name,
                             status: 'active',
                             plan: normalizedPlan,
+                            compliance_mode_state: complianceModeState,
                             company_token: tenant.company_token
                         }
                     }
@@ -252,14 +293,15 @@ export const buildRegisterCompanyRequestUseCase = ({
                 payload: {
                     success: true,
                     message: `Your ${normalizedPlan} plan registration has been submitted for review. You will be notified once approved.`,
-                    data: {
-                        id: tenant.id,
-                        name: tenant.name,
-                        status: 'pending',
-                        plan: normalizedPlan,
-                        company_token: tenant.company_token
+                        data: {
+                            id: tenant.id,
+                            name: tenant.name,
+                            status: 'pending',
+                            plan: normalizedPlan,
+                            compliance_mode_state: complianceModeState,
+                            company_token: tenant.company_token
+                        }
                     }
-                }
             });
         } catch (error) {
             logger?.error?.('Registration request error:', error);

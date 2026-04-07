@@ -337,39 +337,40 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(money4(matched.gross_profit)).toBe(money4(txTotal - txCogs));
   });
 
-  it('enforces strict compliance mode by blocking checkout when required POS setup fields are missing', async () => {
+  it('blocks checkout when legacy tenant mode selection is still required', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable' });
 
-    await setSetting('pos_strict_compliance_enabled', 'true', 'boolean');
-    await setSetting('pos_ptu_number', '');
-
-    const blocked = await runInTenantContext(() => checkoutPosUseCase({
-      userId: cashier.user_id,
-      payload: {
-        idempotency_key: `strict-block-${crypto.randomUUID()}`,
-        payment_type: 'cash',
-        order_method: 'dine_in',
-        lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
-      }
-    }));
+    const blocked = await dbStore.run(
+      {
+        ...models,
+        sequelize: tenantSequelize,
+        tenantId: `tenant-${dbName}`,
+        tenantName: 'POS Reconciliation Tenant',
+        dbName,
+        tenantComplianceModeChoiceRequired: true,
+        tenantComplianceModeState: null
+      },
+      () => checkoutPosUseCase({
+        userId: cashier.user_id,
+        payload: {
+          idempotency_key: `mode-choice-block-${crypto.randomUUID()}`,
+          payment_type: 'cash',
+          order_method: 'dine_in',
+          lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
+        }
+      })
+    );
 
     expect(blocked.success).toBe(false);
     expect(blocked.error.code).toBe('VALIDATION_FAILED');
     expect(blocked.error.statusCode).toBe(422);
-    expect(blocked.error.details?.missing_fields).toContain('pos_ptu_number');
-
-    await setSetting('pos_ptu_number', 'PTU-12345');
-    await setSetting('pos_business_name', 'Recon Store');
-    await setSetting('pos_tin_branch', '123-456-789-000');
-    await setSetting('pos_address', 'Sample Address');
-    await setSetting('pos_min_number', 'MIN-12345');
-    await setSetting('pos_accreditation_number', 'ACC-12345');
+    expect(blocked.error.details?.compliance?.reason_code).toBe('LEGACY_MODE_SELECTION_REQUIRED');
 
     const allowed = await runInTenantContext(() => checkoutPosUseCase({
       userId: cashier.user_id,
       payload: {
-        idempotency_key: `strict-pass-${crypto.randomUUID()}`,
+        idempotency_key: `mode-choice-pass-${crypto.randomUUID()}`,
         payment_type: 'cash',
         order_method: 'dine_in',
         lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]

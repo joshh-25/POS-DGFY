@@ -5,10 +5,15 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { getAllSettingsUseCase } from '../../settings/index.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
+import {
+    assertComplianceOperationAllowed,
+    COMPLIANCE_OPERATION
+} from '../../compliance/index.js';
 import dbStore from '../../../utils/dbStore.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
+const NON_FISCAL_COUNTER_KEY = 'POS_NFS';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
 const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
 const ONLINE_ORDER_SOURCE = 'online_store';
@@ -47,14 +52,6 @@ const createDefaultOrderMethodFeeMatrix = () => ORDER_METHOD_FEE_KEYS.reduce((ac
     };
     return acc;
 }, {});
-const REQUIRED_POS_SETUP_KEYS = [
-    'pos_business_name',
-    'pos_tin_branch',
-    'pos_address',
-    'pos_ptu_number',
-    'pos_min_number',
-    'pos_accreditation_number'
-];
 const CASH_EVENT_EFFECT = Object.freeze({
     cash_in: 1,
     opening_adjustment: 1,
@@ -63,6 +60,46 @@ const CASH_EVENT_EFFECT = Object.freeze({
 });
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
+
+const getTenantComplianceSnapshot = () => {
+    const store = dbStore.getStore() || {};
+    const tenantId = store.tenantId;
+    if (!tenantId || tenantId === 'default') return null;
+
+    return {
+        id: tenantId,
+        compliance_mode_state: store.tenantComplianceModeState || null,
+        compliance_mode_choice_required: store.tenantComplianceModeChoiceRequired === true,
+        compliance_profile: store.tenantComplianceProfile || null,
+        compliance_policy_version: store.tenantCompliancePolicyVersion || null
+    };
+};
+
+const assertPosComplianceAllowed = async ({ operation, context = {}, settings = {}, user = null }) => {
+    const tenant = getTenantComplianceSnapshot();
+    if (!tenant?.id) {
+        throw new DomainError(
+            DomainErrorCode.TENANT_CONTEXT_MISSING,
+            'Tenant compliance context is required',
+            { statusCode: 400 }
+        );
+    }
+
+    const hasSettings = settings && typeof settings === 'object' && Object.keys(settings).length > 0;
+    const result = await assertComplianceOperationAllowed({
+        tenantId: tenant.id,
+        tenant,
+        operation,
+        context: hasSettings ? { ...context, settings } : { ...context },
+        actorUser: user
+    });
+
+    if (!result.success) {
+        throw result.error;
+    }
+
+    return result.data.decision;
+};
 
 const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
@@ -124,11 +161,6 @@ const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
-
-const getMissingComplianceFields = (settings = {}) => REQUIRED_POS_SETUP_KEYS.filter((key) => {
-    const raw = settings?.[key]?.value;
-    return raw == null || String(raw).trim().length === 0;
-});
 
 const parseBooleanSetting = (value) => {
     if (typeof value === 'boolean') return value;
@@ -245,25 +277,9 @@ const getPosSettings = async () => unwrapApplicationResultOrThrow(
 );
 
 const enforcePosComplianceReadiness = (settings = {}) => {
-    const strictComplianceEnabled = parseBooleanSetting(
-        settings?.pos_strict_compliance_enabled?.value
-    );
-    if (!strictComplianceEnabled) {
-        return;
-    }
-    const missingFields = getMissingComplianceFields(settings);
-    if (missingFields.length > 0) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'POS setup is incomplete. Complete required compliance fields in Settings > POS Setup.',
-            {
-                statusCode: 422,
-                details: {
-                    missing_fields: missingFields
-                }
-            }
-        );
-    }
+    // Legacy strict toggle is retired. Dual-mode compliance policy is now the
+    // single source of truth for fiscal and non-fiscal runtime enforcement.
+    void settings;
 };
 
 const parseDiscountProfiles = (settings = {}) => {
@@ -484,7 +500,19 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
 
         try {
             const settings = await getPosSettings();
+            const complianceDecision = await assertPosComplianceAllowed({
+                operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
+                context: {
+                    terminal_id: payload.terminal_id || null
+                },
+                settings,
+                user
+            });
             enforcePosComplianceReadiness(settings);
+            const receiptContract = complianceDecision?.receipt_contract || {
+                document_type: 'non_fiscal_slip',
+                label: 'NON-FISCAL SLIP'
+            };
 
             const existing = await posRepository.findTransactionByIdempotencyKey(
                 idempotencyKey,
@@ -503,6 +531,8 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 await transaction.commit();
                 return ok({
                     idempotent_replay: true,
+                    compliance_decision: complianceDecision,
+                    receipt_contract: receiptContract,
                     transaction: toSerializable(existing)
                 });
             }
@@ -684,14 +714,21 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const vatableSales = round4(vatableGross / (1 + VAT_RATE));
             const vatAmount = round4(vatableGross - vatableSales);
 
+            const invoiceCounterKey = receiptContract.document_type === 'fiscal_invoice'
+                ? INVOICE_COUNTER_KEY
+                : NON_FISCAL_COUNTER_KEY;
+            const invoicePrefix = receiptContract.document_type === 'fiscal_invoice'
+                ? 'INV'
+                : 'NFS';
             const invoiceNumber = await posRepository.nextInvoiceNumber(
-                INVOICE_COUNTER_KEY,
-                { transaction }
+                invoiceCounterKey,
+                { transaction, prefix: invoicePrefix }
             );
 
             const posTransactionId = await posRepository.createTransactionWithLines({
                 header: {
                     invoice_number: invoiceNumber,
+                    document_type: receiptContract.document_type === 'fiscal_invoice' ? 'fiscal_invoice' : 'non_fiscal_slip',
                     idempotency_key: idempotencyKey,
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
@@ -739,6 +776,8 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             await transaction.commit();
             return ok({
                 idempotent_replay: false,
+                compliance_decision: complianceDecision,
+                receipt_contract: receiptContract,
                 transaction: toSerializable(created)
             });
         } catch (error) {
@@ -1098,6 +1137,15 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const complianceDecision = await assertPosComplianceAllowed({
+                operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+                context: {
+                    terminal_id: terminalId,
+                    terminal_action: 'open_shift'
+                },
+                user
+            });
+
             const existing = await posRepository.findOpenTerminalShift({
                 terminalId,
                 cashierId: normalizedUserId
@@ -1105,6 +1153,7 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             if (existing) {
                 return ok({
                     reused_existing: true,
+                    compliance_decision: complianceDecision,
                     shift: toSerializable(existing)
                 });
             }
@@ -1121,6 +1170,7 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
 
             return ok({
                 reused_existing: false,
+                compliance_decision: complianceDecision,
                 shift: toSerializable(created)
             });
         } catch (error) {
@@ -1209,6 +1259,15 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 ));
             }
 
+            const complianceDecision = await assertPosComplianceAllowed({
+                operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+                context: {
+                    terminal_id: shift.terminal_id || null,
+                    terminal_action: 'cash_drawer_event'
+                },
+                user
+            });
+
             const created = await posRepository.createCashDrawerEvent({
                 pos_terminal_shift_id: normalizedShiftId,
                 event_type: eventType,
@@ -1217,7 +1276,10 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 recorded_by: normalizedUserId
             });
 
-            return ok(toSerializable(created));
+            return ok({
+                ...toSerializable(created),
+                compliance_decision: complianceDecision
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to record cash drawer event'));
         }
@@ -1256,6 +1318,15 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 ));
             }
 
+            const complianceDecision = await assertPosComplianceAllowed({
+                operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+                context: {
+                    terminal_id: shift.terminal_id || null,
+                    terminal_action: 'close_shift'
+                },
+                user
+            });
+
             const shiftPayload = toSerializable(shift);
             const cashSales = await posRepository.getShiftCashSalesTotal(normalizedShiftId);
             const cashEvents = await posRepository.listCashDrawerEventsByShiftId(normalizedShiftId);
@@ -1275,6 +1346,7 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             });
 
             return ok({
+                compliance_decision: complianceDecision,
                 shift: toSerializable(closed),
                 cash_summary: {
                     ...summary,
