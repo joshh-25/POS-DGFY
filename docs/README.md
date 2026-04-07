@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-04-02
+last_reviewed: 2026-04-07
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -18,6 +18,7 @@ Start here for all planning and implementation work:
 - `docs/api`: API specs and integration guides
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
+  - active compliance docs index: `docs/compliance/README.md`
 - `docs/database`: schema contracts
 - `docs/development`: environment setup and workflow docs
 - `docs/features`: feature behavior docs
@@ -41,6 +42,7 @@ Start here for all planning and implementation work:
 - Governed implementation and architecture docs live under `docs/`.
 - Root-level operational docs (for example `SETUP.md`, `QUICK_START.md`, `TROUBLESHOOTING.md`) remain as supplemental reference while migration continues.
 - `docs/archive/` is historical only and is non-authoritative for new planning.
+- Historical compliance remediation packets from April 2026 are archived under `docs/archive/compliance/2026-04-07/`.
 
 ## Rules
 1. Use authoritative docs first.

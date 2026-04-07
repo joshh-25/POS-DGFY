@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-04-02
+last_reviewed: 2026-04-07
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -36,6 +36,7 @@ Canonical planning entry:
 - Storefront and tenant-location rollout docs are primarily under `docs/api`, `docs/testing`, and `docs/reference`.
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
+- Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Architecture and planning authority remain under `docs/architecture` and `docs/START_HERE.md`.
 
 ## Current Repository Notes

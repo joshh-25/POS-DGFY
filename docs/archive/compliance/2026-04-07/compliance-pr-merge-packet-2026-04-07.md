@@ -58,7 +58,7 @@ Delivered scope is aligned with ADR 0007 and includes:
 ### One-by-One Finding Mapping (From Worktree Remediation Plan)
 | Finding | Risk | Concrete Resolution in This PR |
 |---|---|---|
-| 1. Mixed-scope dirty tree | Review ambiguity and regression risk | Split to `feat/compliance-clean` vs `wip/parallel-changes`; deterministic lane isolation documented in `docs/compliance/worktree-remediation-manifest-2026-04-07.md` |
+| 1. Mixed-scope dirty tree | Review ambiguity and regression risk | Split to `feat/compliance-clean` vs `wip/parallel-changes`; deterministic lane isolation documented in `docs/archive/compliance/2026-04-07/worktree-remediation-manifest-2026-04-07.md` |
 | 2. Untracked compliance files | Missing production behavior despite passing review | Included and wired via stacked commits (migrations, models, module index, routes, validators, frontend service/UI) |
 | 3. Unrelated docs/test-history churn | Policy drift and noisy diff | Removed from compliance lane, preserved in `wip/parallel-changes` |
 | 4. Mixed cross-cut integrations | Hidden dependency breaks | Kept only required adjacent integrations (tenant/settings/POS/admin/tests) and pruned unrelated image utility coupling |

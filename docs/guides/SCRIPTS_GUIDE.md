@@ -239,3 +239,18 @@ Quick triage checklist for startup 500s:
 2. Confirm backend health: `curl http://localhost:5000/health`
 3. Verify `DB_AUTO_SYNC` is not `true` in `backend/.env`
 4. Hard-refresh frontend after backend restart
+
+## 14. `scripts/check-compliance-impact.js`
+Compliance-sensitive change gate used by local pre-commit and CI.
+
+Usage:
+```bash
+npm run check:compliance
+npm run check:compliance -- --staged
+```
+
+Behavior:
+- Detects compliance-sensitive changed paths/surfaces.
+- Requires declaration evidence in `docs/compliance/impact-declarations/*.md`.
+- Enforces computed minimum classification floors.
+- Enforces strict preflight metadata for `major|regulatory` declarations.
