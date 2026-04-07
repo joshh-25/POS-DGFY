@@ -133,18 +133,15 @@ export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, 
                 ));
             }
 
-            const needsStatefulChecks = (
-                operation === COMPLIANCE_OPERATION.POS_CHECKOUT
-                || operation === COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION
-                || operation === COMPLIANCE_OPERATION.RECEIPT_RENDER
-                || operation === COMPLIANCE_OPERATION.PAYMENT_CAPABILITY_ENABLE
-            );
+            const effectiveModeState = effectiveTenant.compliance_mode_state
+                || COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE;
+            const needsStatefulChecks = effectiveModeState === COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE;
 
             let artifacts = [];
             let peripherals = [];
             let settings = context.settings || {};
 
-            if (needsStatefulChecks || effectiveTenant.compliance_mode_state === COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE) {
+            if (needsStatefulChecks) {
                 [artifacts, peripherals] = await Promise.all([
                     complianceRepository.listArtifactsByTenantId(effectiveTenant.id),
                     complianceRepository.listPeripheralsByTenantId(effectiveTenant.id)

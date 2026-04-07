@@ -60,6 +60,21 @@ const getSessionExpiredRedirect = () => {
   return '/login?reason=session_expired';
 };
 
+const dispatchSessionExpiredEvent = () => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return;
+  }
+
+  if (typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    return;
+  }
+
+  if (typeof Event === 'function') {
+    window.dispatchEvent(new Event('auth:session-expired'));
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
@@ -119,7 +134,7 @@ if (authChannel) {
     if (data.type === 'session-expired' || data.type === 'auth:logout') {
       // Another tab's refresh failed, or the user logged out in another tab.
       // Clear local state and lock this tab immediately.
-      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      dispatchSessionExpiredEvent();
       clearClientSession({
         reason: 'session_expired',
         broadcast: false,

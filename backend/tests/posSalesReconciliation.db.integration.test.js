@@ -83,6 +83,8 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       sequelize: tenantSequelize,
       tenantId: `tenant-${dbName}`,
       tenantName: 'POS Reconciliation Tenant',
+      tenantComplianceModeChoiceRequired: false,
+      tenantComplianceModeState: 'non_compliant_active',
       dbName
     },
     callback
@@ -94,6 +96,8 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       sequelize: tenantSequelize,
       tenantId: STORE_TENANT_ID,
       tenantName: 'POS Reconciliation Store Tenant',
+      tenantComplianceModeChoiceRequired: false,
+      tenantComplianceModeState: 'non_compliant_active',
       dbName
     },
     callback

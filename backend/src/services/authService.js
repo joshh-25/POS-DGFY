@@ -17,8 +17,19 @@ import * as landlordService from './landlordService.js';
 import logger from '../config/logger.js';
 
 
+const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
+const TEST_REFRESH_SECRET_FALLBACK = 'test_refresh_secret_for_ci_only_32!';
 
 // Validate required environment variables
+if (process.env.NODE_ENV === 'test') {
+  if (!process.env.JWT_SECRET) {
+    process.env.JWT_SECRET = TEST_JWT_SECRET_FALLBACK;
+  }
+  if (!process.env.REFRESH_TOKEN_SECRET) {
+    process.env.REFRESH_TOKEN_SECRET = TEST_REFRESH_SECRET_FALLBACK;
+  }
+}
+
 if (!process.env.JWT_SECRET) {
   throw new Error('FATAL: JWT_SECRET environment variable is required but not set. Please configure your .env file.');
 }
