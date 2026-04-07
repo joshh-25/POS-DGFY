@@ -185,7 +185,7 @@ export const provisionTenant = async (options) => {
                 compliance_mode_choice_required: false,
                 compliance_mode_selected_at: new Date(),
                 compliance_mode_selected_by: 'legacy_provisioning',
-                compliance_policy_version: '2026.04.06',
+                compliance_policy_version: '2026.04.07',
                 compliance_profile: {}
             }, { transaction });
             await transaction.commit();

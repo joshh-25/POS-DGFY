@@ -222,7 +222,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                 compliance_mode_choice_required: false,
                 compliance_mode_selected_at: new Date(),
                 compliance_mode_selected_by: 'registration',
-                compliance_policy_version: '2026.04.06',
+                compliance_policy_version: '2026.04.07',
                 compliance_profile: {}
             });
 

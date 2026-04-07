@@ -112,6 +112,55 @@ const failWithDomainOrInternal = (error, fallbackMessage) => {
     ));
 };
 
+const serializeAuditError = (error) => ({
+    message: error?.message || 'Unknown error',
+    name: error?.name || 'Error',
+    code: error?.code || null
+});
+
+const persistAuditLogWithFallback = async ({
+    complianceRepository,
+    logger,
+    auditPayload = {},
+    fallbackContext = {},
+    primaryOptions = {}
+}) => {
+    try {
+        await complianceRepository.createAuditLog(auditPayload, primaryOptions);
+        return { persisted: 'primary' };
+    } catch (primaryError) {
+        try {
+            await complianceRepository.createAuditFailureLog({
+                tenant_id: auditPayload.tenant_id || null,
+                event_type: auditPayload.event_type || 'unknown',
+                operation: auditPayload.operation || null,
+                decision: auditPayload.decision || null,
+                reason_code: auditPayload.reason_code || null,
+                actor_user_id: auditPayload.actor_user_id || null,
+                audit_payload: auditPayload,
+                fallback_context: fallbackContext,
+                primary_error_message: primaryError?.message || 'Unknown primary audit log persistence error',
+                primary_error_name: primaryError?.name || null,
+                primary_error_code: primaryError?.code || null
+            });
+            logger?.warn?.(
+                `[Compliance] Primary audit log persistence failed; fallback stored for ${auditPayload.event_type || 'unknown_event'}`
+            );
+            return { persisted: 'fallback', primaryError };
+        } catch (fallbackError) {
+            logger?.error?.('[Compliance] Failed to persist compliance audit log and fallback record', {
+                tenant_id: auditPayload.tenant_id || null,
+                event_type: auditPayload.event_type || null,
+                operation: auditPayload.operation || null,
+                fallback_context: fallbackContext,
+                primary_error: serializeAuditError(primaryError),
+                fallback_error: serializeAuditError(fallbackError)
+            });
+            return { persisted: 'none', primaryError, fallbackError };
+        }
+    }
+};
+
 export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, getSettingsSnapshot }) => {
     return async ({ tenantId, tenant, operation, context = {} }) => {
         const resolvedTenantId = resolveTenantId({ tenantId, tenant });
@@ -203,8 +252,10 @@ export const buildAssertComplianceOperationAllowedUseCase = ({
                 obligations: decision.obligations
             };
 
-            try {
-                await complianceRepository.createAuditLog({
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
                     tenant_id: effectiveTenant.id,
                     event_type: 'blocked_operation',
                     operation,
@@ -212,10 +263,12 @@ export const buildAssertComplianceOperationAllowedUseCase = ({
                     reason_code: decision.reason_code,
                     actor_user_id: actorUserId,
                     metadata
-                });
-            } catch (error) {
-                logger?.warn?.(`[Compliance] Failed to persist blocked operation audit log: ${error.message}`);
-            }
+                },
+                fallbackContext: {
+                    path: 'buildAssertComplianceOperationAllowedUseCase',
+                    stage: 'blocked_operation'
+                }
+            });
 
             return fail(buildComplianceDomainError(decision));
         }
@@ -282,7 +335,7 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
     };
 };
 
-export const buildSelectComplianceModeUseCase = ({ complianceRepository }) => {
+export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, modeChoice, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -340,18 +393,27 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository }) => {
                     lock: true
                 });
 
-                await complianceRepository.createAuditLog({
-                    tenant_id: tenantId,
-                    event_type: 'mode_selection',
-                    operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
-                    decision: COMPLIANCE_DECISION.ALLOW,
-                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                    actor_user_id: parsePositiveInt(actorUser?.user_id),
-                    metadata: {
-                        mode_choice: normalizedModeChoice,
-                        mode_state: nextState
-                    }
-                }, { transaction });
+                await persistAuditLogWithFallback({
+                    complianceRepository,
+                    logger,
+                    auditPayload: {
+                        tenant_id: tenantId,
+                        event_type: 'mode_selection',
+                        operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
+                        decision: COMPLIANCE_DECISION.ALLOW,
+                        reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                        actor_user_id: parsePositiveInt(actorUser?.user_id),
+                        metadata: {
+                            mode_choice: normalizedModeChoice,
+                            mode_state: nextState
+                        }
+                    },
+                    fallbackContext: {
+                        path: 'buildSelectComplianceModeUseCase',
+                        stage: 'mode_selection'
+                    },
+                    primaryOptions: { transaction }
+                });
 
                 await transaction.commit();
                 return ok({
@@ -372,7 +434,7 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository }) => {
     };
 };
 
-export const buildUpgradeToCompliantUseCase = ({ complianceRepository }) => {
+export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -428,18 +490,27 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository }) => {
                     lock: true
                 });
 
-                await complianceRepository.createAuditLog({
-                    tenant_id: tenantId,
-                    event_type: 'mode_upgrade',
-                    operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
-                    decision: COMPLIANCE_DECISION.ALLOW,
-                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                    actor_user_id: parsePositiveInt(actorUser?.user_id),
-                    metadata: {
-                        previous_mode_state: tenant.compliance_mode_state,
-                        next_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
-                    }
-                }, { transaction });
+                await persistAuditLogWithFallback({
+                    complianceRepository,
+                    logger,
+                    auditPayload: {
+                        tenant_id: tenantId,
+                        event_type: 'mode_upgrade',
+                        operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
+                        decision: COMPLIANCE_DECISION.ALLOW,
+                        reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                        actor_user_id: parsePositiveInt(actorUser?.user_id),
+                        metadata: {
+                            previous_mode_state: tenant.compliance_mode_state,
+                            next_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+                        }
+                    },
+                    fallbackContext: {
+                        path: 'buildUpgradeToCompliantUseCase',
+                        stage: 'mode_upgrade'
+                    },
+                    primaryOptions: { transaction }
+                });
 
                 await transaction.commit();
                 return ok({
@@ -503,7 +574,8 @@ export const buildGetComplianceChecklistUseCase = ({ complianceRepository, getSe
 
 export const buildActivateCompliantModeUseCase = ({
     complianceRepository,
-    getComplianceChecklistUseCase
+    getComplianceChecklistUseCase,
+    logger
 }) => {
     return async ({ tenantId, actorUser = null }) => {
         if (!tenantId) {
@@ -564,18 +636,27 @@ export const buildActivateCompliantModeUseCase = ({
                     lock: true
                 });
 
-                await complianceRepository.createAuditLog({
-                    tenant_id: tenantId,
-                    event_type: 'mode_activation',
-                    operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
-                    decision: COMPLIANCE_DECISION.ALLOW,
-                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                    actor_user_id: parsePositiveInt(actorUser?.user_id),
-                    metadata: {
-                        checklist,
-                        activated_at: updated.compliance_activated_at
-                    }
-                }, { transaction });
+                await persistAuditLogWithFallback({
+                    complianceRepository,
+                    logger,
+                    auditPayload: {
+                        tenant_id: tenantId,
+                        event_type: 'mode_activation',
+                        operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
+                        decision: COMPLIANCE_DECISION.ALLOW,
+                        reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                        actor_user_id: parsePositiveInt(actorUser?.user_id),
+                        metadata: {
+                            checklist,
+                            activated_at: updated.compliance_activated_at
+                        }
+                    },
+                    fallbackContext: {
+                        path: 'buildActivateCompliantModeUseCase',
+                        stage: 'mode_activation'
+                    },
+                    primaryOptions: { transaction }
+                });
 
                 await transaction.commit();
                 return ok({
@@ -595,7 +676,7 @@ export const buildActivateCompliantModeUseCase = ({
     };
 };
 
-export const buildUpdateComplianceProfileUseCase = ({ complianceRepository }) => {
+export const buildUpdateComplianceProfileUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, profilePatch, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -625,15 +706,23 @@ export const buildUpdateComplianceProfileUseCase = ({ complianceRepository }) =>
                 ));
             }
 
-            await complianceRepository.createAuditLog({
-                tenant_id: tenantId,
-                event_type: 'preflight_evaluation',
-                operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
-                decision: COMPLIANCE_DECISION.ALLOW,
-                reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                actor_user_id: parsePositiveInt(actorUser?.user_id),
-                metadata: {
-                    profile_patch_keys: Object.keys(profilePatch)
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: COMPLIANCE_OPERATION.REQUEST_PREFLIGHT,
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        profile_patch_keys: Object.keys(profilePatch)
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpdateComplianceProfileUseCase',
+                    stage: 'profile_update'
                 }
             });
 
@@ -675,7 +764,7 @@ export const buildListComplianceArtifactsUseCase = ({ complianceRepository }) =>
     };
 };
 
-export const buildCreateComplianceArtifactUseCase = ({ complianceRepository }) => {
+export const buildCreateComplianceArtifactUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, payload, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -706,16 +795,24 @@ export const buildCreateComplianceArtifactUseCase = ({ complianceRepository }) =
                 metadata: payload.metadata || {}
             });
 
-            await complianceRepository.createAuditLog({
-                tenant_id: tenantId,
-                event_type: 'preflight_evaluation',
-                operation: 'compliance.artifacts.create',
-                decision: COMPLIANCE_DECISION.ALLOW,
-                reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                actor_user_id: parsePositiveInt(actorUser?.user_id),
-                metadata: {
-                    artifact_id: created.tenant_compliance_artifact_id,
-                    artifact_type: created.artifact_type
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.artifacts.create',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        artifact_id: created.tenant_compliance_artifact_id,
+                        artifact_type: created.artifact_type
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildCreateComplianceArtifactUseCase',
+                    stage: 'artifact_create'
                 }
             });
 
@@ -779,7 +876,7 @@ export const buildUpdateComplianceArtifactUseCase = ({ complianceRepository }) =
     };
 };
 
-export const buildUpdateComplianceArtifactVerificationUseCase = ({ complianceRepository }) => {
+export const buildUpdateComplianceArtifactVerificationUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, artifactId, payload = {}, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -838,18 +935,26 @@ export const buildUpdateComplianceArtifactVerificationUseCase = ({ complianceRep
                 ));
             }
 
-            await complianceRepository.createAuditLog({
-                tenant_id: tenantId,
-                event_type: 'preflight_evaluation',
-                operation: 'compliance.artifacts.verification',
-                decision: COMPLIANCE_DECISION.ALLOW,
-                reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                actor_user_id: parsePositiveInt(actorUser?.user_id),
-                metadata: {
-                    artifact_id: normalizedArtifactId,
-                    action,
-                    verification_status: updated.verification_status,
-                    verifier_actor_type: verifierActorType
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.artifacts.verification',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        artifact_id: normalizedArtifactId,
+                        action,
+                        verification_status: updated.verification_status,
+                        verifier_actor_type: verifierActorType
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpdateComplianceArtifactVerificationUseCase',
+                    stage: 'artifact_verification'
                 }
             });
 
@@ -883,7 +988,7 @@ export const buildListCompliancePeripheralsUseCase = ({ complianceRepository }) 
     };
 };
 
-export const buildCreateCompliancePeripheralUseCase = ({ complianceRepository }) => {
+export const buildCreateCompliancePeripheralUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, payload, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -918,17 +1023,25 @@ export const buildCreateCompliancePeripheralUseCase = ({ complianceRepository })
                 metadata: payload.metadata || {}
             });
 
-            await complianceRepository.createAuditLog({
-                tenant_id: tenantId,
-                event_type: 'preflight_evaluation',
-                operation: 'compliance.peripherals.create',
-                decision: COMPLIANCE_DECISION.ALLOW,
-                reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                actor_user_id: parsePositiveInt(actorUser?.user_id),
-                metadata: {
-                    peripheral_id: created.tenant_compliance_peripheral_id,
-                    device_class: created.device_class,
-                    terminal_id: created.terminal_id
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.peripherals.create',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        peripheral_id: created.tenant_compliance_peripheral_id,
+                        device_class: created.device_class,
+                        terminal_id: created.terminal_id
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildCreateCompliancePeripheralUseCase',
+                    stage: 'peripheral_create'
                 }
             });
 
@@ -992,7 +1105,7 @@ export const buildUpdateCompliancePeripheralUseCase = ({ complianceRepository })
     };
 };
 
-export const buildUpdateCompliancePeripheralVerificationUseCase = ({ complianceRepository }) => {
+export const buildUpdateCompliancePeripheralVerificationUseCase = ({ complianceRepository, logger }) => {
     return async ({ tenantId, peripheralId, payload = {}, actorUser = null }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -1051,18 +1164,26 @@ export const buildUpdateCompliancePeripheralVerificationUseCase = ({ complianceR
                 ));
             }
 
-            await complianceRepository.createAuditLog({
-                tenant_id: tenantId,
-                event_type: 'preflight_evaluation',
-                operation: 'compliance.peripherals.verification',
-                decision: COMPLIANCE_DECISION.ALLOW,
-                reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
-                actor_user_id: parsePositiveInt(actorUser?.user_id),
-                metadata: {
-                    peripheral_id: normalizedPeripheralId,
-                    action,
-                    verification_status: updated.verification_status,
-                    verifier_actor_type: verifierActorType
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.peripherals.verification',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        peripheral_id: normalizedPeripheralId,
+                        action,
+                        verification_status: updated.verification_status,
+                        verifier_actor_type: verifierActorType
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpdateCompliancePeripheralVerificationUseCase',
+                    stage: 'peripheral_verification'
                 }
             });
 
@@ -1129,11 +1250,12 @@ export const buildCompliancePreflightUseCase = ({
 
         try {
             const declaration = payload.impact_declaration || {};
+            const impactDeclarationPresent = Boolean(payload.impact_declaration && payload.impact_declaration.classification);
             const declaredSurfaces = Array.isArray(declaration.affected_surfaces)
                 ? declaration.affected_surfaces.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
                 : [];
             const requestedSurfaces = surfaces.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-            if (requestedSurfaces.length > 0) {
+            if (impactDeclarationPresent && requestedSurfaces.length > 0) {
                 const missingSurface = requestedSurfaces.find((surface) => !declaredSurfaces.includes(surface));
                 if (missingSurface) {
                     return fail(new DomainError(
@@ -1163,7 +1285,6 @@ export const buildCompliancePreflightUseCase = ({
                 }
             }
 
-            const impactDeclarationPresent = Boolean(payload.impact_declaration && payload.impact_declaration.classification);
             const preflight = buildPreflightResult({
                 decisions,
                 impactDeclarationPresent

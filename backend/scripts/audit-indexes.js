@@ -19,7 +19,19 @@ const parsePositiveInt = (value, fallback) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseBoolean = (value, fallback = false) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true') return true;
+        if (normalized === 'false') return false;
+    }
+    return fallback;
+};
+
 const timeoutMs = parsePositiveInt(process.env.SCHEMA_INDEX_AUDIT_TIMEOUT_MS, 5000);
+const auditMode = String(process.env.SCHEMA_INDEX_AUDIT_MODE || 'standard').trim().toLowerCase();
+const excludeTestTenantDatabases = parseBoolean(process.env.SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS, false);
 
 const loadContractOverride = async () => {
     const contractPath = process.env.SCHEMA_INDEX_AUDIT_CONTRACT_PATH;
@@ -52,10 +64,18 @@ const run = async () => {
         const result = await auditRequiredIndexes({
             sequelizeInstance: sequelize,
             timeoutMs,
+            auditMode,
+            excludeTestTenantDatabases,
             ...(contractOverride ? { contract: contractOverride } : {})
         });
 
-        console.log(`[SchemaIndexAudit] status=${result.status} tenants_checked=${result.tenantsChecked} missing=${result.missingCount} duration_ms=${result.durationMs}`);
+        console.log(
+            `[SchemaIndexAudit] status=${result.status} mode=${result.auditMode} tenants_checked=${result.tenantsChecked} missing=${result.missingCount} duration_ms=${result.durationMs}`
+        );
+
+        if (Array.isArray(result.excludedDatabases) && result.excludedDatabases.length > 0) {
+            console.log(`[SchemaIndexAudit] excluded_databases=${result.excludedDatabases.join(',')}`);
+        }
 
         if (result.errors.length > 0) {
             console.log('[SchemaIndexAudit] warnings/errors:');

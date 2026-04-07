@@ -51,11 +51,13 @@ export const getComplianceProfileUseCase = buildGetComplianceProfileUseCase({
 });
 
 export const selectComplianceModeUseCase = buildSelectComplianceModeUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const upgradeToCompliantUseCase = buildUpgradeToCompliantUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const getComplianceChecklistUseCase = buildGetComplianceChecklistUseCase({
@@ -65,11 +67,13 @@ export const getComplianceChecklistUseCase = buildGetComplianceChecklistUseCase(
 
 export const activateCompliantModeUseCase = buildActivateCompliantModeUseCase({
     complianceRepository,
-    getComplianceChecklistUseCase
+    getComplianceChecklistUseCase,
+    logger
 });
 
 export const updateComplianceProfileUseCase = buildUpdateComplianceProfileUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const listComplianceArtifactsUseCase = buildListComplianceArtifactsUseCase({
@@ -77,7 +81,8 @@ export const listComplianceArtifactsUseCase = buildListComplianceArtifactsUseCas
 });
 
 export const createComplianceArtifactUseCase = buildCreateComplianceArtifactUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const updateComplianceArtifactUseCase = buildUpdateComplianceArtifactUseCase({
@@ -85,7 +90,8 @@ export const updateComplianceArtifactUseCase = buildUpdateComplianceArtifactUseC
 });
 
 export const updateComplianceArtifactVerificationUseCase = buildUpdateComplianceArtifactVerificationUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const listCompliancePeripheralsUseCase = buildListCompliancePeripheralsUseCase({
@@ -93,7 +99,8 @@ export const listCompliancePeripheralsUseCase = buildListCompliancePeripheralsUs
 });
 
 export const createCompliancePeripheralUseCase = buildCreateCompliancePeripheralUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const updateCompliancePeripheralUseCase = buildUpdateCompliancePeripheralUseCase({
@@ -101,7 +108,8 @@ export const updateCompliancePeripheralUseCase = buildUpdateCompliancePeripheral
 });
 
 export const updateCompliancePeripheralVerificationUseCase = buildUpdateCompliancePeripheralVerificationUseCase({
-    complianceRepository
+    complianceRepository,
+    logger
 });
 
 export const listComplianceAuditLogsUseCase = buildListComplianceAuditLogsUseCase({

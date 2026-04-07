@@ -49,6 +49,7 @@ import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex
 import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
 import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog.js';
+import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
@@ -58,6 +59,7 @@ const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
 const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
 const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
+const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -302,7 +304,8 @@ const db = {
   StorefrontDiscoveryIndex,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
-  TenantComplianceAuditLog
+  TenantComplianceAuditLog,
+  TenantComplianceAuditFailure
 };
 
 export default db;
@@ -358,7 +361,7 @@ export {
   StorefrontDiscoveryIndex,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
-  TenantComplianceAuditLog
+  TenantComplianceAuditLog,
+  TenantComplianceAuditFailure
 };
-
 

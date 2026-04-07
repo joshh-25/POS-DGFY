@@ -2,12 +2,32 @@ import sequelize from '../config/database.js';
 import { REQUIRED_INDEX_CONTRACT } from '../config/requiredIndexContract.js';
 
 const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_AUDIT_MODE = 'standard';
+const TEST_TENANT_DB_PREFIX = 'test_tenant_';
 
 const normalizeIdentifier = (value) => String(value || '').trim().toLowerCase();
 
 const parsePositiveInt = (value, fallback) => {
     const parsed = parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseBoolean = (value, fallback = false) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true') return true;
+        if (normalized === 'false') return false;
+    }
+    return fallback;
+};
+
+const normalizeAuditMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['local', 'test', 'standard'].includes(normalized)) {
+        return normalized;
+    }
+    return DEFAULT_AUDIT_MODE;
 };
 
 const withTimeout = async (promise, timeoutMs, label) => {
@@ -187,11 +207,46 @@ export const summarizeMissingIndexesForHealth = (missingIndexes = [], maxItems =
     }));
 };
 
+export const applyAuditDatabaseFilters = ({
+    databases = [],
+    auditMode = DEFAULT_AUDIT_MODE,
+    excludeTestTenantDatabases = false
+} = {}) => {
+    const normalizedAuditMode = normalizeAuditMode(auditMode);
+    const shouldApplyTestTenantExclusion = parseBoolean(excludeTestTenantDatabases, false)
+        && ['local', 'test'].includes(normalizedAuditMode);
+
+    if (!shouldApplyTestTenantExclusion) {
+        return {
+            selectedDatabases: databases,
+            excludedDatabases: []
+        };
+    }
+
+    const selectedDatabases = [];
+    const excludedDatabases = [];
+
+    databases.forEach((databaseName) => {
+        if (String(databaseName || '').startsWith(TEST_TENANT_DB_PREFIX)) {
+            excludedDatabases.push(databaseName);
+            return;
+        }
+        selectedDatabases.push(databaseName);
+    });
+
+    return {
+        selectedDatabases,
+        excludedDatabases
+    };
+};
+
 export const auditRequiredIndexes = async ({
     sequelizeInstance = sequelize,
     contract = REQUIRED_INDEX_CONTRACT,
     timeoutMs = parsePositiveInt(process.env.SCHEMA_INDEX_AUDIT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
-    databases = null
+    databases = null,
+    auditMode = normalizeAuditMode(process.env.SCHEMA_INDEX_AUDIT_MODE),
+    excludeTestTenantDatabases = parseBoolean(process.env.SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS, false)
 } = {}) => {
     const startedAt = Date.now();
     const errors = [];
@@ -222,6 +277,14 @@ export const auditRequiredIndexes = async ({
         });
         resolvedDatabases = [];
     }
+
+    const filterResult = applyAuditDatabaseFilters({
+        databases: resolvedDatabases,
+        auditMode,
+        excludeTestTenantDatabases
+    });
+    resolvedDatabases = filterResult.selectedDatabases;
+    const excludedDatabases = filterResult.excludedDatabases;
 
     const contractEntries = Object.entries(contract);
 
@@ -339,8 +402,10 @@ export const auditRequiredIndexes = async ({
         status,
         checkedAt,
         durationMs,
+        auditMode: normalizeAuditMode(auditMode),
         source,
         databasesChecked: resolvedDatabases,
+        excludedDatabases,
         tenantsChecked: resolvedDatabases.length,
         missingCount: uniqueMissingIndexes.length,
         missingIndexes: uniqueMissingIndexes,

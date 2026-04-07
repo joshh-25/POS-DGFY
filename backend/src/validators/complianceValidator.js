@@ -101,7 +101,7 @@ const preflightSchema = Joi.object({
         policy_version: Joi.string().trim().max(40).required(),
         verification_evidence: Joi.array().items(Joi.string().trim().max(300)).min(1).required(),
         rollback_note: Joi.string().trim().max(2000).required()
-    }).required()
+    }).optional()
 });
 
 const buildValidationErrorResponse = (error) => ({

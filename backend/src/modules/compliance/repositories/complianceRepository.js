@@ -166,6 +166,12 @@ export const complianceRepository = {
         return toPlain(created);
     },
 
+    async createAuditFailureLog(payload = {}, options = {}) {
+        const TenantComplianceAuditFailure = getModel('TenantComplianceAuditFailure');
+        const created = await TenantComplianceAuditFailure.create(payload, { transaction: options.transaction });
+        return toPlain(created);
+    },
+
     async listAuditLogsByTenantId(tenantId, { limit = 100 } = {}) {
         const TenantComplianceAuditLog = getModel('TenantComplianceAuditLog');
         const rows = await TenantComplianceAuditLog.findAll({
