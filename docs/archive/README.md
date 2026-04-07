@@ -18,3 +18,4 @@ Rules:
 
 Current archived sets:
 - Compliance remediation records (April 2026): `docs/archive/compliance/2026-04-07/`
+- Deployment transition record (2026-02-19): `docs/archive/deployment/2026-02-19/`

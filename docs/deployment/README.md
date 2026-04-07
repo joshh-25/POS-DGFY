@@ -11,4 +11,4 @@ Primary deployment references:
 - `TROUBLESHOOTING.md` (deploy failure recovery patterns)
 
 Historical transition notes:
-- `docs/deployment/transition-guide.md`
+- `docs/archive/deployment/2026-02-19/transition-guide.md`
