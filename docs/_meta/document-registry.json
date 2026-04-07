@@ -58,6 +58,30 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/compliance/ph-pos-software-developer-compliance-guide.md",
+      "topic": "ph_pos_software_developer_compliance",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
+      "path": "docs/compliance/control-matrix.md",
+      "topic": "compliance_control_matrix",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/compliance/request-time-preflight-protocol.md",
+      "topic": "request_time_preflight_protocol",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/compliance/compliance-ops-regulatory-verification.md",
+      "topic": "compliance_regulatory_verification_cadence",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/reference/IMPLEMENTATION_CHECKLIST.md",
       "topic": "ai_implementation_checklist",
       "expected_status": "reference",

@@ -16,6 +16,7 @@ Start here for all planning and implementation work:
 ## High-Value Sections
 - `docs/architecture`: architecture boundaries, governance, ADRs
 - `docs/api`: API specs and integration guides
+- `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
 - `docs/database`: schema contracts
 - `docs/development`: environment setup and workflow docs
 - `docs/features`: feature behavior docs

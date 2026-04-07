@@ -1,7 +1,9 @@
 ---
 status: reference
+authority_level: reference
 owner: engineering
-last_reviewed: 2026-04-06
+last_reviewed: 2026-04-07
+applies_to: compliance_sensitive_changes
 topic: compliance_impact_declaration
 ---
 
@@ -17,6 +19,12 @@ Required front matter keys in each declaration:
 - `policy_version` (`YYYY.MM.DD`)
 - `verification_evidence` (comma-separated command/evidence refs)
 - `rollback_note` (single-line rollback summary)
+
+Additional required front matter keys when `classification` is `major` or `regulatory`:
+- `preflight_result` (must be `no_breach`)
+- `preflight_reason_code` (decision reason code from preflight)
+- `preflight_run_at` (ISO datetime of preflight run)
+- `preflight_request_ref` (ticket/PR/request reference for the preflight run)
 
 Required sections in each declaration:
 - `## Compliance Impact Classification`

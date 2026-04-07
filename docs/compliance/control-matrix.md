@@ -1,7 +1,9 @@
 ---
 status: reference
+authority_level: reference
 owner: compliance
 last_reviewed: 2026-04-07
+applies_to: ph_pos_dual_mode_runtime_and_ci
 topic: compliance_control_matrix
 related_adr: 0007-dual-mode-pos-compliance-program.md
 ---
@@ -10,6 +12,26 @@ related_adr: 0007-dual-mode-pos-compliance-program.md
 
 ## Scope
 Code-level control mapping for BIR, NPC, and BSP controls across runtime, persistence, and CI guardrails.
+
+## Regulatory Source Chain (2026-04-07 Refresh)
+1. BIR RR 7-2024
+   - https://bir-cdn.bir.gov.ph/BIR/pdf/RR%207-2024%20%28final%29.pdf
+2. BIR RR 11-2025
+   - https://bir-cdn.bir.gov.ph/BIR/pdf/RR%2011-2025%20Digest.pdf
+3. BIR RR 26-2025
+   - https://bir-cdn.bir.gov.ph/BIR/pdf/RR%20No.%2026-2025%20Digest.pdf
+4. BIR RMO 24-2023
+   - https://bir-cdn.bir.gov.ph/local/pdf/RMO%20No.%2024-2023%20Digest%20FINAL.pdf
+5. BIR RMC 72-2025
+   - https://www.bir-cdn.bir.gov.ph/BIR/pdf/RMC%20No.%2072-2025%20Digest.pdf
+6. NPC Circular 2022-04 and current NPC operational updates
+   - https://privacy.gov.ph/wp-content/uploads/2023/05/Circular-2022-04.pdf
+   - https://privacy.gov.ph/
+7. BSP OPS and PSOF/MORPS framework references
+   - https://www.bsp.gov.ph/Regulations/Issuances/2019/c1049.pdf
+   - https://www.bsp.gov.ph/Regulations/Issuances/2020/1089.pdf
+   - https://www.bsp.gov.ph/Regulations/Issuances/2024/1191.pdf
+   - https://www.bsp.gov.ph/PaymentAndSettlement/FAQ_OPS_Registration.pdf
 
 ## Control Map
 | Control Domain | Control ID | Required Behavior | Reason Codes | Primary Code Owners | Evidence Tests |

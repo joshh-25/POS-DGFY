@@ -30,6 +30,7 @@ This is the canonical entry point for implementation planning.
 ## Folder Usage Guide
 - `docs/architecture`: architecture rules, governance, ADRs
 - `docs/api`: API behavior and contracts
+- `docs/compliance`: compliance controls, preflight protocol, and declarations
 - `docs/database`: schema and data contracts
 - `docs/features`: feature-level behavior
 - `docs/testing`: verification protocols and audits

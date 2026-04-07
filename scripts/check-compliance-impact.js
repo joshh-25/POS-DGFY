@@ -53,6 +53,14 @@ const REQUIRED_DECLARATION_FRONTMATTER_KEYS = [
   'rollback_note'
 ];
 
+const PREFLIGHT_REQUIRED_CLASSIFICATIONS = new Set(['major', 'regulatory']);
+const REQUIRED_PREFLIGHT_FRONTMATTER_KEYS = [
+  'preflight_result',
+  'preflight_reason_code',
+  'preflight_run_at',
+  'preflight_request_ref'
+];
+
 const FILE_SURFACE_RULES = [
   { surface: 'pos', pattern: /^backend\/src\/modules\/pos\// },
   { surface: 'payments', pattern: /^backend\/src\/modules\/payments\// },
@@ -166,6 +174,14 @@ const parseCsvField = (value) => (
     .filter(Boolean)
 );
 
+const isValidIsoDateTime = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(text)) return false;
+  const parsed = new Date(text);
+  return !Number.isNaN(parsed.getTime());
+};
+
 const inferSurfacesFromSensitiveFiles = (files) => {
   const set = new Set();
   for (const file of files) {
@@ -208,7 +224,8 @@ const validateDeclarationFile = (filePath) => {
     failures.push(`Invalid declaration_id format in ${filePath}. Expected YYYY-MM-DD-slug`);
   }
 
-  if (frontMatter.classification && !['minor', 'major', 'regulatory'].includes(frontMatter.classification)) {
+  const classification = String(frontMatter.classification || '').trim().toLowerCase();
+  if (classification && !['minor', 'major', 'regulatory'].includes(classification)) {
     failures.push(`Invalid classification "${frontMatter.classification}" in ${filePath}`);
   }
 
@@ -231,6 +248,27 @@ const validateDeclarationFile = (filePath) => {
 
   if (frontMatter.policy_version && !/^\d{4}\.\d{2}\.\d{2}$/.test(frontMatter.policy_version)) {
     failures.push(`Invalid policy_version "${frontMatter.policy_version}" in ${filePath}. Expected YYYY.MM.DD`);
+  }
+
+  if (PREFLIGHT_REQUIRED_CLASSIFICATIONS.has(classification)) {
+    for (const key of REQUIRED_PREFLIGHT_FRONTMATTER_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(frontMatter, key) || !String(frontMatter[key] || '').trim()) {
+        failures.push(`Missing required ${classification} preflight front matter key "${key}" in ${filePath}`);
+      }
+    }
+
+    const preflightResult = String(frontMatter.preflight_result || '').trim().toLowerCase();
+    if (preflightResult !== 'no_breach') {
+      failures.push(
+        `${filePath} must have preflight_result=no_breach for classification "${classification}"`
+      );
+    }
+
+    if (!isValidIsoDateTime(frontMatter.preflight_run_at)) {
+      failures.push(
+        `Invalid preflight_run_at "${frontMatter.preflight_run_at || ''}" in ${filePath}. Expected ISO datetime`
+      );
+    }
   }
 
   return failures;

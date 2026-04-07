@@ -1,7 +1,7 @@
 const POLICY_PACKS = [
     {
-        version: '2026.04.06',
-        effective_from: '2026-04-06',
+        version: '2026.04.07',
+        effective_from: '2026-04-07',
         controls: {
             bir: {
                 required_settings_keys: [

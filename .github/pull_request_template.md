@@ -18,8 +18,11 @@
 
 ## Compliance Evidence
 - [ ] `npm run check:compliance` passed
+- [ ] Compliance declaration ID is included in this PR
 - [ ] Compliance declaration front matter is complete and accurate
 - [ ] Declaration surfaces match changed compliance-sensitive files
+- [ ] Preflight evidence reference is included (required for `major|regulatory`)
+- [ ] Preflight result is `no_breach` (required for `major|regulatory`)
 - [ ] Runtime preflight contract updated if API behavior changed
 
 ## Testing Evidence

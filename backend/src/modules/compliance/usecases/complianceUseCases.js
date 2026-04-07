@@ -334,7 +334,7 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository }) => {
                     compliance_mode_choice_required: false,
                     compliance_mode_selected_at: new Date(),
                     compliance_mode_selected_by: normalizeActorIdentity(actorUser),
-                    compliance_policy_version: '2026.04.06'
+                    compliance_policy_version: '2026.04.07'
                 }, {
                     transaction,
                     lock: true
@@ -422,7 +422,7 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository }) => {
                     compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
                     compliance_mode_selected_at: new Date(),
                     compliance_mode_selected_by: normalizeActorIdentity(actorUser),
-                    compliance_policy_version: '2026.04.06'
+                    compliance_policy_version: '2026.04.07'
                 }, {
                     transaction,
                     lock: true
@@ -558,7 +558,7 @@ export const buildActivateCompliantModeUseCase = ({
                     compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE,
                     compliance_activated_at: new Date(),
                     compliance_mode_selected_by: normalizeActorIdentity(actorUser),
-                    compliance_policy_version: '2026.04.06'
+                    compliance_policy_version: '2026.04.07'
                 }, {
                     transaction,
                     lock: true

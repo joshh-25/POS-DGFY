@@ -1,7 +1,9 @@
 ---
 status: reference
+authority_level: reference
 owner: compliance
 last_reviewed: 2026-04-07
+applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
 ---
@@ -10,6 +12,24 @@ related_adr: 0007-dual-mode-pos-compliance-program.md
 
 ## Purpose
 Ensure all compliance-sensitive feature work is classified and evaluated before implementation starts.
+
+## Regulatory Source Chain (2026-04-07 Refresh)
+1. BIR RR 7-2024, RR 11-2025, RR 26-2025
+2. BIR RMO 24-2023, RMC 72-2025
+3. NPC Circular 2022-04 + current NPC operational/security updates
+4. BSP Circular 1049 + PSOF/MORPS framework context
+
+Reference URLs:
+- https://bir-cdn.bir.gov.ph/BIR/pdf/RR%207-2024%20%28final%29.pdf
+- https://bir-cdn.bir.gov.ph/BIR/pdf/RR%2011-2025%20Digest.pdf
+- https://bir-cdn.bir.gov.ph/BIR/pdf/RR%20No.%2026-2025%20Digest.pdf
+- https://bir-cdn.bir.gov.ph/local/pdf/RMO%20No.%2024-2023%20Digest%20FINAL.pdf
+- https://www.bir-cdn.bir.gov.ph/BIR/pdf/RMC%20No.%2072-2025%20Digest.pdf
+- https://privacy.gov.ph/wp-content/uploads/2023/05/Circular-2022-04.pdf
+- https://privacy.gov.ph/
+- https://www.bsp.gov.ph/Regulations/Issuances/2019/c1049.pdf
+- https://www.bsp.gov.ph/Regulations/Issuances/2020/1089.pdf
+- https://www.bsp.gov.ph/Regulations/Issuances/2024/1191.pdf
 
 ## Mandatory Workflow
 1. Classify requested work surfaces (`pos`, `terminal`, `settings`, `payments`, `compliance`).
