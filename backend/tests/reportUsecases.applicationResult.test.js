@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 import {
   buildGetExpiryReportUseCase,
+  buildGetComplianceBooksPackageUseCase,
+  buildExportComplianceBooksPackageUseCase,
   buildGetSnapshotsUseCase,
   buildGetSnapshotByIdUseCase,
   buildSaveSnapshotUseCase
@@ -25,6 +27,28 @@ describe('report use-cases application result contract', () => {
     });
 
     const result = await useCase({ type: '', limit: 20 });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(400);
+  });
+
+  it('getComplianceBooksPackage validates filters shape', async () => {
+    const useCase = buildGetComplianceBooksPackageUseCase({
+      reportService: { getComplianceBooksPackage: jest.fn() }
+    });
+
+    const result = await useCase({ filters: 'not-an-object' });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(400);
+  });
+
+  it('exportComplianceBooksPackage validates filters shape', async () => {
+    const useCase = buildExportComplianceBooksPackageUseCase({
+      reportService: { exportComplianceBooksPackage: jest.fn() }
+    });
+
+    const result = await useCase({ filters: 'not-an-object', filingProfile: 'dgfy' });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.statusCode).toBe(400);

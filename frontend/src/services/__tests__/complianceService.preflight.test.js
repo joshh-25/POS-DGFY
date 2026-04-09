@@ -45,4 +45,18 @@ describe('complianceService preflight contract', () => {
     expect(mockPost).toHaveBeenCalledWith('/compliance/preflight', payload);
     expect(result).toEqual(expectedData);
   });
+
+  it('posts activation payload with confirmation text', async () => {
+    const expectedData = {
+      mode_state: 'compliant_active'
+    };
+    const payload = { confirmation_text: 'ACTIVATE COMPLIANT' };
+    mockPost.mockResolvedValueOnce({ data: { data: expectedData } });
+
+    const { activateCompliantMode } = await import('../complianceService.js');
+    const result = await activateCompliantMode(payload);
+
+    expect(mockPost).toHaveBeenCalledWith('/compliance/activate', payload);
+    expect(result).toEqual(expectedData);
+  });
 });

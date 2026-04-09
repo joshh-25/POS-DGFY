@@ -19,7 +19,11 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260330000007-create-store-customers-and-addresses.cjs' },
         { name: '20260331000008-make-pos-cashier-nullable-for-online-store.cjs' },
         { name: '20260331000009-create-storefront-discovery-index.cjs' },
-        { name: '20260331000010-add-primary-storefront-location.cjs' }
+        { name: '20260331000010-add-primary-storefront-location.cjs' },
+        { name: '20260406000001-add-tenant-compliance-program.cjs' },
+        { name: '20260407000002-compliance-hardening-phase1-2.cjs' },
+        { name: '20260408000004-add-pos-operation-replays.cjs' },
+        { name: '20260408000005-add-security-signal-audit-enum.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -32,6 +36,9 @@ const buildHealthySequelizeMock = () => ({
                     db_host: {},
                     status: {},
                     plan: {},
+                    compliance_mode_state: {},
+                    compliance_mode_choice_required: {},
+                    compliance_profile: {},
                     subscription_status: {},
                     current_period_end: {},
                     payment_method: {},
@@ -60,6 +67,7 @@ const buildHealthySequelizeMock = () => ({
                 },
                 pos_transactions: {
                     pos_transaction_id: {},
+                    document_type: {},
                     cashier_id: { allowNull: true },
                     discount_rate_snapshot: {},
                     service_fee_amount: {},
@@ -75,6 +83,21 @@ const buildHealthySequelizeMock = () => ({
                     store_customer_id: {},
                     accepted_by: {},
                     accepted_at: {}
+                },
+                tenant_compliance_artifacts: {
+                    tenant_compliance_artifact_id: {},
+                    tenant_id: {},
+                    artifact_type: {},
+                    status: {},
+                    verification_status: {}
+                },
+                tenant_compliance_peripherals: {
+                    tenant_compliance_peripheral_id: {},
+                    tenant_id: {},
+                    device_class: {},
+                    status: {},
+                    is_shared: {},
+                    verification_status: {}
                 },
                 pos_transaction_lines: {
                     line_id: {},
@@ -96,6 +119,13 @@ const buildHealthySequelizeMock = () => ({
                     event_type: {},
                     amount: {},
                     recorded_by: {}
+                },
+                pos_operation_replays: {
+                    pos_operation_replay_id: {},
+                    operation_key: {},
+                    idempotency_key: {},
+                    request_hash: {},
+                    replay_status: {}
                 },
                 system_settings: {
                     setting_id: {},
@@ -169,6 +199,7 @@ describe('runtimeSchemaAuditService', () => {
                 if (tableName === 'pos_transaction_lines') return { line_id: {} };
                 if (tableName === 'pos_terminal_shifts') return { pos_terminal_shift_id: {} };
                 if (tableName === 'pos_cash_drawer_events') return { pos_cash_drawer_event_id: {} };
+                if (tableName === 'pos_operation_replays') return { pos_operation_replay_id: {} };
                 if (tableName === 'system_settings') return { setting_id: {}, setting_key: {}, setting_value: {}, data_type: {} };
                 return {};
             })
@@ -231,7 +262,10 @@ describe('runtimeSchemaAuditService', () => {
                         db_name: {},
                         db_host: {},
                         status: {},
-                        plan: {}
+                        plan: {},
+                        compliance_mode_state: {},
+                        compliance_mode_choice_required: {},
+                        compliance_profile: {}
                     };
                 }
                 return buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);

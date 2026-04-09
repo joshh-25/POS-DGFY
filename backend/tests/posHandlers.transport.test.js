@@ -6,6 +6,8 @@ const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockCloseDayZReadingUseCase = jest.fn();
 const mockGetDailyZReadingUseCase = jest.fn();
+const mockGetCurrentXReadingUseCase = jest.fn();
+const mockIncrementGovernedResetCounterUseCase = jest.fn();
 const mockListPosCatalogOverridesUseCase = jest.fn();
 const mockUpdatePosCatalogOverrideUseCase = jest.fn();
 const mockUploadPosCatalogImageUseCase = jest.fn();
@@ -26,6 +28,8 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
     getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
+    getCurrentXReadingUseCase: mockGetCurrentXReadingUseCase,
+    incrementGovernedResetCounterUseCase: mockIncrementGovernedResetCounterUseCase,
     listPosCatalogOverridesUseCase: mockListPosCatalogOverridesUseCase,
     updatePosCatalogOverrideUseCase: mockUpdatePosCatalogOverrideUseCase,
     uploadPosCatalogImageUseCase: mockUploadPosCatalogImageUseCase,
@@ -47,6 +51,12 @@ let listCatalog;
 let checkout;
 let listTransactions;
 let closeDayZReading;
+let getCurrentXReading;
+let incrementGovernedResetCounter;
+let openTerminalShift;
+let recordCashDrawerEvent;
+let closeTerminalShift;
+let updateOnlineOrderStatus;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/posHandlers.js');
@@ -54,6 +64,12 @@ beforeAll(async () => {
     checkout = mod.checkout;
     listTransactions = mod.listTransactions;
     closeDayZReading = mod.closeDayZReading;
+    getCurrentXReading = mod.getCurrentXReading;
+    incrementGovernedResetCounter = mod.incrementGovernedResetCounter;
+    openTerminalShift = mod.openTerminalShift;
+    recordCashDrawerEvent = mod.recordCashDrawerEvent;
+    closeTerminalShift = mod.closeTerminalShift;
+    updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
 });
 
 const createRes = () => {
@@ -201,6 +217,243 @@ describe('posHandlers transport contracts', () => {
                 summary: { transaction_count: 7, total_amount: 1999.5 }
             },
             message: 'Z-reading generated successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('getCurrentXReading returns stable success payload', async () => {
+        mockGetCurrentXReadingUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                business_date: '2026-04-08',
+                reading_identifier: 'XR-20260408-010203',
+                summary: { transaction_count: 3, total_amount: 1250 }
+            }
+        });
+
+        const req = {
+            validatedQuery: { business_date: '2026-04-08', terminal_id: 'WEB-POS-01' },
+            query: {},
+            requestId: 'req-pos-x'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getCurrentXReading(req, res, next);
+
+        expect(mockGetCurrentXReadingUseCase).toHaveBeenCalledWith({
+            query: { business_date: '2026-04-08', terminal_id: 'WEB-POS-01' }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: {
+                business_date: '2026-04-08',
+                reading_identifier: 'XR-20260408-010203',
+                summary: { transaction_count: 3, total_amount: 1250 }
+            },
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('incrementGovernedResetCounter returns success message contract', async () => {
+        mockIncrementGovernedResetCounterUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                business_date: '2026-04-08',
+                reset_event_identifier: 'RST-20260408-00000009',
+                counters: { reset_counter: 9 }
+            }
+        });
+
+        const req = {
+            validatedData: {
+                reason: 'Audit reset event after regulator validation',
+                confirmation_text: 'INCREMENT RESET COUNTER'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reset'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await incrementGovernedResetCounter(req, res, next);
+
+        expect(mockIncrementGovernedResetCounterUseCase).toHaveBeenCalledWith({
+            payload: {
+                reason: 'Audit reset event after regulator validation',
+                confirmation_text: 'INCREMENT RESET COUNTER'
+            },
+            user: expect.objectContaining({ user_id: 4 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: {
+                business_date: '2026-04-08',
+                reset_event_identifier: 'RST-20260408-00000009',
+                counters: { reset_counter: 9 }
+            },
+            message: 'Reset counter increment recorded',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('openTerminalShift preserves replay metadata contract in success responses', async () => {
+        mockOpenTerminalShiftUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: true,
+                replay_outcome: 'idempotent_replay',
+                reused_existing: true,
+                shift: { pos_terminal_shift_id: 77, terminal_id: 'WEB-POS-01' }
+            }
+        });
+
+        const req = {
+            validatedData: { terminal_id: 'WEB-POS-01', idempotency_key: 'shift-open-20260409-01' },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-shift-open'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await openTerminalShift(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: true,
+                replay_outcome: 'idempotent_replay'
+            }),
+            message: 'Terminal shift is ready',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('recordCashDrawerEvent preserves replay metadata contract in success responses', async () => {
+        mockRecordCashDrawerEventUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                event_type: 'cash_in',
+                pos_terminal_shift_id: 77
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 77 },
+            params: { id: 77 },
+            validatedData: {
+                idempotency_key: 'cash-event-20260409-01',
+                event_type: 'cash_in',
+                amount: 100,
+                reason: 'Petty cash top-up'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-cash-event'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await recordCashDrawerEvent(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Cash drawer event recorded',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('closeTerminalShift preserves replay metadata contract in success responses', async () => {
+        mockCloseTerminalShiftUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                shift: { pos_terminal_shift_id: 77, status: 'closed' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 77 },
+            params: { id: 77 },
+            validatedData: {
+                idempotency_key: 'shift-close-20260409-01',
+                closing_cash_amount: 1200,
+                closing_note: 'End of day'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-shift-close'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await closeTerminalShift(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Terminal shift closed successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('updateOnlineOrderStatus preserves replay metadata contract in success responses', async () => {
+        mockUpdateOnlineOrderStatusUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                order: { pos_transaction_id: 89, fulfillment_status: 'confirmed' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 89 },
+            params: { id: 89 },
+            validatedData: {
+                idempotency_key: 'order-status-20260409-89',
+                fulfillment_status: 'confirmed'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-order-status'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await updateOnlineOrderStatus(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Online order status updated successfully',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

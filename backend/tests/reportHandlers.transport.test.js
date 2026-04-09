@@ -1,10 +1,13 @@
 import { jest } from '@jest/globals';
 
 const mockGetExpiryReportUseCase = jest.fn();
+const mockGetComplianceBooksPackageUseCase = jest.fn();
+const mockExportComplianceBooksPackageUseCase = jest.fn();
 const mockGetSnapshotsUseCase = jest.fn();
 const mockSaveSnapshotUseCase = jest.fn();
 const mockGetStockAgingUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockRecordComplianceSecuritySignalUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/reports/index.js', () => ({
   getExpiryReportUseCase: mockGetExpiryReportUseCase,
@@ -12,6 +15,8 @@ jest.unstable_mockModule('../src/modules/reports/index.js', () => ({
   getProductionReportUseCase: jest.fn(),
   getPurchaseOrderAnalysisUseCase: jest.fn(),
   getExecutiveSummaryUseCase: jest.fn(),
+  getComplianceBooksPackageUseCase: mockGetComplianceBooksPackageUseCase,
+  exportComplianceBooksPackageUseCase: mockExportComplianceBooksPackageUseCase,
   getSnapshotsUseCase: mockGetSnapshotsUseCase,
   getSnapshotByIdUseCase: jest.fn(),
   saveSnapshotUseCase: mockSaveSnapshotUseCase,
@@ -25,17 +30,27 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
   trackProductUsageFromResult: mockTrackProductUsageFromResult
 }));
 
+jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
+  recordComplianceSecuritySignalUseCase: mockRecordComplianceSecuritySignalUseCase
+}));
+
 let getExpiryReport;
+let getComplianceBooksPackage;
+let exportComplianceBooksPackage;
 let getSnapshots;
 let saveSnapshot;
 let getStockAging;
+let exportReportCSV;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/reports/controllers/reportHandlers.js');
   getExpiryReport = mod.getExpiryReport;
+  getComplianceBooksPackage = mod.getComplianceBooksPackage;
+  exportComplianceBooksPackage = mod.exportComplianceBooksPackage;
   getSnapshots = mod.getSnapshots;
   saveSnapshot = mod.saveSnapshot;
   getStockAging = mod.getStockAging;
+  exportReportCSV = mod.exportReportCSV;
 });
 
 const createRes = () => {
@@ -52,6 +67,19 @@ describe('reportHandlers transport contracts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTrackProductUsageFromResult.mockResolvedValue({ created: true });
+    mockRecordComplianceSecuritySignalUseCase.mockResolvedValue({
+      success: true,
+      data: { recorded: true, signal_code: 'mass_export_threshold_reached', severity: 'warning' }
+    });
+    mockExportComplianceBooksPackageUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        bundle_name: 'compliance-submission-dgfy-2026-04-08.json',
+        filing_profile: 'dgfy',
+        record_counts: { sales_journal: 2, purchase_journal: 1, inventory_book: 1, special_discount_journal: 0 },
+        files: []
+      }
+    });
   });
 
   it('getExpiryReport returns stable success payload', async () => {
@@ -127,6 +155,67 @@ describe('reportHandlers transport contracts', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('getComplianceBooksPackage preserves standardized success payload', async () => {
+    mockGetComplianceBooksPackageUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        schema_version: 'compliance-books.v1',
+        record_counts: { sales_journal: 2, purchase_journal: 1, inventory_book: 4, special_discount_journal: 1 }
+      }
+    });
+
+    const req = { query: {}, requestId: 'req-report-compliance-package', user: { user_id: 3, tenant_id: 'tenant-1' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    await getComplianceBooksPackage(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        schema_version: 'compliance-books.v1',
+        record_counts: { sales_journal: 2, purchase_journal: 1, inventory_book: 4, special_discount_journal: 1 }
+      },
+      timestamp: expect.any(String)
+    });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'report_compliance_package_viewed',
+      surface: 'reports',
+      action: 'view_compliance_package'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('getComplianceBooksPackage records security signal on large exports', async () => {
+    mockGetComplianceBooksPackageUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        schema_version: 'compliance-books.v1',
+        record_counts: {
+          sales_journal: 700,
+          purchase_journal: 200,
+          inventory_book: 150,
+          special_discount_journal: 25
+        }
+      }
+    });
+
+    const req = { query: {}, requestId: 'req-report-compliance-large', user: { user_id: 3, tenant_id: 'tenant-1' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    await getComplianceBooksPackage(req, res, next);
+
+    expect(mockRecordComplianceSecuritySignalUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      signalCode: 'mass_export_threshold_reached',
+      severity: 'warning',
+      actorUser: expect.objectContaining({ user_id: 3 })
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('saveSnapshot preserves 201 success payload shape', async () => {
     mockSaveSnapshotUseCase.mockResolvedValue({
       success: true,
@@ -185,6 +274,99 @@ describe('reportHandlers transport contracts', () => {
       eventType: 'report_stock_aging_viewed',
       surface: 'reports',
       action: 'view_stock_aging_report'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('exportReportCSV emits security signal when export size breaches threshold', async () => {
+    const largeRows = Array.from({ length: 1005 }, (_, index) => ({
+      batch_id: index + 1,
+      item_name: 'Milk',
+      sku_code: `SKU-${index + 1}`,
+      category: 'dairy',
+      expiry_date: '2026-04-08',
+      days_until_expiry: 3,
+      available_quantity: 1,
+      unit_of_measure: 'pcs',
+      cost_per_unit: 50,
+      value_at_risk: 50,
+      received_date: '2026-04-01',
+      po_number: 'PO-1'
+    }));
+
+    mockGetExpiryReportUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        summary: {
+          total_expired_batches: 0,
+          total_critical_batches: 0,
+          total_warning_batches: largeRows.length,
+          total_upcoming_batches: 0,
+          total_value_at_risk: 50250
+        },
+        expired: [],
+        critical: [],
+        warning: largeRows,
+        upcoming: []
+      }
+    });
+
+    const req = {
+      query: { type: 'expiry' },
+      requestId: 'req-report-export-large',
+      user: { user_id: 9, tenant_id: 'tenant-1' }
+    };
+    const res = {
+      setHeader: jest.fn(),
+      send: jest.fn(),
+      status: jest.fn(),
+      json: jest.fn()
+    };
+    res.status.mockReturnValue(res);
+    const next = jest.fn();
+
+    await exportReportCSV(req, res, next);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv');
+    expect(res.send).toHaveBeenCalledWith(expect.any(String));
+    expect(mockRecordComplianceSecuritySignalUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      signalCode: 'mass_export_threshold_reached',
+      severity: 'warning'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('exportComplianceBooksPackage sets attachment header and returns success payload', async () => {
+    const req = {
+      query: { filing_profile: 'dgfy' },
+      requestId: 'req-report-compliance-export',
+      user: { user_id: 11, tenant_id: 'tenant-1' }
+    };
+    const res = {
+      locals: {},
+      setHeader: jest.fn(),
+      status: jest.fn(),
+      json: jest.fn()
+    };
+    res.status.mockReturnValue(res);
+    const next = jest.fn();
+
+    await exportComplianceBooksPackage(req, res, next);
+
+    expect(mockExportComplianceBooksPackageUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      filingProfile: 'dgfy'
+    }));
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="compliance-submission-dgfy-2026-04-08.json"'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        bundle_name: 'compliance-submission-dgfy-2026-04-08.json'
+      })
     }));
     expect(next).not.toHaveBeenCalled();
   });

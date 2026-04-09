@@ -11,6 +11,7 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -18,6 +19,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
+  let terminalPageLayoutContent = '';
 
   beforeAll(() => {
     terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
@@ -25,6 +27,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+    terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -45,6 +48,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("accessState: 'allowed'");
     expect(terminalPageContent).toContain("accessState: isForbidden ? 'forbidden' : 'error'");
     expect(terminalPageContent).toContain("['incoming_queue', 'location_scope'].includes(posViewMode)");
+  });
+
+  it('fails closed when compliance gate context cannot be loaded', () => {
+    expect(terminalPageContent).toContain('loadError: true');
+    expect(terminalPageContent).toContain("code: 'COMPLIANCE_GATE_UNAVAILABLE'");
+    expect(terminalPageContent).toContain("if (complianceGate.loadError) return 'Compliance status is unavailable. Please refresh and retry.';");
+    expect(terminalPageContent).toContain("title: 'Compliance gate unavailable'");
   });
 
   it('keeps incoming queue and location scope sidebar items permission-aware', () => {
@@ -102,5 +112,26 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('Open in History');
     expect(terminalSidebarPanelContent).toContain('History');
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
+  });
+
+  it('persists offline checkout intents and exposes replay affordance', () => {
+    expect(posCheckoutTerminalContent).toContain('const CHECKOUT_INTENT_QUEUE_KEY = \'pos_checkout_intent_queue_v1\';');
+    expect(posCheckoutTerminalContent).toContain('queueCheckoutIntentLocally');
+    expect(posCheckoutTerminalContent).toContain('Replay queued checkouts');
+    expect(posCheckoutTerminalContent).toContain('idempotency_key');
+  });
+
+  it('surfaces compliance reason codes with per-blocker remediation links in terminal banner', () => {
+    expect(terminalPageLayoutContent).toContain('Reason code: {complianceBlockerDetails.reasonCode}');
+    expect(terminalPageLayoutContent).toContain('{blocker.label || blocker.code}');
+    expect(terminalPageLayoutContent).toContain('Fix now');
+    expect(terminalPageLayoutContent).toContain('onClick={() => navigate(blocker.action_target)}');
+  });
+
+  it('maps compliance policy checkout denials to explicit remediation guidance copy', () => {
+    expect(posCheckoutTerminalContent).toContain('buildCompliancePolicyBlockerMessage');
+    expect(posCheckoutTerminalContent).toContain('Compliance policy blocked checkout (');
+    expect(posCheckoutTerminalContent).toContain('Resolve blocker in');
+    expect(posCheckoutTerminalContent).toContain('BSP_OPS_REGISTRATION_REQUIRED');
   });
 });

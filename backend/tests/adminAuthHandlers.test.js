@@ -1,9 +1,11 @@
 import { jest } from '@jest/globals';
 
 const mockAdminLoginUseCase = jest.fn();
+const mockAdminLogoutUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/adminAuth/index.js', () => ({
-  adminLoginUseCase: mockAdminLoginUseCase
+  adminLoginUseCase: mockAdminLoginUseCase,
+  adminLogoutUseCase: mockAdminLogoutUseCase
 }));
 
 jest.unstable_mockModule('../src/config/logger.js', () => ({
@@ -15,10 +17,12 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 }));
 
 let adminLogin;
+let adminLogout;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/adminAuth/controllers/adminAuthHandlers.js');
   adminLogin = mod.adminLogin;
+  adminLogout = mod.adminLogout;
 });
 
 const createRes = () => {
@@ -82,6 +86,55 @@ describe('adminAuthHandlers.adminLogin', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       message: 'Invalid credentials'
+    });
+  });
+});
+
+describe('adminAuthHandlers.adminLogout', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns stable success payload when token is revoked', async () => {
+    mockAdminLogoutUseCase.mockResolvedValue({
+      success: true,
+      data: { blacklisted: true }
+    });
+
+    const req = { headers: { authorization: 'Bearer jwt-token' } };
+    const res = createRes();
+
+    await adminLogout(req, res);
+
+    expect(mockAdminLogoutUseCase).toHaveBeenCalledWith({ token: 'jwt-token' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      message: 'Admin logout successful',
+      data: { blacklisted: true }
+    });
+  });
+
+  it('returns mapped validation payload when token is missing', async () => {
+    mockAdminLogoutUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Token is required',
+        statusCode: 422
+      }
+    });
+
+    const req = { headers: {} };
+    const res = createRes();
+
+    await adminLogout(req, res);
+
+    expect(mockAdminLogoutUseCase).toHaveBeenCalledWith({ token: '' });
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Token is required'
     });
   });
 });

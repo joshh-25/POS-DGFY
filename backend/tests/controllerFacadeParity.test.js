@@ -40,6 +40,8 @@ describe('Controller compatibility facades', () => {
       'getProductionReport',
       'getPurchaseOrderAnalysis',
       'getExecutiveSummary',
+      'getComplianceBooksPackage',
+      'exportComplianceBooksPackage',
       'getSnapshots',
       'getSnapshotById',
       'saveSnapshot',

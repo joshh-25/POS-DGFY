@@ -1,5 +1,6 @@
 import {
-    evaluateComplianceDecision
+    evaluateComplianceDecision,
+    evaluateComplianceChecklist
 } from '../src/modules/compliance/policy/compliancePolicyEngine.js';
 import {
     COMPLIANCE_MODE_STATE,
@@ -82,6 +83,68 @@ describe('compliancePolicyEngine', () => {
         expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED);
     });
 
+    it('denies internal non-cash payment flow when OPS controls are incomplete', () => {
+        const profile = buildTenantProfile();
+        profile.bsp.ops_registration_required = true;
+        profile.bsp.ops_registration_status = 'pending';
+        profile.bsp.payment_control_reviewed = false;
+
+        const decision = evaluateComplianceDecision({
+            tenant: {
+                id: 'tenant-1b',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE,
+                compliance_mode_choice_required: false,
+                compliance_profile: profile
+            },
+            operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
+            context: {
+                payment_type: 'card',
+                payment_handoff_mode: 'internal'
+            }
+        });
+
+        expect(decision.decision).toBe(COMPLIANCE_DECISION.DENY);
+        expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.BSP_OPS_REGISTRATION_REQUIRED);
+    });
+
+    it('denies non-fiscal document contexts in compliant-active POS operations', () => {
+        const decision = evaluateComplianceDecision({
+            tenant: {
+                id: 'tenant-ctx-1',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE,
+                compliance_mode_choice_required: false,
+                compliance_profile: buildTenantProfile()
+            },
+            operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
+            context: {
+                requested_document_context: 'non_fiscal'
+            },
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings()
+        });
+
+        expect(decision.decision).toBe(COMPLIANCE_DECISION.DENY);
+        expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.DOCUMENT_CONTEXT_NOT_ALLOWED);
+    });
+
     it('denies compliant terminal operation when accredited classes do not match terminal binding', () => {
         const decision = evaluateComplianceDecision({
             tenant: {
@@ -152,5 +215,282 @@ describe('compliancePolicyEngine', () => {
 
         expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
         expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.ALLOWED);
+    });
+
+    it('accepts stringified compliance_profile JSON for compliant-active checks', () => {
+        const decision = evaluateComplianceDecision({
+            tenant: {
+                id: 'tenant-4',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE,
+                compliance_mode_choice_required: false,
+                compliance_profile: JSON.stringify(buildTenantProfile())
+            },
+            operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+            context: { terminal_id: 'TERM-C' },
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings()
+        });
+
+        expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
+        expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.ALLOWED);
+    });
+
+    it('returns enriched requirements, section progress, and activation blockers', () => {
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-5',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
+                compliance_profile: buildTenantProfile()
+            },
+            complianceProfile: buildTenantProfile(),
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: {
+                ...buildSettings(),
+                pos_accreditation_number: { value: '' }
+            }
+        });
+
+        expect(Array.isArray(checklist.requirements)).toBe(true);
+        expect(checklist.requirements.length).toBeGreaterThan(0);
+        expect(checklist.section_progress).toEqual(expect.objectContaining({
+            profile: expect.any(Object),
+            settings: expect.any(Object),
+            artifacts: expect.any(Object),
+            peripherals: expect.any(Object)
+        }));
+        expect(checklist.activation_blockers).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                code: COMPLIANCE_REASON_CODE.COMPLIANCE_SETTINGS_INCOMPLETE,
+                section: 'settings'
+            }),
+            expect.objectContaining({
+                code: COMPLIANCE_REASON_CODE.ACCREDITED_PERIPHERAL_REQUIRED,
+                section: 'peripherals'
+            })
+        ]));
+        expect(checklist.next_blocking_step).toBeTruthy();
+    });
+
+    it('blocks activation when encryption prerequisites or documentary evidence are not ready', () => {
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-5b',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
+                compliance_profile: buildTenantProfile()
+            },
+            complianceProfile: buildTenantProfile(),
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings(),
+            evidence: {
+                encryption_policy_prerequisites_ready: false,
+                submission_artifacts: {
+                    ready: false,
+                    complete: 4,
+                    total: 7,
+                    missing: 3,
+                    items: [
+                        { code: 'submission.system_flow_diagram', label: 'System flow diagram', ready: true },
+                        { code: 'submission.backup_disaster_recovery_plan', label: 'Backup and DR plan', ready: false }
+                    ]
+                }
+            }
+        });
+
+        expect(checklist.ready_for_compliant_activation).toBe(false);
+        expect(checklist.activation_blockers).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                section: 'final_review',
+                code: COMPLIANCE_REASON_CODE.COMPLIANT_MODE_FAIL_CLOSED
+            }),
+            expect.objectContaining({
+                section: 'final_review',
+                code: COMPLIANCE_REASON_CODE.VERIFICATION_REQUIRED
+            })
+        ]));
+        expect(checklist.requirements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                code: 'control.encryption_policy_prerequisites',
+                status: 'missing',
+                section: 'final_review'
+            }),
+            expect.objectContaining({
+                code: 'control.documentary_readiness',
+                status: 'missing',
+                section: 'final_review'
+            })
+        ]));
+    });
+
+    it('produces equivalent checklist readiness for object and stringified compliance_profile inputs', () => {
+        const profileObject = buildTenantProfile();
+        const basePayload = {
+            tenant: {
+                id: 'tenant-6',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+            },
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings()
+        };
+
+        const checklistFromObject = evaluateComplianceChecklist({
+            ...basePayload,
+            complianceProfile: profileObject
+        });
+        const checklistFromString = evaluateComplianceChecklist({
+            ...basePayload,
+            complianceProfile: JSON.stringify(profileObject)
+        });
+
+        expect(checklistFromString.ready_for_compliant_activation).toBe(checklistFromObject.ready_for_compliant_activation);
+        expect(checklistFromString.missing_profile_fields).toEqual(checklistFromObject.missing_profile_fields);
+        expect(checklistFromString.missing_artifacts).toEqual(checklistFromObject.missing_artifacts);
+        expect(checklistFromString.missing_peripheral_classes).toEqual(checklistFromObject.missing_peripheral_classes);
+        expect(checklistFromString.missing_setting_keys).toEqual(checklistFromObject.missing_setting_keys);
+    });
+
+    it('marks *_valid_until profile fields as missing when dates are expired', () => {
+        const now = new Date('2026-04-08T09:00:00.000Z');
+        const expiredProfile = buildTenantProfile();
+        expiredProfile.bir.software_accreditation_valid_until = '2026-04-01';
+        expiredProfile.npc.dps_registration_valid_until = '2026-04-01';
+
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-7',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+            },
+            complianceProfile: expiredProfile,
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings(),
+            now
+        });
+
+        expect(checklist.ready_for_compliant_activation).toBe(false);
+        expect(checklist.missing_profile_fields).toEqual(expect.arrayContaining([
+            'bir.software_accreditation_valid_until',
+            'npc.dps_registration_valid_until'
+        ]));
+    });
+
+    it('treats string false values in required boolean fields as incomplete', () => {
+        const profile = buildTenantProfile();
+        profile.bir.tax_classification_controls_confirmed = 'false';
+        profile.readiness.tests_passed = '0';
+
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-8',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+            },
+            complianceProfile: profile,
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings()
+        });
+
+        expect(checklist.ready_for_compliant_activation).toBe(false);
+        expect(checklist.missing_profile_fields).toEqual(expect.arrayContaining([
+            'bir.tax_classification_controls_confirmed',
+            'readiness.tests_passed'
+        ]));
     });
 });
