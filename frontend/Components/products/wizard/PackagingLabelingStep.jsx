@@ -15,7 +15,6 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
   // Ensure packaging_info is an object, even if it comes in as something else (like an ID from bad state)
   const packaging = (data.packaging_info && typeof data.packaging_info === 'object') ? data.packaging_info : {};
   const packagingItems = Array.isArray(data.packaging_items) ? data.packaging_items : [];
-  const batchSize = data.batch_size || 1;
 
   // Filter items with category 'packaging'
   const availablePackagingItems = useMemo(() => {
@@ -87,16 +86,8 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
     updateData({ packaging_items: updated });
   };
 
-  // Calculate total packaging cost
+  // Calculate total packaging cost per batch
   const totalPackagingCost = useMemo(() => {
-    return packagingItems.reduce((sum, pkg) => {
-      const item = availablePackagingItems.find(i => i.item_id === pkg.item_id);
-      return sum + ((item?.cost_per_unit || 0) * pkg.quantity * batchSize);
-    }, 0);
-  }, [packagingItems, availablePackagingItems, batchSize]);
-
-  // Per-batch packaging cost
-  const perBatchPackagingCost = useMemo(() => {
     return packagingItems.reduce((sum, pkg) => {
       const item = availablePackagingItems.find(i => i.item_id === pkg.item_id);
       return sum + ((item?.cost_per_unit || 0) * pkg.quantity);
@@ -123,19 +114,19 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
           <div className="text-center p-6 border-2 border-dashed border-amber-200 rounded-xl bg-amber-50">
             <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
             <p className="text-amber-700 font-medium">No packaging items in inventory</p>
-            <p className="text-sm text-amber-600 mt-1">Add items with category "Packaging" to your inventory first.</p>
+            <p className="text-sm text-amber-600 mt-1">Add items with category &quot;Packaging&quot; to your inventory first.</p>
           </div>
         ) : packagingItems.length === 0 ? (
           <div className="text-center p-8 border-2 border-dashed border-slate-200 rounded-xl">
             <Package className="w-8 h-8 text-slate-400 mx-auto mb-2" />
             <p className="text-slate-500">No packaging items added yet.</p>
-            <p className="text-sm text-slate-400 mt-1">Click "Add Packaging" to add packaging items from your inventory.</p>
+            <p className="text-sm text-slate-400 mt-1">Click &quot;Add Packaging&quot; to add packaging items from your inventory.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {packagingItems.map((pkg, index) => {
               const item = availablePackagingItems.find(i => i.item_id === pkg.item_id);
-              const totalNeeded = pkg.quantity * batchSize;
+              const totalNeeded = pkg.quantity;
               const hasEnough = item && item.current_stock >= totalNeeded;
 
               return (
@@ -210,13 +201,9 @@ export default function PackagingLabelingStep({ data, updateData, items }) {
       {packagingItems.length > 0 && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
           <h4 className="font-medium text-purple-900 mb-3">Packaging Cost Summary</h4>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
-              <p className="text-sm text-purple-700">Cost per Batch</p>
-              <p className="text-xl font-bold text-purple-900">₱{formatNumber(perBatchPackagingCost, 2)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-purple-700">Total for {batchSize} batches</p>
+              <p className="text-sm text-purple-700">Total Packaging Cost (per batch)</p>
               <p className="text-xl font-bold text-purple-900">₱{formatNumber(totalPackagingCost, 2)}</p>
             </div>
           </div>
