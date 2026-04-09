@@ -125,6 +125,7 @@ Subscription notes:
   - `compliance_policy_version`, `compliance_profile`
 - Drift-alignment migrations:
   - `20260407000003-align-tenant-schema-with-model.cjs` aligns tenant landlord schema with active runtime model (including admin fields and enum normalization).
+  - `20260407000002-compliance-hardening-phase1-2.cjs` and `20260407000005-add-compliance-audit-fallback-table.cjs` complete compliance table/column hardening for runtime checks.
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -488,7 +489,7 @@ CREATE TABLE items (
 );
 ```
 
-**Current Implementation Note (2026-03):**
+**Current Implementation Note (2026-04):**
 - `items.vat_type` is implemented as `ENUM('vatable','vat_exempt','zero_rated')` with default `vatable`.
 - POS uses this as the default tax classification source, then snapshots it at transaction-line level.
 
@@ -910,7 +911,7 @@ CREATE TABLE system_settings (
   - `discount_rate_snapshot` (`DECIMAL(7,4)`, nullable, supports `0.0000` to `100.0000`)
   - `service_fee_amount` (decimal, default 0)
   - `service_fee_label_snapshot` (string, nullable)
-  - `service_fee_method_snapshot` (enum `dine_in|takeout|delivery|online`, nullable)
+  - `service_fee_method_snapshot` (enum `dine_in|takeout|pickup|delivery`, nullable; legacy `online` remains read-compatible for historical data)
   - `service_fee_overridden` (boolean, default false)
 
 ### 18. POS Catalog Overrides Table

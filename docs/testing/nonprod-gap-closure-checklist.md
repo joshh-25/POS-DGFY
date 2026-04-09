@@ -84,3 +84,30 @@ Automated verification completed on 2026-04-03 with the following outcomes:
 Remaining blocker before closure:
 
 1. Human UAT evidence/signoff (`docs/testing/pos-e2e-uat-checklist.md`, cashier/admin confirmation)
+
+## 7) Targeted Remediation Evidence Run (2026-04-08)
+
+Issue scope validated: prior local `500` responses on compliance, POS incoming queue, sales feed, and store checkout transport.
+
+1. `npm --prefix backend run migrate` -> PASS
+   - Applied migrations:
+     - `20260407000002-compliance-hardening-phase1-2.cjs`
+     - `20260407000003-align-tenant-schema-with-model.cjs`
+     - `20260407000004-align-job-orders-schema-with-model.cjs`
+     - `20260407000005-add-compliance-audit-fallback-table.cjs`
+2. `npm --prefix backend run doctor:runtime` -> PASS
+   - `status=healthy`
+   - `missing_migrations=0`
+   - `missing_columns=0`
+3. `npm --prefix backend test -- runtimeSchemaAuditService.test.js` -> PASS
+4. `npm run check:architecture` -> PASS
+5. `npm run build:frontend` -> PASS
+6. Endpoint probes after migration + restart:
+   - `GET /api/v1/compliance/profile` -> `200`
+   - `GET /api/v1/compliance/artifacts` -> `200`
+   - `GET /api/v1/compliance/peripherals` -> `200`
+   - `GET /api/v1/pos/incoming-orders` -> `200`
+   - `GET /api/v1/sales/transactions` -> `200`
+   - `POST /api/v1/store/checkout` -> expected `422` in stock/validation breach path (no `500`)
+
+Status after this targeted rerun remains `in_progress` until human UAT evidence is complete.

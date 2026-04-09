@@ -7,6 +7,7 @@
 > Billing-funnel and PayPal canary references in this historical report are no longer active release gates.
 > Addendum (2026-04-03): Provider-specific legacy payment suites were moved to opt-in execution (`npm --prefix backend run test:legacy:payments`).
 > Addendum (2026-04-03): Fresh full-gate rerun passed (`check:architecture`, docs/backend/frontend lint, backend/frontend tests, frontend/skupervisor/pos/store builds, `check:frontend-budgets`, `doctor:runtime`, `audit:indexes`, `smoke:pos-local` with backend started).
+> Addendum (2026-04-08): Targeted runtime remediation rerun confirmed recovery of previously failing local endpoints after compliance/schema alignment migrations. Verified `200` on `/api/v1/compliance/profile`, `/api/v1/compliance/artifacts`, `/api/v1/compliance/peripherals`, `/api/v1/pos/incoming-orders`, `/api/v1/sales/transactions`; `/api/v1/store/checkout` now returns expected contract-level `422` for validation/stock failures instead of `500`.
 
 ## Summary
 The project has resolved major infrastructure and deployment blockers, and key operational flows (including QR Receive) have end-to-end verification evidence. Overall readiness remains `in_progress` until all non-production gates remain green and manual cashier/admin UAT is formally signed off.
@@ -377,4 +378,3 @@ To prevent status drift across multiple test/readiness documents, the canonical 
 1. `docs/testing/pos-readiness-status.md`
 
 All POS readiness updates must be reflected there first, then referenced here.
-

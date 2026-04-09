@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-09
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -18,6 +18,7 @@ Start here for all planning and implementation work:
 - `docs/api`: API specs and integration guides
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
+  - includes evidence and submission packet docs under `docs/compliance/evidence/` and `docs/compliance/submission/`
   - active compliance docs index: `docs/compliance/README.md`
 - `docs/database`: schema contracts
 - `docs/development`: environment setup and workflow docs
@@ -25,6 +26,7 @@ Start here for all planning and implementation work:
 - `docs/setup`: operational setup steps
 - `docs/testing`: verification and audit protocols
 - `docs/reference`: supporting plans, checklists, and quick references
+- `docs/guides/SCRIPTS_GUIDE.md`: operational script inventory (including compliance activation seeding script)
 
 ## Current Product Surfaces
 - `frontend/apps/skupervisor`: tenant/admin IMS workflows
@@ -43,8 +45,10 @@ Start here for all planning and implementation work:
 - Root-level operational docs (for example `SETUP.md`, `QUICK_START.md`, `TROUBLESHOOTING.md`) remain as supplemental reference while migration continues.
 - `docs/archive/` is historical only and is non-authoritative for new planning.
 - Historical compliance remediation packets from April 2026 are archived under `docs/archive/compliance/2026-04-07/`.
+- Compliance activation readiness browser E2E guidance is maintained in `docs/testing/README.md`.
 
 ## Rules
 1. Use authoritative docs first.
 2. Do not use deprecated docs for new design decisions.
 3. Update docs in the same PR when code behavior changes.
+4. Run `npm run check:compliance` to enforce both declaration and API contract drift gates for compliance-sensitive changes.

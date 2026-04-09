@@ -37,6 +37,21 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+## Compliance Activation Readiness E2E
+
+For the guided compliance activation flow (Settings + POS blocker behavior), use:
+
+1. Browser E2E (Chromium, desktop profile):
+   - `npm --prefix backend run test:frontend-compliance-e2e`
+2. Browser E2E matrix (Chromium, desktop + mobile profiles):
+   - `npm --prefix backend run test:frontend-compliance-e2e:matrix`
+3. Frontend component/integration coverage (compliance panel, POS blocker contracts, admin review contracts):
+   - `npm --prefix frontend test -- --run src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx src/features/compliance/__tests__/complianceProgramContracts.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js src/pages/__tests__/TenantManager.complianceReviewContracts.test.js src/services/__tests__/complianceService.preflight.test.js`
+4. Backend residual-risk hardening suites (transport security, documentary readiness, incident dispatch):
+   - `npm --prefix backend test -- backend/tests/securityTransport.middleware.test.js backend/tests/complianceRepository.documentaryReadiness.test.js backend/tests/complianceSecuritySignal.usecase.test.js backend/tests/complianceSecurityIncidents.usecase.test.js backend/tests/rbacRouteCoverage.contract.test.js backend/tests/posOperationReplayParity.usecase.test.js`
+
+Use `RUN_BROWSER_E2E=true` only for browser-driven suites; keep default backend tests fast and deterministic by leaving browser E2E opt-in.
+
 ## Startup Regression Guard (PM2 + Local)
 
 Before running manual UAT after backend changes:
@@ -54,5 +69,13 @@ Before running manual UAT after backend changes:
    - Request body: `{ "email": "admin@test.com", "password": "Admin123!" }`
    - Expected: `200`
    - Note: sending `company_token` in body is invalid and returns `422`.
+8. Verify runtime-sensitive read endpoints return `200` after migration/restart:
+   - `http://localhost:5000/api/v1/compliance/profile`
+   - `http://localhost:5000/api/v1/compliance/artifacts`
+   - `http://localhost:5000/api/v1/compliance/peripherals`
+   - `http://localhost:5000/api/v1/pos/incoming-orders`
+   - `http://localhost:5000/api/v1/sales/transactions`
+9. Verify store checkout validation path is fail-closed:
+   - `POST /api/v1/store/checkout` should return `422` for invalid/out-of-stock payloads, not `500`.
 
 This prevents transient startup-side `500` errors caused by runtime schema `alter` operations.
