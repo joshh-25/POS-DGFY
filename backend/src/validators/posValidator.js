@@ -3,7 +3,10 @@ import Joi from 'joi';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
+const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
+const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 
 const checkoutLineSchema = Joi.object({
     item_id: Joi.number().integer().positive().required().messages({
@@ -20,20 +23,33 @@ const checkoutLineSchema = Joi.object({
     price_override_reason: Joi.string().trim().max(255).allow(null, '').optional()
 });
 
+const discountBeneficiarySchema = Joi.object({
+    category: Joi.string().valid(...DISCOUNT_BENEFICIARY_CATEGORIES).required(),
+    name: Joi.string().trim().min(2).max(120).required(),
+    id_number: Joi.string().trim().min(2).max(120).required()
+});
+
 const checkoutPosSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required().messages({
         'any.required': 'idempotency_key is required'
     }),
     terminal_id: Joi.string().trim().max(100).allow(null, ''),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
+    document_context: Joi.string().valid(...DOCUMENT_CONTEXTS).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
+    payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
     service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Service fee amount must be 0 or greater'
     }),
     discount_amount: Joi.number().min(0).precision(4).default(0),
     discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
     discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
+    customer_name: Joi.string().trim().max(255).allow('', null).optional(),
+    customer_email: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).optional(),
+    customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
+    special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
+    discount_beneficiary: discountBeneficiarySchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
@@ -93,6 +109,17 @@ const closeDaySchema = Joi.object({
     business_date: Joi.date().iso().optional()
 });
 
+const xReadingQuerySchema = Joi.object({
+    business_date: Joi.date().iso().optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
+const governedResetSchema = Joi.object({
+    reason: Joi.string().trim().min(8).max(255).required(),
+    evidence_ref: Joi.string().trim().max(255).allow(null, '').optional(),
+    confirmation_text: Joi.string().trim().valid('INCREMENT RESET COUNTER').required()
+});
+
 const terminalCurrentShiftQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
@@ -112,6 +139,7 @@ const shiftIdParamSchema = Joi.object({
 });
 
 const openTerminalShiftSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').default('WEB-POS-01'),
     business_date: Joi.date().iso().optional(),
     opening_float_amount: Joi.number().min(0).precision(4).default(0),
@@ -119,17 +147,20 @@ const openTerminalShiftSchema = Joi.object({
 });
 
 const cashDrawerEventSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     event_type: Joi.string().valid('cash_in', 'cash_out', 'opening_adjustment', 'closing_adjustment').required(),
     amount: Joi.number().positive().precision(4).required(),
     reason: Joi.string().trim().min(3).max(255).required()
 });
 
 const closeTerminalShiftSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     closing_cash_amount: Joi.number().min(0).precision(4).required(),
     closing_note: Joi.string().trim().max(255).allow(null, '').optional()
 });
 
 const updateOnlineOrderStatusSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
 });
 
@@ -167,6 +198,8 @@ export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverride
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
 export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'validatedData');
+export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
+export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');

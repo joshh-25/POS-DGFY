@@ -5,6 +5,8 @@ import {
   buildGetProductionReportUseCase,
   buildGetPurchaseOrderAnalysisUseCase,
   buildGetExecutiveSummaryUseCase,
+  buildGetComplianceBooksPackageUseCase,
+  buildExportComplianceBooksPackageUseCase,
   buildGetSnapshotsUseCase,
   buildGetSnapshotByIdUseCase,
   buildSaveSnapshotUseCase,
@@ -19,6 +21,8 @@ export const getEnhancedStockAgingUseCase = buildGetEnhancedStockAgingUseCase({ 
 export const getProductionReportUseCase = buildGetProductionReportUseCase({ reportService });
 export const getPurchaseOrderAnalysisUseCase = buildGetPurchaseOrderAnalysisUseCase({ reportService });
 export const getExecutiveSummaryUseCase = buildGetExecutiveSummaryUseCase({ reportService });
+export const getComplianceBooksPackageUseCase = buildGetComplianceBooksPackageUseCase({ reportService });
+export const exportComplianceBooksPackageUseCase = buildExportComplianceBooksPackageUseCase({ reportService });
 export const getSnapshotsUseCase = buildGetSnapshotsUseCase({ reportService });
 export const getSnapshotByIdUseCase = buildGetSnapshotByIdUseCase({ reportService });
 export const saveSnapshotUseCase = buildSaveSnapshotUseCase({ reportService });

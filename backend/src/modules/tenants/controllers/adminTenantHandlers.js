@@ -16,8 +16,12 @@ import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/i
 import {
     listComplianceArtifactsUseCase,
     listCompliancePeripheralsUseCase,
+    getComplianceChecklistUseCase,
+    listComplianceAuditLogsUseCase,
+    listComplianceSecurityIncidentsUseCase,
     updateComplianceArtifactVerificationUseCase,
-    updateCompliancePeripheralVerificationUseCase
+    updateCompliancePeripheralVerificationUseCase,
+    updateComplianceSecurityIncidentStatusUseCase
 } from '../../compliance/index.js';
 import * as emailService from '../../../services/emailService.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -348,6 +352,92 @@ export const adminListCompliancePeripherals = async (req, res) => {
 };
 
 /**
+ * ADMIN: Get tenant compliance checklist for review context
+ */
+export const adminGetComplianceChecklist = async (req, res) => {
+    const result = await getComplianceChecklistUseCase({
+        tenantId: req.params?.id,
+        terminalId: req.validatedQuery?.terminal_id || req.query?.terminal_id || null
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to retrieve tenant compliance checklist'
+    });
+};
+
+/**
+ * ADMIN: List tenant compliance audit logs for evidence review
+ */
+export const adminListComplianceAuditLogs = async (req, res) => {
+    const result = await listComplianceAuditLogsUseCase({
+        tenantId: req.params?.id,
+        limit: req.validatedQuery?.limit || req.query?.limit
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to list tenant compliance audit logs'
+    });
+};
+
+/**
+ * ADMIN: List tenant security incidents for compliance evidence review
+ */
+export const adminListComplianceSecurityIncidents = async (req, res) => {
+    const result = await listComplianceSecurityIncidentsUseCase({
+        tenantId: req.params?.id,
+        limit: req.validatedQuery?.limit || req.query?.limit
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to list tenant compliance security incidents'
+    });
+};
+
+const buildPlatformAdminActor = (req) => ({
+    is_platform_admin: true,
+    user_id: req.admin?.admin_id || req.admin?.id || null,
+    username: req.admin?.username || 'platform_admin'
+});
+
+/**
+ * ADMIN: Mark a tenant security incident as acknowledged
+ */
+export const adminAcknowledgeComplianceSecurityIncident = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const result = await updateComplianceSecurityIncidentStatusUseCase({
+        tenantId: req.params?.id,
+        incidentId: req.validatedParams?.incident_id || req.params?.incident_id,
+        status: 'acknowledged',
+        actorUser: buildPlatformAdminActor(req),
+        note: payload.note,
+        evidenceRef: payload.evidence_ref
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to acknowledge tenant compliance security incident'
+    });
+};
+
+/**
+ * ADMIN: Mark a tenant security incident as resolved
+ */
+export const adminResolveComplianceSecurityIncident = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const result = await updateComplianceSecurityIncidentStatusUseCase({
+        tenantId: req.params?.id,
+        incidentId: req.validatedParams?.incident_id || req.params?.incident_id,
+        status: 'resolved',
+        actorUser: buildPlatformAdminActor(req),
+        note: payload.note,
+        evidenceRef: payload.evidence_ref
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to resolve tenant compliance security incident'
+    });
+};
+
+/**
  * ADMIN: Verify/reject/revoke tenant compliance artifact
  */
 export const adminUpdateComplianceArtifactVerification = async (req, res) => {
@@ -413,7 +503,12 @@ export default {
     adminReactivateTenant,
     adminListComplianceArtifacts,
     adminListCompliancePeripherals,
+    adminGetComplianceChecklist,
+    adminListComplianceAuditLogs,
+    adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminAcknowledgeComplianceSecurityIncident,
+    adminResolveComplianceSecurityIncident,
     resubmitRegistration
 };

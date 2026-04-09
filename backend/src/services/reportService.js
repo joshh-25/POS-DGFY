@@ -1,3 +1,6 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
@@ -732,6 +735,387 @@ export const getExecutiveSummary = async (filters = {}) => {
       fastest: sortedByMovement.slice(0, 10),
       slowest: sortedByMovement.slice(-10).reverse()
     }
+  };
+};
+
+// ============================================
+// COMPLIANCE BOOKS PACKAGE (BIR Submission Surface)
+// ============================================
+
+const toDayStart = (value) => {
+  const parsed = value ? new Date(value) : new Date();
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const toDayEnd = (value) => {
+  const parsed = value ? new Date(value) : new Date();
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(23, 59, 59, 999);
+  return parsed;
+};
+
+const toNumeric = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseTransactionMeta = (rawValue) => {
+  if (!rawValue) return {};
+  if (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) return rawValue;
+  if (typeof rawValue !== 'string') return {};
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    return {
+      note: rawValue
+    };
+  }
+
+  return {};
+};
+
+const inferSpecialDiscountCategory = (label) => {
+  const normalized = String(label || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes('national') && normalized.includes('athlete')) return 'national_athlete';
+  if (normalized.includes('senior')) return 'senior';
+  if (normalized.includes('pwd')) return 'pwd';
+  return null;
+};
+
+const stableStringify = (value) => {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const buildHash = (value) => crypto.createHash('sha256').update(stableStringify(value)).digest('hex');
+
+const resolveExistingPath = (candidates = []) => (
+  candidates.filter(Boolean).find((candidate) => fs.existsSync(candidate)) || candidates.filter(Boolean)[0] || null
+);
+
+const buildFileChecksum = (absolutePath) => {
+  try {
+    if (!absolutePath || !fs.existsSync(absolutePath)) return null;
+    const payload = fs.readFileSync(absolutePath);
+    return crypto.createHash('sha256').update(payload).digest('hex');
+  } catch {
+    return null;
+  }
+};
+
+const buildDocumentaryArtifactChecksums = () => {
+  const configuredSubmissionRoot = String(process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT || '').trim();
+  const configuredEvidenceRoot = String(process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT || '').trim();
+
+  const submissionRoot = resolveExistingPath([
+    configuredSubmissionRoot || null,
+    path.resolve(process.cwd(), 'docs', 'compliance', 'submission'),
+    path.resolve(process.cwd(), '..', 'docs', 'compliance', 'submission')
+  ]) || path.resolve(process.cwd(), 'docs', 'compliance', 'submission');
+  const evidenceRoot = resolveExistingPath([
+    configuredEvidenceRoot || null,
+    path.resolve(process.cwd(), 'docs', 'compliance', 'evidence', 'drills'),
+    path.resolve(process.cwd(), '..', 'docs', 'compliance', 'evidence', 'drills')
+  ]) || path.resolve(process.cwd(), 'docs', 'compliance', 'evidence', 'drills');
+
+  return {
+    system_flow_diagram_sha256: buildFileChecksum(path.resolve(submissionRoot, 'system-flow-diagram.mmd')),
+    system_flow_diagram_image_sha256: buildFileChecksum(path.resolve(submissionRoot, 'system-flow-diagram.png')),
+    software_specification_sha256: buildFileChecksum(path.resolve(submissionRoot, 'software-specification-dgfy.md')),
+    backup_disaster_recovery_plan_sha256: buildFileChecksum(path.resolve(submissionRoot, 'backup-disaster-recovery-plan.md')),
+    filing_instructions_sha256: buildFileChecksum(path.resolve(submissionRoot, 'filing-instructions.md')),
+    restore_drill_evidence_sha256: buildFileChecksum(path.resolve(evidenceRoot, 'latest-restore-drill.json')),
+    encryption_verification_evidence_sha256: buildFileChecksum(path.resolve(evidenceRoot, 'latest-encryption-verification.json'))
+  };
+};
+
+const buildSubmissionManifest = (payload, filingProfile = 'dgfy') => ({
+  version: 'submission-manifest.v1',
+  filing_profile: filingProfile,
+  generated_at: new Date().toISOString(),
+  instructions_ref: 'docs/compliance/submission/filing-instructions.md',
+  checksums: {
+    sales_journal_sha256: buildHash(payload?.sales_journal?.rows || []),
+    purchase_journal_sha256: buildHash(payload?.purchase_journal?.rows || []),
+    inventory_book_sha256: buildHash(payload?.inventory_book?.rows || []),
+    special_discount_journal_sha256: buildHash(payload?.special_discount_journal?.rows || []),
+    package_sha256: buildHash(payload || {}),
+    ...buildDocumentaryArtifactChecksums()
+  }
+});
+
+const escapeCsvCell = (value) => {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+};
+
+const toCsv = (columns = [], rows = []) => {
+  const header = columns.map((column) => escapeCsvCell(column)).join(',');
+  const lines = [header];
+  rows.forEach((entry) => {
+    const row = columns.map((column) => escapeCsvCell(entry?.[column]));
+    lines.push(row.join(','));
+  });
+  return `${lines.join('\n')}\n`;
+};
+
+export const getComplianceBooksPackage = async (filters = {}) => {
+  const PosTransaction = dbStore.get('PosTransaction');
+  const PurchaseOrder = dbStore.get('PurchaseOrder');
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+
+  const rangeStart = toDayStart(filters.startDate) || (() => {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() - 30);
+    fallback.setHours(0, 0, 0, 0);
+    return fallback;
+  })();
+  const rangeEnd = toDayEnd(filters.endDate) || toDayEnd(new Date());
+
+  const [salesRows, purchaseRows, movementRows] = await Promise.all([
+    PosTransaction.findAll({
+      where: {
+        status: 'completed',
+        created_at: {
+          [Op.between]: [rangeStart, rangeEnd]
+        }
+      },
+      order: [['created_at', 'ASC']]
+    }),
+    PurchaseOrder.findAll({
+      where: {
+        archived_at: null,
+        order_date: {
+          [Op.between]: [rangeStart.toISOString().slice(0, 10), rangeEnd.toISOString().slice(0, 10)]
+        }
+      },
+      order: [['order_date', 'ASC']]
+    }),
+    StockMovement.findAll({
+      where: {
+        timestamp: {
+          [Op.between]: [rangeStart, rangeEnd]
+        }
+      },
+      include: [{
+        model: Item,
+        as: 'item',
+        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure']
+      }],
+      order: [['timestamp', 'ASC']]
+    })
+  ]);
+
+  const salesJournalRows = salesRows.map((entry) => ({
+    transaction_datetime: entry.created_at,
+    invoice_number: entry.invoice_number,
+    document_type: entry.document_type,
+    document_context: entry.document_context,
+    terminal_id: entry.terminal_id,
+    payment_type: entry.payment_type,
+    subtotal_amount: toNumeric(entry.subtotal_amount),
+    discount_amount: toNumeric(entry.discount_amount),
+    service_fee_amount: toNumeric(entry.service_fee_amount),
+    vat_amount: toNumeric(entry.vat_amount),
+    total_amount: toNumeric(entry.total_amount)
+  }));
+
+  const purchaseJournalRows = purchaseRows.map((entry) => ({
+    order_date: entry.order_date,
+    po_number: entry.po_number,
+    supplier_id: entry.supplier_id,
+    status: entry.status,
+    received_date: entry.received_date,
+    subtotal: toNumeric(entry.subtotal),
+    discount: toNumeric(entry.discount),
+    total_amount: toNumeric(entry.total_amount)
+  }));
+
+  const inventoryBookRows = movementRows.map((entry) => {
+    const quantity = toNumeric(entry.quantity);
+    const isInbound = ['purchase_receipt', 'return', 'production_output', 'adjustment', 'transfer'].includes(entry.movement_type);
+    const quantityIn = isInbound ? quantity : 0;
+    const quantityOut = isInbound ? 0 : quantity;
+
+    return {
+      movement_datetime: entry.timestamp,
+      movement_type: entry.movement_type,
+      reference_type: entry.reference_type,
+      reference_id: entry.reference_id,
+      item_id: entry.item_id,
+      sku_code: entry.item?.sku_code || null,
+      item_name: entry.item?.name || null,
+      unit_of_measure: entry.item?.unit_of_measure || null,
+      quantity_in: quantityIn,
+      quantity_out: quantityOut,
+      notes: entry.notes || null
+    };
+  });
+
+  const specialDiscountRows = salesRows.map((entry) => {
+    const discountAmount = toNumeric(entry.discount_amount);
+    if (discountAmount <= 0) return null;
+
+    const transactionMeta = parseTransactionMeta(entry.special_instructions);
+    const beneficiary = transactionMeta?.discount_beneficiary
+      && typeof transactionMeta.discount_beneficiary === 'object'
+      ? transactionMeta.discount_beneficiary
+      : null;
+    const category = String(
+      beneficiary?.category
+      || inferSpecialDiscountCategory(entry.discount_label_snapshot)
+      || ''
+    ).trim().toLowerCase() || null;
+
+    if (!['senior', 'pwd', 'national_athlete'].includes(category)) {
+      return null;
+    }
+
+    return {
+      transaction_datetime: entry.created_at,
+      invoice_number: entry.invoice_number,
+      discount_label: entry.discount_label_snapshot || null,
+      discount_amount: discountAmount,
+      beneficiary_category: category,
+      beneficiary_name: String(beneficiary?.name || entry.customer_name || '').trim() || null,
+      beneficiary_id_number: String(beneficiary?.id_number || entry.customer_phone || '').trim() || null
+    };
+  }).filter(Boolean);
+
+  const compliancePackage = {
+    schema_version: 'compliance-books.v1',
+    generated_at: new Date().toISOString(),
+    date_range: {
+      start: rangeStart.toISOString(),
+      end: rangeEnd.toISOString()
+    },
+    sales_journal: {
+      columns: [
+        'transaction_datetime',
+        'invoice_number',
+        'document_type',
+        'document_context',
+        'terminal_id',
+        'payment_type',
+        'subtotal_amount',
+        'discount_amount',
+        'service_fee_amount',
+        'vat_amount',
+        'total_amount'
+      ],
+      rows: salesJournalRows
+    },
+    purchase_journal: {
+      columns: [
+        'order_date',
+        'po_number',
+        'supplier_id',
+        'status',
+        'received_date',
+        'subtotal',
+        'discount',
+        'total_amount'
+      ],
+      rows: purchaseJournalRows
+    },
+    inventory_book: {
+      columns: [
+        'movement_datetime',
+        'movement_type',
+        'reference_type',
+        'reference_id',
+        'item_id',
+        'sku_code',
+        'item_name',
+        'unit_of_measure',
+        'quantity_in',
+        'quantity_out',
+        'notes'
+      ],
+      rows: inventoryBookRows
+    },
+    special_discount_journal: {
+      columns: [
+        'transaction_datetime',
+        'invoice_number',
+        'discount_label',
+        'discount_amount',
+        'beneficiary_category',
+        'beneficiary_name',
+        'beneficiary_id_number'
+      ],
+      rows: specialDiscountRows
+    },
+    record_counts: {
+      sales_journal: salesJournalRows.length,
+      purchase_journal: purchaseJournalRows.length,
+      inventory_book: inventoryBookRows.length,
+      special_discount_journal: specialDiscountRows.length
+    }
+  };
+
+  return {
+    ...compliancePackage,
+    submission_manifest: buildSubmissionManifest(compliancePackage)
+  };
+};
+
+export const exportComplianceBooksPackage = async (filters = {}, options = {}) => {
+  const filingProfile = String(options?.filing_profile || 'dgfy').trim().toLowerCase() || 'dgfy';
+  const data = await getComplianceBooksPackage(filters);
+  const generatedAtToken = String(data?.generated_at || new Date().toISOString()).replace(/[:.]/g, '-');
+
+  const files = [
+    {
+      name: 'sales_journal.csv',
+      mime_type: 'text/csv',
+      content: toCsv(data?.sales_journal?.columns || [], data?.sales_journal?.rows || [])
+    },
+    {
+      name: 'purchase_journal.csv',
+      mime_type: 'text/csv',
+      content: toCsv(data?.purchase_journal?.columns || [], data?.purchase_journal?.rows || [])
+    },
+    {
+      name: 'inventory_book.csv',
+      mime_type: 'text/csv',
+      content: toCsv(data?.inventory_book?.columns || [], data?.inventory_book?.rows || [])
+    },
+    {
+      name: 'special_discount_journal.csv',
+      mime_type: 'text/csv',
+      content: toCsv(data?.special_discount_journal?.columns || [], data?.special_discount_journal?.rows || [])
+    }
+  ];
+
+  return {
+    bundle_name: `compliance-submission-${filingProfile}-${generatedAtToken}.json`,
+    generated_at: new Date().toISOString(),
+    filing_profile: filingProfile,
+    submission_manifest: {
+      ...(data?.submission_manifest || {}),
+      filing_profile: filingProfile
+    },
+    record_counts: data?.record_counts || {},
+    files
   };
 };
 

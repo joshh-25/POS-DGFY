@@ -1,5 +1,5 @@
 import express from 'express';
-import { adminLogin } from '../controllers/adminAuthController.js';
+import { adminLogin, adminLogout } from '../controllers/adminAuthController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { adminAuthLimiter } from '../middleware/rateLimiter.js';
 import { getFilteredFeedback, getFeedbackStats } from '../services/feedbackService.js';
@@ -8,6 +8,7 @@ const router = express.Router();
 
 // POST /api/v1/admin/login - Admin authentication
 router.post('/login', adminAuthLimiter, adminLogin);
+router.post('/logout', authenticateAdmin, adminLogout);
 
 // GET /api/v1/admin/feedback - Get all feedback (protected)
 router.get('/feedback', authenticateAdmin, async (req, res) => {

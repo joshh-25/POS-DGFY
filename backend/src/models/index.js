@@ -34,6 +34,8 @@ import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosInvoiceCounter from './PosInvoiceCounter.js';
+import PosZReadingSnapshot from './PosZReadingSnapshot.js';
+import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
@@ -289,6 +291,8 @@ const db = {
   PosTransaction,
   PosTransactionLine,
   PosInvoiceCounter,
+  PosZReadingSnapshot,
+  PosOperationReplay,
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -346,6 +350,8 @@ export {
   PosTransaction,
   PosTransactionLine,
   PosInvoiceCounter,
+  PosZReadingSnapshot,
+  PosOperationReplay,
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -364,4 +370,3 @@ export {
   TenantComplianceAuditLog,
   TenantComplianceAuditFailure
 };
-

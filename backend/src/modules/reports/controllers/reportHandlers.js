@@ -4,6 +4,8 @@ import {
   getProductionReportUseCase,
   getPurchaseOrderAnalysisUseCase,
   getExecutiveSummaryUseCase,
+  getComplianceBooksPackageUseCase,
+  exportComplianceBooksPackageUseCase,
   getSnapshotsUseCase,
   getSnapshotByIdUseCase,
   saveSnapshotUseCase,
@@ -12,6 +14,7 @@ import {
   getFinancialSummaryUseCase,
   getSupplierPerformanceUseCase
 } from '../index.js';
+import { recordComplianceSecuritySignalUseCase } from '../../compliance/index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -27,6 +30,51 @@ const defaultErrorPayload = (req, res, failure) => ({
   request_id: requestId(req, res),
   timestamp: timestamp()
 });
+const MASS_EXPORT_ALERT_ROW_THRESHOLD = 1000;
+const MASS_EXPORT_SIGNAL_CODE = 'mass_export_threshold_reached';
+
+const toSafeInteger = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const countCompliancePackageRows = (recordCounts = {}) => (
+  toSafeInteger(recordCounts?.sales_journal)
+  + toSafeInteger(recordCounts?.purchase_journal)
+  + toSafeInteger(recordCounts?.inventory_book)
+  + toSafeInteger(recordCounts?.special_discount_journal)
+);
+
+const maybeRecordMassExportSignal = async ({
+  req,
+  exportedRows,
+  exportType,
+  filters
+}) => {
+  if (toSafeInteger(exportedRows) < MASS_EXPORT_ALERT_ROW_THRESHOLD) {
+    return;
+  }
+
+  const tenantId = req?.user?.tenant_id || null;
+  if (!tenantId) return;
+
+  try {
+    await recordComplianceSecuritySignalUseCase({
+      tenantId,
+      signalCode: MASS_EXPORT_SIGNAL_CODE,
+      severity: 'warning',
+      actorUser: req.user || null,
+      metadata: {
+        export_type: exportType || 'unknown',
+        exported_rows: toSafeInteger(exportedRows),
+        threshold: MASS_EXPORT_ALERT_ROW_THRESHOLD,
+        filters: filters || null
+      }
+    });
+  } catch {
+    // Security signal should not block report delivery.
+  }
+};
 
 const extractDateFilters = (req) => {
   const filters = {};
@@ -161,6 +209,94 @@ export const getExecutiveSummary = async (req, res, next) => {
   try {
     const filters = extractDateFilters(req);
     const result = await getExecutiveSummaryUseCase({ filters });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getComplianceBooksPackage = async (req, res, next) => {
+  try {
+    const filters = extractDateFilters(req);
+    const result = await getComplianceBooksPackageUseCase({ filters });
+    const complianceExportRows = countCompliancePackageRows(result?.data?.record_counts || {});
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'report_compliance_package_viewed',
+      surface: 'reports',
+      action: 'view_compliance_package',
+      result,
+      successMetadataResolver: (data) => ({
+        start_date: filters.startDate,
+        end_date: filters.endDate,
+        sales_rows: Number(data?.record_counts?.sales_journal || 0),
+        purchase_rows: Number(data?.record_counts?.purchase_journal || 0),
+        inventory_rows: Number(data?.record_counts?.inventory_book || 0)
+      })
+    });
+    await maybeRecordMassExportSignal({
+      req,
+      exportedRows: complianceExportRows,
+      exportType: 'compliance_package_view',
+      filters
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportComplianceBooksPackage = async (req, res, next) => {
+  try {
+    const filters = extractDateFilters(req);
+    const filingProfile = String(req.query?.filing_profile || 'dgfy').trim().toLowerCase() || 'dgfy';
+    const result = await exportComplianceBooksPackageUseCase({ filters, filingProfile });
+    const complianceExportRows = countCompliancePackageRows(result?.data?.record_counts || {});
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'report_compliance_package_exported',
+      surface: 'reports',
+      action: 'export_compliance_package',
+      result,
+      successMetadataResolver: (data) => ({
+        filing_profile: filingProfile,
+        start_date: filters.startDate,
+        end_date: filters.endDate,
+        sales_rows: Number(data?.record_counts?.sales_journal || 0),
+        purchase_rows: Number(data?.record_counts?.purchase_journal || 0),
+        inventory_rows: Number(data?.record_counts?.inventory_book || 0)
+      })
+    });
+    await maybeRecordMassExportSignal({
+      req,
+      exportedRows: complianceExportRows,
+      exportType: 'compliance_package_export',
+      filters
+    });
+
+    if (result?.success) {
+      const bundleName = String(result?.data?.bundle_name || `compliance-submission-${filingProfile}.json`);
+      res.setHeader('Content-Disposition', `attachment; filename="${bundleName}"`);
+    }
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
@@ -332,6 +468,13 @@ export const exportReportCSV = async (req, res, next) => {
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    const exportedRows = Math.max(0, String(csvContent || '').split('\n').length - 1);
+    await maybeRecordMassExportSignal({
+      req,
+      exportedRows,
+      exportType: `csv:${type}`,
+      filters
+    });
     res.send(csvContent);
   } catch (error) {
     next(error);
@@ -618,6 +761,7 @@ export default {
   getProductionReport,
   getPurchaseOrderAnalysis,
   getExecutiveSummary,
+  getComplianceBooksPackage,
   getSnapshots,
   getSnapshotById,
   saveSnapshot,

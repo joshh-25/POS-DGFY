@@ -1,4 +1,4 @@
-import { adminLoginUseCase } from '../index.js';
+import { adminLoginUseCase, adminLogoutUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import logger from '../../../config/logger.js';
 
@@ -47,6 +47,33 @@ export const adminLogin = async (req, res) => {
   }
 };
 
+export const adminLogout = async (req, res) => {
+  try {
+    const authHeader = req.headers?.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
+
+    const result = await adminLogoutUseCase({ token });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        message: 'Admin logout successful',
+        data: result.data
+      })
+    });
+  } catch (error) {
+    logger.error('[AdminAuth] Logout handler error', {
+      message: error?.message || 'Unknown admin logout error'
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 export default {
-  adminLogin
+  adminLogin,
+  adminLogout
 };

@@ -14,7 +14,8 @@ import {
     validateComplianceVerificationAction,
     validateComplianceChecklistQuery,
     validateComplianceAuditLogQuery,
-    validateCompliancePreflight
+    validateCompliancePreflight,
+    validateComplianceActivateMode
 } from '../validators/complianceValidator.js';
 
 const router = express.Router();
@@ -25,7 +26,7 @@ router.get('/profile', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS)
 router.post('/mode/select', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceModeChoice, complianceController.selectComplianceMode);
 router.post('/mode/upgrade', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), complianceController.upgradeToCompliant);
 router.get('/checklist', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), validateComplianceChecklistQuery, complianceController.getComplianceChecklist);
-router.post('/activate', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), complianceController.activateCompliantMode);
+router.post('/activate', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceActivateMode, complianceController.activateCompliantMode);
 
 router.put('/profile', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceProfilePatch, complianceController.updateComplianceProfile);
 

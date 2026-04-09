@@ -17,6 +17,8 @@ router.get('/stock-aging-enhanced', reportController.getEnhancedStockAging);
 router.get('/production', reportController.getProductionReport);
 router.get('/po-analysis', reportController.getPurchaseOrderAnalysis);
 router.get('/executive-summary', reportController.getExecutiveSummary);
+router.get('/compliance-package', reportController.getComplianceBooksPackage);
+router.get('/compliance-package/export', reportController.exportComplianceBooksPackage);
 
 // Snapshot management
 router.get('/snapshots', reportController.getSnapshots);

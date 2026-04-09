@@ -14,8 +14,13 @@ import {
     adminReactivateTenant,
     adminListComplianceArtifacts,
     adminListCompliancePeripherals,
+    adminGetComplianceChecklist,
+    adminListComplianceAuditLogs,
+    adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminAcknowledgeComplianceSecurityIncident,
+    adminResolveComplianceSecurityIncident,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
@@ -23,7 +28,12 @@ import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
 import {
     validateComplianceArtifactIdParam,
     validateCompliancePeripheralIdParam,
-    validateComplianceVerificationAction
+    validateComplianceVerificationAction,
+    validateComplianceChecklistQuery,
+    validateComplianceAuditLogQuery,
+    validateComplianceSecurityIncidentQuery,
+    validateComplianceSecurityIncidentParam,
+    validateComplianceSecurityIncidentAction
 } from '../validators/complianceValidator.js';
 
 const router = express.Router();
@@ -59,6 +69,11 @@ router.post('/:id/reactivate', authenticateAdmin, adminReactivateTenant);
 // ADMIN: Compliance review reads (platform admin)
 router.get('/:id/compliance/artifacts', authenticateAdmin, adminListComplianceArtifacts);
 router.get('/:id/compliance/peripherals', authenticateAdmin, adminListCompliancePeripherals);
+router.get('/:id/compliance/checklist', authenticateAdmin, validateComplianceChecklistQuery, adminGetComplianceChecklist);
+router.get('/:id/compliance/audit-logs', authenticateAdmin, validateComplianceAuditLogQuery, adminListComplianceAuditLogs);
+router.get('/:id/compliance/security-incidents', authenticateAdmin, validateComplianceSecurityIncidentQuery, adminListComplianceSecurityIncidents);
+router.post('/:id/compliance/security-incidents/:incident_id/acknowledge', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminAcknowledgeComplianceSecurityIncident);
+router.post('/:id/compliance/security-incidents/:incident_id/resolve', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminResolveComplianceSecurityIncident);
 
 // ADMIN: Compliance verification operations (platform admin)
 router.post('/:id/compliance/artifacts/:artifact_id/verification', authenticateAdmin, validateComplianceArtifactIdParam, validateComplianceVerificationAction, adminUpdateComplianceArtifactVerification);

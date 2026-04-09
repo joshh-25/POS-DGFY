@@ -95,6 +95,34 @@ export const buildGetExecutiveSummaryUseCase = ({ reportService }) => {
   };
 };
 
+export const buildGetComplianceBooksPackageUseCase = ({ reportService }) => {
+  return async ({ filters }) => {
+    const validationError = validateFilters(filters);
+    if (validationError) {
+      return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, validationError, { statusCode: 400 }));
+    }
+
+    return withReportExecution(
+      () => reportService.getComplianceBooksPackage(filters || {}),
+      'Failed to retrieve compliance books package'
+    );
+  };
+};
+
+export const buildExportComplianceBooksPackageUseCase = ({ reportService }) => {
+  return async ({ filters, filingProfile = 'dgfy' }) => {
+    const validationError = validateFilters(filters);
+    if (validationError) {
+      return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, validationError, { statusCode: 400 }));
+    }
+
+    return withReportExecution(
+      () => reportService.exportComplianceBooksPackage(filters || {}, { filing_profile: filingProfile }),
+      'Failed to export compliance books package'
+    );
+  };
+};
+
 export const buildGetSnapshotsUseCase = ({ reportService }) => {
   return async ({ type, limit }) => {
     if (!type || typeof type !== 'string') {

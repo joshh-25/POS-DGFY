@@ -5,6 +5,8 @@ import {
     getPosTransactionByIdUseCase,
     closeDayZReadingUseCase,
     getDailyZReadingUseCase,
+    getCurrentXReadingUseCase,
+    incrementGovernedResetCounterUseCase,
     listPosCatalogOverridesUseCase,
     updatePosCatalogOverrideUseCase,
     uploadPosCatalogImageUseCase,
@@ -391,6 +393,60 @@ export const getDailyZReading = async (req, res, next) => {
     }
 };
 
+export const getCurrentXReading = async (req, res, next) => {
+    try {
+        const result = await getCurrentXReadingUseCase({
+            query: req.validatedQuery || req.query
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const incrementGovernedResetCounter = async (req, res, next) => {
+    try {
+        const result = await incrementGovernedResetCounterUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_reset_counter_incremented',
+            surface: 'pos',
+            action: 'governed_reset_increment',
+            result,
+            successMetadataResolver: (data) => ({
+                business_date: data?.business_date ?? null,
+                reset_counter: data?.counters?.reset_counter ?? null
+            })
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Reset counter increment recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const listCatalogOverrides = async (req, res, next) => {
     try {
         const result = await listPosCatalogOverridesUseCase({ query: req.validatedQuery || req.query });
@@ -483,6 +539,8 @@ export default {
     getTransactionById,
     closeDayZReading,
     getDailyZReading,
+    getCurrentXReading,
+    incrementGovernedResetCounter,
     listCatalogOverrides,
     updateCatalogOverride,
     uploadCatalogImage,

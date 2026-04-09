@@ -129,6 +129,9 @@ let billingFunnelAuditState = {
 // If not trusted, rate-limiters will block the load balancer's IP instead of the hacker's IP.
 const isProduction = process.env.NODE_ENV === 'production';
 const trustProxyRequested = process.env.TRUST_PROXY === 'true';
+const enforceHttpsRequested = process.env.ENFORCE_HTTPS === 'true';
+const disableHttpsEnforcement = process.env.ENFORCE_HTTPS === 'false';
+const enforceHttps = (isProduction || enforceHttpsRequested) && !disableHttpsEnforcement;
 
 if (isProduction || trustProxyRequested) {
   // Trust all proxies in production context unless strictly bounded by known subnets
@@ -236,9 +239,49 @@ const corsOptionsDelegate = (req, callback) => {
 };
 app.use(cors(corsOptionsDelegate));
 
+const isRequestHttps = (req) => {
+  if (req.secure === true) return true;
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  return forwardedProto.split(',').map((entry) => entry.trim()).includes('https');
+};
+
+app.use((req, res, next) => {
+  if (!enforceHttps) return next();
+
+  const normalizedPath = String(req.path || req.originalUrl || '').toLowerCase();
+  const isHealthPath = normalizedPath === '/health'
+    || normalizedPath.endsWith('/health')
+    || normalizedPath.endsWith('/healthz')
+    || normalizedPath.endsWith('/ready');
+  if (isHealthPath) {
+    return next();
+  }
+
+  if (isRequestHttps(req)) {
+    return next();
+  }
+
+  return res.status(426).json({
+    success: false,
+    message: 'HTTPS is required for this environment',
+    error_code: 'HTTPS_REQUIRED',
+    errors: {
+      remediation: 'Route traffic through TLS termination and forward X-Forwarded-Proto=https.'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Security middleware - applied after CORS
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  hsts: enforceHttps
+    ? {
+      maxAge: 63072000,
+      includeSubDomains: true,
+      preload: true
+    }
+    : false
 }));
 
 // Attach per-request context metadata (request ID, trace root values).

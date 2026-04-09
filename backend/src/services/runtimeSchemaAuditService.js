@@ -19,17 +19,32 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260330000007-create-store-customers-and-addresses.cjs',
     '20260331000008-make-pos-cashier-nullable-for-online-store.cjs',
     '20260331000009-create-storefront-discovery-index.cjs',
-    '20260331000010-add-primary-storefront-location.cjs'
+    '20260331000010-add-primary-storefront-location.cjs',
+    '20260406000001-add-tenant-compliance-program.cjs',
+    '20260407000002-compliance-hardening-phase1-2.cjs',
+    '20260408000004-add-pos-operation-replays.cjs',
+    '20260408000005-add-security-signal-audit-enum.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
-    tenants: ['id', 'name', 'company_token', 'db_name', 'status', 'plan'],
+    tenants: [
+        'id',
+        'name',
+        'company_token',
+        'db_name',
+        'status',
+        'plan',
+        'compliance_mode_state',
+        'compliance_mode_choice_required',
+        'compliance_profile'
+    ],
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url'],
     pos_transactions: [
         'pos_transaction_id',
+        'document_type',
         'cashier_id',
         'discount_rate_snapshot',
         'service_fee_amount',
@@ -46,9 +61,25 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'accepted_by',
         'accepted_at'
     ],
+    tenant_compliance_artifacts: [
+        'tenant_compliance_artifact_id',
+        'tenant_id',
+        'artifact_type',
+        'status',
+        'verification_status'
+    ],
+    tenant_compliance_peripherals: [
+        'tenant_compliance_peripheral_id',
+        'tenant_id',
+        'device_class',
+        'status',
+        'is_shared',
+        'verification_status'
+    ],
     pos_transaction_lines: ['line_id', 'vat_type_snapshot', 'vat_rate_snapshot', 'sale_price_overridden', 'price_override_reason'],
     pos_terminal_shifts: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id', 'status'],
     pos_cash_drawer_events: ['pos_cash_drawer_event_id', 'pos_terminal_shift_id', 'event_type', 'amount', 'recorded_by'],
+    pos_operation_replays: ['pos_operation_replay_id', 'operation_key', 'idempotency_key', 'request_hash', 'replay_status'],
     system_settings: ['setting_id', 'setting_key', 'setting_value', 'data_type'],
     tenant_locations: ['location_id', 'name', 'address_line', 'latitude', 'longitude', 'is_active', 'is_primary_storefront'],
     store_customers: ['customer_id', 'email', 'password_hash', 'name', 'is_active'],

@@ -25,7 +25,11 @@ export default (sequelize) => {
                 'blocked_operation',
                 'artifact_expiry',
                 'device_mismatch',
-                'preflight_evaluation'
+                'preflight_evaluation',
+                'security_login',
+                'security_logout',
+                'security_sensitive_action',
+                'security_signal'
             ),
             allowNull: false
         },

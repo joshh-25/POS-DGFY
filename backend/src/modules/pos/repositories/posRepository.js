@@ -259,6 +259,54 @@ export const posRepository = {
         return `${prefix}-${String(nextValue).padStart(6, '0')}`;
     },
 
+    async incrementPersistentCounter(counterKey, incrementBy = 1, options = {}) {
+        const PosInvoiceCounter = dbStore.get('PosInvoiceCounter');
+        const transaction = options.transaction;
+        const key = String(counterKey || '').trim();
+        const safeIncrement = Number.parseInt(incrementBy, 10);
+
+        if (!key) {
+            throw new Error('counterKey is required');
+        }
+        if (!Number.isInteger(safeIncrement) || safeIncrement <= 0) {
+            throw new Error('incrementBy must be a positive integer');
+        }
+
+        let counter = await PosInvoiceCounter.findByPk(key, {
+            transaction,
+            lock: transaction ? transaction.LOCK.UPDATE : undefined
+        });
+
+        if (!counter) {
+            counter = await PosInvoiceCounter.create(
+                { counter_key: key, current_value: 0 },
+                { transaction }
+            );
+        }
+
+        const currentValue = Number.parseInt(counter.current_value, 10) || 0;
+        const nextValue = currentValue + safeIncrement;
+        await counter.update(
+            { current_value: nextValue },
+            { transaction }
+        );
+
+        return nextValue;
+    },
+
+    async getPersistentCounterValue(counterKey, options = {}) {
+        const PosInvoiceCounter = dbStore.get('PosInvoiceCounter');
+        const key = String(counterKey || '').trim();
+        if (!key) return 0;
+
+        const counter = await PosInvoiceCounter.findByPk(key, {
+            transaction: options.transaction
+        });
+        if (!counter) return 0;
+
+        return Number.parseInt(counter.current_value, 10) || 0;
+    },
+
     async createTransactionWithLines({ header, lines }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
@@ -355,7 +403,7 @@ export const posRepository = {
         };
     },
 
-    async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null }) {
+    async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
@@ -382,7 +430,8 @@ export const posRepository = {
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('zero_rated_sales')), 0), 'zero_rated_sales'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'total_amount']
             ],
-            raw: true
+            raw: true,
+            transaction: options.transaction
         });
 
         const paymentBreakdownRows = await PosTransaction.findAll({
@@ -393,7 +442,8 @@ export const posRepository = {
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'amount']
             ],
             group: ['payment_type'],
-            raw: true
+            raw: true,
+            transaction: options.transaction
         });
         const orderMethodBreakdownRows = await PosTransaction.findAll({
             where,
@@ -403,7 +453,8 @@ export const posRepository = {
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'amount']
             ],
             group: ['order_method'],
-            raw: true
+            raw: true,
+            transaction: options.transaction
         });
 
         return {
@@ -427,6 +478,27 @@ export const posRepository = {
                 amount: round4(row.amount)
             }))
         };
+    },
+
+    async createZReadingSnapshot(payload = {}, options = {}) {
+        const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
+        const created = await PosZReadingSnapshot.create(payload, {
+            transaction: options.transaction
+        });
+        return toPlain(created);
+    },
+
+    async getLatestZReadingSnapshotByBusinessDate(businessDate, options = {}) {
+        const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
+        const row = await PosZReadingSnapshot.findOne({
+            where: {
+                business_date: businessDate,
+                reading_identifier: { [Op.like]: 'ZR-%' }
+            },
+            order: [['generated_at', 'DESC'], ['pos_z_reading_snapshot_id', 'DESC']],
+            transaction: options.transaction
+        });
+        return toPlain(row);
     },
 
     async listCatalog({ search = '', limit = 100, folder_id = null } = {}) {
@@ -556,6 +628,48 @@ export const posRepository = {
             pos_image_url: null
         }, { transaction: options.transaction });
         return existing;
+    },
+
+    async findOperationReplayByKey({ operationKey, idempotencyKey } = {}, options = {}) {
+        const PosOperationReplay = dbStore.get('PosOperationReplay');
+        if (!PosOperationReplay) return null;
+
+        const normalizedOperationKey = String(operationKey || '').trim();
+        const normalizedIdempotencyKey = String(idempotencyKey || '').trim();
+        if (!normalizedOperationKey || !normalizedIdempotencyKey) return null;
+
+        return PosOperationReplay.findOne({
+            where: {
+                operation_key: normalizedOperationKey,
+                idempotency_key: normalizedIdempotencyKey
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+    },
+
+    async createOperationReplay(payload = {}, options = {}) {
+        const PosOperationReplay = dbStore.get('PosOperationReplay');
+        if (!PosOperationReplay) {
+            throw new Error('PosOperationReplay model is unavailable');
+        }
+
+        try {
+            const created = await PosOperationReplay.create(payload, {
+                transaction: options.transaction
+            });
+            return toPlain(created);
+        } catch (error) {
+            if (error?.name !== 'SequelizeUniqueConstraintError') {
+                throw error;
+            }
+
+            const existing = await this.findOperationReplayByKey({
+                operationKey: payload.operation_key,
+                idempotencyKey: payload.idempotency_key
+            }, options);
+            return toPlain(existing);
+        }
     },
 
     async findOpenTerminalShift({ terminalId = null, cashierId = null } = {}, options = {}) {

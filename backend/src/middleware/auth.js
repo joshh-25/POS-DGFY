@@ -249,6 +249,14 @@ export const authenticateAdmin = async (req, res, next) => {
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
+    const isBlacklisted = await isTokenBlacklisted(token);
+    if (isBlacklisted) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin token has been revoked. Please login again.'
+      });
+    }
+
     // Verify token
     let decoded;
     try {

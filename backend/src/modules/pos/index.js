@@ -8,6 +8,8 @@ import {
     buildGetPosTransactionByIdUseCase,
     buildCloseDayZReadingUseCase,
     buildGetDailyZReadingUseCase,
+    buildGetCurrentXReadingUseCase,
+    buildIncrementGovernedResetCounterUseCase,
     buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
     buildUploadPosCatalogImageUseCase,
@@ -29,6 +31,8 @@ export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posR
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const closeDayZReadingUseCase = buildCloseDayZReadingUseCase({ posRepository });
 export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posRepository });
+export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });
+export const incrementGovernedResetCounterUseCase = buildIncrementGovernedResetCounterUseCase({ posRepository });
 export const listPosCatalogOverridesUseCase = buildListPosCatalogOverridesUseCase({ posRepository });
 export const updatePosCatalogOverrideUseCase = buildUpdatePosCatalogOverrideUseCase({ posRepository });
 export const uploadPosCatalogImageUseCase = buildUploadPosCatalogImageUseCase({

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import dbStore from '../../../utils/dbStore.js';
 
 const COMPLIANCE_TRANSITIONS = Object.freeze({
@@ -30,6 +32,135 @@ const mergeObjects = (base, incoming) => {
         output[key] = nextValue;
     });
     return output;
+};
+
+const normalizeComplianceProfileValue = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+
+    try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed;
+        }
+    } catch {
+        return {};
+    }
+
+    return {};
+};
+
+const resolveExistingPath = (candidates = []) => (
+    candidates.filter(Boolean).find((candidate) => fs.existsSync(candidate)) || candidates.filter(Boolean)[0] || null
+);
+
+const readTextFileSafe = (absolutePath) => {
+    try {
+        return fs.readFileSync(absolutePath, 'utf8');
+    } catch {
+        return null;
+    }
+};
+
+const parseJsonFileSafe = (absolutePath) => {
+    const raw = readTextFileSafe(absolutePath);
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const normalizePositiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const normalizeNumeric = (value, fallback = NaN) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const computeAgeInDays = (dateValue) => {
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const diffMs = Date.now() - parsed.getTime();
+    return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+};
+
+const hasRequiredTokens = (text = '', tokens = []) => (
+    tokens.every((token) => text.includes(token))
+);
+
+const evaluateSubmissionMarkdownQuality = ({ absolutePath, requiredTokens = [] }) => {
+    const text = readTextFileSafe(absolutePath);
+    if (!text) {
+        return {
+            quality_ok: false,
+            quality_issues: ['file_unreadable']
+        };
+    }
+
+    const missingTokens = requiredTokens.filter((token) => !text.includes(token));
+    return {
+        quality_ok: missingTokens.length === 0,
+        quality_issues: missingTokens.map((token) => `missing_token:${token}`)
+    };
+};
+
+const evaluateJsonEvidenceQuality = ({
+    absolutePath,
+    requiredRootKeys = [],
+    freshnessDateKey = null,
+    maxAgeDays = 45
+}) => {
+    const payload = parseJsonFileSafe(absolutePath);
+    if (!payload) {
+        return {
+            quality_ok: false,
+            quality_issues: ['invalid_json'],
+            fresh: false,
+            age_days: null
+        };
+    }
+
+    const missingKeys = requiredRootKeys.filter((key) => !Object.prototype.hasOwnProperty.call(payload, key));
+    const dateValue = freshnessDateKey ? payload?.[freshnessDateKey] : null;
+    const ageDays = freshnessDateKey ? computeAgeInDays(dateValue) : null;
+    const fresh = freshnessDateKey ? Number.isFinite(ageDays) && ageDays <= maxAgeDays : true;
+
+    const qualityIssues = [
+        ...missingKeys.map((key) => `missing_key:${key}`),
+        ...(freshnessDateKey && ageDays == null ? ['invalid_freshness_date'] : []),
+        ...(freshnessDateKey && !fresh && ageDays != null ? [`stale:${ageDays}d`] : [])
+    ];
+
+    return {
+        quality_ok: qualityIssues.length === 0,
+        quality_issues: qualityIssues,
+        fresh,
+        age_days: ageDays
+    };
+};
+
+const evaluateSystemFlowDiagramQuality = ({ absolutePath = null, absolute_path: absolutePathSnake = null } = {}) => {
+    const resolvedPath = absolutePath || absolutePathSnake;
+    const text = readTextFileSafe(resolvedPath);
+    if (!text) {
+        return {
+            quality_ok: false,
+            quality_issues: ['file_unreadable']
+        };
+    }
+
+    const includesMermaid = /flowchart|graph|sequenceDiagram|stateDiagram|gantt/i.test(text);
+    return {
+        quality_ok: includesMermaid,
+        quality_issues: includesMermaid ? [] : ['missing_mermaid_diagram_definition']
+    };
 };
 
 const getModel = (name) => dbStore.get(name);
@@ -91,9 +222,7 @@ export const complianceRepository = {
 
         if (!tenant) return null;
 
-        const current = (tenant.compliance_profile && typeof tenant.compliance_profile === 'object')
-            ? tenant.compliance_profile
-            : {};
+        const current = normalizeComplianceProfileValue(tenant.compliance_profile);
 
         const nextProfile = mergeObjects(current, patch || {});
         await tenant.update({ compliance_profile: nextProfile }, { transaction: options.transaction });
@@ -180,5 +309,247 @@ export const complianceRepository = {
             limit: Math.min(Number(limit) || 100, 500)
         });
         return rows.map(toPlain);
+    },
+
+    async getFiscalAccumulatorState() {
+        const PosInvoiceCounter = getModel('PosInvoiceCounter');
+        if (!PosInvoiceCounter) {
+            return {
+                ready: false,
+                lifetime_grand_total_cents: 0
+            };
+        }
+
+        try {
+            const counter = await PosInvoiceCounter.findByPk('POS_FISCAL_LIFETIME_TOTAL_CENTS');
+            return {
+                ready: true,
+                lifetime_grand_total_cents: Number.parseInt(counter?.current_value || 0, 10) || 0
+            };
+        } catch {
+            return {
+                ready: false,
+                lifetime_grand_total_cents: 0
+            };
+        }
+    },
+
+    async getComplianceAuditAppendOnlyState() {
+        const TenantComplianceAuditLog = getModel('TenantComplianceAuditLog');
+        const sequelize = TenantComplianceAuditLog?.sequelize;
+        if (!sequelize) {
+            return {
+                ready: false,
+                trigger_names: []
+            };
+        }
+
+        try {
+            const [rows] = await sequelize.query(`
+                SELECT
+                    TRIGGER_NAME AS trigger_name,
+                    EVENT_MANIPULATION AS event_manipulation,
+                    ACTION_STATEMENT AS action_statement
+                FROM information_schema.TRIGGERS
+                WHERE TRIGGER_SCHEMA = DATABASE()
+                  AND EVENT_OBJECT_TABLE = 'tenant_compliance_audit_logs'
+                  AND ACTION_TIMING = 'BEFORE'
+                  AND EVENT_MANIPULATION IN ('UPDATE', 'DELETE')
+            `);
+
+            const normalizedRows = Array.isArray(rows) ? rows : [];
+            const hasUpdateBlock = normalizedRows.some((row) => (
+                String(row?.event_manipulation || '').toUpperCase() === 'UPDATE'
+                && /SIGNAL\s+SQLSTATE/i.test(String(row?.action_statement || ''))
+            ));
+            const hasDeleteBlock = normalizedRows.some((row) => (
+                String(row?.event_manipulation || '').toUpperCase() === 'DELETE'
+                && /SIGNAL\s+SQLSTATE/i.test(String(row?.action_statement || ''))
+            ));
+
+            return {
+                ready: hasUpdateBlock && hasDeleteBlock,
+                trigger_names: normalizedRows
+                    .map((row) => String(row?.trigger_name || '').trim())
+                    .filter(Boolean)
+            };
+        } catch {
+            return {
+                ready: false,
+                trigger_names: []
+            };
+        }
+    },
+
+    async getSubmissionArtifactReadiness() {
+        const configuredSubmissionRoot = String(process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT || '').trim();
+        const configuredEvidenceRoot = String(process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT || '').trim();
+        const evidenceMaxAgeDays = normalizePositiveInt(process.env.COMPLIANCE_EVIDENCE_MAX_AGE_DAYS, 45);
+
+        const submissionRoot = resolveExistingPath([
+            configuredSubmissionRoot || null,
+            path.resolve(process.cwd(), 'docs', 'compliance', 'submission'),
+            path.resolve(process.cwd(), '..', 'docs', 'compliance', 'submission')
+        ]) || path.resolve(process.cwd(), 'docs', 'compliance', 'submission');
+        const evidenceRoot = resolveExistingPath([
+            configuredEvidenceRoot || null,
+            path.resolve(process.cwd(), 'docs', 'compliance', 'evidence', 'drills'),
+            path.resolve(process.cwd(), '..', 'docs', 'compliance', 'evidence', 'drills')
+        ]) || path.resolve(process.cwd(), 'docs', 'compliance', 'evidence', 'drills');
+
+        const requiredArtifacts = [
+            {
+                code: 'submission.system_flow_diagram',
+                label: 'System flow diagram (Mermaid source)',
+                absolute_path: path.resolve(submissionRoot, 'system-flow-diagram.mmd'),
+                evaluateQuality: evaluateSystemFlowDiagramQuality
+            },
+            {
+                code: 'submission.system_flow_diagram_image',
+                label: 'System flow diagram (exported image)',
+                absolute_path: path.resolve(submissionRoot, 'system-flow-diagram.png')
+            },
+            {
+                code: 'submission.software_specification',
+                label: 'Software specification packet',
+                absolute_path: path.resolve(submissionRoot, 'software-specification-dgfy.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: [
+                        '# DGFY Software Specification Packet',
+                        '## 1. Product Scope',
+                        '## 6. Filing Evidence References',
+                        '## 7. Sign-off Metadata',
+                        '- Engineering lead:',
+                        '- Compliance lead:'
+                    ]
+                })
+            },
+            {
+                code: 'submission.backup_disaster_recovery_plan',
+                label: 'Data backup and disaster recovery plan',
+                absolute_path: path.resolve(submissionRoot, 'backup-disaster-recovery-plan.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: [
+                        '## 2. Recovery Targets',
+                        '## 4. Encryption Controls',
+                        '## 6. Drill and Verification Cadence',
+                        '## 9. Sign-off Metadata',
+                        '- Platform engineering approver:',
+                        '- Compliance approver:'
+                    ]
+                })
+            },
+            {
+                code: 'submission.filing_instructions',
+                label: 'Filing instructions',
+                absolute_path: path.resolve(submissionRoot, 'filing-instructions.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: [
+                        '# Filing Instructions',
+                        '## Submission package contents',
+                        '## Sign-off checklist',
+                        '## 5. Sign-off metadata',
+                        '- Engineering approver:',
+                        '- Compliance approver:'
+                    ]
+                })
+            },
+            {
+                code: 'submission.restore_drill_evidence',
+                label: 'Latest restore drill evidence',
+                absolute_path: path.resolve(evidenceRoot, 'latest-restore-drill.json'),
+                evaluateQuality: (entry) => evaluateJsonEvidenceQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredRootKeys: ['drill_id', 'executed_at', 'result'],
+                    freshnessDateKey: 'executed_at',
+                    maxAgeDays: evidenceMaxAgeDays
+                })
+            },
+            {
+                code: 'submission.encryption_verification_evidence',
+                label: 'Latest encryption verification evidence',
+                absolute_path: path.resolve(evidenceRoot, 'latest-encryption-verification.json'),
+                evaluateQuality: (entry) => evaluateJsonEvidenceQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredRootKeys: ['verification_id', 'verified_at', 'transport', 'at_rest'],
+                    freshnessDateKey: 'verified_at',
+                    maxAgeDays: evidenceMaxAgeDays
+                })
+            }
+        ];
+
+        const items = requiredArtifacts.map((entry) => {
+            const exists = fs.existsSync(entry.absolute_path);
+            const qualityResult = exists && typeof entry.evaluateQuality === 'function'
+                ? entry.evaluateQuality(entry)
+                : { quality_ok: exists, quality_issues: exists ? [] : ['file_missing'], fresh: null, age_days: null };
+            const ready = exists && qualityResult.quality_ok === true;
+
+            return {
+                code: entry.code,
+                label: entry.label,
+                absolute_path: entry.absolute_path,
+                ready,
+                exists,
+                quality_ok: qualityResult.quality_ok === true,
+                quality_issues: Array.isArray(qualityResult.quality_issues) ? qualityResult.quality_issues : [],
+                fresh: qualityResult.fresh == null ? null : qualityResult.fresh === true,
+                age_days: Number.isFinite(qualityResult.age_days) ? qualityResult.age_days : null
+            };
+        });
+        const complete = items.filter((entry) => entry.ready).length;
+
+        return {
+            docs_root: submissionRoot,
+            evidence_root: evidenceRoot,
+            evidence_max_age_days: evidenceMaxAgeDays,
+            complete,
+            total: items.length,
+            missing: Math.max(0, items.length - complete),
+            ready: complete === items.length,
+            items
+        };
+    },
+
+    async getEncryptionPolicyPrerequisitesState() {
+        const backupEncryptionAlgorithm = String(process.env.BACKUP_ENCRYPTION_ALGORITHM || 'AES-256').trim().toUpperCase();
+        const backupTransportTlsMinVersion = String(process.env.BACKUP_TRANSPORT_TLS_MIN_VERSION || '1.2').trim();
+        const exportEncryptionRequired = String(process.env.EXPORT_ENCRYPTION_REQUIRED || 'true').trim().toLowerCase() !== 'false';
+        const keyManagementExternalized = String(process.env.BACKUP_KEY_MANAGEMENT_EXTERNALIZED || 'true').trim().toLowerCase() !== 'false';
+
+        const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+        const enforceHttpsRequested = String(process.env.ENFORCE_HTTPS || '').trim().toLowerCase() === 'true';
+        const disableHttpsRequested = String(process.env.ENFORCE_HTTPS || '').trim().toLowerCase() === 'false';
+        const httpsEnforcementActive = (isProduction || enforceHttpsRequested) && !disableHttpsRequested;
+        const hstsPolicyExpected = httpsEnforcementActive;
+
+        const tlsVersionNumeric = normalizeNumeric(backupTransportTlsMinVersion, NaN);
+        const tlsPolicyReady = Number.isFinite(tlsVersionNumeric) && tlsVersionNumeric >= 1.2;
+        const encryptionAlgorithmReady = backupEncryptionAlgorithm === 'AES-256';
+
+        const checks = {
+            backup_encryption_algorithm: backupEncryptionAlgorithm,
+            backup_transport_tls_min_version: backupTransportTlsMinVersion,
+            export_encryption_required: exportEncryptionRequired,
+            key_management_externalized: keyManagementExternalized,
+            https_enforcement_active: httpsEnforcementActive,
+            hsts_policy_expected: hstsPolicyExpected
+        };
+
+        const issues = [];
+        if (!encryptionAlgorithmReady) issues.push('backup_encryption_algorithm must be AES-256');
+        if (!tlsPolicyReady) issues.push('backup_transport_tls_min_version must be >= 1.2');
+        if (!exportEncryptionRequired) issues.push('export_encryption_required must not be disabled');
+        if (!keyManagementExternalized) issues.push('backup_key_management_externalized must be true');
+        if (isProduction && !httpsEnforcementActive) issues.push('https_enforcement_active must be true in production');
+
+        return {
+            ready: issues.length === 0,
+            checks,
+            issues
+        };
     }
 };

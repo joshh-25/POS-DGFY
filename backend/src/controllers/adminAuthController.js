@@ -3,13 +3,16 @@
  */
 
 export {
-  adminLogin
+  adminLogin,
+  adminLogout
 } from '../modules/adminAuth/controllers/adminAuthHandlers.js';
 
 import {
-  adminLogin
+  adminLogin,
+  adminLogout
 } from '../modules/adminAuth/controllers/adminAuthHandlers.js';
 
 export default {
-  adminLogin
+  adminLogin,
+  adminLogout
 };

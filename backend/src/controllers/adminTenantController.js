@@ -17,8 +17,13 @@ export {
     adminReactivateTenant,
     adminListComplianceArtifacts,
     adminListCompliancePeripherals,
+    adminGetComplianceChecklist,
+    adminListComplianceAuditLogs,
+    adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminAcknowledgeComplianceSecurityIncident,
+    adminResolveComplianceSecurityIncident,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -37,8 +42,13 @@ import {
     adminReactivateTenant,
     adminListComplianceArtifacts,
     adminListCompliancePeripherals,
+    adminGetComplianceChecklist,
+    adminListComplianceAuditLogs,
+    adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminAcknowledgeComplianceSecurityIncident,
+    adminResolveComplianceSecurityIncident,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -57,7 +67,12 @@ export default {
     adminReactivateTenant,
     adminListComplianceArtifacts,
     adminListCompliancePeripherals,
+    adminGetComplianceChecklist,
+    adminListComplianceAuditLogs,
+    adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminAcknowledgeComplianceSecurityIncident,
+    adminResolveComplianceSecurityIncident,
     resubmitRegistration
 };

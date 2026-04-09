@@ -18,6 +18,9 @@ import {
     buildUpdateCompliancePeripheralUseCase,
     buildUpdateCompliancePeripheralVerificationUseCase,
     buildListComplianceAuditLogsUseCase,
+    buildRecordComplianceSecuritySignalUseCase,
+    buildListComplianceSecurityIncidentsUseCase,
+    buildUpdateComplianceSecurityIncidentStatusUseCase,
     buildCompliancePreflightUseCase
 } from './usecases/complianceUseCases.js';
 
@@ -114,6 +117,21 @@ export const updateCompliancePeripheralVerificationUseCase = buildUpdateComplian
 
 export const listComplianceAuditLogsUseCase = buildListComplianceAuditLogsUseCase({
     complianceRepository
+});
+
+export const recordComplianceSecuritySignalUseCase = buildRecordComplianceSecuritySignalUseCase({
+    complianceRepository,
+    logger
+});
+
+export const listComplianceSecurityIncidentsUseCase = buildListComplianceSecurityIncidentsUseCase({
+    complianceRepository
+});
+
+export const updateComplianceSecurityIncidentStatusUseCase = buildUpdateComplianceSecurityIncidentStatusUseCase({
+    complianceRepository,
+    listComplianceSecurityIncidentsUseCase,
+    logger
 });
 
 export const compliancePreflightUseCase = buildCompliancePreflightUseCase({

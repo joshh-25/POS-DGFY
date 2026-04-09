@@ -34,6 +34,7 @@ export const getTenantModels = (sequelize) => {
         'AIConversation', 'ItemEmbedding', 'ItemFolder',
         'DispatchOrder', 'DispatchOrderLine',
         'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
+        'PosZReadingSnapshot', 'PosOperationReplay',
         'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
         'TenantLocation', 'StoreCustomer', 'StoreCustomerAddress'
     ];

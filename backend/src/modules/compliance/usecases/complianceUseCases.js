@@ -21,6 +21,318 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const ACTIVATION_CONFIRMATION_TEXT = 'ACTIVATE COMPLIANT';
+const SECURITY_INCIDENT_STATUS = Object.freeze({
+    NEW: 'new',
+    ACKNOWLEDGED: 'acknowledged',
+    RESOLVED: 'resolved'
+});
+const SECURITY_SIGNAL_EVENT_TYPE = 'security_signal';
+
+const normalizeComplianceProfileValue = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+
+    try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed;
+        }
+    } catch {
+        return {};
+    }
+
+    return {};
+};
+
+const parseDate = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isTrueLike = (value) => {
+    if (value === true || value === 1) return true;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    }
+    return false;
+};
+
+const resolvePaymentHandoffPolicyReady = (profile = {}, now = new Date()) => {
+    const opsRequired = isTrueLike(profile?.bsp?.ops_registration_required);
+    if (!opsRequired) return true;
+
+    const opsStatus = String(profile?.bsp?.ops_registration_status || '').trim().toLowerCase();
+    if (opsStatus !== 'active') return false;
+
+    const validUntil = parseDate(profile?.bsp?.ops_registration_valid_until);
+    if (validUntil && validUntil.getTime() < now.getTime()) return false;
+
+    return isTrueLike(profile?.bsp?.payment_control_reviewed);
+};
+
+const resolveChecklistEvidence = async ({ complianceRepository, profile = {} }) => {
+    const [fiscalState, appendOnlyState, submissionReadiness, encryptionPolicyState] = await Promise.all([
+        typeof complianceRepository?.getFiscalAccumulatorState === 'function'
+            ? complianceRepository.getFiscalAccumulatorState()
+            : Promise.resolve({ ready: true, lifetime_grand_total_cents: 0 }),
+        typeof complianceRepository?.getComplianceAuditAppendOnlyState === 'function'
+            ? complianceRepository.getComplianceAuditAppendOnlyState()
+            : Promise.resolve({ ready: true, trigger_names: [] }),
+        typeof complianceRepository?.getSubmissionArtifactReadiness === 'function'
+            ? complianceRepository.getSubmissionArtifactReadiness()
+            : Promise.resolve({ ready: true, complete: 0, total: 0, missing: 0, items: [] }),
+        typeof complianceRepository?.getEncryptionPolicyPrerequisitesState === 'function'
+            ? complianceRepository.getEncryptionPolicyPrerequisitesState()
+            : Promise.resolve({ ready: true, checks: {}, issues: [] })
+    ]);
+
+    return {
+        fiscal_accumulator_stream_ready: fiscalState?.ready !== false,
+        fiscal_lifetime_grand_total_cents: Number.parseInt(fiscalState?.lifetime_grand_total_cents || 0, 10) || 0,
+        audit_log_append_only_enforced: appendOnlyState?.ready !== false,
+        audit_append_only_trigger_names: Array.isArray(appendOnlyState?.trigger_names)
+            ? appendOnlyState.trigger_names
+            : [],
+        payment_handoff_policy_ready: resolvePaymentHandoffPolicyReady(profile),
+        encryption_policy_prerequisites_ready: encryptionPolicyState?.ready !== false,
+        encryption_policy_checks: encryptionPolicyState?.checks && typeof encryptionPolicyState.checks === 'object'
+            ? encryptionPolicyState.checks
+            : {},
+        encryption_policy_issues: Array.isArray(encryptionPolicyState?.issues)
+            ? encryptionPolicyState.issues
+            : [],
+        submission_artifacts: {
+            ready: submissionReadiness?.ready === true,
+            complete: Number.parseInt(submissionReadiness?.complete || 0, 10) || 0,
+            total: Number.parseInt(submissionReadiness?.total || 0, 10) || 0,
+            missing: Number.parseInt(submissionReadiness?.missing || 0, 10) || 0,
+            items: Array.isArray(submissionReadiness?.items) ? submissionReadiness.items : []
+        }
+    };
+};
+
+const normalizeSecurityIncidentStatus = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === SECURITY_INCIDENT_STATUS.ACKNOWLEDGED) return SECURITY_INCIDENT_STATUS.ACKNOWLEDGED;
+    if (normalized === SECURITY_INCIDENT_STATUS.RESOLVED) return SECURITY_INCIDENT_STATUS.RESOLVED;
+    return SECURITY_INCIDENT_STATUS.NEW;
+};
+
+const normalizeSecuritySeverity = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['info', 'warning', 'critical'].includes(normalized) ? normalized : 'warning';
+};
+
+const normalizeIncidentDispatchChannel = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['email', 'webhook', 'audit_only'].includes(normalized)) return normalized;
+    return 'audit_only';
+};
+
+const normalizeIncidentDeliveryStatus = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['sent', 'queued', 'failed', 'skipped', 'recorded'].includes(normalized)) return normalized;
+    return 'recorded';
+};
+
+const normalizeBooleanEnv = (value, fallback = false) => {
+    if (value == null || value === '') return fallback;
+    const normalized = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    return fallback;
+};
+
+const resolveIncidentDispatchTarget = (channel) => {
+    if (channel === 'email') {
+        return String(process.env.COMPLIANCE_INCIDENT_EMAIL_TO || '').trim();
+    }
+    if (channel === 'webhook') {
+        return String(process.env.COMPLIANCE_INCIDENT_WEBHOOK_URL || '').trim();
+    }
+    return '';
+};
+
+const resolveIncidentDispatchOutcome = ({ channel }) => {
+    if (channel === 'audit_only') {
+        return {
+            delivery_status: 'recorded',
+            error: null,
+            target_configured: true,
+            dispatch_reference: null
+        };
+    }
+
+    const strictMode = normalizeBooleanEnv(process.env.COMPLIANCE_INCIDENT_NOTIFY_STRICT, false);
+    const simulateMode = String(process.env.COMPLIANCE_INCIDENT_NOTIFY_SIMULATE || '').trim().toLowerCase();
+    const target = resolveIncidentDispatchTarget(channel);
+    const hasTarget = target.length > 0;
+
+    if (!hasTarget && strictMode) {
+        return {
+            delivery_status: 'failed',
+            error: `${channel}_target_missing`,
+            target_configured: false,
+            dispatch_reference: null
+        };
+    }
+
+    if (simulateMode === 'fail') {
+        return {
+            delivery_status: 'failed',
+            error: `${channel}_dispatch_failed`,
+            target_configured: hasTarget,
+            dispatch_reference: null
+        };
+    }
+
+    if (simulateMode === 'sent') {
+        return {
+            delivery_status: 'sent',
+            error: null,
+            target_configured: hasTarget,
+            dispatch_reference: hasTarget ? `${channel}:${target}` : null
+        };
+    }
+
+    return {
+        delivery_status: hasTarget ? 'queued' : 'recorded',
+        error: null,
+        target_configured: hasTarget,
+        dispatch_reference: hasTarget ? `${channel}:${target}` : null
+    };
+};
+
+const buildSecurityIncidentId = ({ signalCode, createdAt }) => (
+    `sig-${String(signalCode || 'unknown').replace(/[^a-z0-9_-]/gi, '-').toLowerCase()}-${String(createdAt || Date.now()).replace(/[^0-9]/g, '').slice(-14)}`
+);
+
+const isSecuritySignalAuditLog = (entry = {}) => {
+    const eventType = String(entry?.event_type || '').trim().toLowerCase();
+    if (eventType === SECURITY_SIGNAL_EVENT_TYPE) return true;
+    const operation = String(entry?.operation || '').trim().toLowerCase();
+    return operation.startsWith('security.');
+};
+
+const deriveSignalCode = ({ operation = '', reasonCode = '', metadata = {} }) => {
+    const metadataSignalCode = String(metadata?.signal_code || '').trim().toLowerCase();
+    if (metadataSignalCode) return metadataSignalCode;
+
+    const fromOperation = String(operation || '').trim().toLowerCase().replace(/^security\./, '');
+    if (fromOperation && !fromOperation.startsWith('incident_')) return fromOperation;
+
+    const normalizedReasonCode = String(reasonCode || '').trim().toLowerCase();
+    if (normalizedReasonCode) return normalizedReasonCode;
+
+    return 'security_signal';
+};
+
+const toSecurityIncidentEvent = (entry = {}) => {
+    if (!isSecuritySignalAuditLog(entry)) return null;
+    const metadata = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : {};
+    const createdAt = entry?.created_at || new Date().toISOString();
+    const signalCode = deriveSignalCode({
+        operation: entry?.operation,
+        reasonCode: entry?.reason_code,
+        metadata
+    });
+    const incidentId = String(metadata?.incident_id || '').trim()
+        || buildSecurityIncidentId({ signalCode, createdAt });
+
+    return {
+        incident_id: incidentId,
+        signal_code: signalCode,
+        severity: normalizeSecuritySeverity(metadata?.severity),
+        incident_status: normalizeSecurityIncidentStatus(metadata?.incident_status),
+        operation: String(entry?.operation || '').trim() || null,
+        reason_code: String(entry?.reason_code || '').trim() || null,
+        actor_user_id: parsePositiveInt(entry?.actor_user_id),
+        note: String(metadata?.note || metadata?.message || '').trim() || null,
+        evidence_ref: String(metadata?.evidence_ref || '').trim() || null,
+        dispatch: {
+            channel: normalizeIncidentDispatchChannel(metadata?.channel),
+            delivery_status: normalizeIncidentDeliveryStatus(metadata?.delivery_status),
+            attempted_at: metadata?.attempted_at || null,
+            error: String(metadata?.error || '').trim() || null,
+            target_configured: metadata?.target_configured === true,
+            dispatch_reference: String(metadata?.dispatch_reference || '').trim() || null
+        },
+        created_at: createdAt
+    };
+};
+
+const summarizeSecurityIncidents = (logs = []) => {
+    const incidents = new Map();
+    const ordered = Array.isArray(logs) ? [...logs].sort((a, b) => (
+        new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime()
+    )) : [];
+
+    ordered.forEach((entry) => {
+        const event = toSecurityIncidentEvent(entry);
+        if (!event) return;
+
+        const existing = incidents.get(event.incident_id) || {
+            incident_id: event.incident_id,
+            signal_code: event.signal_code,
+            severity: event.severity,
+            status: SECURITY_INCIDENT_STATUS.NEW,
+            opened_at: event.created_at,
+            updated_at: event.created_at,
+            event_count: 0,
+            latest_note: null,
+            latest_evidence_ref: null,
+            latest_reason_code: null,
+            dispatch: null
+        };
+
+        existing.signal_code = event.signal_code || existing.signal_code;
+        existing.severity = event.severity || existing.severity;
+        existing.status = event.incident_status;
+        existing.updated_at = event.created_at;
+        existing.event_count += 1;
+        existing.latest_reason_code = event.reason_code || existing.latest_reason_code;
+        if (event.note) existing.latest_note = event.note;
+        if (event.evidence_ref) existing.latest_evidence_ref = event.evidence_ref;
+        if (event.dispatch?.attempted_at || event.dispatch?.delivery_status || event.dispatch?.error) {
+            existing.dispatch = {
+                channel: event.dispatch.channel,
+                delivery_status: event.dispatch.delivery_status,
+                attempted_at: event.dispatch.attempted_at || event.created_at,
+                error: event.dispatch.error || null,
+                target_configured: event.dispatch.target_configured === true,
+                dispatch_reference: event.dispatch.dispatch_reference || null
+            };
+        }
+        incidents.set(event.incident_id, existing);
+    });
+
+    const rows = [...incidents.values()].sort((a, b) => (
+        new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
+    ));
+
+    const counts = rows.reduce((acc, entry) => {
+        acc.total += 1;
+        acc[entry.status] = (acc[entry.status] || 0) + 1;
+        if (entry.status !== SECURITY_INCIDENT_STATUS.RESOLVED) acc.requires_action += 1;
+        return acc;
+    }, {
+        total: 0,
+        requires_action: 0,
+        [SECURITY_INCIDENT_STATUS.NEW]: 0,
+        [SECURITY_INCIDENT_STATUS.ACKNOWLEDGED]: 0,
+        [SECURITY_INCIDENT_STATUS.RESOLVED]: 0
+    });
+
+    return {
+        incidents: rows,
+        counts
+    };
+};
+
 const resolveTenantId = ({ tenantId, tenant }) => tenantId || tenant?.id || null;
 
 const normalizeActorIdentity = (actorUser = null) => {
@@ -126,8 +438,8 @@ const persistAuditLogWithFallback = async ({
     primaryOptions = {}
 }) => {
     try {
-        await complianceRepository.createAuditLog(auditPayload, primaryOptions);
-        return { persisted: 'primary' };
+        const record = await complianceRepository.createAuditLog(auditPayload, primaryOptions);
+        return { persisted: 'primary', record };
     } catch (primaryError) {
         try {
             await complianceRepository.createAuditFailureLog({
@@ -161,6 +473,62 @@ const persistAuditLogWithFallback = async ({
     }
 };
 
+const recordIncidentDispatchAttempt = async ({
+    complianceRepository,
+    logger,
+    tenantId,
+    incidentId,
+    incidentStatus,
+    signalCode,
+    severity,
+    actorUserId,
+    triggerEvent
+}) => {
+    const channel = normalizeIncidentDispatchChannel(process.env.COMPLIANCE_INCIDENT_NOTIFY_CHANNEL || 'audit_only');
+    const outcome = resolveIncidentDispatchOutcome({ channel });
+    const dispatchPayload = {
+        channel,
+        delivery_status: normalizeIncidentDeliveryStatus(outcome.delivery_status),
+        attempted_at: new Date().toISOString(),
+        error: outcome.error,
+        target_configured: outcome.target_configured === true
+    };
+
+    if (outcome.dispatch_reference) {
+        dispatchPayload.dispatch_reference = outcome.dispatch_reference;
+    }
+
+    const persistence = await persistAuditLogWithFallback({
+        complianceRepository,
+        logger,
+        auditPayload: {
+            tenant_id: tenantId,
+            event_type: SECURITY_SIGNAL_EVENT_TYPE,
+            operation: 'security.incident_notify_attempt',
+            decision: COMPLIANCE_DECISION.ALLOW,
+            reason_code: 'SECURITY_INCIDENT_NOTIFY_ATTEMPT',
+            actor_user_id: parsePositiveInt(actorUserId),
+            metadata: {
+                incident_id: incidentId,
+                incident_status: normalizeSecurityIncidentStatus(incidentStatus),
+                signal_code: String(signalCode || '').trim().toLowerCase() || 'security_signal',
+                severity: normalizeSecuritySeverity(severity),
+                trigger_event: String(triggerEvent || '').trim() || 'security_signal',
+                ...dispatchPayload
+            }
+        },
+        fallbackContext: {
+            path: 'recordIncidentDispatchAttempt',
+            stage: 'security_incident_notify_attempt'
+        }
+    });
+
+    return {
+        ...dispatchPayload,
+        audit_persistence: persistence.persisted
+    };
+};
+
 export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, getSettingsSnapshot }) => {
     return async ({ tenantId, tenant, operation, context = {} }) => {
         const resolvedTenantId = resolveTenantId({ tenantId, tenant });
@@ -189,12 +557,26 @@ export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, 
             let artifacts = [];
             let peripherals = [];
             let settings = context.settings || {};
+            const normalizedProfile = normalizeComplianceProfileValue(effectiveTenant.compliance_profile);
+            let checklistEvidence = {
+                fiscal_accumulator_stream_ready: true,
+                fiscal_lifetime_grand_total_cents: 0,
+                audit_log_append_only_enforced: true,
+                audit_append_only_trigger_names: [],
+                payment_handoff_policy_ready: resolvePaymentHandoffPolicyReady(normalizedProfile)
+            };
 
             if (needsStatefulChecks) {
                 [artifacts, peripherals] = await Promise.all([
                     complianceRepository.listArtifactsByTenantId(effectiveTenant.id),
                     complianceRepository.listPeripheralsByTenantId(effectiveTenant.id)
                 ]);
+            }
+            if (needsStatefulChecks) {
+                checklistEvidence = await resolveChecklistEvidence({
+                    complianceRepository,
+                    profile: normalizedProfile
+                });
             }
 
             if (!context.settings && typeof getSettingsSnapshot === 'function') {
@@ -211,7 +593,8 @@ export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, 
                 context,
                 artifacts,
                 peripherals,
-                settings
+                settings,
+                evidence: checklistEvidence
             });
 
             return ok({
@@ -303,12 +686,18 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
                 ));
             }
 
+            const normalizedProfile = normalizeComplianceProfileValue(tenant.compliance_profile);
+            const checklistEvidence = await resolveChecklistEvidence({
+                complianceRepository,
+                profile: normalizedProfile
+            });
             const checklist = evaluateComplianceChecklist({
                 tenant,
-                complianceProfile: tenant.compliance_profile,
+                complianceProfile: normalizedProfile,
                 artifacts,
                 peripherals,
-                settings
+                settings,
+                evidence: checklistEvidence
             });
 
             return ok({
@@ -318,7 +707,7 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
                 mode_selected_by: tenant.compliance_mode_selected_by,
                 activated_at: tenant.compliance_activated_at,
                 policy_version: tenant.compliance_policy_version,
-                profile: tenant.compliance_profile || {},
+                profile: normalizedProfile,
                 checklist,
                 counts: {
                     artifacts: artifacts.length,
@@ -556,13 +945,19 @@ export const buildGetComplianceChecklistUseCase = ({ complianceRepository, getSe
                 ));
             }
 
+            const normalizedProfile = normalizeComplianceProfileValue(tenant.compliance_profile);
+            const checklistEvidence = await resolveChecklistEvidence({
+                complianceRepository,
+                profile: normalizedProfile
+            });
             const checklist = evaluateComplianceChecklist({
                 tenant,
-                complianceProfile: tenant.compliance_profile,
+                complianceProfile: normalizedProfile,
                 artifacts,
                 peripherals,
                 settings,
-                terminalId
+                terminalId,
+                evidence: checklistEvidence
             });
 
             return ok(checklist);
@@ -577,12 +972,26 @@ export const buildActivateCompliantModeUseCase = ({
     getComplianceChecklistUseCase,
     logger
 }) => {
-    return async ({ tenantId, actorUser = null }) => {
+    return async ({ tenantId, actorUser = null, confirmationText = '' }) => {
         if (!tenantId) {
             return fail(new DomainError(
                 DomainErrorCode.TENANT_CONTEXT_MISSING,
                 'Tenant context is required',
                 { statusCode: 400 }
+            ));
+        }
+
+        if (String(confirmationText || '').trim() !== ACTIVATION_CONFIRMATION_TEXT) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `confirmation_text must match ${ACTIVATION_CONFIRMATION_TEXT}`,
+                {
+                    statusCode: 422,
+                    details: {
+                        field: 'confirmation_text',
+                        expected: ACTIVATION_CONFIRMATION_TEXT
+                    }
+                }
             ));
         }
 
@@ -1217,6 +1626,244 @@ export const buildListComplianceAuditLogsUseCase = ({ complianceRepository }) =>
     };
 };
 
+export const buildRecordComplianceSecuritySignalUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, signalCode, severity = 'warning', metadata = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedSignalCode = String(signalCode || '').trim().toLowerCase();
+        if (!normalizedSignalCode) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'signalCode is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const normalizedSeverity = normalizeSecuritySeverity(severity);
+        const metadataPayload = metadata && typeof metadata === 'object' ? metadata : {};
+        const incidentId = String(metadataPayload.incident_id || '').trim()
+            || buildSecurityIncidentId({
+                signalCode: normalizedSignalCode,
+                createdAt: Date.now()
+            });
+        const incidentStatus = normalizeSecurityIncidentStatus(metadataPayload.incident_status || SECURITY_INCIDENT_STATUS.NEW);
+
+        try {
+            const persistence = await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: SECURITY_SIGNAL_EVENT_TYPE,
+                    operation: `security.${normalizedSignalCode}`,
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: normalizedSignalCode.toUpperCase(),
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        incident_id: incidentId,
+                        incident_status: incidentStatus,
+                        signal_code: normalizedSignalCode,
+                        severity: normalizedSeverity,
+                        ...metadataPayload
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildRecordComplianceSecuritySignalUseCase',
+                    stage: 'security_signal'
+                }
+            });
+
+            const dispatchAttempt = await recordIncidentDispatchAttempt({
+                complianceRepository,
+                logger,
+                tenantId,
+                incidentId,
+                incidentStatus,
+                signalCode: normalizedSignalCode,
+                severity: normalizedSeverity,
+                actorUserId: actorUser?.user_id,
+                triggerEvent: `security.${normalizedSignalCode}`
+            });
+
+            return ok({
+                recorded: true,
+                signal_code: normalizedSignalCode,
+                severity: normalizedSeverity,
+                incident_id: incidentId,
+                incident_status: incidentStatus,
+                audit_persistence: persistence.persisted,
+                dispatch_attempt: dispatchAttempt
+            });
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to record compliance security signal');
+        }
+    };
+};
+
+export const buildListComplianceSecurityIncidentsUseCase = ({ complianceRepository }) => {
+    return async ({ tenantId, limit = 200 }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            const logs = await complianceRepository.listAuditLogsByTenantId(tenantId, { limit: Math.min(Number(limit) || 200, 500) });
+            const summary = summarizeSecurityIncidents(logs);
+            return ok(summary);
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to list compliance security incidents');
+        }
+    };
+};
+
+export const buildUpdateComplianceSecurityIncidentStatusUseCase = ({
+    complianceRepository,
+    listComplianceSecurityIncidentsUseCase,
+    logger
+}) => {
+    return async ({
+        tenantId,
+        incidentId,
+        status,
+        actorUser = null,
+        note = null,
+        evidenceRef = null
+    }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedIncidentId = String(incidentId || '').trim();
+        if (!normalizedIncidentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'incidentId is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const normalizedStatus = normalizeSecurityIncidentStatus(status);
+        if (![SECURITY_INCIDENT_STATUS.ACKNOWLEDGED, SECURITY_INCIDENT_STATUS.RESOLVED].includes(normalizedStatus)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'status must be acknowledged or resolved',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            assertMasterAdminLevelActor(actorUser);
+            const listResult = await listComplianceSecurityIncidentsUseCase({ tenantId, limit: 500 });
+            if (!listResult.success) {
+                return listResult;
+            }
+
+            const incident = (listResult.data?.incidents || []).find(
+                (entry) => String(entry?.incident_id || '') === normalizedIncidentId
+            );
+            if (!incident) {
+                return fail(new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Security incident not found',
+                    { statusCode: 404 }
+                ));
+            }
+
+            const previousStatus = normalizeSecurityIncidentStatus(incident.status);
+            if (previousStatus === normalizedStatus) {
+                return ok({
+                    ...incident,
+                    status: normalizedStatus,
+                    unchanged: true
+                });
+            }
+
+            if (previousStatus === SECURITY_INCIDENT_STATUS.RESOLVED && normalizedStatus !== SECURITY_INCIDENT_STATUS.RESOLVED) {
+                return fail(new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Resolved security incidents cannot transition back to active states',
+                    { statusCode: 409 }
+                ));
+            }
+
+            const normalizedNote = String(note || '').trim() || null;
+            const normalizedEvidenceRef = String(evidenceRef || '').trim() || null;
+
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: SECURITY_SIGNAL_EVENT_TYPE,
+                    operation: `security.incident_${normalizedStatus}`,
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: `SECURITY_INCIDENT_${normalizedStatus.toUpperCase()}`,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        incident_id: normalizedIncidentId,
+                        incident_status: normalizedStatus,
+                        previous_status: previousStatus,
+                        signal_code: incident.signal_code || null,
+                        severity: normalizeSecuritySeverity(incident.severity),
+                        note: normalizedNote,
+                        evidence_ref: normalizedEvidenceRef
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpdateComplianceSecurityIncidentStatusUseCase',
+                    stage: 'security_incident_status_update'
+                }
+            });
+
+            const dispatchAttempt = await recordIncidentDispatchAttempt({
+                complianceRepository,
+                logger,
+                tenantId,
+                incidentId: normalizedIncidentId,
+                incidentStatus: normalizedStatus,
+                signalCode: incident.signal_code || 'security_signal',
+                severity: incident.severity,
+                actorUserId: actorUser?.user_id,
+                triggerEvent: `security.incident_${normalizedStatus}`
+            });
+
+            return ok({
+                ...incident,
+                status: normalizedStatus,
+                updated_at: new Date().toISOString(),
+                latest_note: normalizedNote || incident.latest_note || null,
+                latest_evidence_ref: normalizedEvidenceRef || incident.latest_evidence_ref || null,
+                dispatch: {
+                    channel: dispatchAttempt.channel,
+                    delivery_status: dispatchAttempt.delivery_status,
+                    attempted_at: dispatchAttempt.attempted_at,
+                    error: dispatchAttempt.error,
+                    target_configured: dispatchAttempt.target_configured === true,
+                    dispatch_reference: dispatchAttempt.dispatch_reference || null
+                },
+                dispatch_attempt_append_result: dispatchAttempt.audit_persistence,
+                unchanged: false
+            });
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to update compliance security incident status');
+        }
+    };
+};
+
 export const buildCompliancePreflightUseCase = ({
     evaluateComplianceOperationUseCase
 }) => {
@@ -1275,6 +1922,7 @@ export const buildCompliancePreflightUseCase = ({
                         setting_keys: payload.setting_keys,
                         setting_updates: payload.setting_updates,
                         requested_document_type: payload.requested_document_type,
+                        requested_document_context: payload.requested_document_context,
                         terminal_id: payload.terminal_id
                     }
                 });

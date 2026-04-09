@@ -135,7 +135,8 @@ export const activateCompliantMode = async (req, res, next) => {
     try {
         const result = await activateCompliantModeUseCase({
             tenantId: resolveTenantId(req),
-            actorUser: req.user
+            actorUser: req.user,
+            confirmationText: req.validatedData?.confirmation_text || req.body?.confirmation_text || ''
         });
         if (result?.success) {
             invalidateTenantCache(req);

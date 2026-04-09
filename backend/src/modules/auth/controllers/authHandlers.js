@@ -10,6 +10,7 @@ import {
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
+import { complianceRepository } from '../../compliance/index.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -22,6 +23,34 @@ const defaultErrorPayload = (req, res, failure) => ({
   request_id: requestId(req, res),
   timestamp: timestamp()
 });
+
+const persistSecurityAuditEvent = async (req, {
+  eventType,
+  operation,
+  actorUserId = null,
+  metadata = {}
+} = {}) => {
+  const tenantId = req?.tenant?.id;
+  if (!tenantId) return;
+
+  try {
+    await complianceRepository.createAuditLog({
+      tenant_id: tenantId,
+      event_type: eventType,
+      operation,
+      decision: 'allow',
+      reason_code: 'ALLOWED',
+      actor_user_id: actorUserId,
+      metadata: {
+        ip_address: req?.ip || null,
+        user_agent: req?.headers?.['user-agent'] || null,
+        ...metadata
+      }
+    });
+  } catch {
+    // Security audit evidence is best-effort and must not block auth flows.
+  }
+};
 
 export const register = async (req, res, next) => {
   try {
@@ -48,6 +77,17 @@ export const login = async (req, res, next) => {
     const { email, password } = req.validatedData;
     const result = await loginUseCase({ email, password });
 
+    if (result?.success) {
+      await persistSecurityAuditEvent(req, {
+        eventType: 'security_login',
+        operation: 'auth.login',
+        actorUserId: Number.parseInt(result?.data?.user_id, 10) || null,
+        metadata: {
+          actor_email: String(result?.data?.email || email || '').trim() || null
+        }
+      });
+    }
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
@@ -67,6 +107,17 @@ export const refreshToken = async (req, res, next) => {
   try {
     const { refreshToken } = req.validatedData;
     const result = await refreshTokenUseCase({ refreshToken });
+
+    if (result?.success) {
+      await persistSecurityAuditEvent(req, {
+        eventType: 'security_sensitive_action',
+        operation: 'auth.refresh_token',
+        actorUserId: null,
+        metadata: {
+          action: 'refresh_token_rotation'
+        }
+      });
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -92,6 +143,15 @@ export const logout = async (req, res, next) => {
       const result = await blacklistTokenUseCase({ token });
       unwrapApplicationResultOrThrow(result, 'Logout failed');
     }
+
+    await persistSecurityAuditEvent(req, {
+      eventType: 'security_logout',
+      operation: 'auth.logout',
+      actorUserId: Number.parseInt(req?.user?.user_id, 10) || null,
+      metadata: {
+        actor_email: String(req?.user?.email || '').trim() || null
+      }
+    });
 
     return res.status(200).json({
       success: true,

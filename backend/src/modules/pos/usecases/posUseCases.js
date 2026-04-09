@@ -14,6 +14,9 @@ import dbStore from '../../../utils/dbStore.js';
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const NON_FISCAL_COUNTER_KEY = 'POS_NFS';
+const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
+const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
+const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
 const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
 const ONLINE_ORDER_SOURCE = 'online_store';
@@ -60,6 +63,19 @@ const CASH_EVENT_EFFECT = Object.freeze({
 });
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
+const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
+const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
+const RECEIPT_CONTRACT_VERSION = '2026.04.08';
+const OPERATION_REPLAY_STATUS = Object.freeze({
+    PROCESSED: 'processed',
+    BLOCKED: 'blocked'
+});
+const POS_OPERATION_KEYS = Object.freeze({
+    SHIFT_OPEN: 'terminal.shift_open',
+    CASH_EVENT: 'terminal.cash_event',
+    SHIFT_CLOSE: 'terminal.shift_close',
+    ORDER_STATUS_UPDATE: 'terminal.order_status_update'
+});
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -117,8 +133,23 @@ const nowInManilaBusinessDate = () => (
 );
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const toCurrencyCents = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
+const fromCurrencyCents = (value) => round4((Number(value) || 0) / 100);
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const normalizeJsonObject = (value, fallback = {}) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return fallback;
+    try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed;
+        }
+    } catch {
+        return fallback;
+    }
+    return fallback;
+};
 
 const stableStringify = (value) => {
     if (Array.isArray(value)) {
@@ -132,6 +163,99 @@ const stableStringify = (value) => {
 };
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+
+const normalizeOptionalIdempotencyKey = (value) => {
+    const normalized = String(value || '').trim();
+    return normalized.length >= 8 ? normalized : null;
+};
+
+const buildOperationReplayConflictError = () => new DomainError(
+    DomainErrorCode.CONFLICT,
+    'idempotency_key was already used with a different payload',
+    {
+        statusCode: 409,
+        details: {
+            idempotency: {
+                outcome: 'conflict',
+                idempotent_replay: true
+            }
+        }
+    }
+);
+
+const serializeReplayFailure = (error) => ({
+    message: error?.message || 'Operation blocked',
+    error_code: error?.code || DomainErrorCode.VALIDATION_FAILED,
+    status_code: Number.parseInt(error?.statusCode || 422, 10) || 422,
+    details: error?.details || null
+});
+
+const buildReplayBlockedError = (payload = {}) => new DomainError(
+    payload.error_code || DomainErrorCode.VALIDATION_FAILED,
+    payload.message || 'Operation is blocked',
+    {
+        statusCode: Number.parseInt(payload.status_code || 422, 10) || 422,
+        details: {
+            ...(payload.details && typeof payload.details === 'object' ? payload.details : {}),
+            idempotency: {
+                outcome: 'blocked',
+                idempotent_replay: true
+            }
+        }
+    }
+);
+
+const findOperationReplayEntry = async ({
+    posRepository,
+    operationKey,
+    idempotencyKey,
+    requestHash
+}) => {
+    if (!idempotencyKey) return null;
+
+    const existing = toSerializable(await posRepository.findOperationReplayByKey({
+        operationKey,
+        idempotencyKey
+    }));
+    if (!existing) return null;
+
+    if (String(existing.request_hash || '') !== String(requestHash || '')) {
+        throw buildOperationReplayConflictError();
+    }
+
+    if (existing.replay_status === OPERATION_REPLAY_STATUS.BLOCKED) {
+        throw buildReplayBlockedError(existing.response_payload || {});
+    }
+
+    return {
+        ...(existing.response_payload && typeof existing.response_payload === 'object'
+            ? existing.response_payload
+            : {}),
+        idempotent_replay: true,
+        replay_outcome: 'idempotent_replay'
+    };
+};
+
+const persistOperationReplay = async ({
+    posRepository,
+    operationKey,
+    idempotencyKey,
+    requestHash,
+    replayStatus,
+    responsePayload,
+    createdBy
+}) => {
+    if (!idempotencyKey) return null;
+
+    return posRepository.createOperationReplay({
+        operation_key: operationKey,
+        idempotency_key: idempotencyKey,
+        request_hash: requestHash,
+        replay_status: replayStatus,
+        response_payload: responsePayload || {},
+        created_by: createdBy || null
+    });
+};
 
 const buildBusinessDateRange = (dateInput) => {
     const dateString = dateInput instanceof Date
@@ -161,6 +285,42 @@ const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
+
+const buildZReadingIdentifier = ({ businessDate, zCounterValue }) => (
+    `ZR-${String(businessDate || '').replace(/-/g, '')}-${String(zCounterValue || 0).padStart(8, '0')}`
+);
+
+const buildXReadingIdentifier = ({ businessDate, generatedAt = new Date() }) => {
+    const dateToken = String(businessDate || '').replace(/-/g, '');
+    const isoToken = generatedAt.toISOString().replace(/\D/g, '').slice(8, 14);
+    return `XR-${dateToken}-${isoToken}`;
+};
+
+const normalizeZReadingSummary = (summary = {}) => ({
+    transaction_count: Number.parseInt(summary?.transaction_count || 0, 10),
+    subtotal_amount: round4(summary?.subtotal_amount),
+    discount_amount: round4(summary?.discount_amount),
+    service_fee_total: round4(summary?.service_fee_total),
+    vatable_sales: round4(summary?.vatable_sales),
+    vat_amount: round4(summary?.vat_amount),
+    vat_exempt_sales: round4(summary?.vat_exempt_sales),
+    zero_rated_sales: round4(summary?.zero_rated_sales),
+    total_amount: round4(summary?.total_amount),
+    payment_breakdown: Array.isArray(summary?.payment_breakdown)
+        ? summary.payment_breakdown.map((entry) => ({
+            payment_type: entry?.payment_type || null,
+            count: Number.parseInt(entry?.count || 0, 10),
+            amount: round4(entry?.amount)
+        }))
+        : [],
+    order_method_breakdown: Array.isArray(summary?.order_method_breakdown)
+        ? summary.order_method_breakdown.map((entry) => ({
+            order_method: entry?.order_method || null,
+            count: Number.parseInt(entry?.count || 0, 10),
+            amount: round4(entry?.amount)
+        }))
+        : []
+});
 
 const parseBooleanSetting = (value) => {
     if (typeof value === 'boolean') return value;
@@ -431,6 +591,98 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
     };
 };
 
+const inferSpecialDiscountBeneficiaryCategory = (discountLabelSnapshot) => {
+    const normalizedLabel = String(discountLabelSnapshot || '').trim().toLowerCase();
+    if (!normalizedLabel) return null;
+
+    if (normalizedLabel.includes('national') && normalizedLabel.includes('athlete')) {
+        return 'national_athlete';
+    }
+    if (normalizedLabel.includes('senior')) {
+        return 'senior';
+    }
+    if (normalizedLabel.includes('pwd')) {
+        return 'pwd';
+    }
+
+    return null;
+};
+
+const normalizeDiscountBeneficiary = ({ payload = {}, discountLabelSnapshot = null }) => {
+    const inferredCategory = inferSpecialDiscountBeneficiaryCategory(discountLabelSnapshot);
+    const raw = payload?.discount_beneficiary;
+
+    if (!raw || !isPlainObject(raw)) {
+        if (inferredCategory) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Special discount profiles require discount beneficiary details',
+                { statusCode: 422 }
+            );
+        }
+        return null;
+    }
+
+    const category = String(raw.category || inferredCategory || '').trim().toLowerCase();
+    const name = String(raw.name || '').trim();
+    const idNumber = String(raw.id_number || '').trim();
+
+    if (!SPECIAL_DISCOUNT_BENEFICIARY_TYPES.has(category)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'discount_beneficiary.category must be senior, pwd, or national_athlete',
+            { statusCode: 422 }
+        );
+    }
+    if (name.length < 2) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'discount_beneficiary.name is required for special discount reporting',
+            { statusCode: 422 }
+        );
+    }
+    if (idNumber.length < 2) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'discount_beneficiary.id_number is required for special discount reporting',
+            { statusCode: 422 }
+        );
+    }
+
+    return {
+        category,
+        name,
+        id_number: idNumber
+    };
+};
+
+const buildTransactionSpecialInstructions = ({
+    rawSpecialInstructions = null,
+    discountBeneficiary = null,
+    receiptContract = null
+}) => {
+    const note = String(rawSpecialInstructions || '').trim() || null;
+    const normalizedReceiptContract = receiptContract && typeof receiptContract === 'object'
+        ? {
+            version: RECEIPT_CONTRACT_VERSION,
+            document_type: String(receiptContract.document_type || '').trim() || null,
+            document_context: String(receiptContract.document_context || '').trim() || null
+        }
+        : null;
+
+    if (!note && !discountBeneficiary && !normalizedReceiptContract) {
+        return null;
+    }
+
+    const payload = {
+        note,
+        discount_beneficiary: discountBeneficiary || null,
+        receipt_contract: normalizedReceiptContract
+    };
+
+    return JSON.stringify(payload);
+};
+
 export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService }) => {
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
@@ -484,6 +736,17 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             discount_profile_name: String(payload.discount_profile_name || '').trim() || null,
             discount_rate: payload.discount_rate == null ? null : round4(payload.discount_rate),
             discount_amount: round4(payload.discount_amount || 0),
+            customer_name: String(payload.customer_name || '').trim() || null,
+            customer_email: String(payload.customer_email || '').trim().toLowerCase() || null,
+            customer_phone: String(payload.customer_phone || '').trim() || null,
+            special_instructions: String(payload.special_instructions || '').trim() || null,
+            discount_beneficiary: isPlainObject(payload.discount_beneficiary)
+                ? {
+                    category: String(payload.discount_beneficiary.category || '').trim().toLowerCase() || null,
+                    name: String(payload.discount_beneficiary.name || '').trim() || null,
+                    id_number: String(payload.discount_beneficiary.id_number || '').trim() || null
+                }
+                : null,
             lines: lines
                 .map((line) => ({
                     item_id: Number.parseInt(line.item_id, 10),
@@ -503,7 +766,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
                 context: {
-                    terminal_id: payload.terminal_id || null
+                    terminal_id: payload.terminal_id || null,
+                    requested_document_context: payload.document_context || null,
+                    payment_type: payload.payment_type || 'cash',
+                    payment_handoff_mode: payload.payment_handoff_mode
+                        || (String(payload.payment_type || 'cash').trim().toLowerCase() === 'cash' ? 'internal' : 'external')
                 },
                 settings,
                 user
@@ -511,7 +778,41 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             enforcePosComplianceReadiness(settings);
             const receiptContract = complianceDecision?.receipt_contract || {
                 document_type: 'non_fiscal_slip',
-                label: 'NON-FISCAL SLIP'
+                label: 'NON-FISCAL SLIP',
+                document_context: 'non_fiscal'
+            };
+
+            const requestedDocumentContext = String(payload.document_context || '').trim().toLowerCase() || null;
+            const defaultDocumentContext = String(
+                receiptContract.document_context
+                || (receiptContract.document_type === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal')
+            ).trim().toLowerCase();
+            const resolvedDocumentContext = requestedDocumentContext || defaultDocumentContext;
+
+            if (
+                receiptContract.document_type === 'fiscal_invoice'
+                && resolvedDocumentContext !== 'fiscal'
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'fiscal invoices require document_context=fiscal',
+                    { statusCode: 422 }
+                );
+            }
+            if (
+                receiptContract.document_type !== 'fiscal_invoice'
+                && !['non_fiscal', 'training_test'].includes(resolvedDocumentContext)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'non-fiscal documents require document_context=non_fiscal or training_test',
+                    { statusCode: 422 }
+                );
+            }
+
+            const resolvedReceiptContract = {
+                ...receiptContract,
+                document_context: resolvedDocumentContext
             };
 
             const existing = await posRepository.findTransactionByIdempotencyKey(
@@ -532,7 +833,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 return ok({
                     idempotent_replay: true,
                     compliance_decision: complianceDecision,
-                    receipt_contract: receiptContract,
+                    receipt_contract: {
+                        ...resolvedReceiptContract,
+                        document_context: String(existing.document_context || resolvedReceiptContract.document_context || '').trim().toLowerCase() || 'non_fiscal'
+                    },
                     transaction: toSerializable(existing)
                 });
             }
@@ -671,6 +975,15 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             subtotalAmount = round4(subtotalAmount);
             const discountResolution = resolveCheckoutDiscount({ payload, subtotalAmount, settings });
             const discountAmount = round4(discountResolution.discountAmount);
+            const discountBeneficiary = normalizeDiscountBeneficiary({
+                payload,
+                discountLabelSnapshot: discountResolution.discountLabelSnapshot
+            });
+            const transactionSpecialInstructions = buildTransactionSpecialInstructions({
+                rawSpecialInstructions: payload.special_instructions,
+                discountBeneficiary,
+                receiptContract: resolvedReceiptContract
+            });
             const netItemsTotal = round4(subtotalAmount - discountAmount);
             const serviceFeeResolution = resolveCheckoutServiceFee({
                 payload: { ...payload, order_method: normalizedOrderMethod },
@@ -714,10 +1027,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const vatableSales = round4(vatableGross / (1 + VAT_RATE));
             const vatAmount = round4(vatableGross - vatableSales);
 
-            const invoiceCounterKey = receiptContract.document_type === 'fiscal_invoice'
+            const invoiceCounterKey = resolvedReceiptContract.document_type === 'fiscal_invoice'
                 ? INVOICE_COUNTER_KEY
                 : NON_FISCAL_COUNTER_KEY;
-            const invoicePrefix = receiptContract.document_type === 'fiscal_invoice'
+            const invoicePrefix = resolvedReceiptContract.document_type === 'fiscal_invoice'
                 ? 'INV'
                 : 'NFS';
             const invoiceNumber = await posRepository.nextInvoiceNumber(
@@ -728,7 +1041,8 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const posTransactionId = await posRepository.createTransactionWithLines({
                 header: {
                     invoice_number: invoiceNumber,
-                    document_type: receiptContract.document_type === 'fiscal_invoice' ? 'fiscal_invoice' : 'non_fiscal_slip',
+                    document_type: resolvedReceiptContract.document_type === 'fiscal_invoice' ? 'fiscal_invoice' : 'non_fiscal_slip',
+                    document_context: resolvedReceiptContract.document_context,
                     idempotency_key: idempotencyKey,
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
@@ -737,6 +1051,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     order_source: 'in_store',
                     order_method: normalizedOrderMethod,
                     fulfillment_status: 'completed',
+                    customer_name: String(payload.customer_name || '').trim() || null,
+                    customer_email: String(payload.customer_email || '').trim().toLowerCase() || null,
+                    customer_phone: String(payload.customer_phone || '').trim() || null,
+                    special_instructions: transactionSpecialInstructions,
                     payment_type: payload.payment_type || 'cash',
                     subtotal_amount: subtotalAmount,
                     vatable_sales: vatableSales,
@@ -768,6 +1086,15 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }, normalizedUserId, transaction);
             }
 
+            const totalAmountCents = toCurrencyCents(totalAmount);
+            if (totalAmountCents > 0) {
+                await posRepository.incrementPersistentCounter(
+                    FISCAL_LIFETIME_COUNTER_KEY,
+                    totalAmountCents,
+                    { transaction }
+                );
+            }
+
             const created = await posRepository.getTransactionById(
                 posTransactionId,
                 { transaction }
@@ -777,7 +1104,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             return ok({
                 idempotent_replay: false,
                 compliance_decision: complianceDecision,
-                receipt_contract: receiptContract,
+                receipt_contract: resolvedReceiptContract,
                 transaction: toSerializable(created)
             });
         } catch (error) {
@@ -837,17 +1164,65 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
 
 export const buildCloseDayZReadingUseCase = ({ posRepository }) => {
     return async ({ businessDateInput }) => {
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
+
         try {
+            transaction = await sequelize.transaction();
             const { businessDate, startAt, endAt } = buildBusinessDateRange(
                 businessDateInput || new Date()
             );
-            const summary = await posRepository.getZReadingSummary({ startAt, endAt });
+            const summary = normalizeZReadingSummary(
+                await posRepository.getZReadingSummary({ startAt, endAt }, { transaction })
+            );
+
+            const zCounterValue = await posRepository.incrementPersistentCounter(
+                Z_READING_COUNTER_KEY,
+                1,
+                { transaction }
+            );
+            const resetCounterValue = await posRepository.incrementPersistentCounter(
+                RESET_COUNTER_KEY,
+                1,
+                { transaction }
+            );
+            const lifetimeGrandTotalCents = await posRepository.getPersistentCounterValue(
+                FISCAL_LIFETIME_COUNTER_KEY,
+                { transaction }
+            );
+
+            const readingIdentifier = buildZReadingIdentifier({
+                businessDate,
+                zCounterValue
+            });
+            const snapshot = await posRepository.createZReadingSnapshot({
+                business_date: businessDate,
+                reading_identifier: readingIdentifier,
+                z_counter_value: zCounterValue,
+                reset_counter_value: resetCounterValue,
+                lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                summary
+            }, { transaction });
+
+            await transaction.commit();
+
             return ok({
                 business_date: businessDate,
-                generated_at: new Date().toISOString(),
-                summary
+                generated_at: snapshot?.generated_at || new Date().toISOString(),
+                summary,
+                snapshot_persisted: true,
+                reading_identifier: readingIdentifier,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                    lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+                }
             });
         } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
             return fail(mapPosUseCaseError(error, 'Failed to generate daily Z-reading'));
         }
     };
@@ -857,14 +1232,170 @@ export const buildGetDailyZReadingUseCase = ({ posRepository }) => {
     return async ({ businessDateInput }) => {
         try {
             const { businessDate, startAt, endAt } = buildBusinessDateRange(businessDateInput);
-            const summary = await posRepository.getZReadingSummary({ startAt, endAt });
+            const snapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(businessDate);
+            if (snapshot) {
+                const normalizedSummary = normalizeZReadingSummary(
+                    normalizeJsonObject(snapshot.summary, {})
+                );
+                const zCounterValue = Number.parseInt(snapshot.z_counter_value || 0, 10);
+                const resetCounterValue = Number.parseInt(snapshot.reset_counter_value || 0, 10);
+                const lifetimeGrandTotalCents = Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10);
+
+                return ok({
+                    business_date: businessDate,
+                    generated_at: snapshot.generated_at || snapshot.created_at || new Date().toISOString(),
+                    summary: normalizedSummary,
+                    snapshot_persisted: true,
+                    reading_identifier: snapshot.reading_identifier || null,
+                    counters: {
+                        z_counter: zCounterValue,
+                        reset_counter: resetCounterValue,
+                        lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                        lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+                    }
+                });
+            }
+
+            const summary = normalizeZReadingSummary(
+                await posRepository.getZReadingSummary({ startAt, endAt })
+            );
+            const [zCounterValue, resetCounterValue, lifetimeGrandTotalCents] = await Promise.all([
+                posRepository.getPersistentCounterValue(Z_READING_COUNTER_KEY),
+                posRepository.getPersistentCounterValue(RESET_COUNTER_KEY),
+                posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY)
+            ]);
+
             return ok({
                 business_date: businessDate,
                 generated_at: new Date().toISOString(),
-                summary
+                summary,
+                snapshot_persisted: false,
+                reading_identifier: null,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                    lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+                }
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve daily Z-reading'));
+        }
+    };
+};
+
+export const buildGetCurrentXReadingUseCase = ({ posRepository }) => {
+    return async ({ query = {} }) => {
+        try {
+            const { businessDate, startAt, endAt } = buildBusinessDateRange(
+                query?.business_date || new Date()
+            );
+            const terminalId = String(query?.terminal_id || '').trim() || null;
+            const summary = normalizeZReadingSummary(
+                await posRepository.getZReadingSummary({ startAt, endAt, terminalId })
+            );
+            const [zCounterValue, resetCounterValue, lifetimeGrandTotalCents] = await Promise.all([
+                posRepository.getPersistentCounterValue(Z_READING_COUNTER_KEY),
+                posRepository.getPersistentCounterValue(RESET_COUNTER_KEY),
+                posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY)
+            ]);
+            const generatedAt = new Date();
+
+            return ok({
+                business_date: businessDate,
+                terminal_id: terminalId,
+                generated_at: generatedAt.toISOString(),
+                summary,
+                snapshot_persisted: false,
+                reading_identifier: buildXReadingIdentifier({
+                    businessDate,
+                    generatedAt
+                }),
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                    lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+                }
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to retrieve current X-reading'));
+        }
+    };
+};
+
+export const buildIncrementGovernedResetCounterUseCase = ({ posRepository }) => {
+    return async ({ payload = {}, user = null }) => {
+        const reason = String(payload?.reason || '').trim();
+        const evidenceRef = String(payload?.evidence_ref || '').trim() || null;
+        const confirmationText = String(payload?.confirmation_text || '').trim();
+        const actorUserId = parsePositiveInt(user?.user_id);
+
+        if (!reason || reason.length < 8) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'reason is required and must be at least 8 characters',
+                { statusCode: 422 }
+            ));
+        }
+        if (confirmationText !== RESET_COUNTER_CONFIRMATION_TEXT) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `confirmation_text must exactly match ${RESET_COUNTER_CONFIRMATION_TEXT}`,
+                { statusCode: 422 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
+
+        try {
+            transaction = await sequelize.transaction();
+
+            const businessDate = nowInManilaBusinessDate();
+            const [zCounterValue, resetCounterValue, lifetimeGrandTotalCents] = await Promise.all([
+                posRepository.getPersistentCounterValue(Z_READING_COUNTER_KEY, { transaction }),
+                posRepository.incrementPersistentCounter(RESET_COUNTER_KEY, 1, { transaction }),
+                posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY, { transaction })
+            ]);
+            const readingIdentifier = `RST-${businessDate.replace(/-/g, '')}-${String(resetCounterValue).padStart(8, '0')}`;
+            const recordedAt = new Date();
+
+            await posRepository.createZReadingSnapshot({
+                business_date: businessDate,
+                reading_identifier: readingIdentifier,
+                z_counter_value: zCounterValue,
+                reset_counter_value: resetCounterValue,
+                lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                summary: {
+                    event_type: 'governed_reset_counter_increment',
+                    reason,
+                    evidence_ref: evidenceRef,
+                    actor_user_id: actorUserId,
+                    recorded_at: recordedAt.toISOString()
+                }
+            }, { transaction });
+
+            await transaction.commit();
+
+            return ok({
+                business_date: businessDate,
+                recorded_at: recordedAt.toISOString(),
+                reset_event_identifier: readingIdentifier,
+                reason,
+                evidence_ref: evidenceRef,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents,
+                    lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+                }
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to increment governed reset counter'));
         }
     };
 };
@@ -1127,6 +1658,13 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             : nowInManilaBusinessDate();
         const openingFloatAmount = round4(Number(payload?.opening_float_amount || 0));
         const openingNote = String(payload?.opening_note || '').trim() || null;
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            terminal_id: terminalId,
+            business_date: businessDate,
+            opening_float_amount: openingFloatAmount,
+            opening_note: openingNote
+        });
 
         if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
             return fail(new DomainError(
@@ -1137,6 +1675,16 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
                 context: {
@@ -1151,10 +1699,24 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
                 cashierId: normalizedUserId
             });
             if (existing) {
-                return ok({
+                const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
                     shift: toSerializable(existing)
+                };
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                    responsePayload: replayPayload,
+                    createdBy: normalizedUserId
+                });
+                return ok({
+                    ...replayPayload,
+                    idempotent_replay: false,
+                    replay_outcome: 'processed'
                 });
             }
 
@@ -1168,12 +1730,37 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
                 status: 'open'
             });
 
-            return ok({
+            const replayPayload = {
                 reused_existing: false,
                 compliance_decision: complianceDecision,
                 shift: toSerializable(created)
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: normalizedUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
             });
         } catch (error) {
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: normalizedUserId
+                });
+            }
             return fail(mapPosUseCaseError(error, 'Failed to open terminal shift'));
         }
     };
@@ -1226,6 +1813,13 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
         const eventType = String(payload?.event_type || '').trim();
         const amount = round4(Number(payload?.amount || 0));
         const reason = String(payload?.reason || '').trim();
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            shift_id: normalizedShiftId,
+            event_type: eventType,
+            amount,
+            reason
+        });
 
         if (!CASH_EVENT_EFFECT[eventType]) {
             return fail(new DomainError(
@@ -1250,13 +1844,23 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
         }
 
         try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.CASH_EVENT,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
             const shift = await posRepository.getTerminalShiftById(normalizedShiftId);
             if (!shift || shift.status !== 'open') {
-                return fail(new DomainError(
+                throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Cash drawer events can only be recorded for open shifts',
                     { statusCode: 422 }
-                ));
+                );
             }
 
             const complianceDecision = await assertPosComplianceAllowed({
@@ -1276,11 +1880,36 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 recorded_by: normalizedUserId
             });
 
-            return ok({
+            const replayPayload = {
                 ...toSerializable(created),
                 compliance_decision: complianceDecision
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.CASH_EVENT,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: normalizedUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
             });
         } catch (error) {
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.CASH_EVENT,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: normalizedUserId
+                });
+            }
             return fail(mapPosUseCaseError(error, 'Failed to record cash drawer event'));
         }
     };
@@ -1300,6 +1929,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
 
         const closingCashAmount = round4(Number(payload?.closing_cash_amount || 0));
         const closingNote = String(payload?.closing_note || '').trim() || null;
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            shift_id: normalizedShiftId,
+            closing_cash_amount: closingCashAmount,
+            closing_note: closingNote
+        });
         if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1309,13 +1944,23 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_CLOSE,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
             const shift = await posRepository.getTerminalShiftById(normalizedShiftId);
             if (!shift || shift.status !== 'open') {
-                return fail(new DomainError(
+                throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Only open shifts can be closed',
                     { statusCode: 422 }
-                ));
+                );
             }
 
             const complianceDecision = await assertPosComplianceAllowed({
@@ -1345,7 +1990,7 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 status: 'closed'
             });
 
-            return ok({
+            const replayPayload = {
                 compliance_decision: complianceDecision,
                 shift: toSerializable(closed),
                 cash_summary: {
@@ -1354,8 +1999,33 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     expected_cash_amount: expectedCashAmount,
                     cash_variance_amount: variance
                 }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_CLOSE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: normalizedUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
             });
         } catch (error) {
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.SHIFT_CLOSE,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: normalizedUserId
+                });
+            }
             return fail(mapPosUseCaseError(error, 'Failed to close terminal shift'));
         }
     };
@@ -1468,6 +2138,11 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
                 { statusCode: 422 }
             ));
         }
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            pos_transaction_id: normalizedTransactionId,
+            fulfillment_status: targetStatus
+        });
 
         const actingUserId = parsePositiveInt(user?.user_id);
         if (!actingUserId) {
@@ -1478,10 +2153,20 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             ));
         }
 
-        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        const transaction = await sequelize.transaction();
-
+        let transaction = null;
         try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_STATUS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
             const existing = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
                 transaction,
                 lock: true
@@ -1554,12 +2239,37 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             });
 
             await transaction.commit();
-            return ok({
+            const replayPayload = {
                 order: toSerializable(updated)
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_STATUS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: actingUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
             });
         } catch (error) {
-            if (!transaction.finished) {
+            if (transaction && !transaction.finished) {
                 await transaction.rollback();
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.ORDER_STATUS_UPDATE,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: actingUserId
+                });
             }
             return fail(mapPosUseCaseError(error, 'Failed to update online order status'));
         }
