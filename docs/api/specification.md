@@ -1692,6 +1692,19 @@ Discount policy (current contract):
 - POS transaction stores immutable snapshots:
   - `discount_label_snapshot`
   - `discount_rate_snapshot` (percentage, `0.0000` to `100.0000`)
+- Special-discount identity evidence:
+  - For discount labels that map to `senior`, `pwd`, or `national_athlete`, request must include:
+    - `discount_beneficiary.category`
+    - `discount_beneficiary.name`
+    - `discount_beneficiary.id_number`
+  - Evidence is stored in immutable transaction metadata and exposed in compliance package exports.
+
+Payment handoff policy (current contract):
+- Optional request field: `payment_handoff_mode` (`external` | `internal`).
+- Default behavior:
+  - `cash` -> `internal`
+  - non-cash (`gcash`, `maya`, `card`, `bank_transfer`) -> `external`
+- When BSP OPS controls are incomplete, internal non-cash flows are denied with reason-coded compliance errors; external handoff remains allowed.
 
 **Permission**: `pos:transact`  
 **Plan Gate**: Premium (`requirePremium`)
@@ -1705,6 +1718,20 @@ Checkout is evaluated by the compliance policy engine:
    - incomplete profile/settings (`COMPLIANCE_PROFILE_INCOMPLETE`)
    - unverified/missing artifacts (`COMPLIANCE_ARTIFACTS_INCOMPLETE`)
    - missing terminal-qualified accredited peripherals (`TERMINAL_DEVICE_MISMATCH` or `ACCREDITED_PERIPHERAL_REQUIRED`)
+
+Compliance checklist contract (used by Settings > Compliance and Admin review):
+- `GET /api/v1/compliance/checklist` includes legacy missing arrays plus guided UX fields:
+  - `requirements[]` (`code`, `label`, `section`, `status`, `action_target`)
+  - `section_progress`
+  - `activation_blockers[]`
+  - `next_blocking_step`
+  - `documentary_readiness` (`complete`, `total`, `missing`, `ready`, `items[]`)
+    - `items[]` includes `quality_ok`, `quality_issues[]`, `fresh`, and `age_days` for deterministic documentary evidence gating
+  - `evidence.encryption_policy_prerequisites_ready`
+  - `evidence.encryption_policy_checks`
+  - `evidence.encryption_policy_issues[]`
+- `POST /api/v1/compliance/activate` requires body payload:
+  - `{ "confirmation_text": "ACTIVATE COMPLIANT" }`
 
 **Calculation Contract**
 1. `items_subtotal = sum(line qty * line sale_price)`
@@ -1762,11 +1789,18 @@ Open a terminal shift for cashier operations.
 **Request Body**
 ```json
 {
+  "idempotency_key": "shift-open-20260409-web-pos-01",
   "terminal_id": "WEB-POS-01",
   "opening_float_amount": 500.0,
   "opening_note": "Start of day float"
 }
 ```
+
+**Response Notes**
+- Successful responses include:
+  - `data.idempotent_replay` (`true` for replay hit, otherwise `false`)
+  - `data.replay_outcome` (`processed` or `idempotent_replay`)
+- Idempotency conflict/blocked outcomes return error payloads with `errors.idempotency.outcome` (`conflict` or `blocked`).
 
 ### POST /pos/terminal/shifts/:id/cash-events
 Record a cash drawer adjustment event for an active shift.
@@ -1777,11 +1811,15 @@ Record a cash drawer adjustment event for an active shift.
 **Request Body**
 ```json
 {
+  "idempotency_key": "cash-event-20260409-001",
   "event_type": "cash_in",
   "amount": 100.0,
   "reason": "Petty cash top-up"
 }
 ```
+
+**Response Notes**
+- Successful responses include `data.idempotent_replay` and `data.replay_outcome` with the same contract as shift-open.
 
 ### POST /pos/terminal/shifts/:id/close
 Close a terminal shift and lock in shift-level cash variance data.
@@ -1792,10 +1830,14 @@ Close a terminal shift and lock in shift-level cash variance data.
 **Request Body**
 ```json
 {
+  "idempotency_key": "shift-close-20260409-001",
   "closing_cash_amount": 1200.0,
   "closing_note": "End of shift handover"
 }
 ```
+
+**Response Notes**
+- Successful responses include `data.idempotent_replay` and `data.replay_outcome` with the same contract as shift-open.
 
 ### GET /pos/terminal/dashboard/today
 Get today dashboard totals for terminal operations.
@@ -1833,6 +1875,7 @@ Update online order fulfillment status from POS terminal operations.
 **Request Body**
 ```json
 {
+  "idempotency_key": "order-status-20260409-789-completed",
   "fulfillment_status": "confirmed"
 }
 ```
@@ -1851,18 +1894,31 @@ Update online order fulfillment status from POS terminal operations.
 1. Allowed transitions are lifecycle-validated server-side.
 2. Delivery orders must progress to `out_for_delivery` (not `ready_for_pickup`).
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
+4. Successful responses include `data.idempotent_replay` and `data.replay_outcome` (`processed` or `idempotent_replay`); conflicts/blocked replays surface in error payload idempotency details.
 
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:close_day`  
 **Plan Gate**: Premium (`requirePremium`)
+
+**Extended Response Fields (non-breaking)**
+- `snapshot_persisted` (`boolean`)
+- `reading_identifier` (`string`, stable per persisted close-day snapshot)
+- `counters`:
+  - `z_counter`
+  - `reset_counter`
+  - `lifetime_grand_total_cents`
+  - `lifetime_grand_total`
 
 ### GET /pos/z-reading/:date
 Retrieve Z-reading summary for a specific business date (`YYYY-MM-DD`).
 
 **Permission**: `pos:view`  
 **Plan Gate**: Premium (`requirePremium`)
+
+When a persisted snapshot exists for the requested date, response uses the stored snapshot payload.
+When no snapshot exists, response is computed on demand with `snapshot_persisted=false`.
 
 Z-reading summary includes:
 - `transaction_count`
@@ -1871,6 +1927,96 @@ Z-reading summary includes:
 - `service_fee_total`
 - VAT buckets and `total_amount`
 - `payment_breakdown[]`
+
+### GET /pos/x-reading/current
+Retrieve an in-progress (on-demand) X-reading snapshot for a business date and optional terminal.
+
+**Permission**: `pos:view`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `business_date` | ISO date | Optional business date (`YYYY-MM-DD`, defaults to today in Manila business timezone) |
+| `terminal_id` | string | Optional terminal filter |
+
+**Response Notes**
+- Always computed on-demand (`snapshot_persisted=false`).
+- Includes `reading_identifier` with `XR-` prefix.
+- Includes current counters (`z_counter`, `reset_counter`, `lifetime_grand_total_cents`, `lifetime_grand_total`).
+
+### POST /pos/z-reading/governed-reset
+Record a governed reset-counter increment event with immutable event metadata.
+
+**Permission**: `pos:close_day`  
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "reason": "Audit reset event after regulator validation",
+  "evidence_ref": "AUDIT-2026-04-08-001",
+  "confirmation_text": "INCREMENT RESET COUNTER"
+}
+```
+
+**Response Notes**
+- Increments `reset_counter`.
+- Persists a reset event snapshot (`reading_identifier` with `RST-` prefix) for audit traceability.
+- Returns updated counters and `reset_event_identifier`.
+
+### GET /reports/compliance-package
+Return compliance books package with stable schema contracts for:
+1. `sales_journal`
+2. `purchase_journal`
+3. `inventory_book`
+4. `special_discount_journal`
+
+**Permission**: `reports:view` (same report-surface policy as other report endpoints)  
+**Plan Gate**: Existing report gates
+
+**Response Fields**
+- `schema_version` (`compliance-books.v1`)
+- `generated_at`
+- `date_range`
+- `sales_journal.columns[]`, `sales_journal.rows[]`
+- `purchase_journal.columns[]`, `purchase_journal.rows[]`
+- `inventory_book.columns[]`, `inventory_book.rows[]`
+- `special_discount_journal.columns[]`, `special_discount_journal.rows[]`
+- `record_counts`
+- `submission_manifest` (`version`, `filing_profile`, `generated_at`, `checksums`, `instructions_ref`)
+  - `checksums` includes journal hashes plus documentary artifact hashes:
+    - `system_flow_diagram_sha256`
+    - `system_flow_diagram_image_sha256`
+    - `software_specification_sha256`
+    - `backup_disaster_recovery_plan_sha256`
+    - `filing_instructions_sha256`
+    - `restore_drill_evidence_sha256`
+    - `encryption_verification_evidence_sha256`
+
+**Security Signal Notes**
+- Large exports (threshold-based) emit immutable compliance security signal audit events (`event_type=security_signal`, `operation=security.mass_export_threshold_reached`) for breach-readiness evidence.
+
+### GET /reports/compliance-package/export
+Return submission-ready compliance export bundle metadata and CSV file payloads for filing workflows.
+
+**Permission**: `reports:view`  
+**Plan Gate**: Existing report gates
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `startDate` | ISO datetime | Optional inclusive range start |
+| `endDate` | ISO datetime | Optional inclusive range end |
+| `filing_profile` | string | Optional filing profile token (`dgfy` default) |
+
+**Response Fields**
+- `bundle_name`
+- `generated_at`
+- `filing_profile`
+- `submission_manifest`
+- `record_counts`
+- `files[]` (`name`, `mime_type`, `content`)
 
 ---
 
@@ -1955,6 +2101,10 @@ Create online-store order and return tracking metadata.
 
 **Auth**: Optional store customer (`Store JWT`)  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+
+**Validation Note**
+- Validation or stock-constraint breaches return `422` with machine-readable error details.
+- Server errors (`500`) are not the expected contract for normal checkout validation failures.
 
 ### GET /store/track/:tracking_pin
 Track online-store order status for public users.
@@ -2653,6 +2803,75 @@ No body required.
 - **DROPS** the tenant's isolated database (`sku_tenant_...`)
 - Removes the tenant record from the `Tenants` table
 - This action cannot be undone. All data is lost.
+
+### GET /admin/tenants/:id/compliance/security-incidents
+List tenant security incidents aggregated from immutable compliance audit logs.
+
+**Access:** Admin JWT required (`authenticateAdmin`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `limit` | number | Max log rows scanned for incident aggregation (default 200, max 500) |
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "incidents": [
+      {
+        "incident_id": "sig-mass_export_threshold_reached-20260408103000",
+        "signal_code": "mass_export_threshold_reached",
+        "severity": "warning",
+        "status": "acknowledged",
+        "opened_at": "2026-04-08T10:30:00.000Z",
+        "updated_at": "2026-04-08T11:00:00.000Z",
+        "event_count": 2,
+        "dispatch": {
+          "channel": "email",
+          "delivery_status": "queued",
+          "attempted_at": "2026-04-08T11:00:30.000Z",
+          "error": null,
+          "target_configured": true,
+          "dispatch_reference": "email:compliance@example.com"
+        }
+      }
+    ],
+    "counts": {
+      "total": 1,
+      "requires_action": 1,
+      "new": 0,
+      "acknowledged": 1,
+      "resolved": 0
+    }
+  }
+}
+```
+
+### POST /admin/tenants/:id/compliance/security-incidents/:incident_id/acknowledge
+Append immutable compliance audit evidence that an incident has been acknowledged.
+
+### POST /admin/tenants/:id/compliance/security-incidents/:incident_id/resolve
+Append immutable compliance audit evidence that an incident has been resolved.
+
+**Request Body (both endpoints)**
+```json
+{
+  "note": "Validated incident and completed remediation",
+  "evidence_ref": "SEC-INC-2026-041"
+}
+```
+
+**Response Notes (both endpoints)**
+- `data.dispatch` includes latest dispatch summary (`channel`, `delivery_status`, `attempted_at`, `error`).
+- `delivery_status` values:
+  - `recorded` for `audit_only` mode
+  - `queued` or `sent` when external channel target is configured
+  - `failed` when strict channel delivery is enabled but target is missing or simulated dispatch failure is triggered
+- `data.dispatch.target_configured` is `false` when strict channel delivery was requested but no endpoint/recipient is configured.
+- `data.dispatch.dispatch_reference` is included when a concrete email/webhook target is available.
+- `data.dispatch_attempt_append_result` indicates where immutable dispatch evidence was persisted (`primary`, `fallback`, or `none`).
 
 ---
 

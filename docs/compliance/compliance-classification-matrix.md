@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-08
 applies_to: compliance_sensitive_change_classification
 topic: compliance_classification_matrix
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -12,6 +12,10 @@ related_adr: 0007-dual-mode-pos-compliance-program.md
 
 ## Purpose
 Define deterministic minimum classification floors enforced by `scripts/check-compliance-impact.js`.
+
+## Source Of Truth
+1. `scripts/check-compliance-impact.js` is normative.
+2. This matrix is a human-readable mirror of `COMPLIANCE_SENSITIVE_RULES` and must be updated whenever that rule set changes.
 
 ## Rule
 1. Classification is auto-minimum from changed compliance-sensitive files.

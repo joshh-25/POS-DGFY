@@ -241,7 +241,7 @@ Quick triage checklist for startup 500s:
 4. Hard-refresh frontend after backend restart
 
 ## 14. `scripts/check-compliance-impact.js`
-Compliance-sensitive change gate used by local pre-commit and CI.
+Compliance-sensitive declaration gate used by local pre-commit and CI.
 
 Usage:
 ```bash
@@ -254,3 +254,46 @@ Behavior:
 - Requires declaration evidence in `docs/compliance/impact-declarations/*.md`.
 - Enforces computed minimum classification floors.
 - Enforces strict preflight metadata for `major|regulatory` declarations.
+
+Related gate (executed as part of `npm run check:compliance`):
+- `scripts/check-compliance-api-contracts.js`
+  - Fails when compliance-sensitive runtime contracts drift from `docs/api/specification.md`.
+  - Currently checks idempotency/replay fields, checklist evidence fields, and admin incident dispatch metadata fields.
+
+## 15. `scripts/check-compliance-api-contracts.js`
+Compliance-sensitive API contract/doc consistency gate.
+
+Usage:
+```bash
+node scripts/check-compliance-api-contracts.js
+npm run check:compliance
+```
+
+Behavior:
+- Verifies key validator/runtime contract strings are present in docs for compliance-sensitive surfaces.
+- Exits non-zero on missing doc/runtime pairs.
+- Keeps doc updates coupled with runtime changes.
+
+## 16. `backend/scripts/seed_compliance_activation_data.js`
+Compliance readiness seed utility for non-production tenants. This script patches compliance profile fields and can optionally seed required settings, artifacts, and peripherals so checklist blockers can be validated deterministically.
+
+Usage:
+```bash
+cd backend
+npm run seed:compliance-activation -- --company-token=token-original --dry-run=true
+npm run seed:compliance-activation -- --company-token=token-original --set-mode-pending=true
+```
+
+Optional flags:
+- `--reference-file=path/to/payload.json` (defaults to embedded BIR/NPC reference payload)
+- `--actor-user-id=<id>` (default `2`)
+- `--readiness-passed=true|false`
+- `--last-tested-at=YYYY-MM-DDTHH:mm:ss.sssZ`
+- `--seed-settings=true|false`
+- `--seed-artifacts=true|false`
+- `--seed-peripherals=true|false`
+
+Safety notes:
+- Run `--dry-run=true` first to preview merged `compliance_profile`.
+- Targeting is by `--company-token`; verify tenant/token mapping before apply.
+- Script respects non-downgrade lifecycle behavior and will not demote `compliant_active`.

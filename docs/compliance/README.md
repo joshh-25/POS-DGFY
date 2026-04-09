@@ -2,19 +2,29 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-09
 applies_to: compliance_docs_navigation
 topic: compliance_docs_index
 ---
 
 # Compliance Docs Index
 
-Active compliance documentation:
+Core compliance documentation:
 - `docs/compliance/ph-pos-software-developer-compliance-guide.md` (authoritative)
 - `docs/compliance/control-matrix.md`
 - `docs/compliance/request-time-preflight-protocol.md`
 - `docs/compliance/compliance-classification-matrix.md`
 - `docs/compliance/compliance-ops-regulatory-verification.md`
+- `docs/compliance/DGFY Compliance Certification Checklist.md`
+
+Evidence and submission packet:
+- `docs/compliance/evidence/open-controls-matrix.md`
+- `docs/compliance/evidence/residual-risk-closure-matrix.md`
+- `docs/compliance/evidence/rbac-sensitive-action-matrix.md`
+- `docs/compliance/evidence/drills/`
+- `docs/compliance/submission/`
+
+Change declaration workflow:
 - `docs/compliance/impact-declarations/`
 
 Historical remediation packets from April 2026 were moved to:
