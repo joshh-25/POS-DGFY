@@ -12,6 +12,7 @@ export const useReports = () => {
     const [productionReport, setProductionReport] = useState(null);
     const [poAnalysisReport, setPoAnalysisReport] = useState(null);
     const [executiveSummary, setExecutiveSummary] = useState(null);
+    const [complianceBooksPackage, setComplianceBooksPackage] = useState(null);
     const [snapshots, setSnapshots] = useState([]);
 
     // Build query string from filters
@@ -122,6 +123,26 @@ export const useReports = () => {
         return null;
     }, []);
 
+    // Fetch compliance books package (Sales Journal / Purchase Journal / Inventory Book)
+    const fetchComplianceBooksPackage = useCallback(async (filters = {}) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const query = buildQuery(filters);
+            const response = await api.get(`/reports/compliance-package${query ? `?${query}` : ''}`);
+            if (response.data.success) {
+                setComplianceBooksPackage(response.data.data);
+                return response.data.data;
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || err.response?.data?.message || err.message);
+            console.error('Error fetching compliance books package:', err);
+        } finally {
+            setLoading(false);
+        }
+        return null;
+    }, []);
+
     // Fetch Snapshots
     const fetchSnapshots = useCallback(async (reportType, limit = 20) => {
         try {
@@ -210,12 +231,14 @@ export const useReports = () => {
         productionReport,
         poAnalysisReport,
         executiveSummary,
+        complianceBooksPackage,
         snapshots,
         fetchExpiryReport,
         fetchStockAgingReport,
         fetchProductionReport,
         fetchPOAnalysisReport,
         fetchExecutiveSummary,
+        fetchComplianceBooksPackage,
         fetchSnapshots,
         saveSnapshot,
         loadSnapshot,

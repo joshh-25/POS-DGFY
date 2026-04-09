@@ -41,6 +41,83 @@ const TERMINAL_SECTION_IDS = {
   incomingOrders: 'pos-section-incoming-orders',
   salesToday: 'pos-section-sales-today'
 };
+const TERMINAL_OPERATION_QUEUE_KEY = 'pos_terminal_operation_queue_v1';
+const MAX_TERMINAL_OPERATION_QUEUE_SIZE = 120;
+const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const DEFAULT_COMPLIANCE_ACTION_TARGET = '/settings?tab=compliance';
+const COMPLIANCE_REASON_LABELS = Object.freeze({
+  COMPLIANCE_GATE_UNAVAILABLE: 'Compliance status unavailable',
+  LEGACY_MODE_SELECTION_REQUIRED: 'Compliance mode selection required',
+  COMPLIANCE_PROFILE_INCOMPLETE: 'Compliance profile incomplete',
+  COMPLIANCE_SETTINGS_INCOMPLETE: 'Compliance settings incomplete',
+  COMPLIANCE_ARTIFACTS_INCOMPLETE: 'Compliance artifacts incomplete',
+  ACCREDITED_PERIPHERAL_REQUIRED: 'Accredited peripherals incomplete',
+  TERMINAL_DEVICE_MISMATCH: 'Terminal-peripheral mismatch',
+  READINESS_TESTS_REQUIRED: 'Readiness tests required',
+  BSP_OPS_REGISTRATION_REQUIRED: 'BSP OPS registration controls incomplete',
+  BSP_PAYMENT_CONTROL_REQUIRED: 'BSP payment control review incomplete'
+});
+
+const normalizeActivationBlocker = (entry) => {
+  const code = String(entry?.code || '').trim() || 'COMPLIANCE_BLOCKER';
+  const actionTarget = String(entry?.action_target || '').trim() || DEFAULT_COMPLIANCE_ACTION_TARGET;
+  const label = COMPLIANCE_REASON_LABELS[code] || code.replace(/_/g, ' ').toLowerCase();
+  return {
+    code,
+    label,
+    section: String(entry?.section || '').trim() || 'compliance',
+    message: String(entry?.message || '').trim() || 'Compliance requirement is not yet satisfied.',
+    action_target: actionTarget
+  };
+};
+
+const normalizeActivationBlockers = (entries = []) => (
+  Array.isArray(entries)
+    ? entries.map((entry) => normalizeActivationBlocker(entry))
+    : []
+);
+
+const createIdempotencyKey = (prefix = 'pos-terminal') => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+const readTerminalOperationQueue = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(TERMINAL_OPERATION_QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry) => entry && typeof entry === 'object');
+  } catch {
+    return [];
+  }
+};
+
+const writeTerminalOperationQueue = (queueEntries = []) => {
+  if (typeof window === 'undefined') return [];
+  const safeEntries = Array.isArray(queueEntries)
+    ? queueEntries.slice(-MAX_TERMINAL_OPERATION_QUEUE_SIZE)
+    : [];
+  window.localStorage.setItem(TERMINAL_OPERATION_QUEUE_KEY, JSON.stringify(safeEntries));
+  return safeEntries;
+};
+
+const removeTerminalOperationIntentById = (intentId) => {
+  if (!intentId) return readTerminalOperationQueue();
+  const queue = readTerminalOperationQueue();
+  const next = queue.filter((entry) => String(entry?.intent_id || '') !== String(intentId));
+  return writeTerminalOperationQueue(next);
+};
+
+const isRetryableTerminalOperationError = (error) => {
+  if (!error?.response) return true;
+  const status = Number(error?.response?.status || 0);
+  return RETRYABLE_TERMINAL_OPERATION_STATUS_CODES.has(status);
+};
 
 const lookupCompanyToken = async (email) => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
@@ -109,7 +186,12 @@ export default function TerminalPage() {
   });
   const [complianceGate, setComplianceGate] = useState({
     loading: false,
-    modeChoiceRequired: false
+    loadError: false,
+    modeChoiceRequired: false,
+    modeState: null,
+    checklistReady: true,
+    missingRequirementCount: 0,
+    activationBlockers: []
   });
   const [formData, setFormData] = useState({
     email: '',
@@ -161,10 +243,13 @@ export default function TerminalPage() {
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
+  const [queuedTerminalOperations, setQueuedTerminalOperations] = useState(() => readTerminalOperationQueue());
+  const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState('checkout');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const workspacePaneRef = useRef(null);
+  const replayingQueueRef = useRef(false);
   const [isDesktopWide, setIsDesktopWide] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= 1280;
@@ -181,6 +266,24 @@ export default function TerminalPage() {
   const canTransactPos = hasPermission('pos:transact');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
+
+  const enqueueTerminalOperationIntent = useCallback((entry, source = 'manual') => {
+    const intentId = String(entry?.intent_id || '').trim();
+    if (!intentId) return;
+
+    const queueEntry = {
+      intent_id: intentId,
+      operation: String(entry?.operation || '').trim() || 'unknown',
+      payload: entry?.payload && typeof entry.payload === 'object' ? entry.payload : {},
+      shift_id: entry?.shift_id || null,
+      pos_transaction_id: entry?.pos_transaction_id || null,
+      queued_at: new Date().toISOString(),
+      source
+    };
+
+    const queue = writeTerminalOperationQueue([...readTerminalOperationQueue(), queueEntry]);
+    setQueuedTerminalOperations(queue);
+  }, []);
 
   const hydrateTerminalMeta = useCallback(async () => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
@@ -227,19 +330,57 @@ export default function TerminalPage() {
 
   const refreshComplianceGate = useCallback(async () => {
     if (locked) {
-      setComplianceGate({ loading: false, modeChoiceRequired: false });
+      setComplianceGate({
+        loading: false,
+        loadError: false,
+        modeChoiceRequired: false,
+        modeState: null,
+        checklistReady: true,
+        missingRequirementCount: 0,
+        activationBlockers: []
+      });
       return;
     }
 
     setComplianceGate((prev) => ({ ...prev, loading: true }));
     try {
       const profile = await getComplianceProfile();
+      const checklist = profile?.checklist || {};
+      const requirements = Array.isArray(checklist.requirements) ? checklist.requirements : [];
+      const derivedMissingCount = requirements.length > 0
+        ? requirements.filter((entry) => String(entry?.status || '').toLowerCase() !== 'complete').length
+        : (
+          (Array.isArray(checklist.missing_profile_fields) ? checklist.missing_profile_fields.length : 0)
+          + (Array.isArray(checklist.missing_artifacts) ? checklist.missing_artifacts.length : 0)
+          + (Array.isArray(checklist.missing_peripheral_classes) ? checklist.missing_peripheral_classes.length : 0)
+          + (Array.isArray(checklist.missing_setting_keys) ? checklist.missing_setting_keys.length : 0)
+        );
       setComplianceGate({
         loading: false,
-        modeChoiceRequired: profile?.mode_choice_required === true
+        loadError: false,
+        modeChoiceRequired: profile?.mode_choice_required === true,
+        modeState: profile?.mode_state || null,
+        checklistReady: checklist.ready_for_compliant_activation === true,
+        missingRequirementCount: Math.max(0, Number(derivedMissingCount) || 0),
+        activationBlockers: normalizeActivationBlockers(checklist.activation_blockers)
       });
     } catch {
-      setComplianceGate((prev) => ({ ...prev, loading: false }));
+      setComplianceGate({
+        loading: false,
+        loadError: true,
+        modeChoiceRequired: false,
+        modeState: null,
+        checklistReady: false,
+        missingRequirementCount: 0,
+        activationBlockers: [
+          normalizeActivationBlocker({
+            code: 'COMPLIANCE_GATE_UNAVAILABLE',
+            section: 'profile',
+            message: 'Compliance status could not be loaded. POS remains blocked until compliance checks can be confirmed.',
+            action_target: DEFAULT_COMPLIANCE_ACTION_TARGET
+          })
+        ]
+      });
     }
   }, [locked]);
 
@@ -345,7 +486,9 @@ export default function TerminalPage() {
 
     try {
       const params = selectedLocationId ? { location_id: selectedLocationId } : {};
-      const payload = await fetchIncomingOnlineOrders(params);
+      const payload = await fetchIncomingOnlineOrders(params, {
+        skipGlobalErrorToast: silent === true
+      });
       setIncomingOrdersState({
         loading: false,
         orders: Array.isArray(payload?.orders) ? payload.orders : [],
@@ -368,6 +511,122 @@ export default function TerminalPage() {
       }
     }
   }, [canViewPos, locked, selectedLocationId]);
+
+  const replayQueuedTerminalOperations = useCallback(async ({ toastIfEmpty = false } = {}) => {
+    if (locked || !isOnline || replayingQueueRef.current) {
+      return;
+    }
+
+    const queue = readTerminalOperationQueue();
+    if (!Array.isArray(queue) || queue.length === 0) {
+      setQueuedTerminalOperations([]);
+      if (toastIfEmpty) {
+        toast.message('No queued terminal operations to replay.');
+      }
+      return;
+    }
+
+    replayingQueueRef.current = true;
+    setReplayingQueuedTerminalOperations(true);
+    let replayedCount = 0;
+    let removedUnrecoverableCount = 0;
+    let blockedByNetwork = false;
+    let shouldRefreshOperational = false;
+    let shouldRefreshIncoming = false;
+
+    try {
+      for (const entry of queue) {
+        const payload = entry?.payload && typeof entry.payload === 'object' ? entry.payload : {};
+        const intentId = String(entry?.intent_id || payload?.idempotency_key || '').trim();
+        const operation = String(entry?.operation || '').trim();
+
+        if (!intentId || !operation) {
+          removeTerminalOperationIntentById(intentId);
+          removedUnrecoverableCount += 1;
+          continue;
+        }
+
+        try {
+          if (operation === 'shift_open') {
+            await openTerminalShift(payload);
+            shouldRefreshOperational = true;
+          } else if (operation === 'cash_event') {
+            const shiftId = Number.parseInt(entry?.shift_id || payload?.shift_id, 10);
+            if (!Number.isInteger(shiftId) || shiftId <= 0) {
+              removeTerminalOperationIntentById(intentId);
+              removedUnrecoverableCount += 1;
+              continue;
+            }
+            await recordCashDrawerEvent(shiftId, payload);
+            shouldRefreshOperational = true;
+          } else if (operation === 'shift_close') {
+            const shiftId = Number.parseInt(entry?.shift_id || payload?.shift_id, 10);
+            if (!Number.isInteger(shiftId) || shiftId <= 0) {
+              removeTerminalOperationIntentById(intentId);
+              removedUnrecoverableCount += 1;
+              continue;
+            }
+            await closeTerminalShift(shiftId, payload);
+            shouldRefreshOperational = true;
+          } else if (operation === 'order_status_update') {
+            const transactionId = Number.parseInt(entry?.pos_transaction_id || payload?.pos_transaction_id, 10);
+            if (!Number.isInteger(transactionId) || transactionId <= 0) {
+              removeTerminalOperationIntentById(intentId);
+              removedUnrecoverableCount += 1;
+              continue;
+            }
+            await updateOnlineOrderStatus(transactionId, payload);
+            shouldRefreshIncoming = true;
+          } else {
+            removeTerminalOperationIntentById(intentId);
+            removedUnrecoverableCount += 1;
+            continue;
+          }
+
+          removeTerminalOperationIntentById(intentId);
+          replayedCount += 1;
+        } catch (error) {
+          if (!isRetryableTerminalOperationError(error)) {
+            removeTerminalOperationIntentById(intentId);
+            removedUnrecoverableCount += 1;
+            continue;
+          }
+
+          blockedByNetwork = true;
+          break;
+        }
+      }
+
+      const nextQueue = readTerminalOperationQueue();
+      setQueuedTerminalOperations(nextQueue);
+
+      if (shouldRefreshOperational) {
+        await refreshOperationalContext();
+      }
+      if (shouldRefreshIncoming) {
+        await refreshIncomingOrders({ silent: true });
+      }
+
+      if (replayedCount > 0) {
+        toast.success(`${replayedCount} queued terminal operation${replayedCount === 1 ? '' : 's'} replayed.`);
+      } else if (toastIfEmpty && !blockedByNetwork) {
+        toast.message('No queued terminal operations were replayed.');
+      }
+
+      if (removedUnrecoverableCount > 0) {
+        toast.warning(
+          `${removedUnrecoverableCount} queued terminal operation${removedUnrecoverableCount === 1 ? '' : 's'} were removed due to non-retryable errors.`
+        );
+      }
+
+      if (blockedByNetwork && replayedCount === 0) {
+        toast.message('Queued terminal operations are still waiting for connectivity.');
+      }
+    } finally {
+      setReplayingQueuedTerminalOperations(false);
+      replayingQueueRef.current = false;
+    }
+  }, [isOnline, locked, refreshIncomingOrders, refreshOperationalContext]);
 
   const hydrateUser = useCallback(async () => {
     const token = localStorage.getItem('authToken');
@@ -428,7 +687,15 @@ export default function TerminalPage() {
       refreshComplianceGate();
       return;
     }
-    setComplianceGate({ loading: false, modeChoiceRequired: false });
+    setComplianceGate({
+      loading: false,
+      loadError: false,
+      modeChoiceRequired: false,
+      modeState: null,
+      checklistReady: true,
+      missingRequirementCount: 0,
+      activationBlockers: []
+    });
   }, [locked, refreshComplianceGate]);
 
   useEffect(() => {
@@ -490,11 +757,56 @@ export default function TerminalPage() {
 
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
+    if (complianceGate.loadError) return 'Compliance status is unavailable. Please refresh and retry.';
     if (complianceGate.modeChoiceRequired) return 'Compliance mode selection is required. Ask tenant master admin to select mode in Settings > Compliance.';
+    if (complianceGate.modeState === 'compliant_pending' && complianceGate.checklistReady !== true) {
+      return `Compliant mode activation checklist is incomplete (${complianceGate.missingRequirementCount} unresolved requirement${complianceGate.missingRequirementCount === 1 ? '' : 's'}). Complete required profile, settings, artifacts, and peripherals in Settings > Compliance.`;
+    }
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
     return '';
-  }, [canTransactPos, complianceGate.modeChoiceRequired, locked, shiftState.shift]);
+  }, [canTransactPos, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked, shiftState.shift]);
+
+  const complianceBlockerDetails = useMemo(() => {
+    if (locked) {
+      return null;
+    }
+    if (complianceGate.loadError) {
+      const firstBlocker = complianceGate.activationBlockers[0] || null;
+      return {
+        title: 'Compliance gate unavailable',
+        message: 'POS operations are blocked until compliance readiness can be verified.',
+        actionLabel: 'Open Compliance Settings',
+        actionHref: firstBlocker?.action_target || DEFAULT_COMPLIANCE_ACTION_TARGET,
+        missingRequirementCount: 0,
+        blockers: complianceGate.activationBlockers,
+        reasonCode: firstBlocker?.code || 'COMPLIANCE_GATE_UNAVAILABLE'
+      };
+    }
+    if (complianceGate.modeChoiceRequired) {
+      return {
+        title: 'Compliance mode selection required',
+        message: 'POS operations are blocked until a tenant master admin selects compliance mode.',
+        actionLabel: 'Open Compliance Settings',
+        actionHref: DEFAULT_COMPLIANCE_ACTION_TARGET,
+        missingRequirementCount: 0,
+        reasonCode: 'LEGACY_MODE_SELECTION_REQUIRED'
+      };
+    }
+    if (complianceGate.modeState === 'compliant_pending' && complianceGate.checklistReady !== true) {
+      const firstBlocker = complianceGate.activationBlockers[0] || null;
+      return {
+        title: 'Compliant activation checklist incomplete',
+        message: `Finish all pending compliance requirements before terminal operations continue. ${complianceGate.missingRequirementCount} requirement${complianceGate.missingRequirementCount === 1 ? '' : 's'} remain unresolved.`,
+        actionLabel: 'Resolve Checklist',
+        actionHref: firstBlocker?.action_target || DEFAULT_COMPLIANCE_ACTION_TARGET,
+        missingRequirementCount: complianceGate.missingRequirementCount,
+        blockers: complianceGate.activationBlockers,
+        reasonCode: firstBlocker?.code || 'COMPLIANCE_PROFILE_INCOMPLETE'
+      };
+    }
+    return null;
+  }, [complianceGate.activationBlockers, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const handleLogin = async (event) => {
@@ -545,8 +857,8 @@ export default function TerminalPage() {
   };
 
   const handleOpenShift = async () => {
-    if (complianceGate.modeChoiceRequired) {
-      toast.error('Compliance mode selection is required before terminal operations can continue.');
+    if (complianceBlockerDetails) {
+      toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
       return;
     }
     if (!canTransactPos) {
@@ -562,26 +874,49 @@ export default function TerminalPage() {
       return;
     }
 
+    const payload = {
+      terminal_id: TERMINAL_ID,
+      opening_float_amount: openingFloatAmount,
+      opening_note: String(openShiftForm.openingNote || '').trim() || undefined,
+      idempotency_key: createIdempotencyKey('pos-shift-open')
+    };
+    const queueEntry = {
+      intent_id: payload.idempotency_key,
+      operation: 'shift_open',
+      payload
+    };
+
+    if (!isOnline) {
+      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      toast.message(
+        `You are offline. Shift-open action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+      );
+      return;
+    }
+
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     try {
-      const result = await openTerminalShift({
-        terminal_id: TERMINAL_ID,
-        opening_float_amount: openingFloatAmount,
-        opening_note: String(openShiftForm.openingNote || '').trim() || undefined
-      });
+      const result = await openTerminalShift(payload);
       toast.success(result?.reused_existing ? 'Existing open shift found and reused.' : 'Terminal shift opened.');
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
       await refreshOperationalContext();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to open terminal shift.');
+      if (isRetryableTerminalOperationError(error)) {
+        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        toast.message(
+          `Shift-open action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+        );
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to open terminal shift.');
+      }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
     }
   };
 
   const handleRecordCashEvent = async () => {
-    if (complianceGate.modeChoiceRequired) {
-      toast.error('Compliance mode selection is required before terminal operations can continue.');
+    if (complianceBlockerDetails) {
+      toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
       return;
     }
     if (!activeShiftId) {
@@ -599,26 +934,50 @@ export default function TerminalPage() {
       return;
     }
 
+    const payload = {
+      event_type: cashEventForm.eventType,
+      amount,
+      reason,
+      idempotency_key: createIdempotencyKey('pos-cash-event')
+    };
+    const queueEntry = {
+      intent_id: payload.idempotency_key,
+      operation: 'cash_event',
+      shift_id: activeShiftId,
+      payload
+    };
+
+    if (!isOnline) {
+      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      toast.message(
+        `You are offline. Cash drawer action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+      );
+      return;
+    }
+
     setShiftActionLoading((prev) => ({ ...prev, cashEvent: true }));
     try {
-      await recordCashDrawerEvent(activeShiftId, {
-        event_type: cashEventForm.eventType,
-        amount,
-        reason
-      });
+      await recordCashDrawerEvent(activeShiftId, payload);
       toast.success('Cash drawer event recorded.');
       setCashEventForm((prev) => ({ ...prev, amount: '', reason: '' }));
       await refreshOperationalContext();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to record cash drawer event.');
+      if (isRetryableTerminalOperationError(error)) {
+        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        toast.message(
+          `Cash drawer action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+        );
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to record cash drawer event.');
+      }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, cashEvent: false }));
     }
   };
 
   const handleCloseShift = async () => {
-    if (complianceGate.modeChoiceRequired) {
-      toast.error('Compliance mode selection is required before terminal operations can continue.');
+    if (complianceBlockerDetails) {
+      toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
       return;
     }
     if (!activeShiftId) {
@@ -634,17 +993,41 @@ export default function TerminalPage() {
       return;
     }
 
+    const payload = {
+      closing_cash_amount: closingCashAmount,
+      closing_note: String(closeShiftForm.closingNote || '').trim() || undefined,
+      idempotency_key: createIdempotencyKey('pos-shift-close')
+    };
+    const queueEntry = {
+      intent_id: payload.idempotency_key,
+      operation: 'shift_close',
+      shift_id: activeShiftId,
+      payload
+    };
+
+    if (!isOnline) {
+      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      toast.message(
+        `You are offline. Shift-close action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+      );
+      return;
+    }
+
     setShiftActionLoading((prev) => ({ ...prev, close: true }));
     try {
-      await closeTerminalShift(activeShiftId, {
-        closing_cash_amount: closingCashAmount,
-        closing_note: String(closeShiftForm.closingNote || '').trim() || undefined
-      });
+      await closeTerminalShift(activeShiftId, payload);
       toast.success('Shift closed successfully.');
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       await refreshOperationalContext();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to close shift.');
+      if (isRetryableTerminalOperationError(error)) {
+        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        toast.message(
+          `Shift-close action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+        );
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to close shift.');
+      }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, close: false }));
     }
@@ -663,13 +1046,39 @@ export default function TerminalPage() {
       return;
     }
 
+    const payload = {
+      fulfillment_status: nextStatus,
+      idempotency_key: createIdempotencyKey('pos-order-status')
+    };
+    const queueEntry = {
+      intent_id: payload.idempotency_key,
+      operation: 'order_status_update',
+      pos_transaction_id: normalizedId,
+      payload
+    };
+
+    if (!isOnline) {
+      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      toast.message(
+        `You are offline. Order status update was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+      );
+      return;
+    }
+
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: nextStatus }));
     try {
-      await updateOnlineOrderStatus(normalizedId, { fulfillment_status: nextStatus });
+      await updateOnlineOrderStatus(normalizedId, payload);
       toast.success('Online order status updated.');
       await refreshIncomingOrders({ silent: true });
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update online order status.');
+      if (isRetryableTerminalOperationError(error)) {
+        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        toast.message(
+          `Order status update queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+        );
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to update online order status.');
+      }
     } finally {
       setIncomingOrderActionState((prev) => {
         const next = { ...prev };
@@ -758,7 +1167,10 @@ export default function TerminalPage() {
   }, [isDesktopWide]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      setQueuedTerminalOperations(readTerminalOperationQueue());
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -767,6 +1179,15 @@ export default function TerminalPage() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    setQueuedTerminalOperations(readTerminalOperationQueue());
+  }, [locked]);
+
+  useEffect(() => {
+    if (!isOnline || locked || queuedTerminalOperations.length === 0) return;
+    replayQueuedTerminalOperations();
+  }, [isOnline, locked, queuedTerminalOperations.length, replayQueuedTerminalOperations]);
 
   useEffect(() => {
     if (posViewMode === 'history' && !canViewPos) {
@@ -841,6 +1262,10 @@ export default function TerminalPage() {
         setSidebarCollapsed={setSidebarCollapsed}
         activeShiftId={activeShiftId}
         checkoutBlockedReason={checkoutBlockedReason}
+        complianceBlockerDetails={complianceBlockerDetails}
+        queuedTerminalOperationCount={queuedTerminalOperations.length}
+        replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
+        handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
         handleCheckoutCompleted={handleCheckoutCompleted}
         setPosViewMode={setPosViewMode}
         receiptRequestId={receiptRequestId}

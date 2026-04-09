@@ -34,6 +34,16 @@ export const fetchDailyZReading = async (businessDate) => {
     return response.data?.data;
 };
 
+export const fetchCurrentXReading = async (params = {}) => {
+    const response = await api.get('/pos/x-reading/current', { params });
+    return response.data?.data;
+};
+
+export const incrementGovernedResetCounter = async (payload) => {
+    const response = await api.post('/pos/z-reading/governed-reset', payload);
+    return response.data?.data;
+};
+
 export const fetchCurrentTerminalShift = async (params = {}) => {
     const response = await api.get('/pos/terminal/shifts/current', { params });
     return response.data?.data;
@@ -59,8 +69,11 @@ export const fetchTerminalTodayDashboard = async (params = {}) => {
     return response.data?.data;
 };
 
-export const fetchIncomingOnlineOrders = async (params = {}) => {
-    const response = await api.get('/pos/incoming-orders', { params });
+export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/incoming-orders', {
+        params,
+        ...requestConfig
+    });
     return response.data?.data;
 };
 
@@ -76,6 +89,8 @@ export default {
     fetchPosTransactionById,
     closePosDay,
     fetchDailyZReading,
+    fetchCurrentXReading,
+    incrementGovernedResetCounter,
     fetchCurrentTerminalShift,
     openTerminalShift,
     recordCashDrawerEvent,

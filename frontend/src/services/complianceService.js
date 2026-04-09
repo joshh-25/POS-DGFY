@@ -16,7 +16,7 @@ export const getComplianceChecklist = async ({ terminalId = null } = {}) => {
   return unwrapData(await api.get('/compliance/checklist', { params }));
 };
 
-export const activateCompliantMode = async () => unwrapData(await api.post('/compliance/activate'));
+export const activateCompliantMode = async (payload = {}) => unwrapData(await api.post('/compliance/activate', payload));
 
 export const updateComplianceProfile = async (profilePatch) => (
   unwrapData(await api.put('/compliance/profile', profilePatch))

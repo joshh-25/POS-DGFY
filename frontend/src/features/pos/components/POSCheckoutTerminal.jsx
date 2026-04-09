@@ -3,6 +3,7 @@ import { Folder, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import {
     fetchPosCatalog,
     createPosCheckout,
@@ -99,9 +100,88 @@ const buildMissingFieldsMessage = (error) => {
     if (!Array.isArray(missingFields) || missingFields.length === 0) return null;
     return `Missing POS setup fields: ${missingFields.join(', ')}`;
 };
+const buildValidationDetailMessage = (error) => {
+    if (error?.response?.status !== 422) return null;
+
+    const validationErrors = error?.response?.data?.errors;
+    if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+        const summarized = validationErrors
+            .map((entry) => {
+                const field = String(entry?.field || '').trim();
+                const message = String(entry?.message || '').trim();
+                if (!message) return null;
+                return field ? `${field}: ${message}` : message;
+            })
+            .filter(Boolean);
+
+        if (summarized.length > 0) {
+            return summarized.slice(0, 2).join(' | ');
+        }
+    }
+
+    const fallback = String(error?.response?.data?.message || '').trim();
+    return fallback || null;
+};
+const COMPLIANCE_ACTION_TARGET_BY_REASON = Object.freeze({
+    BSP_OPS_REGISTRATION_REQUIRED: '/settings?tab=compliance#section-profile',
+    BSP_PAYMENT_CONTROL_REQUIRED: '/settings?tab=compliance#section-profile',
+    NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED: '/settings?tab=compliance#section-final-review',
+    COMPLIANT_ACTIVATION_PENDING: '/settings?tab=compliance#section-final-review'
+});
+const buildCompliancePolicyBlockerMessage = (error) => {
+    const complianceDecision = error?.response?.data?.errors?.compliance;
+    if (!complianceDecision || typeof complianceDecision !== 'object') return null;
+
+    const reasonCode = String(complianceDecision.reason_code || '').trim().toUpperCase();
+    if (!reasonCode) return null;
+
+    const obligations = Array.isArray(complianceDecision.obligations)
+        ? complianceDecision.obligations.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+    const actionTarget = COMPLIANCE_ACTION_TARGET_BY_REASON[reasonCode] || '/settings?tab=compliance';
+    const guidance = obligations[0] || 'Open compliance settings and complete the required controls.';
+    const compactTarget = actionTarget.replace('/settings?tab=compliance', 'Settings > Compliance');
+
+    return {
+        reasonCode,
+        actionTarget,
+        message: `Compliance policy blocked checkout (${reasonCode}). ${guidance} Fix path: ${compactTarget}.`
+    };
+};
 const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
+
+const CHECKOUT_INTENT_QUEUE_KEY = 'pos_checkout_intent_queue_v1';
+const MAX_CHECKOUT_INTENT_QUEUE_SIZE = 200;
+
+const readCheckoutIntentQueue = () => {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
+    try {
+        const raw = window.localStorage.getItem(CHECKOUT_INTENT_QUEUE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const writeCheckoutIntentQueue = (queueEntries = []) => {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
+    const safeEntries = Array.isArray(queueEntries)
+        ? queueEntries.slice(-MAX_CHECKOUT_INTENT_QUEUE_SIZE)
+        : [];
+    window.localStorage.setItem(CHECKOUT_INTENT_QUEUE_KEY, JSON.stringify(safeEntries));
+    return safeEntries;
+};
+
+const removeCheckoutIntentById = (intentId) => {
+    const queue = readCheckoutIntentQueue();
+    const next = queue.filter((entry) => String(entry?.intent_id || '') !== String(intentId || ''));
+    writeCheckoutIntentQueue(next);
+    return next;
+};
 
 const createIdempotencyKey = () => {
     if (window?.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -150,6 +230,7 @@ export default function POSCheckoutTerminal({
     activeShiftId = null,
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
+    complianceBlockerDetails = null,
     viewMode: controlledViewMode = null,
     onViewModeChange = null,
     externalReceiptTransactionId = null,
@@ -157,6 +238,7 @@ export default function POSCheckoutTerminal({
     externalHistoryQuery = '',
     onExternalHistoryHydrated = null
 }) {
+    const navigate = useNavigate();
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
     const [viewMode, setViewMode] = useState('checkout');
@@ -177,6 +259,8 @@ export default function POSCheckoutTerminal({
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
+    const [queuedCheckouts, setQueuedCheckouts] = useState([]);
+    const [replayingQueuedCheckouts, setReplayingQueuedCheckouts] = useState(false);
     const [closingDay, setClosingDay] = useState(false);
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
@@ -205,6 +289,22 @@ export default function POSCheckoutTerminal({
             onViewModeChange(nextMode);
         }
     }, [isViewModeControlled, onViewModeChange]);
+
+    const syncQueuedCheckoutsState = useCallback(() => {
+        setQueuedCheckouts(readCheckoutIntentQueue());
+    }, []);
+
+    const enqueueCheckoutIntent = useCallback((payload, source = 'unknown') => {
+        const entry = {
+            intent_id: payload?.idempotency_key || createIdempotencyKey(),
+            payload,
+            queued_at: new Date().toISOString(),
+            source
+        };
+        const queue = writeCheckoutIntentQueue([...readCheckoutIntentQueue(), entry]);
+        setQueuedCheckouts(queue);
+        return entry;
+    }, []);
 
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
@@ -237,6 +337,80 @@ export default function POSCheckoutTerminal({
             setCatalogLoading(false);
         }
     }, [canViewHistory, search, selectedFolderId, sessionLocked]);
+
+    const replayQueuedCheckouts = useCallback(async ({ toastIfEmpty = false } = {}) => {
+        if (sessionLocked) return;
+        if (checkoutBlockedReason) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+        const queue = readCheckoutIntentQueue();
+        if (!Array.isArray(queue) || queue.length === 0) {
+            if (toastIfEmpty) {
+                toast.message('No queued checkouts to replay.');
+            }
+            setQueuedCheckouts([]);
+            return;
+        }
+
+        setReplayingQueuedCheckouts(true);
+        let replayedCount = 0;
+        let removedUnrecoverableCount = 0;
+
+        for (const entry of queue) {
+            const payload = entry?.payload;
+            const intentId = entry?.intent_id || payload?.idempotency_key;
+            if (!payload?.idempotency_key || !intentId) {
+                removedUnrecoverableCount += 1;
+                removeCheckoutIntentById(intentId);
+                continue;
+            }
+
+            try {
+                const data = await createPosCheckout(payload);
+                replayedCount += 1;
+                setLastReceipt(data?.transaction || null);
+                setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
+                if (typeof onCheckoutCompleted === 'function') {
+                    onCheckoutCompleted(data?.transaction || null);
+                }
+                removeCheckoutIntentById(intentId);
+            } catch (error) {
+                if (!error?.response) {
+                    break;
+                }
+
+                const statusCode = Number(error?.response?.status || 0);
+                if (statusCode >= 500 || statusCode === 429) {
+                    continue;
+                }
+
+                removedUnrecoverableCount += 1;
+                removeCheckoutIntentById(intentId);
+            }
+        }
+
+        syncQueuedCheckoutsState();
+        setReplayingQueuedCheckouts(false);
+
+        if (replayedCount > 0) {
+            toast.success(`${replayedCount} queued checkout${replayedCount === 1 ? '' : 's'} replayed successfully.`);
+            loadCatalog();
+        } else if (toastIfEmpty) {
+            toast.message('No queued checkouts were replayed.');
+        }
+
+        if (removedUnrecoverableCount > 0) {
+            toast.error(
+                `${removedUnrecoverableCount} queued checkout${removedUnrecoverableCount === 1 ? '' : 's'} were removed due to non-retryable validation/policy errors.`
+            );
+        }
+    }, [
+        checkoutBlockedReason,
+        loadCatalog,
+        onCheckoutCompleted,
+        sessionLocked,
+        syncQueuedCheckoutsState
+    ]);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
@@ -399,6 +573,27 @@ export default function POSCheckoutTerminal({
         loadReceiptSettings();
         loadPosFolders();
     }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
+
+    useEffect(() => {
+        syncQueuedCheckoutsState();
+    }, [syncQueuedCheckoutsState]);
+
+    useEffect(() => {
+        if (sessionLocked) return undefined;
+
+        const handleOnline = () => {
+            replayQueuedCheckouts();
+        };
+
+        if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
+            replayQueuedCheckouts();
+        }
+
+        window.addEventListener('online', handleOnline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+        };
+    }, [replayQueuedCheckouts, sessionLocked]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;
@@ -641,26 +836,42 @@ export default function POSCheckoutTerminal({
             return;
         }
 
+        const payload = {
+            idempotency_key: createIdempotencyKey(),
+            terminal_id: 'WEB-POS-01',
+            order_method: orderMethod,
+            payment_type: paymentType,
+            payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
+            service_fee_amount: currentMethodFeeConfig?.enabled && serviceFeeEdited ? Number(serviceFeeAmount || 0) : undefined,
+            discount_amount: Number(calculatedDiscountAmount || 0),
+            discount_profile_name: selectedDiscount?.name || null,
+            discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : null,
+            shift_id: activeShiftId || undefined,
+            lines: cart.map((line) => ({
+                item_id: line.item_id,
+                quantity: Number(line.quantity),
+                sale_price: Number(line.sale_price),
+                price_override_reason: String(line.price_override_reason || '').trim() || undefined
+            }))
+        };
+
+        const queueCheckoutIntentLocally = (source) => {
+            enqueueCheckoutIntent(payload, source);
+            setCart([]);
+            setSelectedDiscountProfile('');
+            setServiceFeeEdited(false);
+            toast.message(
+                `You are offline. Checkout queued locally and will auto-replay when connection is restored (${queuedCheckouts.length + 1} queued).`
+            );
+        };
+
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            queueCheckoutIntentLocally('offline_preflight');
+            return;
+        }
+
         setCheckoutLoading(true);
         try {
-            const payload = {
-                idempotency_key: createIdempotencyKey(),
-                terminal_id: 'WEB-POS-01',
-                order_method: orderMethod,
-                payment_type: paymentType,
-                service_fee_amount: currentMethodFeeConfig?.enabled && serviceFeeEdited ? Number(serviceFeeAmount || 0) : undefined,
-                discount_amount: Number(calculatedDiscountAmount || 0),
-                discount_profile_name: selectedDiscount?.name || null,
-                discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : null,
-                shift_id: activeShiftId || undefined,
-                lines: cart.map((line) => ({
-                    item_id: line.item_id,
-                    quantity: Number(line.quantity),
-                    sale_price: Number(line.sale_price),
-                    price_override_reason: String(line.price_override_reason || '').trim() || undefined
-                }))
-            };
-
             const data = await createPosCheckout(payload);
             setLastReceipt(data?.transaction || null);
             setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
@@ -675,9 +886,25 @@ export default function POSCheckoutTerminal({
                     ? `Checkout replayed from idempotent request (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
                     : `Checkout completed successfully (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
             );
+            removeCheckoutIntentById(payload.idempotency_key);
+            syncQueuedCheckoutsState();
             loadCatalog();
         } catch (error) {
-            toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'POS checkout failed');
+            if (!error?.response) {
+                queueCheckoutIntentLocally('network_failure');
+                return;
+            }
+            const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
+            toast.error(
+                compliancePolicyBlocker?.message
+                || buildMissingFieldsMessage(error)
+                || buildValidationDetailMessage(error)
+                || error?.response?.data?.message
+                || 'POS checkout failed'
+            );
+            if (compliancePolicyBlocker?.actionTarget) {
+                toast.message(`Resolve blocker in ${compliancePolicyBlocker.actionTarget}`);
+            }
         } finally {
             setCheckoutLoading(false);
         }
@@ -728,6 +955,28 @@ export default function POSCheckoutTerminal({
                     Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
                 </p>
             </div>
+
+            {(queuedCheckouts.length > 0 || replayingQueuedCheckouts) && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-amber-900">
+                            Queued checkouts: {queuedCheckouts.length}
+                        </p>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={replayingQueuedCheckouts || (typeof navigator !== 'undefined' && navigator.onLine === false)}
+                            onClick={() => replayQueuedCheckouts({ toastIfEmpty: true })}
+                        >
+                            {replayingQueuedCheckouts ? 'Replaying...' : 'Replay queued checkouts'}
+                        </Button>
+                    </div>
+                    <p className="text-xs text-amber-800">
+                        Offline-safe checkout queue stores pending intents locally and replays with idempotency keys when the terminal reconnects.
+                    </p>
+                </div>
+            )}
 
             {currentViewMode === 'history' && (
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
@@ -1299,9 +1548,19 @@ export default function POSCheckoutTerminal({
 
                 <div className="grid grid-cols-1 gap-2">
                     {checkoutBlockedReason && (
-                        <p className="text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
-                            {checkoutBlockedReason}
-                        </p>
+                        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                            <p className="text-xs text-amber-700">{checkoutBlockedReason}</p>
+                            {complianceBlockerDetails?.actionHref && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => navigate(complianceBlockerDetails.actionHref)}
+                                >
+                                    {complianceBlockerDetails.actionLabel || 'Open compliance settings'}
+                                </Button>
+                            )}
+                        </div>
                     )}
                     <Button
                         type="button"

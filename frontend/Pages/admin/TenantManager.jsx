@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Building2,
     RefreshCw,
@@ -38,6 +38,76 @@ const COMPLIANCE_MODE_LABELS = {
     non_compliant_active: 'Non-compliant',
     compliant_pending: 'Compliant (Pending)',
     compliant_active: 'Compliant (Active)'
+};
+
+const COMPLIANCE_REVIEW_FILTERS = [
+    { value: 'needs_review', label: 'Needs review' },
+    { value: 'verified', label: 'Verified' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'revoked', label: 'Revoked' },
+    { value: 'all', label: 'All' }
+];
+
+const COMPLIANCE_AUDIT_FILTERS = [
+    { value: 'all', label: 'All events' },
+    { value: 'verification', label: 'Verification' },
+    { value: 'security', label: 'Security' },
+    { value: 'blocked', label: 'Blocked ops' },
+    { value: 'lifecycle', label: 'Lifecycle' }
+];
+
+const COMPLIANCE_SECTION_LABELS = {
+    profile: 'Profile',
+    settings: 'Settings',
+    artifacts: 'Artifacts',
+    peripherals: 'Peripherals',
+    final_review: 'Final review'
+};
+
+const normalizeVerificationStatus = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return 'needs_review';
+    if (['pending', 'pending_review', 'needs_review', 'for_review'].includes(normalized)) {
+        return 'needs_review';
+    }
+    if (normalized === 'verified') return 'verified';
+    if (normalized === 'rejected') return 'rejected';
+    if (normalized === 'revoked') return 'revoked';
+    return normalized;
+};
+
+const verificationStatusBadgeClass = (status) => {
+    if (status === 'verified') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (status === 'rejected') return 'bg-rose-100 text-rose-700 border-rose-200';
+    if (status === 'revoked') return 'bg-slate-100 text-slate-700 border-slate-200';
+    return 'bg-amber-100 text-amber-700 border-amber-200';
+};
+
+const sectionProgressBadgeClass = (status) => {
+    if (status === 'complete') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (status === 'in_progress') return 'bg-sky-100 text-sky-700 border-sky-200';
+    if (status === 'blocked') return 'bg-rose-100 text-rose-700 border-rose-200';
+    return 'bg-amber-100 text-amber-700 border-amber-200';
+};
+
+const securityIncidentStatusBadgeClass = (status) => {
+    if (status === 'resolved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (status === 'acknowledged') return 'bg-sky-100 text-sky-700 border-sky-200';
+    return 'bg-rose-100 text-rose-700 border-rose-200';
+};
+
+const categorizeAuditEvent = (eventType) => {
+    const normalized = String(eventType || '').trim().toLowerCase();
+    if (['artifact_verification', 'peripheral_verification'].includes(normalized)) return 'verification';
+    if (
+        ['security_login', 'security_logout', 'security_sensitive_action', 'security_signal'].includes(normalized)
+        || normalized.startsWith('security_')
+    ) {
+        return 'security';
+    }
+    if (normalized === 'blocked_operation') return 'blocked';
+    if (['mode_selection', 'mode_upgrade', 'mode_activation'].includes(normalized)) return 'lifecycle';
+    return 'all';
 };
 
 export default function TenantManager() {
@@ -83,6 +153,11 @@ export default function TenantManager() {
     const [complianceActionLoading, setComplianceActionLoading] = useState('');
     const [complianceArtifacts, setComplianceArtifacts] = useState([]);
     const [compliancePeripherals, setCompliancePeripherals] = useState([]);
+    const [complianceChecklist, setComplianceChecklist] = useState(null);
+    const [complianceAuditLogs, setComplianceAuditLogs] = useState([]);
+    const [complianceSecurityIncidents, setComplianceSecurityIncidents] = useState([]);
+    const [complianceFilter, setComplianceFilter] = useState('needs_review');
+    const [complianceAuditFilter, setComplianceAuditFilter] = useState('all');
     const [verificationNote, setVerificationNote] = useState('');
     const [verificationEvidenceRef, setVerificationEvidenceRef] = useState('');
 
@@ -274,13 +349,19 @@ export default function TenantManager() {
     const loadTenantComplianceData = async (tenantId) => {
         setComplianceLoading(true);
         try {
-            const [artifactsResponse, peripheralsResponse] = await Promise.all([
+            const [artifactsResponse, peripheralsResponse, checklistResponse, auditLogsResponse, incidentsResponse] = await Promise.all([
                 adminService.listTenantComplianceArtifacts(tenantId),
-                adminService.listTenantCompliancePeripherals(tenantId)
+                adminService.listTenantCompliancePeripherals(tenantId),
+                adminService.getTenantComplianceChecklist(tenantId),
+                adminService.listTenantComplianceAuditLogs(tenantId, { limit: 120 }),
+                adminService.listTenantComplianceSecurityIncidents(tenantId, { limit: 200 })
             ]);
 
             setComplianceArtifacts(artifactsResponse?.data?.artifacts || []);
             setCompliancePeripherals(peripheralsResponse?.data?.peripherals || []);
+            setComplianceChecklist(checklistResponse?.data || null);
+            setComplianceAuditLogs(auditLogsResponse?.data?.logs || []);
+            setComplianceSecurityIncidents(incidentsResponse?.data?.incidents || []);
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) {
@@ -288,6 +369,9 @@ export default function TenantManager() {
             }
             setComplianceArtifacts([]);
             setCompliancePeripherals([]);
+            setComplianceChecklist(null);
+            setComplianceAuditLogs([]);
+            setComplianceSecurityIncidents([]);
         } finally {
             setComplianceLoading(false);
         }
@@ -298,6 +382,8 @@ export default function TenantManager() {
         setShowComplianceModal(true);
         setVerificationNote('');
         setVerificationEvidenceRef('');
+        setComplianceFilter('needs_review');
+        setComplianceAuditFilter('all');
         await loadTenantComplianceData(tenant.id);
     };
 
@@ -306,9 +392,13 @@ export default function TenantManager() {
         setSelectedComplianceTenant(null);
         setComplianceArtifacts([]);
         setCompliancePeripherals([]);
+        setComplianceChecklist(null);
+        setComplianceAuditLogs([]);
+        setComplianceSecurityIncidents([]);
         setVerificationNote('');
         setVerificationEvidenceRef('');
         setComplianceActionLoading('');
+        setComplianceAuditFilter('all');
     };
 
     const getVerificationPayload = (action) => ({
@@ -361,6 +451,43 @@ export default function TenantManager() {
         }
     };
 
+    const handleSecurityIncidentStatus = async (incidentId, action) => {
+        if (!selectedComplianceTenant?.id) return;
+        const actionKey = `incident:${incidentId}:${action}`;
+        setComplianceActionLoading(actionKey);
+        try {
+            if (action === 'acknowledge') {
+                await adminService.acknowledgeTenantComplianceSecurityIncident(
+                    selectedComplianceTenant.id,
+                    incidentId,
+                    {
+                        note: verificationNote.trim() || null,
+                        evidence_ref: verificationEvidenceRef.trim() || null
+                    }
+                );
+            } else {
+                await adminService.resolveTenantComplianceSecurityIncident(
+                    selectedComplianceTenant.id,
+                    incidentId,
+                    {
+                        note: verificationNote.trim() || null,
+                        evidence_ref: verificationEvidenceRef.trim() || null
+                    }
+                );
+            }
+
+            toast.success(`Incident ${action}d successfully`);
+            await loadTenantComplianceData(selectedComplianceTenant.id);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed incident ${action}: ${normalized.message}`);
+            }
+        } finally {
+            setComplianceActionLoading('');
+        }
+    };
+
     const formatDate = (timestamp) => {
         return new Date(timestamp).toLocaleDateString('en-US', {
             year: 'numeric',
@@ -372,6 +499,96 @@ export default function TenantManager() {
     };
 
     const pendingCount = tenants.filter(t => t.status === 'pending').length;
+    const filterByComplianceStatus = (records = []) => {
+        if (complianceFilter === 'all') return records;
+        if (complianceFilter === 'needs_review') {
+            return records.filter((entry) => normalizeVerificationStatus(entry.verification_status) === 'needs_review');
+        }
+        return records.filter((entry) => normalizeVerificationStatus(entry.verification_status) === complianceFilter);
+    };
+    const complianceFilterCounts = useMemo(() => {
+        const allRecords = [...complianceArtifacts, ...compliancePeripherals];
+        const counts = {
+            needs_review: 0,
+            verified: 0,
+            rejected: 0,
+            revoked: 0,
+            all: allRecords.length
+        };
+
+        allRecords.forEach((entry) => {
+            const normalizedStatus = normalizeVerificationStatus(entry?.verification_status);
+            if (Object.prototype.hasOwnProperty.call(counts, normalizedStatus)) {
+                counts[normalizedStatus] += 1;
+            }
+        });
+
+        return counts;
+    }, [complianceArtifacts, compliancePeripherals]);
+
+    const complianceSectionProgressEntries = useMemo(() => {
+        const sectionProgress = complianceChecklist?.section_progress;
+        if (!sectionProgress || typeof sectionProgress !== 'object') return [];
+        return Object.entries(sectionProgress)
+            .filter(([key]) => Object.prototype.hasOwnProperty.call(COMPLIANCE_SECTION_LABELS, key))
+            .map(([key, value]) => ({
+                key,
+                label: COMPLIANCE_SECTION_LABELS[key] || key,
+                status: String(value?.status || 'not_started'),
+                complete: Number(value?.complete || 0),
+                total: Number(value?.total || 0)
+            }));
+    }, [complianceChecklist]);
+
+    const complianceAuditFilterCounts = useMemo(() => {
+        const counts = {
+            all: complianceAuditLogs.length,
+            verification: 0,
+            security: 0,
+            blocked: 0,
+            lifecycle: 0
+        };
+
+        complianceAuditLogs.forEach((entry) => {
+            const category = categorizeAuditEvent(entry?.event_type);
+            if (Object.prototype.hasOwnProperty.call(counts, category)) {
+                counts[category] += 1;
+            }
+        });
+
+        return counts;
+    }, [complianceAuditLogs]);
+
+    const visibleComplianceAuditLogs = useMemo(() => {
+        if (complianceAuditFilter === 'all') return complianceAuditLogs;
+        return complianceAuditLogs.filter((entry) => categorizeAuditEvent(entry?.event_type) === complianceAuditFilter);
+    }, [complianceAuditFilter, complianceAuditLogs]);
+
+    const securityIncidentSummary = useMemo(() => {
+        const summary = {
+            total: complianceSecurityIncidents.length,
+            open: 0,
+            acknowledged: 0,
+            resolved: 0
+        };
+
+        complianceSecurityIncidents.forEach((entry) => {
+            const status = String(entry?.status || '').trim().toLowerCase();
+            if (status === 'resolved') {
+                summary.resolved += 1;
+            } else if (status === 'acknowledged') {
+                summary.acknowledged += 1;
+                summary.open += 1;
+            } else {
+                summary.open += 1;
+            }
+        });
+
+        return summary;
+    }, [complianceSecurityIncidents]);
+
+    const visibleArtifacts = filterByComplianceStatus(complianceArtifacts);
+    const visiblePeripherals = filterByComplianceStatus(compliancePeripherals);
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -676,7 +893,7 @@ export default function TenantManager() {
                         </div>
 
                         <div className="p-6 space-y-4">
-                            <div className="grid md:grid-cols-3 gap-3">
+                            <div className="grid md:grid-cols-5 gap-3">
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                     <div className="text-xs text-slate-500">Artifacts</div>
                                     <div className="text-lg font-semibold text-slate-900">{complianceArtifacts.length}</div>
@@ -688,11 +905,52 @@ export default function TenantManager() {
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                     <div className="text-xs text-slate-500">Verified Records</div>
                                     <div className="text-lg font-semibold text-slate-900">
-                                        {complianceArtifacts.filter((entry) => entry.verification_status === 'verified').length
-                                            + compliancePeripherals.filter((entry) => entry.verification_status === 'verified').length}
+                                        {complianceFilterCounts.verified}
                                     </div>
                                 </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs text-slate-500">Audit Events</div>
+                                    <div className="text-lg font-semibold text-slate-900">{complianceAuditLogs.length}</div>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs text-slate-500">Open Incidents</div>
+                                    <div className="text-lg font-semibold text-slate-900">{securityIncidentSummary.open}</div>
+                                </div>
                             </div>
+
+                            {complianceChecklist && (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                                    <p className="text-sm font-semibold text-slate-900">
+                                        Activation readiness: {complianceChecklist.ready_for_compliant_activation ? 'Ready' : 'Blocked'}
+                                    </p>
+                                    {complianceSectionProgressEntries.length > 0 && (
+                                        <div className="grid md:grid-cols-5 gap-2">
+                                            {complianceSectionProgressEntries.map((entry) => (
+                                                <div key={entry.key} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                                                    <p className="text-xs font-semibold text-slate-900">{entry.label}</p>
+                                                    <div className="mt-1 flex items-center justify-between gap-2">
+                                                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sectionProgressBadgeClass(entry.status)}`}>
+                                                            {entry.status}
+                                                        </span>
+                                                        <span className="text-[11px] text-slate-600">{entry.complete}/{entry.total}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {Array.isArray(complianceChecklist.activation_blockers) && complianceChecklist.activation_blockers.length > 0 ? (
+                                        <ul className="list-disc pl-5 text-xs text-slate-700 space-y-1">
+                                            {complianceChecklist.activation_blockers.map((blocker) => (
+                                                <li key={`${blocker.code}-${blocker.section}`}>
+                                                    {blocker.message}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-emerald-700">No checklist blockers found.</p>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="grid md:grid-cols-2 gap-3">
                                 <div className="space-y-2">
@@ -719,6 +977,162 @@ export default function TenantManager() {
                                 </div>
                             </div>
 
+                            <div className="flex flex-wrap items-center gap-2">
+                                <label className="text-sm font-medium text-slate-700">Review Filter</label>
+                                <select
+                                    className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                                    value={complianceFilter}
+                                    onChange={(event) => setComplianceFilter(event.target.value)}
+                                >
+                                    {COMPLIANCE_REVIEW_FILTERS.map((entry) => (
+                                        <option key={entry.value} value={entry.value}>
+                                            {entry.label} ({complianceFilterCounts[entry.value] || 0})
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="text-xs text-slate-500">
+                                    Review queue: {complianceFilterCounts.needs_review} pending decision
+                                </span>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-slate-900">Security Incident Workflow</p>
+                                    <span className="text-xs text-slate-600">
+                                        Open: {securityIncidentSummary.open} | Acknowledged: {securityIncidentSummary.acknowledged} | Resolved: {securityIncidentSummary.resolved}
+                                    </span>
+                                </div>
+                                {complianceSecurityIncidents.length === 0 ? (
+                                    <p className="text-xs text-slate-600">No security incidents recorded for this tenant.</p>
+                                ) : (
+                                    <div className="max-h-56 overflow-y-auto space-y-2">
+                                        {complianceSecurityIncidents.map((incident) => {
+                                            const incidentId = String(incident?.incident_id || '').trim();
+                                            const status = String(incident?.status || 'new').trim().toLowerCase();
+                                            const canAcknowledge = status === 'new';
+                                            const canResolve = status !== 'resolved';
+                                            const acknowledgeLoading = complianceActionLoading === `incident:${incidentId}:acknowledge`;
+                                            const resolveLoading = complianceActionLoading === `incident:${incidentId}:resolve`;
+
+                                            return (
+                                                <div
+                                                    key={incidentId || `${incident?.signal_code}-${incident?.updated_at}`}
+                                                    className="rounded-md border border-slate-200 bg-white px-3 py-2"
+                                                >
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                                                            {incident?.signal_code || 'security_signal'}
+                                                        </p>
+                                                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${securityIncidentStatusBadgeClass(status)}`}>
+                                                            {status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-600">
+                                                        Severity: {incident?.severity || 'warning'} | Updated: {incident?.updated_at ? formatDate(incident.updated_at) : 'N/A'}
+                                                    </p>
+                                                    {incident?.dispatch ? (
+                                                        <p className="text-[11px] text-slate-600">
+                                                            Dispatch: {incident.dispatch.delivery_status || 'recorded'}
+                                                            {incident.dispatch.channel ? ` via ${incident.dispatch.channel}` : ''}
+                                                            {incident.dispatch.attempted_at ? ` at ${formatDate(incident.dispatch.attempted_at)}` : ''}
+                                                        </p>
+                                                    ) : null}
+                                                    {incident?.dispatch?.target_configured === false ? (
+                                                        <p className="text-[11px] text-amber-700">Dispatch target is not configured for this channel.</p>
+                                                    ) : null}
+                                                    {incident?.dispatch?.dispatch_reference ? (
+                                                        <p className="text-[11px] text-slate-500">Dispatch reference: {incident.dispatch.dispatch_reference}</p>
+                                                    ) : null}
+                                                    {incident?.dispatch?.error ? (
+                                                        <p className="text-[11px] text-rose-600">Dispatch error: {incident.dispatch.error}</p>
+                                                    ) : null}
+                                                    {incident?.latest_note ? (
+                                                        <p className="text-[11px] text-slate-500">Note: {incident.latest_note}</p>
+                                                    ) : null}
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-7 text-[11px]"
+                                                            disabled={!canAcknowledge || acknowledgeLoading || !incidentId}
+                                                            onClick={() => handleSecurityIncidentStatus(incidentId, 'acknowledge')}
+                                                        >
+                                                            {acknowledgeLoading ? 'Acknowledging...' : 'Acknowledge'}
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700"
+                                                            disabled={!canResolve || resolveLoading || !incidentId}
+                                                            onClick={() => handleSecurityIncidentStatus(incidentId, 'resolve')}
+                                                        >
+                                                            {resolveLoading ? 'Resolving...' : 'Resolve'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-slate-900">Audit Trail Evidence</p>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-medium text-slate-700">Event Filter</label>
+                                        <select
+                                            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                                            value={complianceAuditFilter}
+                                            onChange={(event) => setComplianceAuditFilter(event.target.value)}
+                                        >
+                                            {COMPLIANCE_AUDIT_FILTERS.map((entry) => (
+                                                <option key={entry.value} value={entry.value}>
+                                                    {entry.label} ({complianceAuditFilterCounts[entry.value] || 0})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                {visibleComplianceAuditLogs.length === 0 ? (
+                                    <p className="text-xs text-slate-600">
+                                        No audit events available for this filter.
+                                    </p>
+                                ) : (
+                                    <div className="max-h-52 overflow-y-auto space-y-2">
+                                        {visibleComplianceAuditLogs.map((entry) => {
+                                            const normalizedEventType = String(entry?.event_type || 'unknown').replaceAll('_', ' ');
+                                            const metadata = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : null;
+                                            const metadataSummary = metadata
+                                                ? Object.entries(metadata)
+                                                    .slice(0, 3)
+                                                    .map(([key, value]) => `${key}: ${String(value)}`)
+                                                    .join(' | ')
+                                                : null;
+
+                                            return (
+                                                <div
+                                                    key={entry?.tenant_compliance_audit_log_id || `${entry?.event_type}-${entry?.created_at}`}
+                                                    className="rounded-md border border-slate-200 bg-white px-3 py-2"
+                                                >
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{normalizedEventType}</p>
+                                                        <span className="text-[11px] text-slate-500">
+                                                            {entry?.created_at ? formatDate(entry.created_at) : 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-600">
+                                                        Decision: {entry?.decision || 'N/A'} | Reason: {entry?.reason_code || 'N/A'}
+                                                    </p>
+                                                    {metadataSummary ? (
+                                                        <p className="text-[11px] text-slate-500">{metadataSummary}</p>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
                             {complianceLoading ? (
                                 <div className="rounded-lg border border-slate-200 p-6 text-center">
                                     <RefreshCw className="w-6 h-6 text-slate-400 animate-spin mx-auto mb-2" />
@@ -732,15 +1146,24 @@ export default function TenantManager() {
                                             <h4 className="text-sm font-semibold text-slate-900">Artifacts</h4>
                                         </div>
                                         <div className="p-4 space-y-3">
-                                            {complianceArtifacts.length === 0 ? (
-                                                <p className="text-sm text-slate-500">No artifacts submitted.</p>
-                                            ) : complianceArtifacts.map((artifact) => {
+                                            {complianceArtifacts.length === 0 && compliancePeripherals.length === 0 && (
+                                                <p className="text-sm text-slate-500">No compliance records submitted yet for this tenant.</p>
+                                            )}
+                                            {visibleArtifacts.length === 0 ? (
+                                                <p className="text-sm text-slate-500">No artifacts match this filter.</p>
+                                            ) : visibleArtifacts.map((artifact) => {
                                                 const artifactId = artifact.tenant_compliance_artifact_id;
+                                                const normalizedStatus = normalizeVerificationStatus(artifact.verification_status);
                                                 return (
                                                     <div key={artifactId} className="rounded-lg border border-slate-200 p-3">
                                                         <p className="text-sm font-semibold text-slate-900">{artifact.artifact_name}</p>
                                                         <p className="text-xs text-slate-500">Type: {artifact.artifact_type}</p>
-                                                        <p className="text-xs text-slate-500">Status: {artifact.status} | Verification: {artifact.verification_status}</p>
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <span className="text-xs text-slate-500">Status: {artifact.status}</span>
+                                                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${verificationStatusBadgeClass(normalizedStatus)}`}>
+                                                                {normalizedStatus}
+                                                            </span>
+                                                        </div>
                                                         <p className="text-xs text-slate-500">Verified at: {artifact.verified_at ? formatDate(artifact.verified_at) : 'N/A'}</p>
                                                         <div className="mt-2 flex flex-wrap gap-2">
                                                             {['verify', 'reject', 'revoke'].map((action) => (
@@ -769,10 +1192,11 @@ export default function TenantManager() {
                                             <h4 className="text-sm font-semibold text-slate-900">Peripherals</h4>
                                         </div>
                                         <div className="p-4 space-y-3">
-                                            {compliancePeripherals.length === 0 ? (
-                                                <p className="text-sm text-slate-500">No peripherals submitted.</p>
-                                            ) : compliancePeripherals.map((peripheral) => {
+                                            {visiblePeripherals.length === 0 ? (
+                                                <p className="text-sm text-slate-500">No peripherals match this filter.</p>
+                                            ) : visiblePeripherals.map((peripheral) => {
                                                 const peripheralId = peripheral.tenant_compliance_peripheral_id;
+                                                const normalizedStatus = normalizeVerificationStatus(peripheral.verification_status);
                                                 return (
                                                     <div key={peripheralId} className="rounded-lg border border-slate-200 p-3">
                                                         <p className="text-sm font-semibold text-slate-900">
@@ -783,7 +1207,12 @@ export default function TenantManager() {
                                                         <p className="text-xs text-slate-500">
                                                             Terminal: {peripheral.terminal_id || 'shared/unbound'} | Shared: {peripheral.is_shared ? 'yes' : 'no'}
                                                         </p>
-                                                        <p className="text-xs text-slate-500">Status: {peripheral.status} | Verification: {peripheral.verification_status}</p>
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <span className="text-xs text-slate-500">Status: {peripheral.status}</span>
+                                                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${verificationStatusBadgeClass(normalizedStatus)}`}>
+                                                                {normalizedStatus}
+                                                            </span>
+                                                        </div>
                                                         <div className="mt-2 flex flex-wrap gap-2">
                                                             {['verify', 'reject', 'revoke'].map((action) => (
                                                                 <Button

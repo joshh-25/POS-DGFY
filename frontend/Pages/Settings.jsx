@@ -831,19 +831,27 @@ export default function Settings() {
           <p className="text-slate-500 mt-1">Configure your workspace and profile</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={handleReset}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Reset
-          </Button>
-          <Button onClick={handleSave} className="bg-teal-600 hover:bg-teal-700">
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
-          </Button>
+          {currentTab !== 'compliance' ? (
+            <>
+              <Button variant="outline" onClick={handleReset}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Reset
+              </Button>
+              <Button onClick={handleSave} className="bg-teal-600 hover:bg-teal-700">
+                <Save className="w-4 h-4 mr-2" />
+                Save Changes
+              </Button>
+            </>
+          ) : (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              Compliance has its own save actions per section.
+            </div>
+          )}
         </div>
       </div>
 
       <Tabs value={currentTab} onValueChange={(v) => setSearchParams({ tab: v })} className="w-full">
-        <TabsList className={`grid w-full ${subscriptionFeaturesEnabled ? 'grid-cols-5 lg:w-[760px]' : 'grid-cols-4 lg:w-[620px]'} mb-8`}>
+        <TabsList className={`grid w-full ${subscriptionFeaturesEnabled ? 'grid-cols-6 lg:w-[860px]' : 'grid-cols-5 lg:w-[740px]'} mb-8`}>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="company">Company</TabsTrigger>
           {subscriptionFeaturesEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
@@ -1233,7 +1241,7 @@ export default function Settings() {
 
         {/* System Tab */}
         <TabsContent value="pos" className="space-y-6">
-          <Card>
+          <Card id="receipt-contract-settings">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-teal-600" />

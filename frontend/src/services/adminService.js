@@ -64,6 +64,21 @@ export const login = async (username, password) => {
  * Admin logout
  */
 export const logout = () => {
+    const token = getToken();
+    if (token) {
+        adminApi.post(
+            '/admin/logout',
+            {},
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                },
+                skipGlobalErrorToast: true
+            }
+        ).catch(() => {
+            // Best-effort revoke; always clear local token.
+        });
+    }
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
 };
 
@@ -337,6 +352,78 @@ export const listTenantCompliancePeripherals = async (tenantId) => {
 };
 
 /**
+ * Get tenant compliance checklist for platform-admin review context
+ */
+export const getTenantComplianceChecklist = async (tenantId, params = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/compliance/checklist`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params
+    });
+    return response.data;
+};
+
+/**
+ * List tenant compliance audit logs for platform-admin review context
+ */
+export const listTenantComplianceAuditLogs = async (tenantId, params = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/compliance/audit-logs`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params
+    });
+    return response.data;
+};
+
+/**
+ * List tenant compliance security incidents for platform-admin review context
+ */
+export const listTenantComplianceSecurityIncidents = async (tenantId, params = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/compliance/security-incidents`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params
+    });
+    return response.data;
+};
+
+/**
+ * Platform-admin action: acknowledge tenant compliance security incident
+ */
+export const acknowledgeTenantComplianceSecurityIncident = async (tenantId, incidentId, payload = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/security-incidents/${incidentId}/acknowledge`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
+ * Platform-admin action: resolve tenant compliance security incident
+ */
+export const resolveTenantComplianceSecurityIncident = async (tenantId, incidentId, payload = {}) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/security-incidents/${incidentId}/resolve`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
  * Platform-admin verification action for tenant compliance artifact
  */
 export const updateTenantComplianceArtifactVerification = async (tenantId, artifactId, payload) => {
@@ -365,5 +452,3 @@ export const updateTenantCompliancePeripheralVerification = async (tenantId, per
     );
     return response.data;
 };
-
-

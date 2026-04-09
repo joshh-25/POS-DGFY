@@ -2,6 +2,21 @@ import React from 'react';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
+const parseTransactionMetadata = (value) => {
+    if (!value) return {};
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed;
+        }
+    } catch {
+        return {};
+    }
+    return {};
+};
+
 const resolveDocumentType = ({ transaction, receiptContract }) => {
     const contractType = String(receiptContract?.document_type || '').toLowerCase();
     if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') {
@@ -18,6 +33,20 @@ const resolveDocumentType = ({ transaction, receiptContract }) => {
     return 'non_fiscal_slip';
 };
 
+const resolveDocumentContext = ({ transaction, receiptContract, documentType }) => {
+    const contractContext = String(receiptContract?.document_context || '').trim().toLowerCase();
+    if (['fiscal', 'non_fiscal', 'training_test'].includes(contractContext)) {
+        return contractContext;
+    }
+
+    const persistedContext = String(transaction?.document_context || '').trim().toLowerCase();
+    if (['fiscal', 'non_fiscal', 'training_test'].includes(persistedContext)) {
+        return persistedContext;
+    }
+
+    return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
+};
+
 export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null }) {
     if (!transaction) return null;
 
@@ -26,7 +55,15 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
         : '-';
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
     const documentType = resolveDocumentType({ transaction, receiptContract });
+    const documentContext = resolveDocumentContext({ transaction, receiptContract, documentType });
+    const transactionMetadata = parseTransactionMetadata(transaction?.special_instructions);
+    const contractMetadata = transactionMetadata?.receipt_contract
+        && typeof transactionMetadata.receipt_contract === 'object'
+        ? transactionMetadata.receipt_contract
+        : {};
+    const receiptContractVersion = String(contractMetadata?.version || '').trim() || '2026.04.08';
     const isFiscal = documentType === 'fiscal_invoice';
+    const isTrainingContext = documentContext === 'training_test';
     const documentLabel = isFiscal ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP';
 
     return (
@@ -48,7 +85,10 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 )}
                 <h3 className="font-semibold text-slate-900 mt-2">{documentLabel}</h3>
                 {!isFiscal && (
-                    <p className="text-[11px] uppercase tracking-wide text-amber-700">This document is not a fiscal invoice.</p>
+                    <div className={`mt-1 rounded-md border px-2 py-1 text-[11px] uppercase tracking-wide ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                        <p className="font-semibold">NOT A FISCAL RECEIPT</p>
+                        <p>{isTrainingContext ? 'Training/Test mode only' : 'Non-fiscal document'}</p>
+                    </div>
                 )}
                 <p className="text-xs text-slate-500">{transaction.invoice_number}</p>
                 <p className="text-xs text-slate-500">{printedAt}</p>
@@ -109,11 +149,14 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     <span>{money(transaction.total_amount)}</span>
                 </div>
             </div>
-            {businessSettings.pos_receipt_footer_message && (
-                <p className="text-center text-xs text-slate-500 mt-3 pt-3 border-t border-dashed border-slate-300">
-                    {businessSettings.pos_receipt_footer_message}
-                </p>
-            )}
+            <div className="text-center text-xs text-slate-500 mt-3 pt-3 border-t border-dashed border-slate-300 space-y-0.5">
+                <p>Document context: {documentContext}</p>
+                <p>Receipt contract version: {receiptContractVersion}</p>
+                <p>Sequence control: invoice number is system-generated and immutable.</p>
+                {businessSettings.pos_receipt_footer_message && (
+                    <p>{businessSettings.pos_receipt_footer_message}</p>
+                )}
+            </div>
         </div>
     );
 }
