@@ -1,5 +1,12 @@
 # Quick Reference
 
+## One-Time SSH Setup (Per Machine)
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/skupervisor_deploy_ed25519 -C "skupervisor-deploy"
+cat ~/.ssh/skupervisor_deploy_ed25519.pub | ssh -p 64428 root@192.53.116.33 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'
+ssh -o BatchMode=yes -i ~/.ssh/skupervisor_deploy_ed25519 -p 64428 root@192.53.116.33 "echo AUTH_OK && hostname"
+```
+
 ## Production Deploy
 ```bash
 cd /var/www/skupervisor
@@ -9,11 +16,27 @@ EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
 
+If server worktree is dirty:
+```bash
+STAMP=$(date +'%Y%m%d_%H%M%S')
+mkdir -p /root/deploy-prep
+git status --short > /root/deploy-prep/status_$STAMP.txt
+git diff > /root/deploy-prep/working_$STAMP.patch || true
+git diff --cached > /root/deploy-prep/index_$STAMP.patch || true
+git stash push -u -m "predeploy-$STAMP"
+```
+
 If lock error appears and no deploy process exists:
 ```bash
 ps -ef | grep deploy.sh | grep -v grep
 rm -f /tmp/skupervisor_deploy.lock
 DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+If deploy script reports `$'\\r': command not found`:
+```bash
+sed -i 's/\r$//' scripts/deploy.sh
+bash scripts/deploy.sh --help
 ```
 
 ## Strict Gates (manual)

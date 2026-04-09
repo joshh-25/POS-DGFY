@@ -10,18 +10,17 @@ Use this guide for:
 
 ## Prerequisites
 - SSH access to server (`root@192.53.116.33 -p 64428`)
+- Prefer key-based SSH auth for non-interactive deploys:
+  ```bash
+  ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
+  ```
 - Clean local git state for the commit you intend to deploy
 - Required backend env vars present on server in `backend/.env`:
   - `DB_HOST`
   - `DB_USER`
   - `DB_NAME`
   - `JWT_SECRET`
-  - Payment-provider config (default deploy mode: PayMongo)
-    - `PAYMONGO_MODE`
-    - `PAYMONGO_STANDARD_PLAN_ID`
-    - `PAYMONGO_PREMIUM_PLAN_ID`
-    - mode-resolved key pair (`PAYMONGO_*_PUBLIC_KEY` + `PAYMONGO_*_SECRET_KEY` or generic fallback)
-    - `PAYMONGO_WEBHOOK_SECRET`
+  - Payment-provider config only when `PAYMENTS_ENABLED=true`
 
 ## Standard Deployment (Simplified)
 Run on the production server for a one-command deploy:
@@ -63,7 +62,7 @@ What `deploy.sh` does:
 7. Skips legacy maintenance hooks by default
 8. Runs required-index self-heal (`npm run repair:indexes`)
 9. Runs strict index audit (`npm run audit:indexes`)
-10. Runs strict billing-funnel audit (`npm run audit:billing-funnel`)
+10. Runs billing verification gate only when payments are enabled
 11. Runs tenant schema sync
 12. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
 13. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
@@ -106,6 +105,33 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
+```
+
+## If Deploy Stops on `Working tree is not clean on server`
+Snapshot and stash server drift before re-running deploy:
+
+```bash
+cd /var/www/skupervisor
+STAMP=$(date +'%Y%m%d_%H%M%S')
+mkdir -p /root/deploy-prep
+git status --short > /root/deploy-prep/status_$STAMP.txt
+git diff > /root/deploy-prep/working_$STAMP.patch || true
+git diff --cached > /root/deploy-prep/index_$STAMP.patch || true
+git stash push -u -m "predeploy-$STAMP"
+```
+
+After deployment, inspect stash entries intentionally before applying anything back:
+```bash
+git stash list
+git stash show -p stash@{0}
+```
+
+## If Deploy Script Fails With `$'\\r': command not found`
+Normalize shell line endings, then re-run:
+```bash
+cd /var/www/skupervisor
+sed -i 's/\r$//' scripts/deploy.sh
+bash scripts/deploy.sh --help
 ```
 
 ## If Billing-Funnel Audit Fails With `webhook_without_telemetry`

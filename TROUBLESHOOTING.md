@@ -291,21 +291,43 @@ timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BL
 **Symptoms**:
 - Running `./scripts/deploy-remote.sh` fails with `ssh: connect to host ... port 22: Connection timed out`
 - Cannot SSH into server from local machine
+- SSH returns `Permission denied (password)` during non-interactive deploy runs
 
 **Cause**:
-- SSH alias (e.g., `hermes-cloud`) is not configured in `~/.ssh/config`
+- SSH alias (e.g., `skupervisor-prod`) is not configured in `~/.ssh/config`
 - Server uses a non-standard SSH port (not 22)
 - Firewall or network restrictions
+- Local machine has no deploy key configured
+- Server SSHD may have `PubkeyAuthentication no`
 
 **Solution**:
-- **Option 1**: Add SSH config to `~/.ssh/config`:
+- **Option 1 (recommended)**: Configure key-based auth and alias:
+  ```bash
+  ssh-keygen -t ed25519 -f ~/.ssh/skupervisor_deploy_ed25519 -C "skupervisor-deploy"
+  cat ~/.ssh/skupervisor_deploy_ed25519.pub | ssh -p 64428 root@192.53.116.33 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'
   ```
-  Host hermes-cloud
+  Add to `~/.ssh/config`:
+  ```sshconfig
+  Host skupervisor-prod
       HostName 192.53.116.33
       Port 64428
       User root
+      IdentityFile ~/.ssh/skupervisor_deploy_ed25519
+      IdentitiesOnly yes
+  ```
+  Verify:
+  ```bash
+  ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
   ```
 - **Option 2**: Use explicit port in command: `ssh -p 64428 root@192.53.116.33`
+- **If key auth is still ignored** (server-side):
+  ```bash
+  sshd -T | grep pubkeyauthentication
+  ```
+  Expected output:
+  ```text
+  pubkeyauthentication yes
+  ```
 - **Fallback**: Push to GitHub, then manually SSH and run `./scripts/deploy.sh`
 
 ### 21. Git Pull Fails with "Password Authentication Not Supported"

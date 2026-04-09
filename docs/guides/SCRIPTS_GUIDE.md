@@ -23,7 +23,7 @@ What it does:
 6. Builds frontend
 7. Runs DB migrations
 8. Normalizes the original legacy tenant account path (idempotent)
-9. Audits original legacy tenant invariants (strict; deploy fails on unresolved risks)
+9. Audits original legacy tenant invariants (report-only by default; strict when `DEPLOY_STRICT_LEGACY_AUDIT=1`)
 10. Skips optional legacy maintenance hooks by default
 11. Repairs required indexes (`npm run repair:indexes`)
 12. Runs strict index audit (`npm run audit:indexes`)
@@ -48,6 +48,37 @@ bash scripts/deploy-remote.sh
 Notes:
 - Operates on local `master` branch by design.
 - Meant to run locally, not on the production server.
+- Requires working SSH auth to production. Prefer key-based auth over password prompts.
+
+One-time setup for persistent passwordless deploy access (per machine):
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/skupervisor_deploy_ed25519 -C "skupervisor-deploy"
+cat ~/.ssh/skupervisor_deploy_ed25519.pub | ssh -p 64428 root@192.53.116.33 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'
+```
+
+Add local SSH config:
+```sshconfig
+Host skupervisor-prod
+  HostName 192.53.116.33
+  Port 64428
+  User root
+  IdentityFile ~/.ssh/skupervisor_deploy_ed25519
+  IdentitiesOnly yes
+```
+
+Validate non-interactive auth:
+```bash
+ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
+```
+
+Server-side requirement (one-time):
+```bash
+sshd -T | grep pubkeyauthentication
+```
+Expected:
+```text
+pubkeyauthentication yes
+```
 
 ## 3. `backend/scripts/repair-required-indexes.js`
 Self-heal script for required DB index contract.
@@ -206,6 +237,24 @@ If stale lock blocks deploy:
 ```bash
 ps -ef | grep deploy.sh | grep -v grep
 rm -f /tmp/skupervisor_deploy.lock
+```
+
+If deploy exits with `Working tree is not clean on server`:
+```bash
+cd /var/www/skupervisor
+STAMP=$(date +'%Y%m%d_%H%M%S')
+mkdir -p /root/deploy-prep
+git status --short > /root/deploy-prep/status_$STAMP.txt
+git diff > /root/deploy-prep/working_$STAMP.patch || true
+git diff --cached > /root/deploy-prep/index_$STAMP.patch || true
+git stash push -u -m "predeploy-$STAMP"
+```
+
+If deploy script errors with `$'\\r': command not found`:
+```bash
+cd /var/www/skupervisor
+sed -i 's/\r$//' scripts/deploy.sh
+bash scripts/deploy.sh --help
 ```
 
 ## 13. Local PM2 Startup Safety (Prevents Transient 500s)

@@ -2,6 +2,14 @@
 
 Use this checklist for every production rollout.
 
+## 0. One-Time Access Setup (Per Operator Machine)
+- [ ] Configure SSH key-based access for production deploy user.
+- [ ] Confirm server allows key auth (`pubkeyauthentication yes`).
+- [ ] Verify non-interactive login works:
+  ```bash
+  ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
+  ```
+
 ## 1. Pre-Deployment (Local)
 - [ ] All intended code/docs changes are committed
 - [ ] Changes are pushed to the remote branch you will deploy
@@ -10,12 +18,30 @@ Use this checklist for every production rollout.
 ## 2. Server Prep
 - [ ] SSH to server
 - [ ] Go to project root: `cd /var/www/skupervisor`
+- [ ] Confirm server working tree is clean:
+  ```bash
+  git status --short
+  ```
 - [ ] Resolve target commit:
   ```bash
   BRANCH=$(git rev-parse --abbrev-ref HEAD)
   git fetch origin "$BRANCH"
   EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
   ```
+- [ ] Optional sanity check for deploy script parseability:
+  ```bash
+  bash scripts/deploy.sh --help
+  ```
+
+If server worktree is not clean, snapshot and stash before deploy:
+```bash
+STAMP=$(date +'%Y%m%d_%H%M%S')
+mkdir -p /root/deploy-prep
+git status --short > /root/deploy-prep/status_$STAMP.txt
+git diff > /root/deploy-prep/working_$STAMP.patch || true
+git diff --cached > /root/deploy-prep/index_$STAMP.patch || true
+git stash push -u -m "predeploy-$STAMP"
+```
 
 ## 3. Run Deployment
 - [ ] Execute:
@@ -64,6 +90,10 @@ Notes:
   - [ ] Manifest URL returns manifest/json (not HTML fallback)
 - [ ] `surebizcorp.com` Nginx applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
 - [ ] Latest deploy summary exists under `logs/deploy/`
+- [ ] Summary commit matches target commit:
+  ```bash
+  tail -n 30 logs/deploy/deploy_*.summary.txt
+  ```
 
 ## 6. Rollback (If Needed)
 1. Revert safely with a new commit:
@@ -72,3 +102,8 @@ Notes:
    git push origin <branch>
    ```
 2. Re-run deployment with pinned expected commit.
+3. If server drift was stashed pre-deploy, inspect and re-apply intentionally:
+   ```bash
+   git stash list
+   git stash show -p stash@{0}
+   ```
