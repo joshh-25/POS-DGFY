@@ -3,11 +3,10 @@ import { CSS } from '@dnd-kit/utilities';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder } from 'lucide-react';
+import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder, Monitor } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,14 +36,11 @@ export default function ItemCard({
   onEdit,
   onDelete,
   onMoveToFolder,
-  posConfig,
-  canConfigurePosCatalog = false,
-  onTogglePosVisibility,
-  onUploadPosImage,
-  onDeletePosImage,
-  currentUserRole,
+  posReadiness,
+  onOpenInTerminal,
   isSelected,
-  onSelect
+  onSelect,
+  isMsmeMode = false
 }) {
   const { canEdit, canDelete } = usePermission();
   const category = getCategoryConfig(item);
@@ -68,6 +64,10 @@ export default function ItemCard({
   // Calculate expiry information
   const nextExpiry = getNextExpiryDate(item);
   const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
+  const readinessMissingCount = Array.isArray(posReadiness?.missing_requirements)
+    ? posReadiness.missing_requirements.length
+    : 0;
+  const readinessState = posReadiness?.ready === true ? 'ready' : 'needs_attention';
 
   const handleClick = (e) => {
     // Prevent selection when clicking interactive elements or during drag (listeners)
@@ -88,7 +88,7 @@ export default function ItemCard({
       {...attributes}
       onClick={handleClick}
       className={cn(
-        "bg-white rounded-2xl border p-6 transition-all duration-300 relative group select-none touch-none", // touch-none for better dragging
+        "relative group flex h-full select-none touch-none flex-col rounded-2xl border bg-white p-6 transition-all duration-300", // touch-none for better dragging
         isSelected
           ? "border-teal-500 ring-1 ring-teal-500 shadow-md bg-teal-50/30"
           : "border-slate-200 hover:shadow-lg hover:border-slate-300",
@@ -100,7 +100,7 @@ export default function ItemCard({
           <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", category.color)}>
             <Icon className="w-6 h-6" />
           </div>
-          <div>
+          <div className="flex min-h-[3.5rem] flex-col justify-center">
             <h3 className="font-semibold text-slate-900">{item.name}</h3>
             <p className="text-sm text-slate-500">{item.sku_code}</p>
           </div>
@@ -125,6 +125,11 @@ export default function ItemCard({
                 <History className="w-4 h-4 mr-2" /> Movement History
               </Link>
             </DropdownMenuItem>
+            {onOpenInTerminal && (
+              <DropdownMenuItem onClick={() => onOpenInTerminal(item)}>
+                <Monitor className="w-4 h-4 mr-2" /> Preview in Terminal
+              </DropdownMenuItem>
+            )}
             {onMoveToFolder && (
               <>
                 <DropdownMenuSeparator />
@@ -150,7 +155,7 @@ export default function ItemCard({
         </DropdownMenu>
       </div>
 
-      <div className="space-y-4">
+      <div className="flex flex-1 flex-col gap-4">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
             {isDraft && statusStyle.icon && <statusStyle.icon className="w-3 h-3 mr-1" />}
@@ -159,13 +164,13 @@ export default function ItemCard({
           <Badge variant="outline" className={category.color}>
             {getCategoryLabel(item)}
           </Badge>
-          {item.fifo_enabled && (
+          {item.fifo_enabled && !isMsmeMode && (
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
               <Check className="w-3 h-3 mr-1" />
               FIFO
             </Badge>
           )}
-          {nextExpiry && daysUntilExpiry !== null && (
+          {nextExpiry && daysUntilExpiry !== null && !isMsmeMode && (
             <Badge variant="outline" className={cn(
               "flex items-center gap-1",
               daysUntilExpiry < 0
@@ -180,12 +185,24 @@ export default function ItemCard({
               {daysUntilExpiry < 0 ? 'Expired' : `${daysUntilExpiry}d left`}
             </Badge>
           )}
+          {posReadiness && (
+            <Badge
+              variant="outline"
+              className={readinessState === 'ready'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'}
+            >
+              {readinessState === 'ready'
+                ? 'POS Ready'
+                : isMsmeMode ? 'POS Setup Needed' : `POS Needs ${readinessMissingCount}`}
+            </Badge>
+          )}
         </div>
 
         <div>
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-slate-500">Stock Level</span>
-            <span className="font-semibold text-slate-900">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="whitespace-nowrap text-slate-500">Stock Level</span>
+            <span className="whitespace-nowrap text-right font-semibold text-slate-900">
               {formatQty(item.current_stock)} / {formatQty(item.max_capacity)} {item.unit_of_measure}
             </span>
           </div>
@@ -199,12 +216,18 @@ export default function ItemCard({
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-100 space-y-2">
+        <div className="mt-auto space-y-2 border-t border-slate-100 pt-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">Unit Cost</span>
             <span className="font-semibold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</span>
           </div>
-          {nextExpiry && (
+          {item?.default_sale_price != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Selling Price</span>
+              <span className="text-sm font-semibold text-slate-900">PHP {formatNumber(item.default_sale_price, 2)}</span>
+            </div>
+          )}
+          {nextExpiry && !isMsmeMode && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Next Expiry</span>
               <span className={cn(
@@ -219,55 +242,6 @@ export default function ItemCard({
               )}>
                 {format(new Date(nextExpiry), 'MMM d, yyyy')}
               </span>
-            </div>
-          )}
-          {canConfigurePosCatalog && (
-            <div className="pt-2 space-y-2">
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 px-2 py-2">
-                <span className="text-xs text-slate-600">Show in POS Menu</span>
-                <Switch
-                  checked={posConfig?.pos_visible !== false}
-                  onCheckedChange={(checked) => onTogglePosVisibility?.(item, checked)}
-                />
-              </div>
-              <div className="rounded-lg border border-slate-200 p-2 space-y-2">
-                <p className="text-xs text-slate-600">POS Menu Image</p>
-                {posConfig?.pos_image_url ? (
-                  <img
-                    src={posConfig.pos_image_url}
-                    alt={`${item.name} POS menu`}
-                    className="h-20 w-full object-cover rounded-md border border-slate-200"
-                  />
-                ) : (
-                  <p className="text-xs text-slate-400">No POS image override uploaded.</p>
-                )}
-                <div className="flex gap-2">
-                  <label className="text-xs px-2 py-1 border rounded-md cursor-pointer hover:bg-slate-50">
-                    Upload
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          onUploadPosImage?.(item, file);
-                        }
-                        event.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onDeletePosImage?.(item)}
-                    disabled={!posConfig?.pos_image_url}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
             </div>
           )}
         </div>

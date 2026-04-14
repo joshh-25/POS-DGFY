@@ -587,6 +587,7 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
 
 export default function TerminalOperationsWorkspace({
   viewMode,
+  isMsmeMode = false,
   terminalUser,
   locked,
   terminalMeta,
@@ -620,10 +621,14 @@ export default function TerminalOperationsWorkspace({
   refreshIncomingOrders = () => {},
   sectionIds = {}
 }) {
-  const modeMeta = MODE_META[viewMode] || MODE_META.shift_controls;
+  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
+  const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
+    ? 'shift_controls'
+    : viewMode;
+  const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
 
   const content = useMemo(() => {
-    switch (viewMode) {
+    switch (effectiveViewMode) {
     case 'incoming_queue':
       return (
         <IncomingQueueWorkspace
@@ -759,7 +764,7 @@ export default function TerminalOperationsWorkspace({
     shiftState,
     terminalMeta,
     todayDashboard,
-    viewMode
+    effectiveViewMode
   ]);
 
   return (

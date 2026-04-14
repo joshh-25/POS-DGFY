@@ -33,6 +33,7 @@ import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { isPurchasable } from '@/components/utils/categoryHelpers';
+import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 
 /**
  * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
@@ -45,6 +46,7 @@ const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
 
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
   const navigate = useNavigate();
+  const { workflowMode } = useWorkflowMode();
   const [step, setStep] = useState(1);
   const [selectedItems, setSelectedItems] = useState([]);
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
@@ -67,16 +69,10 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
     }
   }, [open, initialItemId]);
 
-  // Filter items for restocking - only purchasable items (raw materials, packaging, supplies)
+  // Filter items for restocking using workflow-mode purchasable semantics.
   const restockItems = useMemo(() => {
-    return items.filter(item => {
-      const status = getStockStatus(item);
-      if (isPurchasable(item)) {
-        return status === 'critical' || status === 'warning' || true;
-      }
-      return false; // Only include purchasable items
-    });
-  }, [items]);
+    return items.filter((item) => isPurchasable(item, workflowMode));
+  }, [items, workflowMode]);
 
   // Filter restock items by search query
   const filteredRestockItems = useMemo(() => {

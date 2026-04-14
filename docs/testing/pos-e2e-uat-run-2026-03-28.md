@@ -1,5 +1,7 @@
 # POS E2E UAT Run Log (2026-03-28)
 
+> Legacy terminology note (2026-04-09): references to "strict mode/strict toggle" in this historical run log are superseded by the dual-mode lifecycle (`non_compliant_active`, `compliant_pending`, `compliant_active`) defined in `docs/compliance/ph-pos-software-developer-compliance-guide.md` and `docs/features/IMS_POS_SALES_UX_JOURNEY.md`.
+
 **Status:** in_progress  
 **Environment:** `http://localhost:5173` / `http://localhost:5000`  
 **Tenant:** `token-original` (`Original Legacy Data`)  
@@ -53,4 +55,3 @@ Unified Sales permission parsing bug fixed:
 6. POS History filtered view + historical receipt/reprint screenshots.
 7. Sales page mixed-source screenshot + CSV export sample row.
 8. Cashier and Admin signoff fields in `docs/testing/pos-e2e-uat-checklist.md`.
-

@@ -37,20 +37,43 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+Historical note:
+- Early exploratory Phase 32 Gemini QA artifacts were archived to `docs/archive/testing/2026-02/`.
+- Legacy receive-token verification notes were archived to `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`.
+- Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
+- Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
+
 ## Compliance Activation Readiness E2E
 
 For the guided compliance activation flow (Settings + POS blocker behavior), use:
+
+Operational note:
+1. Final Review documentary requirements are now completed in Settings > Compliance > Final review (upload or external URL). No repository edits are required for tenant activation paths.
 
 1. Browser E2E (Chromium, desktop profile):
    - `npm --prefix backend run test:frontend-compliance-e2e`
 2. Browser E2E matrix (Chromium, desktop + mobile profiles):
    - `npm --prefix backend run test:frontend-compliance-e2e:matrix`
-3. Frontend component/integration coverage (compliance panel, POS blocker contracts, admin review contracts):
-   - `npm --prefix frontend test -- --run src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx src/features/compliance/__tests__/complianceProgramContracts.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js src/pages/__tests__/TenantManager.complianceReviewContracts.test.js src/services/__tests__/complianceService.preflight.test.js`
+3. Frontend component/integration coverage (compliance panel, settings remediation deep links, POS blocker contracts, admin review contracts):
+   - `npm --prefix frontend test -- --run src/features/settings/__tests__/settingsDeepLink.contract.test.js src/pages/__tests__/Settings.deepLinking.integration.test.jsx src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx src/features/compliance/__tests__/complianceProgramContracts.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js src/pages/__tests__/TenantManager.complianceReviewContracts.test.js src/services/__tests__/complianceService.preflight.test.js`
 4. Backend residual-risk hardening suites (transport security, documentary readiness, incident dispatch):
    - `npm --prefix backend test -- backend/tests/securityTransport.middleware.test.js backend/tests/complianceRepository.documentaryReadiness.test.js backend/tests/complianceSecuritySignal.usecase.test.js backend/tests/complianceSecurityIncidents.usecase.test.js backend/tests/rbacRouteCoverage.contract.test.js backend/tests/posOperationReplayParity.usecase.test.js`
 
-Use `RUN_BROWSER_E2E=true` only for browser-driven suites; keep default backend tests fast and deterministic by leaving browser E2E opt-in.
+Use `RUN_BROWSER_E2E=true` only for browser-driven suites. Default backend test runs stay fast and deterministic, while release/main and nightly workflows execute enforced browser journey gates.
+
+## IMS -> POS -> Sales Journey E2E
+
+For the end-to-end cashier/admin continuity path (create item -> POS-ready -> checkout -> POS history -> Sales export), use:
+
+1. Browser E2E (Chromium, desktop profile):
+   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e`
+2. Browser E2E matrix with keyboard/screen-reader accessibility pass (desktop + mobile):
+   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e:matrix`
+
+CI enforcement policy:
+1. `main` and `release/*` pushes run the core desktop journey as a release gate before build/deploy stages.
+2. Nightly schedule runs the matrix journey (desktop + mobile) for drift detection.
+3. Failure artifacts (trace/video/screenshot) are uploaded and retained for 14 days (release gate) and 21 days (nightly).
 
 ## Startup Regression Guard (PM2 + Local)
 

@@ -10,6 +10,7 @@ import {
   getItemMovementsUseCase,
   validateCompositionUseCase,
   getItemSupplierCoverageUseCase,
+  replaceItemSuppliersUseCase,
   getFoldersUseCase,
   createFolderUseCase,
   updateFolderUseCase,
@@ -422,6 +423,32 @@ export const getItemSupplierCoverage = async (req, res, next) => {
   }
 };
 
+export const replaceItemSuppliers = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const result = await runInventoryUseCase(
+      () => replaceItemSuppliersUseCase({
+        itemId: item_id,
+        suppliers: req.validatedData?.suppliers || []
+      }),
+      'Failed to sync item suppliers'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Item suppliers synced successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getFolders = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -570,6 +597,7 @@ export default {
   getItemMovements,
   validateComposition,
   getItemSupplierCoverage,
+  replaceItemSuppliers,
   getFolders,
   createFolder,
   updateFolder,

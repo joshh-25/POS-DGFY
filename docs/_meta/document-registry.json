@@ -88,6 +88,12 @@
       "expected_authority_level": "reference"
     },
     {
+      "path": "docs/compliance/DGFY Compliance Certification Checklist.md",
+      "topic": "dgfy_compliance_certification_checklist",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/reference/IMPLEMENTATION_CHECKLIST.md",
       "topic": "ai_implementation_checklist",
       "expected_status": "reference",

@@ -76,6 +76,16 @@ const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_CLOSE: 'terminal.shift_close',
     ORDER_STATUS_UPDATE: 'terminal.order_status_update'
 });
+const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
+const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const TERMINAL_POLICY_REASON_CODES = Object.freeze({
+    REGISTRY_REQUIRED: 'TERMINAL_REGISTRY_REQUIRED',
+    TERMINAL_ID_REQUIRED: 'TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY',
+    TERMINAL_NOT_REGISTERED: 'TERMINAL_ID_NOT_REGISTERED',
+    WARN_MISSING_ID: 'TERMINAL_ID_MISSING_WARN',
+    WARN_UNREGISTERED_ID: 'TERMINAL_ID_UNREGISTERED_WARN'
+});
+const TERMINAL_POLICY_ALLOWED_REASON_CODE = 'TERMINAL_ID_ALLOWED';
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -333,6 +343,166 @@ const parseBooleanSetting = (value) => {
     return false;
 };
 
+const sanitizeTerminalId = (value) => {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return '';
+    return TERMINAL_ID_PATTERN.test(normalized) ? normalized : '';
+};
+
+const parseTerminalRegistryFromSettings = (settings = {}) => {
+    let rawRegistry = settings?.pos_terminal_registry?.value;
+    if (typeof rawRegistry === 'string') {
+        try {
+            rawRegistry = JSON.parse(rawRegistry);
+        } catch {
+            rawRegistry = [];
+        }
+    }
+    if (!Array.isArray(rawRegistry)) return [];
+
+    const seen = new Set();
+    const normalized = [];
+    for (const entry of rawRegistry) {
+        const terminalId = sanitizeTerminalId(entry?.terminal_id);
+        if (!terminalId || seen.has(terminalId)) continue;
+        if (entry?.is_active === false) continue;
+        seen.add(terminalId);
+        normalized.push({
+            terminal_id: terminalId,
+            label: String(entry?.label || '').trim()
+        });
+    }
+    return normalized;
+};
+
+const resolveTerminalPolicyModeFromSettings = (settings = {}) => {
+    const rawMode = String(settings?.pos_terminal_registry_mode?.value || '')
+        .trim()
+        .toLowerCase();
+    return TERMINAL_POLICY_MODES.has(rawMode) ? rawMode : 'warn';
+};
+
+const resolveTerminalIdentityPolicySettings = async ({ posRepository, settings = {}, options = {} }) => {
+    if (typeof posRepository?.getTerminalIdentityPolicySettings === 'function') {
+        const resolved = await posRepository.getTerminalIdentityPolicySettings(options);
+        const mode = TERMINAL_POLICY_MODES.has(String(resolved?.mode || '').trim().toLowerCase())
+            ? String(resolved.mode).trim().toLowerCase()
+            : 'warn';
+        const activeRegistry = Array.isArray(resolved?.active_registry)
+            ? resolved.active_registry
+                .map((entry) => ({
+                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                    label: String(entry?.label || '').trim()
+                }))
+                .filter((entry) => entry.terminal_id)
+            : [];
+
+        return {
+            mode,
+            active_registry: activeRegistry
+        };
+    }
+
+    return {
+        mode: resolveTerminalPolicyModeFromSettings(settings),
+        active_registry: parseTerminalRegistryFromSettings(settings)
+    };
+};
+
+const evaluateTerminalIdentityPolicy = ({ terminalId, policy = {}, operation }) => {
+    const sanitizedTerminalId = sanitizeTerminalId(terminalId);
+    const mode = TERMINAL_POLICY_MODES.has(String(policy?.mode || '').trim().toLowerCase())
+        ? String(policy.mode).trim().toLowerCase()
+        : 'warn';
+    const activeRegistry = Array.isArray(policy?.active_registry)
+        ? policy.active_registry
+            .map((entry) => sanitizeTerminalId(entry?.terminal_id))
+            .filter(Boolean)
+        : [];
+    const allowedTerminalIds = new Set(activeRegistry);
+    const context = {
+        operation: String(operation || '').trim() || null,
+        mode,
+        terminal_id: sanitizedTerminalId || null,
+        registry_size: activeRegistry.length,
+        reason_code: TERMINAL_POLICY_ALLOWED_REASON_CODE,
+        warning: null
+    };
+
+    if (mode === 'enforce') {
+        if (activeRegistry.length === 0) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Terminal registry enforcement is active, but no active terminal entries are configured.',
+                {
+                    statusCode: 422,
+                    details: {
+                        terminal_identity_policy: {
+                            ...context,
+                            reason_code: TERMINAL_POLICY_REASON_CODES.REGISTRY_REQUIRED
+                        }
+                    }
+                }
+            );
+        }
+        if (!sanitizedTerminalId) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'terminal_id is required when terminal registry enforcement is active.',
+                {
+                    statusCode: 422,
+                    details: {
+                        terminal_identity_policy: {
+                            ...context,
+                            reason_code: TERMINAL_POLICY_REASON_CODES.TERMINAL_ID_REQUIRED
+                        }
+                    }
+                }
+            );
+        }
+        if (!allowedTerminalIds.has(sanitizedTerminalId)) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `terminal_id "${sanitizedTerminalId}" is not an active registry terminal.`,
+                {
+                    statusCode: 422,
+                    details: {
+                        terminal_identity_policy: {
+                            ...context,
+                            reason_code: TERMINAL_POLICY_REASON_CODES.TERMINAL_NOT_REGISTERED
+                        }
+                    }
+                }
+            );
+        }
+        return context;
+    }
+
+    if (!sanitizedTerminalId) {
+        return {
+            ...context,
+            reason_code: TERMINAL_POLICY_REASON_CODES.WARN_MISSING_ID,
+            warning: {
+                reason_code: TERMINAL_POLICY_REASON_CODES.WARN_MISSING_ID,
+                message: 'terminal_id is missing; operations continue in warn mode.'
+            }
+        };
+    }
+
+    if (activeRegistry.length > 0 && !allowedTerminalIds.has(sanitizedTerminalId)) {
+        return {
+            ...context,
+            reason_code: TERMINAL_POLICY_REASON_CODES.WARN_UNREGISTERED_ID,
+            warning: {
+                reason_code: TERMINAL_POLICY_REASON_CODES.WARN_UNREGISTERED_ID,
+                message: `terminal_id "${sanitizedTerminalId}" is not an active registry terminal; operation allowed in warn mode.`
+            }
+        };
+    }
+
+    return context;
+};
+
 const parseUserPermissions = (user) => {
     if (!user) return [];
     if (Array.isArray(user.permissions)) return user.permissions;
@@ -545,14 +715,22 @@ const resolveCheckoutServiceFee = ({ payload, settings }) => {
 const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
     const profileName = String(payload?.discount_profile_name || '').trim();
     const requestedDiscount = round4(payload?.discount_amount || 0);
+    const requestedRate = payload?.discount_rate;
 
     if (!profileName) {
-        if (requestedDiscount > 0) {
+        if (requestedRate != null) {
             throw new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                'Non-zero discount requires a configured discount profile.',
+                'discount_rate requires discount_profile_name.',
                 { statusCode: 422 }
             );
+        }
+        if (requestedDiscount > 0) {
+            return {
+                discountAmount: Math.min(requestedDiscount, subtotalAmount),
+                discountLabelSnapshot: 'Manual Discount',
+                discountRateSnapshot: null
+            };
         }
         return {
             discountAmount: 0,
@@ -571,7 +749,6 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
         );
     }
 
-    const requestedRate = payload?.discount_rate;
     if (requestedRate != null) {
         const normalizedRate = round4(requestedRate);
         const expectedRate = round4(selected.percentage);
@@ -728,8 +905,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             ));
         }
 
+        const requestedTerminalId = sanitizeTerminalId(payload.terminal_id);
         const normalizedRequestPayload = {
-            terminal_id: payload.terminal_id || null,
+            terminal_id: requestedTerminalId || null,
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
             service_fee_amount: payload.service_fee_amount == null ? null : round4(payload.service_fee_amount),
@@ -756,17 +934,31 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }))
                 .sort((a, b) => a.item_id - b.item_id)
         };
-        const requestHash = hashPayload(normalizedRequestPayload);
 
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const transaction = await sequelize.transaction();
 
         try {
             const settings = await getPosSettings();
+            const terminalPolicySettings = await resolveTerminalIdentityPolicySettings({
+                posRepository,
+                settings,
+                options: { transaction }
+            });
+            const terminalPolicyContext = evaluateTerminalIdentityPolicy({
+                terminalId: requestedTerminalId,
+                policy: terminalPolicySettings,
+                operation: 'checkout'
+            });
+            const normalizedTerminalId = terminalPolicyContext.terminal_id;
+            const requestHash = hashPayload({
+                ...normalizedRequestPayload,
+                terminal_id: normalizedTerminalId || null
+            });
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
                 context: {
-                    terminal_id: payload.terminal_id || null,
+                    terminal_id: normalizedTerminalId || null,
                     requested_document_context: payload.document_context || null,
                     payment_type: payload.payment_type || 'cash',
                     payment_handoff_mode: payload.payment_handoff_mode
@@ -833,6 +1025,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 return ok({
                     idempotent_replay: true,
                     compliance_decision: complianceDecision,
+                    terminal_identity_policy: terminalPolicyContext,
                     receipt_contract: {
                         ...resolvedReceiptContract,
                         document_context: String(existing.document_context || resolvedReceiptContract.document_context || '').trim().toLowerCase() || 'non_fiscal'
@@ -869,7 +1062,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                         { statusCode: 403 }
                     );
                 }
-                if (payload.terminal_id && String(shift.terminal_id) !== String(payload.terminal_id)) {
+                if (normalizedTerminalId && String(shift.terminal_id) !== String(normalizedTerminalId)) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         'Shift terminal_id does not match checkout terminal_id.',
@@ -1047,7 +1240,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
                     shift_id: normalizedShiftId || null,
-                    terminal_id: payload.terminal_id || null,
+                    terminal_id: normalizedTerminalId || null,
                     order_source: 'in_store',
                     order_method: normalizedOrderMethod,
                     fulfillment_status: 'completed',
@@ -1104,6 +1297,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             return ok({
                 idempotent_replay: false,
                 compliance_decision: complianceDecision,
+                terminal_identity_policy: terminalPolicyContext,
                 receipt_contract: resolvedReceiptContract,
                 transaction: toSerializable(created)
             });
@@ -1485,6 +1679,29 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                 );
             }
 
+            if (payload.pos_visible === true && typeof posRepository.getCatalogReadinessByItemId === 'function') {
+                const readinessEnvelope = await posRepository.getCatalogReadinessByItemId(normalizedItemId, {
+                    forcedPosVisible: true
+                });
+                const readiness = readinessEnvelope?.pos_readiness || null;
+                if (readiness?.ready !== true) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Cannot enable POS visibility until readiness requirements are completed.',
+                        {
+                            statusCode: 422,
+                            details: {
+                                reason_code: 'POS_READINESS_INCOMPLETE',
+                                missing_requirements: Array.isArray(readiness?.missing_requirements)
+                                    ? readiness.missing_requirements
+                                    : [],
+                                readiness_snapshot: readiness || null
+                            }
+                        }
+                    );
+                }
+            }
+
             const data = await posRepository.upsertCatalogOverride(normalizedItemId, {
                 pos_visible: payload.pos_visible
             });
@@ -1652,19 +1869,20 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             ));
         }
 
-        const terminalId = String(payload?.terminal_id || 'WEB-POS-01').trim() || 'WEB-POS-01';
+        const requestedTerminalId = sanitizeTerminalId(payload?.terminal_id);
+        if (!requestedTerminalId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'terminal_id is required to open a terminal shift',
+                { statusCode: 422 }
+            ));
+        }
         const businessDate = payload?.business_date
             ? String(payload.business_date).slice(0, 10)
             : nowInManilaBusinessDate();
         const openingFloatAmount = round4(Number(payload?.opening_float_amount || 0));
         const openingNote = String(payload?.opening_note || '').trim() || null;
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
-        const replayRequestHash = hashPayload({
-            terminal_id: terminalId,
-            business_date: businessDate,
-            opening_float_amount: openingFloatAmount,
-            opening_note: openingNote
-        });
 
         if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
             return fail(new DomainError(
@@ -1675,6 +1893,22 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const terminalPolicySettings = await resolveTerminalIdentityPolicySettings({
+                posRepository,
+                settings: {}
+            });
+            const terminalPolicyContext = evaluateTerminalIdentityPolicy({
+                terminalId: requestedTerminalId,
+                policy: terminalPolicySettings,
+                operation: 'open_shift'
+            });
+            const terminalId = terminalPolicyContext.terminal_id;
+            const replayRequestHash = hashPayload({
+                terminal_id: terminalId,
+                business_date: businessDate,
+                opening_float_amount: openingFloatAmount,
+                opening_note: openingNote
+            });
             const replay = await findOperationReplayEntry({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
@@ -1702,6 +1936,7 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
+                    terminal_identity_policy: terminalPolicyContext,
                     shift: toSerializable(existing)
                 };
                 await persistOperationReplay({
@@ -1733,6 +1968,7 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             const replayPayload = {
                 reused_existing: false,
                 compliance_decision: complianceDecision,
+                terminal_identity_policy: terminalPolicyContext,
                 shift: toSerializable(created)
             };
             await persistOperationReplay({
@@ -1751,6 +1987,12 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             });
         } catch (error) {
             if (error instanceof DomainError && idempotencyKey) {
+                const replayRequestHash = hashPayload({
+                    terminal_id: requestedTerminalId || null,
+                    business_date: businessDate,
+                    opening_float_amount: openingFloatAmount,
+                    opening_note: openingNote
+                });
                 await persistOperationReplay({
                     posRepository,
                     operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,

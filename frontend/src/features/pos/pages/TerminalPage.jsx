@@ -15,11 +15,15 @@ import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
+import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
+import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 
 const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout'));
 
-const TERMINAL_ID = 'WEB-POS-01';
 const DEFAULT_CURRENCY = 'PHP';
+const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+const DEFAULT_TERMINAL_ID_OPTIONS = ['COUNTER-01', 'COUNTER-02', 'KIOSK-01'];
+const TERMINAL_REGISTRY_MODES = new Set(['warn', 'enforce']);
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
@@ -31,6 +35,7 @@ const OPERATIONS_VIEW_MODES = [
   'sales_today',
   'terminal_setup'
 ];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift'];
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -82,6 +87,81 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+const sanitizeTerminalId = (value) => String(value || '')
+  .trim()
+  .replace(/\s+/g, '-')
+  .replace(/[^A-Za-z0-9._-]/g, '')
+  .toUpperCase();
+const normalizeTerminalRegistry = (rawRegistry) => {
+  let parsed = rawRegistry;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  const seen = new Set();
+  const normalized = [];
+  parsed.forEach((entry) => {
+    const terminalId = sanitizeTerminalId(entry?.terminal_id);
+    if (!terminalId) return;
+    if (seen.has(terminalId)) return;
+    seen.add(terminalId);
+
+    const isActive = entry?.is_active !== false;
+    normalized.push({
+      terminal_id: terminalId,
+      label: String(entry?.label || '').trim(),
+      is_active: isActive,
+      is_default: isActive && entry?.is_default === true
+    });
+  });
+
+  if (normalized.length === 0) return [];
+
+  const defaultIndex = normalized.findIndex((entry) => entry.is_default === true);
+  if (defaultIndex >= 0) {
+    normalized.forEach((entry, index) => {
+      if (index !== defaultIndex) {
+        entry.is_default = false;
+      }
+    });
+  } else {
+    const firstActiveIndex = normalized.findIndex((entry) => entry.is_active);
+    if (firstActiveIndex >= 0) {
+      normalized[firstActiveIndex].is_default = true;
+    }
+  }
+
+  return normalized;
+};
+
+const resolvePreferredTerminalId = (registryEntries = [], preferredTerminalId = '') => {
+  const activeEntries = Array.isArray(registryEntries)
+    ? registryEntries.filter((entry) => entry?.is_active !== false)
+    : [];
+  if (activeEntries.length === 0) {
+    return sanitizeTerminalId(preferredTerminalId);
+  }
+
+  const normalizedPreferred = sanitizeTerminalId(preferredTerminalId);
+  if (normalizedPreferred && activeEntries.some((entry) => entry.terminal_id === normalizedPreferred)) {
+    return normalizedPreferred;
+  }
+
+  const defaultEntry = activeEntries.find((entry) => entry.is_default === true);
+  if (defaultEntry?.terminal_id) return defaultEntry.terminal_id;
+  return activeEntries[0]?.terminal_id || '';
+};
+
+const readStoredTerminalId = () => {
+  if (typeof window === 'undefined') return '';
+  return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
 };
 
 const readTerminalOperationQueue = () => {
@@ -168,6 +248,7 @@ const parseUserPermissions = (user) => {
 };
 
 export default function TerminalPage() {
+  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
@@ -177,6 +258,9 @@ export default function TerminalPage() {
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activeTerminalId, setActiveTerminalId] = useState(() => readStoredTerminalId());
+  const [terminalRegistry, setTerminalRegistry] = useState([]);
+  const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
   const [terminalMeta, setTerminalMeta] = useState({
     loading: true,
     pettyCashSymbol: DEFAULT_CURRENCY,
@@ -196,7 +280,8 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    companyToken: ''
+    companyToken: '',
+    terminalId: readStoredTerminalId()
   });
 
   const [shiftState, setShiftState] = useState({
@@ -243,6 +328,11 @@ export default function TerminalPage() {
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
+  const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return String(params.get('catalog_search') || '').trim();
+  });
   const [queuedTerminalOperations, setQueuedTerminalOperations] = useState(() => readTerminalOperationQueue());
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState('checkout');
@@ -254,8 +344,36 @@ export default function TerminalPage() {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= 1280;
   });
+  const isMsmeMode = isMsmeWorkflowMode(workflowMode);
+  const activeOperationsViewModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
+  const activeViewModes = useMemo(
+    () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
+    [activeOperationsViewModes]
+  );
 
   const permissions = useMemo(() => parseUserPermissions(terminalUser), [terminalUser]);
+  const activeTerminalRegistry = useMemo(
+    () => (Array.isArray(terminalRegistry) ? terminalRegistry.filter((entry) => entry?.is_active !== false) : []),
+    [terminalRegistry]
+  );
+  const terminalRegistryLookup = useMemo(() => {
+    const lookup = new Map();
+    activeTerminalRegistry.forEach((entry) => {
+      lookup.set(String(entry.terminal_id || ''), entry);
+    });
+    return lookup;
+  }, [activeTerminalRegistry]);
+  const registryEnforced = terminalRegistryMode === 'enforce';
+  const terminalIdOptions = useMemo(() => {
+    const current = sanitizeTerminalId(activeTerminalId);
+    const formTerminal = sanitizeTerminalId(formData.terminalId);
+    const registryIds = activeTerminalRegistry.map((entry) => entry.terminal_id);
+    const fallbackOptions = registryEnforced
+      ? registryIds
+      : (registryIds.length > 0 ? registryIds : DEFAULT_TERMINAL_ID_OPTIONS);
+    const merged = new Set([...fallbackOptions, current, formTerminal].filter(Boolean));
+    return Array.from(merged);
+  }, [activeTerminalId, activeTerminalRegistry, formData.terminalId, registryEnforced]);
   const hasPermission = useCallback((permission) => {
     if (!terminalUser) return false;
     if (terminalUser.is_master_admin) return true;
@@ -291,6 +409,13 @@ export default function TerminalPage() {
       const allSettings = await getAllSettings();
       const pettyCashSymbol = String(allSettings?.pos_petty_cash_symbol?.value || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
       const pettyCashAmount = Number(allSettings?.pos_petty_cash_amount?.value ?? 0);
+      const normalizedRegistry = normalizeTerminalRegistry(allSettings?.pos_terminal_registry?.value || []);
+      const resolvedRegistryMode = String(allSettings?.pos_terminal_registry_mode?.value || '')
+        .trim()
+        .toLowerCase();
+      const normalizedRegistryMode = TERMINAL_REGISTRY_MODES.has(resolvedRegistryMode)
+        ? resolvedRegistryMode
+        : 'warn';
 
       let discountProfiles = allSettings?.pos_discount_profiles?.value || [];
       if (typeof discountProfiles === 'string') {
@@ -316,6 +441,27 @@ export default function TerminalPage() {
         (method) => methodFees?.[method]?.enabled === true
       );
 
+      setTerminalRegistry(normalizedRegistry);
+      setTerminalRegistryMode(normalizedRegistryMode);
+
+      const preferredTerminalId = resolvePreferredTerminalId(
+        normalizedRegistry,
+        readStoredTerminalId()
+      );
+      if (preferredTerminalId) {
+        setActiveTerminalId((prev) => (prev === preferredTerminalId ? prev : preferredTerminalId));
+        setFormData((prev) => (
+          prev.terminalId === preferredTerminalId
+            ? prev
+            : { ...prev, terminalId: preferredTerminalId }
+        ));
+        if (typeof window !== 'undefined') {
+          if (window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) !== preferredTerminalId) {
+            window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+          }
+        }
+      }
+
       setTerminalMeta({
         loading: false,
         pettyCashSymbol,
@@ -324,6 +470,8 @@ export default function TerminalPage() {
         enabledFeeMethods
       });
     } catch {
+      setTerminalRegistry([]);
+      setTerminalRegistryMode('warn');
       setTerminalMeta((prev) => ({ ...prev, loading: false }));
     }
   }, []);
@@ -384,18 +532,24 @@ export default function TerminalPage() {
     }
   }, [locked]);
 
-  const refreshOperationalContext = useCallback(async () => {
+  const refreshOperationalContext = useCallback(async ({ terminalIdOverride = null } = {}) => {
     if (locked || !canViewPos) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
+      return;
+    }
+    const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
+    if (!terminalId) {
+      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null }));
+      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
       return;
     }
     setShiftState((prev) => ({ ...prev, loading: true }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const [currentShiftResult, dashboardResult] = await Promise.all([
-        fetchCurrentTerminalShift({ terminal_id: TERMINAL_ID }),
-        fetchTerminalTodayDashboard({ terminal_id: TERMINAL_ID })
+        fetchCurrentTerminalShift({ terminal_id: terminalId }),
+        fetchTerminalTodayDashboard({ terminal_id: terminalId })
       ]);
 
       const shiftPayload = currentShiftResult?.shift || null;
@@ -420,7 +574,7 @@ export default function TerminalPage() {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
     }
-  }, [canViewPos, locked]);
+  }, [activeTerminalId, canViewPos, locked]);
 
   const refreshTenantLocations = useCallback(async () => {
     if (locked) return;
@@ -749,11 +903,41 @@ export default function TerminalPage() {
     localStorage.setItem('posTerminalSidebarCollapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
 
+  useEffect(() => {
+    if (!activeTerminalId) return;
+    setFormData((prev) => (
+      prev.terminalId === activeTerminalId
+        ? prev
+        : { ...prev, terminalId: activeTerminalId }
+    ));
+  }, [activeTerminalId]);
+
+  useEffect(() => {
+    if (!registryEnforced) return;
+    const preferredTerminalId = resolvePreferredTerminalId(activeTerminalRegistry, activeTerminalId);
+    if (!preferredTerminalId || preferredTerminalId === activeTerminalId) return;
+
+    setActiveTerminalId(preferredTerminalId);
+    setFormData((prev) => (
+      prev.terminalId === preferredTerminalId
+        ? prev
+        : { ...prev, terminalId: preferredTerminalId }
+    ));
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+    }
+  }, [activeTerminalId, activeTerminalRegistry, registryEnforced]);
+
   const headerSubtitle = useMemo(() => {
+    const terminalLabel = activeTerminalId || 'No terminal selected';
+    const modeLabel = getWorkflowModeLabel(workflowMode);
     if (loadingUser) return 'Loading terminal session...';
-    if (locked) return 'Terminal locked. Sign in from the right panel.';
-    return 'Cashier workspace for checkout, history, receipts, and shift controls.';
-  }, [loadingUser, locked]);
+    if (locked) return `Terminal locked (${terminalLabel}) [${modeLabel}]. Sign in from the right panel.`;
+    if (isMsmeMode) {
+      return `Terminal ${terminalLabel}: MSME cashier workspace for checkout, history, receipt preview, and shift open/close.`;
+    }
+    return `Terminal ${terminalLabel}: cashier workspace for sell, orders, history, receipts, and shift controls.`;
+  }, [activeTerminalId, isMsmeMode, loadingUser, locked, workflowMode]);
 
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
@@ -814,10 +998,23 @@ export default function TerminalPage() {
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
     const manualToken = String(formData.companyToken || '').trim();
+    const selectedTerminalId = sanitizeTerminalId(formData.terminalId);
+    const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
     if (!email || !password) {
       toast.error('Email and password are required.');
       return;
+    }
+    if (!selectedTerminalId) {
+      toast.error('Terminal ID is required before unlocking.');
+      return;
+    }
+    if (registryEnforced && !registryEntry) {
+      toast.error('Select an active terminal from the configured registry.');
+      return;
+    }
+    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
+      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
     }
 
     setSubmitting(true);
@@ -833,10 +1030,18 @@ export default function TerminalPage() {
       }
 
       await loginWithCredentials({ email, password, companyToken });
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+      }
+      setActiveTerminalId(selectedTerminalId);
       await hydrateUser();
-      await Promise.all([hydrateTerminalMeta(), refreshOperationalContext(), refreshComplianceGate()]);
-      setFormData((prev) => ({ ...prev, password: '' }));
-      toast.success('Terminal unlocked.');
+      await Promise.all([
+        hydrateTerminalMeta(),
+        refreshOperationalContext({ terminalIdOverride: selectedTerminalId }),
+        refreshComplianceGate()
+      ]);
+      setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
+      toast.success(`Terminal unlocked (${selectedTerminalId}).`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Unable to sign in to terminal.');
     } finally {
@@ -865,6 +1070,20 @@ export default function TerminalPage() {
       toast.error('Your account does not have permission to open a shift.');
       return;
     }
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (!terminalId) {
+      toast.error('Select a terminal ID before opening shift.');
+      setDrawerOpen(true);
+      return;
+    }
+    if (registryEnforced && !terminalRegistryLookup.has(terminalId)) {
+      toast.error('Active terminal ID is no longer valid. Re-authenticate terminal identity.');
+      setDrawerOpen(true);
+      return;
+    }
+    if (!registryEnforced && activeTerminalRegistry.length > 0 && !terminalRegistryLookup.has(terminalId)) {
+      toast.warning(`Terminal ID ${terminalId} is not in active registry. Shift open continues in warn mode.`);
+    }
 
     const rawOpeningFloat = String(openShiftForm.openingFloatAmount ?? '').trim();
     const fallbackOpeningFloat = Number(terminalMeta.pettyCashAmount ?? 0);
@@ -875,7 +1094,7 @@ export default function TerminalPage() {
     }
 
     const payload = {
-      terminal_id: TERMINAL_ID,
+      terminal_id: terminalId,
       opening_float_amount: openingFloatAmount,
       opening_note: String(openShiftForm.openingNote || '').trim() || undefined,
       idempotency_key: createIdempotencyKey('pos-shift-open')
@@ -1138,8 +1357,21 @@ export default function TerminalPage() {
     await refreshOperationalContext();
   }, [refreshOperationalContext]);
 
+  const handleCatalogSearchHydrated = useCallback(() => {
+    setCatalogSearchPrefill('');
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('catalog_search');
+    url.searchParams.delete('catalog_focus');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  }, []);
+
   const handleSelectViewMode = useCallback((nextMode) => {
     if (locked) {
+      setMobileNavOpen(false);
+      return;
+    }
+    if (!activeViewModes.includes(nextMode)) {
       setMobileNavOpen(false);
       return;
     }
@@ -1148,7 +1380,7 @@ export default function TerminalPage() {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
-  }, [locked]);
+  }, [activeViewModes, locked]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1202,20 +1434,25 @@ export default function TerminalPage() {
   }, [canViewPos, posViewMode]);
 
   useEffect(() => {
-    if (!CHECKOUT_VIEW_MODES.includes(posViewMode) && !OPERATIONS_VIEW_MODES.includes(posViewMode)) {
+    if (!activeViewModes.includes(posViewMode)) {
       setPosViewMode('checkout');
     }
-  }, [posViewMode]);
+  }, [activeViewModes, posViewMode]);
 
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
-  const isOperationsWorkspaceMode = OPERATIONS_VIEW_MODES.includes(posViewMode);
+  const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
       <TerminalPageLayout
         locked={locked}
         isOnline={isOnline}
+        activeTerminalId={activeTerminalId}
+        terminalIdOptions={terminalIdOptions}
+        terminalRegistry={activeTerminalRegistry}
+        terminalRegistryMode={terminalRegistryMode}
+        registryEnforced={registryEnforced}
         headerSubtitle={headerSubtitle}
         mobileNavOpen={mobileNavOpen}
         setMobileNavOpen={setMobileNavOpen}
@@ -1225,6 +1462,7 @@ export default function TerminalPage() {
         canCloseDay={canCloseDay}
         terminalUser={terminalUser}
         posViewMode={posViewMode}
+        isMsmeMode={isMsmeMode}
         shiftState={shiftState}
         incomingOrdersState={incomingOrdersState}
         locationsState={locationsState}
@@ -1268,12 +1506,16 @@ export default function TerminalPage() {
         handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
         handleCheckoutCompleted={handleCheckoutCompleted}
         setPosViewMode={setPosViewMode}
+        modeChangeNotice={modeChangeNotice}
+        dismissModeChangeNotice={dismissModeChangeNotice}
         receiptRequestId={receiptRequestId}
         setReceiptRequestId={setReceiptRequestId}
         setIncomingReceiptOpeningId={setIncomingReceiptOpeningId}
         historyRequestQuery={historyRequestQuery}
         setHistoryRequestQuery={setHistoryRequestQuery}
         setIncomingHistoryOpeningId={setIncomingHistoryOpeningId}
+        catalogSearchPrefill={catalogSearchPrefill}
+        onCatalogSearchHydrated={handleCatalogSearchHydrated}
         drawerOpen={drawerOpen}
         formData={formData}
         setFormData={setFormData}

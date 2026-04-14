@@ -10,12 +10,14 @@ const {
   mockGetComplianceProfile,
   mockListComplianceArtifacts,
   mockListCompliancePeripherals,
+  mockListFinalReviewDocuments,
   mockUpdateComplianceProfile,
   mockActivateCompliantMode
 } = vi.hoisted(() => ({
   mockGetComplianceProfile: vi.fn(),
   mockListComplianceArtifacts: vi.fn(),
   mockListCompliancePeripherals: vi.fn(),
+  mockListFinalReviewDocuments: vi.fn(),
   mockUpdateComplianceProfile: vi.fn(),
   mockActivateCompliantMode: vi.fn()
 }));
@@ -24,6 +26,7 @@ vi.mock('@/services/complianceService.js', () => ({
   getComplianceProfile: mockGetComplianceProfile,
   listComplianceArtifacts: mockListComplianceArtifacts,
   listCompliancePeripherals: mockListCompliancePeripherals,
+  listFinalReviewDocuments: mockListFinalReviewDocuments,
   updateComplianceProfile: mockUpdateComplianceProfile,
   activateCompliantMode: mockActivateCompliantMode,
   selectComplianceMode: vi.fn(),
@@ -31,18 +34,22 @@ vi.mock('@/services/complianceService.js', () => ({
   createComplianceArtifact: vi.fn(),
   updateComplianceArtifactVerification: vi.fn(),
   createCompliancePeripheral: vi.fn(),
-  updateCompliancePeripheralVerification: vi.fn()
+  updateCompliancePeripheralVerification: vi.fn(),
+  upsertFinalReviewDocument: vi.fn(),
+  uploadFinalReviewDocument: vi.fn(),
+  upsertFinalReviewSignoff: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
-    error: vi.fn()
+    error: vi.fn(),
+    info: vi.fn()
   }
 }));
 
-const renderPanel = (props = {}) => render(
-  <MemoryRouter>
+const renderPanel = (props = {}, initialEntry = '/settings?tab=compliance') => render(
+  <MemoryRouter initialEntries={[initialEntry]}>
     <ComplianceProgramPanel isMasterAdmin {...props} />
   </MemoryRouter>
 );
@@ -108,6 +115,7 @@ describe('ComplianceProgramPanel integration', () => {
     vi.clearAllMocks();
     mockListComplianceArtifacts.mockResolvedValue({ artifacts: [] });
     mockListCompliancePeripherals.mockResolvedValue({ peripherals: [] });
+    mockListFinalReviewDocuments.mockResolvedValue({ documents: [], signoff: {} });
     mockUpdateComplianceProfile.mockResolvedValue({ profile: {} });
     mockActivateCompliantMode.mockResolvedValue({ mode_state: 'compliant_active' });
 
@@ -173,5 +181,83 @@ describe('ComplianceProgramPanel integration', () => {
         confirmation_text: 'ACTIVATE COMPLIANT'
       });
     });
+  });
+
+  it('scrolls to final-review activation section when missing requirement action target is on the current route', async () => {
+    mockGetComplianceProfile.mockResolvedValue({
+      ...baseProfileResponse,
+      checklist: {
+        ...baseProfileResponse.checklist,
+        requirements: [
+          {
+            code: 'control.documentary_readiness',
+            label: 'Submission documentary readiness',
+            section: 'final_review',
+            status: 'missing',
+            action_target: '/settings?tab=compliance#section-final-review'
+          }
+        ],
+        section_progress: {
+          ...baseProfileResponse.checklist.section_progress,
+          final_review: { complete: 0, total: 1, missing: 1, status: 'blocked' }
+        },
+        activation_blockers: [
+          {
+            code: 'VERIFICATION_REQUIRED',
+            section: 'final_review',
+            message: 'Submission documentary evidence is incomplete or stale.',
+            action_target: '/settings?tab=compliance#section-final-review'
+          }
+        ],
+        next_blocking_step: 'final_review'
+      }
+    });
+    const user = userEvent.setup();
+
+    renderPanel();
+    expect(await screen.findByText('Lifecycle')).toBeTruthy();
+    const finalReviewSection = document.querySelector('#section-final-review');
+    expect(finalReviewSection).toBeTruthy();
+
+    const scrollIntoViewSpy = vi.fn();
+    finalReviewSection.scrollIntoView = scrollIntoViewSpy;
+
+    await user.click(screen.getByRole('button', { name: /Fix now/i }));
+
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps final-review fix action functional in compliant-active mode', async () => {
+    mockGetComplianceProfile.mockResolvedValue({
+      ...baseProfileResponse,
+      mode_state: 'compliant_active',
+      checklist: {
+        ...baseProfileResponse.checklist,
+        requirements: [
+          {
+            code: 'control.documentary_readiness',
+            label: 'Submission documentary readiness',
+            section: 'final_review',
+            status: 'missing',
+            action_target: '/settings?tab=compliance#section-final-review'
+          }
+        ],
+        activation_blockers: [],
+        next_blocking_step: 'final_review'
+      }
+    });
+    const user = userEvent.setup();
+
+    renderPanel();
+    expect(await screen.findByText('Lifecycle')).toBeTruthy();
+    const finalReviewSection = document.querySelector('#section-final-review');
+    expect(finalReviewSection).toBeTruthy();
+
+    const scrollIntoViewSpy = vi.fn();
+    finalReviewSection.scrollIntoView = scrollIntoViewSpy;
+
+    await user.click(screen.getByRole('button', { name: /Fix now/i }));
+
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
   });
 });

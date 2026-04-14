@@ -12,7 +12,9 @@ export default function RegisterCompany() {
         companyName: '',
         adminEmail: '',
         adminPassword: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        complianceMode: 'non_compliant',
+        workflowMode: 'manufacturing'
     });
 
     const [error, setError] = useState('');
@@ -51,7 +53,9 @@ export default function RegisterCompany() {
                 name: formData.companyName,
                 adminEmail: formData.adminEmail,
                 adminPassword: formData.adminPassword,
-                plan: 'standard'
+                plan: 'standard',
+                complianceMode: formData.complianceMode,
+                workflowMode: formData.workflowMode
             });
 
             if (response.data.success) {
@@ -146,6 +150,40 @@ export default function RegisterCompany() {
                             </div>
                             <p className="text-sm text-slate-600">Standard onboarding only</p>
                             <p className="text-xs text-slate-500 mt-1">Subscription billing is currently disabled.</p>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="complianceMode">Compliance Mode</Label>
+                            <select
+                                id="complianceMode"
+                                value={formData.complianceMode}
+                                onChange={(e) => setFormData({ ...formData, complianceMode: e.target.value })}
+                                disabled={isLoading}
+                                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            >
+                                <option value="non_compliant">Non-compliant</option>
+                                <option value="compliant">Compliant</option>
+                            </select>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Compliant mode starts in pending activation and cannot be downgraded later.
+                            </p>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="workflowMode">Business Mode</Label>
+                            <select
+                                id="workflowMode"
+                                value={formData.workflowMode}
+                                onChange={(e) => setFormData({ ...formData, workflowMode: e.target.value })}
+                                disabled={isLoading}
+                                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            >
+                                <option value="manufacturing">Manufacturing (Full)</option>
+                                <option value="msme">MSME (Simplified)</option>
+                            </select>
+                            <p className="mt-1 text-xs text-slate-500">
+                                You can switch this later in Settings (master admin only).
+                            </p>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-4">
@@ -246,4 +284,3 @@ export default function RegisterCompany() {
         </div>
     );
 }
-

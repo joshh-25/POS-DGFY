@@ -11,7 +11,9 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
-    useSearchParams: () => [new URLSearchParams('tab=subscription'), vi.fn()]
+    useSearchParams: () => [new URLSearchParams('tab=subscription'), vi.fn()],
+    useLocation: () => ({ pathname: '/settings', search: '?tab=subscription', hash: '' }),
+    useNavigate: () => vi.fn()
   };
 });
 

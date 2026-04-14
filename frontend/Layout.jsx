@@ -24,6 +24,8 @@ import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
 import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import useStore from './src/store/useStore.js';
+import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
+import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -62,6 +64,7 @@ export default function Layout({ children, currentPageName }) {
   const [currentUser, setCurrentUser] = useState(null);
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
+  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
 
   React.useEffect(() => {
     if (!loading) {
@@ -86,6 +89,7 @@ export default function Layout({ children, currentPageName }) {
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
   const navItems = ALL_NAV_ITEMS.filter(item => {
+    if (!isWorkflowPageVisible(item.page, workflowMode)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));
@@ -190,6 +194,32 @@ export default function Layout({ children, currentPageName }) {
       <main className="app-main min-h-screen pt-16 lg:pt-0">
         <GracePeriodBanner />
         <div className="p-6 lg:p-8">
+          {modeChangeNotice && (
+            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+              <p className="text-sm font-semibold text-sky-900">
+                Business Mode changed to {getWorkflowModeLabel(modeChangeNotice.to)}.
+              </p>
+              <p className="mt-1 text-xs text-sky-800">
+                Open pages auto-adjusted; refresh active screens (especially POS terminals) to reload mode-specific defaults.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs font-semibold text-sky-900"
+                  onClick={() => window.location.reload()}
+                >
+                  Refresh Now
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
+                  onClick={dismissModeChangeNotice}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           {children}
         </div>
       </main>

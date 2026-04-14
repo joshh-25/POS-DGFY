@@ -7,7 +7,8 @@ import {
   validateUpdateItem,
   validateCreateItemDraft,
   validateFolderIdParam,
-  validateUpdateFolder
+  validateUpdateFolder,
+  validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -43,6 +44,7 @@ router.get('/:item_id', itemController.getItemById);
 router.get('/:item_id/stock-history', itemController.getItemStockHistory);
 router.get('/:item_id/batches', itemController.getItemBatches);
 router.get('/:item_id/movements', itemController.getItemMovements);
+router.put('/:item_id/suppliers', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateReplaceItemSuppliers, itemController.replaceItemSuppliers);
 
 // Composition validation - for nested products feature
 router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.validateComposition);

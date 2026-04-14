@@ -2,6 +2,10 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { toValidDate, extendOneCalendarMonth } from './tenantBillingDateUtils.js';
 import { createBillingFunnelTracker } from '../../../services/billingFunnelTelemetryService.js';
+import {
+    isWorkflowMode,
+    normalizeWorkflowMode
+} from '../../shared/constants/workflowModes.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
@@ -21,12 +25,14 @@ export const buildRegisterCompanyRequestUseCase = ({
             adminPassword,
             plan = 'standard',
             subscriptionId,
-            complianceMode
+            complianceMode,
+            workflowMode
         } = body || {};
         const normalizedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
         const normalizedComplianceMode = typeof complianceMode === 'string'
             ? complianceMode.trim().toLowerCase()
             : '';
+        const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
         const complianceModeState = normalizedComplianceMode === 'compliant'
             ? 'compliant_pending'
             : normalizedComplianceMode === 'non_compliant'
@@ -45,7 +51,8 @@ export const buildRegisterCompanyRequestUseCase = ({
             baseMetadata: {
                 plan: normalizedPlan,
                 email_domain: adminEmailDomain,
-                compliance_mode: normalizedComplianceMode || null
+                compliance_mode: normalizedComplianceMode || null,
+                workflow_mode: normalizedWorkflowMode || null
             }
         });
         let tenant = null;
@@ -54,12 +61,14 @@ export const buildRegisterCompanyRequestUseCase = ({
         try {
             await tracker.attempt();
 
-            if (!name || !adminEmail || !adminPassword) {
+            const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
+            if (!name || !adminEmail || !adminPassword || !complianceModeState || workflowModeMissing) {
                 const missingFields = [
                     !name ? 'name' : null,
                     !adminEmail ? 'adminEmail' : null,
                     !adminPassword ? 'adminPassword' : null,
-                    !complianceModeState ? 'complianceMode' : null
+                    !complianceModeState ? 'complianceMode' : null,
+                    workflowModeMissing ? 'workflowMode' : null
                 ].filter(Boolean);
 
                 await tracker.failed({
@@ -73,7 +82,7 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword, complianceMode',
+                    'Missing required fields: name, adminEmail, adminPassword, complianceMode, workflowMode',
                     { statusCode: 400 }
                 ));
             }
@@ -91,6 +100,23 @@ export const buildRegisterCompanyRequestUseCase = ({
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'complianceMode must be either non_compliant or compliant.',
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (!isWorkflowMode(workflowMode)) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'invalid_workflow_mode',
+                    httpStatus: 400,
+                    metadata: {
+                        workflow_mode: workflowMode
+                    }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'workflowMode must be either manufacturing or msme.',
                     { statusCode: 400 }
                 ));
             }
@@ -223,7 +249,10 @@ export const buildRegisterCompanyRequestUseCase = ({
                 compliance_mode_selected_at: new Date(),
                 compliance_mode_selected_by: 'registration',
                 compliance_policy_version: '2026.04.07',
-                compliance_profile: {}
+                compliance_profile: {},
+                settings: {
+                    workflow_mode: normalizedWorkflowMode
+                }
             });
 
             try {
@@ -242,7 +271,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                     dbName: tenant.db_name,
                     companyToken: tenant.company_token,
                     adminEmail: tenant.admin_email,
-                    adminPasswordHash: tenant.admin_password_hash
+                    adminPasswordHash: tenant.admin_password_hash,
+                    workflowMode: normalizedWorkflowMode
                 });
 
                 if (emailService?.isEmailConfigured?.()) {
@@ -273,6 +303,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                             status: 'active',
                             plan: normalizedPlan,
                             compliance_mode_state: complianceModeState,
+                            workflow_mode: normalizedWorkflowMode,
                             company_token: tenant.company_token
                         }
                     }
@@ -299,6 +330,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                             status: 'pending',
                             plan: normalizedPlan,
                             compliance_mode_state: complianceModeState,
+                            workflow_mode: normalizedWorkflowMode,
                             company_token: tenant.company_token
                         }
                     }

@@ -11,6 +11,11 @@ const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorks
 export default function TerminalPageLayout({
     locked,
     isOnline,
+    activeTerminalId,
+    terminalIdOptions,
+    terminalRegistry = [],
+    terminalRegistryMode = 'warn',
+    registryEnforced = false,
     headerSubtitle,
     mobileNavOpen,
     setMobileNavOpen,
@@ -20,6 +25,7 @@ export default function TerminalPageLayout({
     canCloseDay,
     terminalUser,
     posViewMode,
+    isMsmeMode = false,
     shiftState,
     incomingOrdersState,
     locationsState,
@@ -63,19 +69,55 @@ export default function TerminalPageLayout({
     handleReplayQueuedTerminalOperations,
     handleCheckoutCompleted,
     setPosViewMode,
+    modeChangeNotice = null,
+    dismissModeChangeNotice = () => {},
     receiptRequestId,
     setReceiptRequestId,
     setIncomingReceiptOpeningId,
     historyRequestQuery,
     setHistoryRequestQuery,
     setIncomingHistoryOpeningId,
+    catalogSearchPrefill,
+    onCatalogSearchHydrated,
     drawerOpen,
     formData,
     setFormData,
     submitting,
     handleLogin
 }) {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
+  const queueCount = Number(queuedTerminalOperationCount || 0);
+  const shiftOpen = Boolean(activeShiftId);
+  const complianceBlocked = Boolean(complianceBlockerDetails);
+  const statusRailItems = [
+    {
+      label: 'Connectivity',
+      value: isOnline ? 'Online' : 'Offline',
+      tone: isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'
+    },
+    {
+      label: 'Queued Ops',
+      value: replayingQueuedTerminalOperations ? `Replaying (${queueCount})` : `${queueCount}`,
+      tone: queueCount > 0 ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-slate-200 bg-slate-50 text-slate-700'
+    },
+    {
+      label: 'Shift',
+      value: shiftOpen ? `Open #${activeShiftId}` : 'Closed',
+      tone: shiftOpen ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-700'
+    },
+    {
+      label: 'Terminal Policy',
+      value: registryEnforced ? 'Enforce' : 'Warn',
+      tone: registryEnforced ? 'border-indigo-200 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-slate-50 text-slate-700'
+    },
+    {
+      label: 'Compliance',
+      value: complianceBlocked
+        ? `${complianceBlockerDetails?.reasonCode || 'BLOCKED'}`
+        : 'Cleared',
+      tone: complianceBlocked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    }
+  ];
 
     return (
         <div className="min-h-screen bg-slate-100 xl:flex xl:h-screen xl:flex-col xl:overflow-hidden">
@@ -100,6 +142,54 @@ export default function TerminalPageLayout({
                         {locked ? 'Terminal Locked' : 'Terminal Active'}
                     </div>
                 </div>
+            </div>
+
+            {modeChangeNotice && (
+                <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-sky-900">
+                        Business Mode changed. Refresh this terminal view to apply updated POS defaults.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs font-semibold text-sky-900"
+                            onClick={() => window.location.reload()}
+                        >
+                            Refresh Terminal
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
+                            onClick={dismissModeChangeNotice}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="mx-4 mt-3 grid grid-cols-2 gap-2 xl:grid-cols-5">
+                {statusRailItems.map((item) => (
+                    <div key={item.label} className={`rounded-lg border px-3 py-2 ${item.tone}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide">{item.label}</p>
+                        <p className="mt-1 text-sm font-semibold">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+            <div className="mx-4 mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                Terminal identity: <span className="font-semibold text-slate-900">{activeTerminalId || 'Select on unlock'}</span>
+                <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    {isMsmeMode ? 'MSME Mode' : 'Manufacturing Mode'}
+                </span>
+                {complianceBlocked && complianceBlockerDetails?.actionHref && (
+                    <button
+                        type="button"
+                        className="ml-2 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-900"
+                        onClick={() => navigate(complianceBlockerDetails.actionHref)}
+                    >
+                        Fix now
+                    </button>
+                )}
             </div>
 
             <div className="px-4 pt-3 xl:hidden">
@@ -206,6 +296,7 @@ export default function TerminalPageLayout({
                             <TerminalWorkspaceSidebar
                                 className="flex"
                                 locked={locked}
+                                isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
                                 currentViewMode={posViewMode}
                                 canViewPos={canViewPos}
@@ -236,6 +327,7 @@ export default function TerminalPageLayout({
                         <TerminalWorkspaceSidebar
                             className="hidden xl:flex xl:h-fit xl:w-full xl:self-start xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
                             locked={locked}
+                            isMsmeMode={isMsmeMode}
                             terminalUser={terminalUser}
                             currentViewMode={posViewMode}
                             canViewPos={canViewPos}
@@ -261,8 +353,10 @@ export default function TerminalPageLayout({
                         <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
                             <POSCheckoutTerminal
                                 sessionLocked={locked}
+                                isMsmeMode={isMsmeMode}
                                 canViewHistory={canViewPos}
                                 activeShiftId={activeShiftId}
+                                terminalId={activeTerminalId}
                                 checkoutBlockedReason={checkoutBlockedReason}
                                 complianceBlockerDetails={complianceBlockerDetails}
                                 onCheckoutCompleted={handleCheckoutCompleted}
@@ -278,6 +372,8 @@ export default function TerminalPageLayout({
                                     setHistoryRequestQuery('');
                                     setIncomingHistoryOpeningId(null);
                                 }}
+                                externalCatalogSearch={catalogSearchPrefill}
+                                onExternalCatalogHydrated={onCatalogSearchHydrated}
                             />
                         </Suspense>
                     )}
@@ -286,6 +382,7 @@ export default function TerminalPageLayout({
                         <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
                             <TerminalOperationsWorkspace
                                 viewMode={posViewMode}
+                                isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
                                 locked={locked}
                                 terminalMeta={terminalMeta}
@@ -331,6 +428,7 @@ export default function TerminalPageLayout({
                             className="flex xl:h-full xl:min-h-0"
                             isCollapsed={effectiveSidebarCollapsed}
                             onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+                            isMsmeMode={isMsmeMode}
                             terminalUser={terminalUser}
                             locked={locked}
                             terminalMeta={terminalMeta}
@@ -377,6 +475,10 @@ export default function TerminalPageLayout({
                     drawerOpen={drawerOpen}
                     formData={formData}
                     setFormData={setFormData}
+                    terminalIdOptions={terminalIdOptions}
+                    terminalRegistry={terminalRegistry}
+                    terminalRegistryMode={terminalRegistryMode}
+                    registryEnforced={registryEnforced}
                     submitting={submitting}
                     onSubmit={handleLogin}
                 />

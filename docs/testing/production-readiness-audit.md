@@ -3,6 +3,8 @@
 **Project:** SKUpervisor (SKU-Inventory-Manager)
 **Status:** in_progress (as of 2026-03-28; pending POS E2E UAT signoff and runtime doctor checks per environment)
 
+> Historical scope note (2026-04-09): this report is retained for audit traceability and historical remediation context. Canonical current readiness state is maintained in `docs/testing/pos-readiness-status.md` and current operational test protocol is maintained in `docs/testing/README.md`.
+
 > Addendum (2026-04-03): Subscription/payment workflows are now disabled by default.
 > Billing-funnel and PayPal canary references in this historical report are no longer active release gates.
 > Addendum (2026-04-03): Provider-specific legacy payment suites were moved to opt-in execution (`npm --prefix backend run test:legacy:payments`).
@@ -242,7 +244,8 @@ POS MVP hardening moved from planning into implemented and validated state for t
    - Item validators now accept `vat_type` (`vatable|vat_exempt|zero_rated`).
    - Finished goods finalization now requires `vat_type`.
    - Product wizard now captures `vat_type` in Basic Info.
-2. POS compliance strict mode:
+2. POS compliance legacy strict-mode phase (historical):
+   - Terminology note (2026-04-09): the strict-mode language in this section is historical. Active policy is dual-mode lifecycle (`non_compliant_active`, `compliant_pending`, `compliant_active`) and fail-closed compliant gating.
    - Added tenant setting `pos_strict_compliance_enabled` (migration-backed).
    - POS checkout/transaction-detail read paths enforce required compliance fields when strict mode is enabled.
 3. POS history completion:

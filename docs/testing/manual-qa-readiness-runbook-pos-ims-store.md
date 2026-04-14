@@ -72,16 +72,23 @@ Pass gate:
 
 1. Open Dashboard, Items, Settings, POS, Sales pages.
 2. Create and edit an item, then archive/delete one item.
-3. Perform stock movement:
+3. For finished goods, use the item/product wizard `POS Setup` section and resolve all blockers:
+   - POS visibility
+   - POS image
+   - folder assignment + POS filter visibility
+   - sale price
+   - stock sanity
+4. Perform stock movement:
    - stock-in adjustment
    - stock-out adjustment
    - void movement
-4. Create purchase order and receive it; confirm stock increase.
-5. Update settings:
+5. Create purchase order and receive it; confirm stock increase.
+6. Update settings:
    - company/store details
    - storefront visibility
    - location settings (open/closed, delivery/pickup toggles)
-6. Verify persisted values after browser refresh.
+7. Verify persisted values after browser refresh.
+8. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
 
 Pass gate:
 1. CRUD and stock flows behave consistently.
@@ -89,13 +96,15 @@ Pass gate:
 
 ## 6) Phase C - POS Manual Flow
 
-1. Open terminal and verify catalog list, pricing, and search.
-2. Add multiple items, adjust quantities, verify totals.
-3. Complete one checkout.
-4. Verify transaction appears in POS history.
-5. Verify receipt preview readability and core fields.
-6. Execute one void/cancel/refund path (if enabled) and confirm audit/history reflects it.
-7. Run close-shift or end-of-day flow (if available in environment).
+1. Open terminal and select terminal identity at unlock/sign-in.
+2. Verify catalog list, pricing, and search.
+3. Confirm status rail accuracy (connectivity, queue, shift, compliance).
+4. Add multiple items, adjust quantities, verify totals.
+5. Complete one checkout.
+6. Verify transaction appears in POS history.
+7. Verify receipt preview readability and core fields.
+8. Execute one void/cancel/refund path (if enabled) and confirm audit/history reflects it.
+9. Run close-shift or end-of-day flow (if available in environment).
 
 Compliance checks:
 1. In non-compliant tenant, verify non-fiscal behavior path.
@@ -125,7 +134,8 @@ Pass gate:
 1. IMS item update -> confirm reflected in POS catalog and Store listing.
 2. POS checkout -> confirm stock decrement in IMS.
 3. IMS storefront visibility toggle -> confirm Store updates accordingly.
-4. Change tenant compliance state in IMS/admin path -> confirm POS behavior changes accordingly.
+4. From POS History/Receipt, hand off to Sales (`Open in Sales Report`) and verify filters/transaction context are preserved.
+5. Change tenant compliance state in IMS/admin path -> confirm POS behavior changes accordingly.
 
 Pass gate:
 1. No data-sync mismatch across IMS, POS, and Store for tested scenarios.
@@ -150,6 +160,7 @@ All must be true:
 3. Compliance-state behavior is validated in at least two tenant states.
 4. Cross-app data consistency checks all PASS.
 5. Evidence links/screenshots/logs are attached to each FAIL or suspicious PASS.
+6. Role-based journey in `docs/features/IMS_POS_SALES_UX_JOURNEY.md` passes without blocker.
 
 ## 11) Defect Severity Guide
 

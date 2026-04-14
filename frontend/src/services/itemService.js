@@ -80,6 +80,11 @@ export const getItemSupplierCoverage = async () => {
   return response.data.data;
 };
 
+export const replaceItemSuppliers = async (itemId, suppliers = []) => {
+  const response = await api.put(`/items/${itemId}/suppliers`, { suppliers });
+  return response.data.data;
+};
+
 export const getFolders = async () => {
   const response = await api.get('/items/folders');
   return response.data.data;

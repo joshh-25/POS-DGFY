@@ -8,6 +8,58 @@ import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPo
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
 const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
+const toNumber = (value, fallback = 0) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+};
+const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
+const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const parseJsonLoosely = (value) => {
+    if (value == null) return null;
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string') return null;
+    try {
+        const first = JSON.parse(value);
+        if (typeof first === 'string') {
+            try {
+                return JSON.parse(first);
+            } catch {
+                return first;
+            }
+        }
+        return first;
+    } catch {
+        return null;
+    }
+};
+const normalizeTerminalRegistry = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set();
+    const normalized = [];
+    parsed.forEach((entry) => {
+        const terminalId = String(entry?.terminal_id || '')
+            .trim()
+            .toUpperCase();
+        if (!terminalId || !TERMINAL_ID_PATTERN.test(terminalId) || seen.has(terminalId)) {
+            return;
+        }
+        if (entry?.is_active === false) {
+            return;
+        }
+        seen.add(terminalId);
+        normalized.push({
+            terminal_id: terminalId,
+            label: String(entry?.label || '').trim()
+        });
+    });
+    return normalized;
+};
+const toPositiveNumber = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+};
 const BASE_POS_ITEM_ATTRIBUTES = [
     'item_id',
     'name',
@@ -60,6 +112,96 @@ const toPlain = (row) => (
         ? row.toJSON()
         : row
 );
+
+const buildPosReadiness = ({ item, override }) => {
+    const payload = toPlain(item) || {};
+    const folder = payload.folder && typeof payload.folder === 'object'
+        ? payload.folder
+        : null;
+
+    const currentStock = toNumber(payload.current_stock, 0);
+    const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
+    const folderId = Number.parseInt(payload.folder_id, 10);
+    const hasFolderId = Number.isInteger(folderId) && folderId > 0;
+    const hasLegacyFolder = String(payload.product_folder || '').trim().length > 0;
+    const hasFolderAssignment = hasFolderId || hasLegacyFolder;
+    const folderFilterVisible = folder ? folder.show_in_pos_filter !== false : true;
+    const status = String(payload.status || '').trim().toLowerCase();
+
+    const checks = {
+        pos_visible: resolveCatalogVisibility({ item: payload, override }) !== false,
+        has_menu_image: Boolean(override?.pos_image_url),
+        has_folder_assignment: hasFolderAssignment,
+        folder_visible_in_pos_filter: folderFilterVisible,
+        has_sale_price: defaultSalePrice > 0,
+        stock_non_negative: currentStock >= 0,
+        status_active: status === 'active',
+        has_available_stock: currentStock > 0
+    };
+
+    const missingRequirements = [];
+    if (!checks.pos_visible) {
+        missingRequirements.push({
+            code: 'POS_VISIBILITY_DISABLED',
+            label: 'Enable POS visibility',
+            fix_hint: 'Turn on Show in POS Menu for this item.'
+        });
+    }
+    if (!checks.has_menu_image) {
+        missingRequirements.push({
+            code: 'POS_IMAGE_MISSING',
+            label: 'Upload POS menu image',
+            fix_hint: 'Add a POS menu image so cashiers can recognize the item quickly.'
+        });
+    }
+    if (!checks.has_folder_assignment) {
+        missingRequirements.push({
+            code: 'FOLDER_UNASSIGNED',
+            label: 'Assign item folder',
+            fix_hint: 'Assign the item to a folder to improve POS filter navigation.'
+        });
+    }
+    if (!checks.folder_visible_in_pos_filter) {
+        missingRequirements.push({
+            code: 'FOLDER_FILTER_HIDDEN',
+            label: 'Enable folder in POS filters',
+            fix_hint: 'Set folder show_in_pos_filter=true so the category appears in POS.'
+        });
+    }
+    if (!checks.has_sale_price) {
+        missingRequirements.push({
+            code: 'SALE_PRICE_MISSING',
+            label: 'Set a sale price',
+            fix_hint: 'Set default_sale_price above zero before selling in POS.'
+        });
+    }
+    if (!checks.stock_non_negative) {
+        missingRequirements.push({
+            code: 'STOCK_INVALID',
+            label: 'Fix stock value',
+            fix_hint: 'Stock cannot be negative.'
+        });
+    }
+    if (!checks.status_active) {
+        missingRequirements.push({
+            code: 'ITEM_NOT_ACTIVE',
+            label: 'Activate item',
+            fix_hint: 'Only active items are considered POS-ready.'
+        });
+    }
+
+    const checkValues = Object.values(checks);
+    const passingCount = checkValues.filter(Boolean).length;
+    const score = Math.round((passingCount / checkValues.length) * 100);
+
+    return {
+        ready: missingRequirements.length === 0,
+        state: missingRequirements.length === 0 ? 'ready' : 'needs_attention',
+        score,
+        checks,
+        missing_requirements: missingRequirements
+    };
+};
 
 const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
@@ -501,6 +643,45 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async getTerminalIdentityPolicySettings(options = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        if (!SystemSetting) {
+            return {
+                mode: 'warn',
+                active_registry: []
+            };
+        }
+
+        const rows = await SystemSetting.findAll({
+            where: {
+                setting_key: {
+                    [Op.in]: ['pos_terminal_registry_mode', 'pos_terminal_registry']
+                }
+            },
+            attributes: ['setting_key', 'setting_value', 'data_type'],
+            transaction: options.transaction
+        });
+
+        const lookup = new Map(rows.map((row) => [
+            String(row.setting_key || ''),
+            toPlain(row)
+        ]));
+        const rawMode = String(lookup.get('pos_terminal_registry_mode')?.setting_value || '')
+            .trim()
+            .toLowerCase();
+        const mode = TERMINAL_REGISTRY_MODE_VALUES.has(rawMode) ? rawMode : 'warn';
+
+        const rawRegistrySetting = lookup.get('pos_terminal_registry');
+        const parsedRegistry = rawRegistrySetting?.data_type === 'json'
+            ? parseJsonLoosely(rawRegistrySetting.setting_value)
+            : rawRegistrySetting?.setting_value;
+
+        return {
+            mode,
+            active_registry: normalizeTerminalRegistry(parsedRegistry)
+        };
+    },
+
     async listCatalog({ search = '', limit = 100, folder_id = null } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
@@ -542,6 +723,7 @@ export const posRepository = {
 
     async listCatalogOverrides({ search = '', limit = 200 } = {}) {
         const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
         const where = buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: false });
         if (search) {
             where[Op.or] = [
@@ -552,7 +734,26 @@ export const posRepository = {
 
         const items = await Item.findAll({
             where,
-            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'status'],
+            attributes: [
+                'item_id',
+                'name',
+                'sku_code',
+                'category',
+                'product_type',
+                'status',
+                'default_sale_price',
+                'current_stock',
+                'folder_id',
+                'product_folder'
+            ],
+            include: [
+                {
+                    model: ItemFolder,
+                    as: 'folder',
+                    attributes: ['folder_id', 'name', 'show_in_pos_filter'],
+                    required: false
+                }
+            ],
             order: [['name', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 200, 1000)
         });
@@ -561,14 +762,66 @@ export const posRepository = {
         return items.map((item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
+            const readiness = buildPosReadiness({ item: payload, override });
             return {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override }),
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
-                has_override: Boolean(override)
+                has_override: Boolean(override),
+                pos_readiness: readiness
             };
         });
+    },
+
+    async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null } = {}) {
+        const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) return null;
+
+        const item = await Item.findOne({
+            where: buildVisibleWhere(
+                { item_id: normalizedItemId },
+                { statusField: 'status', excludeInactiveStatus: false }
+            ),
+            attributes: [
+                'item_id',
+                'name',
+                'sku_code',
+                'category',
+                'product_type',
+                'status',
+                'default_sale_price',
+                'current_stock',
+                'folder_id',
+                'product_folder'
+            ],
+            include: [
+                {
+                    model: ItemFolder,
+                    as: 'folder',
+                    attributes: ['folder_id', 'name', 'show_in_pos_filter'],
+                    required: false
+                }
+            ]
+        });
+        if (!item) return null;
+
+        const payload = toPlain(item);
+        const override = toPlain(await this.findCatalogOverrideByItemId(normalizedItemId));
+        const effectiveOverride = forcedPosVisible === null
+            ? override
+            : { ...(override || {}), pos_visible: forcedPosVisible === true };
+        const readiness = buildPosReadiness({ item: payload, override: effectiveOverride });
+
+        return {
+            item_id: payload.item_id,
+            pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride }),
+            pos_image_url: effectiveOverride?.pos_image_url || null,
+            pos_image_path: effectiveOverride?.pos_image_path || null,
+            pos_readiness: readiness
+        };
     },
 
     async findCatalogOverrideByItemId(itemId, options = {}) {

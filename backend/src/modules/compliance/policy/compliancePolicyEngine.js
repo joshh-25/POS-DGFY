@@ -275,6 +275,13 @@ const buildRequirement = ({
     action_target: actionTarget
 });
 
+const buildFinalReviewDocAnchor = (artifact = {}) => {
+    const rawCode = String(artifact?.code || '').trim();
+    if (!rawCode) return '/settings?tab=compliance#section-final-review';
+    const slug = rawCode.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return `/settings?tab=compliance#final-review-doc-${slug}`;
+};
+
 const buildSectionProgress = (requirements = []) => {
     const sections = ['profile', 'settings', 'artifacts', 'peripherals', 'final_review'];
     const output = {};
@@ -456,7 +463,7 @@ export const evaluateComplianceChecklist = ({
             label: artifact?.label || artifact?.relative_path || 'Submission artifact',
             section: 'final_review',
             status: artifact?.ready === true ? 'complete' : 'missing',
-            actionTarget: '/settings?tab=compliance#section-final-review'
+            actionTarget: buildFinalReviewDocAnchor(artifact)
         }))
     ];
 
@@ -534,11 +541,14 @@ export const evaluateComplianceChecklist = ({
         });
     }
     if (!submissionArtifactsReady) {
+        const firstMissingSubmissionArtifact = submissionArtifacts.find((artifact) => artifact?.ready !== true) || null;
         activationBlockers.push({
             code: COMPLIANCE_REASON_CODE.VERIFICATION_REQUIRED,
             section: 'final_review',
             message: 'Submission documentary evidence is incomplete or stale. Update required filing artifacts before activation.',
-            action_target: '/settings?tab=compliance#section-final-review'
+            action_target: firstMissingSubmissionArtifact
+                ? buildFinalReviewDocAnchor(firstMissingSubmissionArtifact)
+                : '/settings?tab=compliance#section-final-review'
         });
     }
 

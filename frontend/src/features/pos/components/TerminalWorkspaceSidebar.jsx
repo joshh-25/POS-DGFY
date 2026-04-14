@@ -36,6 +36,7 @@ const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = fals
 export default function TerminalWorkspaceSidebar({
   className = '',
   locked = false,
+  isMsmeMode = false,
   terminalUser = null,
   currentViewMode = 'checkout',
   canViewPos = false,
@@ -56,6 +57,9 @@ export default function TerminalWorkspaceSidebar({
   const selectedLocationName = !selectedLocationId
     ? 'All Locations'
     : (locations.find((location) => Number(location.location_id) === Number(selectedLocationId))?.name || 'Selected Location');
+  const showIncomingQueue = !isMsmeMode;
+  const showLocationScope = !isMsmeMode;
+  const showAdvancedOps = !isMsmeMode;
 
   return (
     <aside
@@ -73,14 +77,36 @@ export default function TerminalWorkspaceSidebar({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checkout Workspace</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Primary Modes</p>
         <NavButton
-          label="Checkout"
+          label="Sell"
           icon={ShoppingCart}
           active={currentViewMode === 'checkout'}
           onClick={() => onSelectViewMode('checkout')}
           disabled={locked}
           caption={locked ? 'Unlock terminal to continue' : 'Live selling and cart management'}
+        />
+        {showIncomingQueue && (
+          <NavButton
+            label={`Orders (${incomingCount})`}
+            icon={Truck}
+            active={currentViewMode === 'incoming_queue'}
+            onClick={() => onSelectViewMode('incoming_queue')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders')
+            }
+          />
+        )}
+        <NavButton
+          label="Shift"
+          icon={ListChecks}
+          active={currentViewMode === 'shift_controls'}
+          onClick={() => onSelectViewMode('shift_controls')}
+          disabled={locked}
+          caption={locked ? 'Unlock terminal to continue' : 'Open shift, monitor cash, and status'}
         />
         <NavButton
           label="History"
@@ -91,7 +117,7 @@ export default function TerminalWorkspaceSidebar({
           caption={locked ? 'Unlock terminal to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail')}
         />
         <NavButton
-          label="Receipt Preview"
+          label="Receipt"
           icon={Receipt}
           active={currentViewMode === 'receipt'}
           onClick={() => onSelectViewMode('receipt')}
@@ -100,56 +126,39 @@ export default function TerminalWorkspaceSidebar({
         />
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Online Orders</p>
-        <NavButton
-          label={`Incoming Queue (${incomingCount})`}
-          icon={Truck}
-          active={currentViewMode === 'incoming_queue'}
-          onClick={() => onSelectViewMode('incoming_queue')}
-          disabled={locked || !canViewPos}
-          caption={
-            locked
-              ? 'Unlock terminal to continue'
-              : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders')
-          }
-        />
-        <NavButton
-          label={`Location Scope: ${selectedLocationName}`}
-          icon={MapPinned}
-          active={currentViewMode === 'location_scope'}
-          onClick={() => onSelectViewMode('location_scope')}
-          disabled={locked || !canViewPos}
-          caption={
-            locked
-              ? 'Unlock terminal to continue'
-              : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location')
-          }
-        />
-      </div>
+      {showLocationScope && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secondary Actions</p>
+          <NavButton
+            label={`Location Scope: ${selectedLocationName}`}
+            icon={MapPinned}
+            active={currentViewMode === 'location_scope'}
+            onClick={() => onSelectViewMode('location_scope')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location')
+            }
+          />
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operations</p>
-        <NavButton
-          label="Shift Controls"
-          icon={ListChecks}
-          active={currentViewMode === 'shift_controls'}
-          onClick={() => onSelectViewMode('shift_controls')}
-          disabled={locked}
-          caption={locked ? 'Unlock terminal to continue' : 'Open shift, monitor cash, and status'}
-        />
-        <NavButton
-          label="Cash Drawer Event"
-          icon={Banknote}
-          active={currentViewMode === 'cash_drawer'}
-          onClick={() => onSelectViewMode('cash_drawer')}
-          disabled={locked || !canAdjustCashDrawer || !shiftState?.shift}
-          caption={
-            locked
-              ? 'Unlock terminal to continue'
-              : (!shiftState?.shift ? 'Open shift first to enable' : (!canAdjustCashDrawer ? 'Cash drawer permission required' : 'Cash in/out adjustments'))
-          }
-        />
+        {showAdvancedOps && (
+          <NavButton
+            label="Cash Drawer Event"
+            icon={Banknote}
+            active={currentViewMode === 'cash_drawer'}
+            onClick={() => onSelectViewMode('cash_drawer')}
+            disabled={locked || !canAdjustCashDrawer || !shiftState?.shift}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!shiftState?.shift ? 'Open shift first to enable' : (!canAdjustCashDrawer ? 'Cash drawer permission required' : 'Cash in/out adjustments'))
+            }
+          />
+        )}
         <NavButton
           label="Close Shift"
           icon={Lock}
@@ -162,22 +171,26 @@ export default function TerminalWorkspaceSidebar({
               : (!shiftState?.shift ? 'No active shift to close' : (!canCloseDay ? 'Close-day permission required' : 'Finalize shift and closing cash'))
           }
         />
-        <NavButton
-          label="Sales Today"
-          icon={Clock3}
-          active={currentViewMode === 'sales_today'}
-          onClick={() => onSelectViewMode('sales_today')}
-          disabled={locked}
-          caption={locked ? 'Unlock terminal to continue' : 'Daily totals and breakdowns'}
-        />
-        <NavButton
-          label="Terminal Setup Context"
-          icon={Settings2}
-          active={currentViewMode === 'terminal_setup'}
-          onClick={() => onSelectViewMode('terminal_setup')}
-          disabled={locked}
-          caption={locked ? 'Unlock terminal to continue' : 'Compliance and POS setup snapshot'}
-        />
+        {showAdvancedOps && (
+          <NavButton
+            label="Sales Today"
+            icon={Clock3}
+            active={currentViewMode === 'sales_today'}
+            onClick={() => onSelectViewMode('sales_today')}
+            disabled={locked}
+            caption={locked ? 'Unlock terminal to continue' : 'Daily totals and breakdowns'}
+          />
+        )}
+        {showAdvancedOps && (
+          <NavButton
+            label="Terminal Setup Context"
+            icon={Settings2}
+            active={currentViewMode === 'terminal_setup'}
+            onClick={() => onSelectViewMode('terminal_setup')}
+            disabled={locked}
+            caption={locked ? 'Unlock terminal to continue' : 'Compliance and POS setup snapshot'}
+          />
+        )}
       </div>
 
       {locked ? (

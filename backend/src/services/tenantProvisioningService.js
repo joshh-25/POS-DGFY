@@ -6,6 +6,7 @@ import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
+import { normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 
 // Strict allowlist pattern for all tenant database names.
 // Guards every DDL path against invalid or maliciously crafted identifiers.
@@ -43,6 +44,8 @@ const DEFAULT_STOREFRONT_LOCATION = Object.freeze({
     delivery_radius_km: readNumericEnv('STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM', 5, { min: 0.1, max: 100 }),
     current_wait_time_minutes: Math.round(readNumericEnv('STOREFRONT_DEFAULT_WAIT_MINUTES', 15, { min: 0, max: 240 }))
 });
+
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 const seedDefaultStorefrontLocation = async (tenantSequelize) => {
     const { getTenantModels } = await import('../utils/tenantModelFactory.js');
@@ -91,6 +94,27 @@ const seedDefaultStorefrontLocation = async (tenantSequelize) => {
     return { status: 'created', locationId: created.location_id || null };
 };
 
+const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
+    const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+    await tenantSequelize.query(
+        `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+         VALUES (?, ?, 'string', ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           setting_value = VALUES(setting_value),
+           data_type = VALUES(data_type),
+           description = VALUES(description),
+           updated_at = NOW()`,
+        {
+            replacements: [
+                WORKFLOW_MODE_SETTING_KEY,
+                normalizedWorkflowMode,
+                'Tenant operations workflow mode (manufacturing | msme)'
+            ]
+        }
+    );
+    return normalizedWorkflowMode;
+};
+
 /**
  * Provision a tenant - supports both:
  * 1. Full provisioning (new request with name, adminEmail, adminPassword)
@@ -105,6 +129,7 @@ export const provisionTenant = async (options) => {
         plan = 'standard',        // Default to standard if not provided
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
+        workflowMode = 'manufacturing',
         // Option 2: Approval provisioning (new workflow)
         tenantId,
         dbName: providedDbName,
@@ -118,6 +143,7 @@ export const provisionTenant = async (options) => {
     let uuid, dbName, companyToken, passwordHash, tenantName, email;
     let subscriptionStatus = 'inactive';
     let currentPeriodEnd = null;
+    let normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
 
     if (isApproval) {
         // Approval flow - use existing tenant data
@@ -137,6 +163,7 @@ export const provisionTenant = async (options) => {
         const normalizedComplianceMode = typeof complianceMode === 'string'
             ? complianceMode.trim().toLowerCase()
             : '';
+        normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
         const complianceModeState = normalizedComplianceMode === 'compliant'
             ? 'compliant_pending'
             : 'non_compliant_active';
@@ -186,7 +213,10 @@ export const provisionTenant = async (options) => {
                 compliance_mode_selected_at: new Date(),
                 compliance_mode_selected_by: 'legacy_provisioning',
                 compliance_policy_version: '2026.04.07',
-                compliance_profile: {}
+                compliance_profile: {},
+                settings: {
+                    workflow_mode: normalizedWorkflowMode
+                }
             }, { transaction });
             await transaction.commit();
         } catch (error) {
@@ -225,6 +255,12 @@ export const provisionTenant = async (options) => {
                     replacements: ['Admin', email, passwordHash]
                 }
             );
+
+            const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode);
+            logger.info('[Provisioning] Workflow mode setting seeded', {
+                tenantId: uuid,
+                workflowMode: seededWorkflowMode
+            });
 
             // 4.5 Seed a default primary storefront location so every active tenant
             // immediately has a resolvable public storefront page.

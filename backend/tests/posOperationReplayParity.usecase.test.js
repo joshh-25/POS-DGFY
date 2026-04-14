@@ -77,11 +77,24 @@ const buildReplayRepository = () => {
         orderUpdates: 0
     };
     let shiftSequence = 1;
+    let terminalPolicy = {
+        mode: 'warn',
+        active_registry: []
+    };
 
     const replayKey = ({ operationKey, idempotencyKey }) => `${operationKey}::${idempotencyKey}`;
 
     return {
         counters,
+        setTerminalPolicy(nextPolicy = {}) {
+            terminalPolicy = {
+                mode: nextPolicy?.mode || 'warn',
+                active_registry: Array.isArray(nextPolicy?.active_registry) ? nextPolicy.active_registry : []
+            };
+        },
+        async getTerminalIdentityPolicySettings() {
+            return clone(terminalPolicy);
+        },
         seedOrder(order) {
             orders.set(Number(order.pos_transaction_id), clone(order));
         },
@@ -493,5 +506,66 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
 
         expect(posRepository.counters.cashEventsCreated).toBe(0);
+    });
+
+    it('enforces and warns terminal identity policy by mode', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+
+        await runInTenantContext({ sequelize: null }, async () => {
+            posRepository.setTerminalPolicy({
+                mode: 'enforce',
+                active_registry: []
+            });
+
+            const enforceWithoutRegistry = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    idempotency_key: 'NVP-POLICY-ENFORCE-01'
+                },
+                user: { user_id: 21 }
+            });
+            expect(enforceWithoutRegistry.success).toBe(false);
+            expect(enforceWithoutRegistry.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+            expect(enforceWithoutRegistry.error.details?.terminal_identity_policy?.reason_code).toBe(
+                'TERMINAL_REGISTRY_REQUIRED'
+            );
+
+            posRepository.setTerminalPolicy({
+                mode: 'enforce',
+                active_registry: [{ terminal_id: 'COUNTER-01', label: 'Counter 1' }]
+            });
+
+            const enforceWithUnregisteredTerminal = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-09',
+                    idempotency_key: 'NVP-POLICY-ENFORCE-02'
+                },
+                user: { user_id: 21 }
+            });
+            expect(enforceWithUnregisteredTerminal.success).toBe(false);
+            expect(enforceWithUnregisteredTerminal.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+            expect(enforceWithUnregisteredTerminal.error.details?.terminal_identity_policy?.reason_code).toBe(
+                'TERMINAL_ID_NOT_REGISTERED'
+            );
+
+            posRepository.setTerminalPolicy({
+                mode: 'warn',
+                active_registry: [{ terminal_id: 'COUNTER-01', label: 'Counter 1' }]
+            });
+
+            const warnWithUnregisteredTerminal = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-09',
+                    idempotency_key: 'NVP-POLICY-WARN-01'
+                },
+                user: { user_id: 21 }
+            });
+            expect(warnWithUnregisteredTerminal.success).toBe(true);
+            expect(warnWithUnregisteredTerminal.data.terminal_identity_policy?.mode).toBe('warn');
+            expect(warnWithUnregisteredTerminal.data.terminal_identity_policy?.warning?.reason_code).toBe(
+                'TERMINAL_ID_UNREGISTERED_WARN'
+            );
+        });
     });
 });

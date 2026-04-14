@@ -9,9 +9,13 @@ import { searchByMeaning, syncItemEmbedding } from '../../../services/embeddingS
 import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 
 const settingsCache = new Map();
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const MANUFACTURING_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies']);
+const MSME_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies', 'product']);
 
 export const inventoryRepositoryDependencies = {
     validateComposition: validateCompositionDependency,
@@ -32,20 +36,25 @@ const visibleItemWhere = (where = {}) => {
     });
 };
 
-const calculateThresholds = async (maxCapacity) => {
+const getCachedSettingsForTenant = async () => {
     const store = dbStore.getStore();
     const tenantKey = store?.tenantId ?? 'default';
     const cached = settingsCache.get(tenantKey);
-    let settings;
+
     if (cached && cached.expiresAt > Date.now()) {
-        settings = cached.settings;
-    } else {
-        settings = await inventoryRepositoryDependencies.getAllSettings();
-        settingsCache.set(tenantKey, {
-            settings,
-            expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS
-        });
+        return cached.settings;
     }
+
+    const settings = await inventoryRepositoryDependencies.getAllSettings();
+    settingsCache.set(tenantKey, {
+        settings,
+        expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS
+    });
+    return settings;
+};
+
+const calculateThresholds = async (maxCapacity) => {
+    const settings = await getCachedSettingsForTenant();
 
     const autoCalc = settings.enable_auto_reorder?.value ?? true;
     if (!autoCalc) {
@@ -69,6 +78,41 @@ const findVisibleItemById = async (Item, itemId, queryOptions = {}) => {
         ...rest,
         where: visibleItemWhere({ ...where, item_id: itemId })
     });
+};
+
+const normalizeOptionalNumber = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getCurrentWorkflowMode = async () => {
+    const settings = await getCachedSettingsForTenant();
+    const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
+    return normalizeWorkflowMode(configuredMode ?? DEFAULT_WORKFLOW_MODE);
+};
+
+const getPurchasableCategoriesForWorkflow = (workflowMode) => (
+    workflowMode === 'msme'
+        ? MSME_PURCHASABLE_CATEGORIES
+        : MANUFACTURING_PURCHASABLE_CATEGORIES
+);
+
+const assertMsmePricingRequirements = ({ workflowMode, status, costPerUnit, defaultSalePrice }) => {
+    if (workflowMode !== 'msme') return;
+    if (String(status || '').toLowerCase() === 'draft') return;
+
+    if (costPerUnit === null || costPerUnit === undefined || costPerUnit === '') {
+        const error = new Error('cost_per_unit is required for MSME items');
+        error.statusCode = 422;
+        throw error;
+    }
+
+    if (defaultSalePrice === null || defaultSalePrice === undefined || defaultSalePrice === '') {
+        const error = new Error('default_sale_price is required for MSME items');
+        error.statusCode = 422;
+        throw error;
+    }
 };
 
 const calculateRecipeCost = (productCompositions) => {
@@ -595,6 +639,14 @@ export const itemRepository = {
         const transaction = await sequelize.transaction();
 
         try {
+            const workflowMode = await getCurrentWorkflowMode();
+            assertMsmePricingRequirements({
+                workflowMode,
+                status: itemData?.status,
+                costPerUnit: itemData?.cost_per_unit,
+                defaultSalePrice: itemData?.default_sale_price
+            });
+
             if (itemData.status !== 'draft' && itemData.sku_code) {
                 const existingItem = await Item.findOne({
                     where: {
@@ -711,6 +763,7 @@ export const itemRepository = {
         const transaction = await sequelize.transaction();
 
         try {
+            const workflowMode = await getCurrentWorkflowMode();
             const item = await findVisibleItemById(Item, itemId, {
                 transaction,
                 lock: transaction.LOCK.UPDATE
@@ -718,6 +771,17 @@ export const itemRepository = {
             if (!item) {
                 throw notFoundError('Item not found');
             }
+
+            assertMsmePricingRequirements({
+                workflowMode,
+                status: itemData?.status ?? item?.status,
+                costPerUnit: Object.prototype.hasOwnProperty.call(itemData || {}, 'cost_per_unit')
+                    ? itemData.cost_per_unit
+                    : item.cost_per_unit,
+                defaultSalePrice: Object.prototype.hasOwnProperty.call(itemData || {}, 'default_sale_price')
+                    ? itemData.default_sale_price
+                    : item.default_sale_price
+            });
 
             if (itemData.sku_code && itemData.sku_code !== item.sku_code) {
                 const existingItem = await Item.findOne({
@@ -1173,7 +1237,8 @@ export const itemRepository = {
         const Item = dbStore.get('Item');
         const Supplier = dbStore.get('Supplier');
         const SupplierItem = dbStore.get('SupplierItem');
-        const purchasableCategories = ['raw_material', 'packaging', 'supplies'];
+        const workflowMode = await getCurrentWorkflowMode();
+        const purchasableCategories = getPurchasableCategoriesForWorkflow(workflowMode);
 
         const allItems = await Item.findAll({
             where: visibleItemWhere({
@@ -1255,6 +1320,124 @@ export const itemRepository = {
                     : 100
             }
         };
+    },
+    async replaceItemSuppliers(itemId, supplierLinks = []) {
+        const Item = dbStore.get('Item');
+        const Supplier = dbStore.get('Supplier');
+        const SupplierItem = dbStore.get('SupplierItem');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) {
+            const error = new Error('item_id must be a positive integer');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!Array.isArray(supplierLinks)) {
+            const error = new Error('suppliers must be an array');
+            error.statusCode = 422;
+            throw error;
+        }
+
+        const normalizedLinks = supplierLinks.map((link, index) => {
+            const supplierId = Number.parseInt(link?.supplier_id, 10);
+            if (!Number.isInteger(supplierId) || supplierId <= 0) {
+                const error = new Error(`suppliers[${index}].supplier_id must be a positive integer`);
+                error.statusCode = 422;
+                throw error;
+            }
+
+            return {
+                supplier_id: supplierId,
+                moq: normalizeOptionalNumber(link?.moq),
+                price_per_unit: normalizeOptionalNumber(link?.price_per_unit)
+            };
+        });
+
+        const duplicateSupplierId = normalizedLinks.find((link, index) => (
+            normalizedLinks.findIndex((candidate) => candidate.supplier_id === link.supplier_id) !== index
+        ))?.supplier_id;
+
+        if (duplicateSupplierId) {
+            const error = new Error(`Duplicate supplier_id found: ${duplicateSupplierId}`);
+            error.statusCode = 422;
+            throw error;
+        }
+
+        const transaction = await sequelize.transaction();
+        try {
+            const item = await findVisibleItemById(Item, normalizedItemId, { transaction });
+            if (!item) {
+                throw notFoundError('Item not found');
+            }
+
+            await SupplierItem.destroy({
+                where: { item_id: normalizedItemId },
+                transaction
+            });
+
+            if (normalizedLinks.length === 0) {
+                await transaction.commit();
+                return {
+                    item_id: normalizedItemId,
+                    supplier_count: 0,
+                    suppliers: []
+                };
+            }
+
+            const requestedSupplierIds = normalizedLinks.map((link) => link.supplier_id);
+            const suppliers = await Supplier.findAll({
+                where: buildVisibleWhere({
+                    supplier_id: { [Op.in]: requestedSupplierIds },
+                    status: 'active'
+                }, {
+                    statusField: 'status',
+                    excludeInactiveStatus: true
+                }),
+                attributes: ['supplier_id', 'name'],
+                transaction
+            });
+
+            if (suppliers.length !== requestedSupplierIds.length) {
+                const existingIds = new Set(suppliers.map((supplier) => supplier.supplier_id));
+                const missingIds = requestedSupplierIds.filter((id) => !existingIds.has(id));
+                const error = new Error('One or more suppliers were not found or are inactive');
+                error.statusCode = 404;
+                error.details = missingIds.map((id) => `Supplier ${id} not found or inactive`);
+                throw error;
+            }
+
+            const rowsToCreate = normalizedLinks.map((link) => ({
+                item_id: normalizedItemId,
+                supplier_id: link.supplier_id,
+                moq: link.moq,
+                price_per_unit: link.price_per_unit
+            }));
+
+            await SupplierItem.bulkCreate(rowsToCreate, { transaction });
+            await transaction.commit();
+
+            const supplierNameById = new Map(
+                suppliers.map((supplier) => [supplier.supplier_id, supplier.name])
+            );
+
+            return {
+                item_id: normalizedItemId,
+                supplier_count: normalizedLinks.length,
+                suppliers: normalizedLinks.map((link) => ({
+                    supplier_id: link.supplier_id,
+                    supplier_name: supplierNameById.get(link.supplier_id) || 'Unknown Supplier',
+                    moq: link.moq,
+                    price_per_unit: link.price_per_unit
+                }))
+            };
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            throw error;
+        }
     },
     async listFolders() {
         const ItemFolder = dbStore.get('ItemFolder');

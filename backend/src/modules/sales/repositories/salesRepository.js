@@ -148,6 +148,7 @@ export const salesRepository = {
     const page = Number.parseInt(filters.page, 10) || 1;
     const limit = Math.min(Number.parseInt(filters.limit, 10) || 20, 200);
     const source = filters.source ? String(filters.source).toUpperCase() : 'ALL';
+    const sourceId = Number.parseInt(filters.source_id, 10);
     const search = String(filters.search || '').trim();
     const status = filters.status ? String(filters.status).trim() : null;
     const paymentType = filters.payment_type ? String(filters.payment_type).trim() : null;
@@ -163,6 +164,9 @@ export const salesRepository = {
 
     if (canViewPos && source !== 'DISPATCH') {
       let posWhere = {};
+      if (Number.isInteger(sourceId) && sourceId > 0) {
+        posWhere.pos_transaction_id = sourceId;
+      }
       if (status) posWhere.status = status;
       if (paymentType) posWhere.payment_type = paymentType;
       if (orderMethod) posWhere.order_method = orderMethod;
@@ -196,6 +200,9 @@ export const salesRepository = {
 
     if (canViewDispatch && source !== 'POS') {
       const dispatchWhere = { archived_at: null };
+      if (Number.isInteger(sourceId) && sourceId > 0) {
+        dispatchWhere.do_id = sourceId;
+      }
       if (status) dispatchWhere.status = status;
       if (dateRange) dispatchWhere.dispatch_date = dateRange;
       if (search) {

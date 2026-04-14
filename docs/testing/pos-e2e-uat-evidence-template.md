@@ -26,8 +26,10 @@ Use this template to append evidence to `docs/testing/pos-e2e-uat-run-2026-03-28
 | Scenario | Result (PASS/FAIL) | Evidence | Notes |
 |---|---|---|---|
 | POS Setup save/reload |  |  |  |
-| Strict compliance blocking |  |  |  |
-| Strict compliance recovery |  |  |  |
+| Dual-mode compliance blocking (`compliant_pending`/`compliant_active`) |  |  |  |
+| Dual-mode compliance recovery after required field fix |  |  |  |
+| Non-compliant continuity (`non_fiscal_slip` contract) |  |  |  |
+| Terminal identity policy response (`warn`/`enforce`) |  |  |  |
 
 ## 4) Cashier Scenarios
 
@@ -44,6 +46,7 @@ Use this template to append evidence to `docs/testing/pos-e2e-uat-run-2026-03-28
 | Scenario | Result (PASS/FAIL) | Evidence | Notes |
 |---|---|---|---|
 | POS row visible in unified sales |  |  |  |
+| History-to-Sales handoff query fidelity |  |  |  |
 | Sales CSV export correctness |  |  |  |
 
 ## 6) Blocker Ledger

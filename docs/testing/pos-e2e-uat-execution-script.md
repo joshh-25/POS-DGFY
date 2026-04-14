@@ -1,7 +1,7 @@
 # POS E2E UAT Execution Script (Cashier + Admin)
 
 Status: in_progress  
-Run order: strict and sequential (do not skip failed steps)
+Run order: sequential (do not skip failed steps)
 
 ## 0) Session Header
 
@@ -22,32 +22,36 @@ If any precondition fails: stop and log blocker as `ENV_BLOCKER`.
 1. Open `Settings > POS Setup`.
 2. Edit then save all compliance fields.
 3. Hard refresh page and verify persistence.
-4. Enable strict compliance toggle.
-5. Clear one required field (example PTU) and save.
+4. Move tenant to `compliant_pending` (or use an existing compliant-pending tenant).
+5. Clear one required compliance field (example PTU) and save.
 6. Switch to cashier and attempt checkout.
-7. Verify checkout blocked with deterministic missing-field output.
+7. Verify checkout blocked with deterministic missing-field output + reason code.
 8. Restore missing field and save.
 9. Retry checkout and verify success.
+10. Validate non-compliant tenant path still issues non-fiscal output contract.
+11. Verify terminal identity policy mode behavior matches tenant config (`warn`/`enforce`).
 
 Required screenshots:
 1. `A1-settings-before-save.png`
 2. `A2-settings-after-refresh.png`
-3. `A3-strict-block-message.png`
+3. `A3-compliance-block-message.png`
 4. `A4-checkout-success-after-fix.png`
+5. `A5-terminal-identity-policy.png`
 
 ## 3) Cashier Track (POS Core Flow)
 
 1. Open POS checkout.
-2. Add at least one item per VAT type (`vatable`, `vat_exempt`, `zero_rated`).
-3. Apply discount preset if available.
-4. Use order method with configured fee (if configured).
-5. Complete checkout.
-6. Open receipt preview and verify:
+2. Unlock terminal with selected terminal identity.
+3. Add at least one item per VAT type (`vatable`, `vat_exempt`, `zero_rated`).
+4. Apply discount preset if available.
+5. Use order method with configured fee (if configured).
+6. Complete checkout.
+7. Open receipt preview and verify:
    - compliance header fields
    - VAT breakdown
    - discount line
    - service fee line (if configured)
-7. Verify stock decrease in Items page.
+8. Verify stock decrease in Items page.
 
 Required screenshots:
 1. `C1-cart-before-checkout.png`
@@ -60,8 +64,9 @@ Required screenshots:
 1. Open POS History and filter by invoice/date/payment/order method/cashier.
 2. Open historical transaction and trigger reprint/preview.
 3. Run Close Day / Z-Reading.
-4. Open Sales page and confirm POS row present with expected totals.
-5. Export sales CSV and validate one sample row.
+4. Use `Open in Sales Report` from POS history/receipt context.
+5. Confirm Sales page opens with matching filters/transaction context and POS row totals.
+6. Export sales CSV and validate one sample row.
 
 Required screenshots:
 1. `S1-pos-history-filtered.png`
@@ -69,6 +74,7 @@ Required screenshots:
 3. `S3-zreading-summary.png`
 4. `S4-sales-table-pos-row.png`
 5. `S5-sales-export-sample-row.png`
+6. `S6-history-to-sales-handoff.png`
 
 ## 5) Failure Taxonomy (Mandatory)
 

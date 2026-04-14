@@ -21,6 +21,7 @@ import {
     listComplianceSecurityIncidentsUseCase,
     updateComplianceArtifactVerificationUseCase,
     updateCompliancePeripheralVerificationUseCase,
+    reviewFinalReviewDocumentUseCase,
     updateComplianceSecurityIncidentStatusUseCase
 } from '../../compliance/index.js';
 import * as emailService from '../../../services/emailService.js';
@@ -476,6 +477,26 @@ export const adminUpdateCompliancePeripheralVerification = async (req, res) => {
 };
 
 /**
+ * ADMIN: Note/revoke/restore tenant final-review document validity
+ */
+export const adminUpdateComplianceFinalReviewDocumentReview = async (req, res) => {
+    const result = await reviewFinalReviewDocumentUseCase({
+        tenantId: req.params?.id,
+        documentId: req.params?.document_id,
+        payload: req.validatedData || req.body,
+        actorUser: {
+            is_platform_admin: true,
+            user_id: req.admin?.admin_id || req.admin?.id || null,
+            username: req.admin?.username || 'platform_admin'
+        }
+    });
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to update tenant final-review document review'
+    });
+};
+
+/**
  * PUBLIC: Re-submit a rejected registration for re-review
  * Uses x-company-token; no JWT required
  */
@@ -508,6 +529,7 @@ export default {
     adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
     resubmitRegistration

@@ -5,6 +5,8 @@ import Layout from '../Layout.jsx'
 import AdminLayout from '../Components/admin/AdminLayout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PermissionProvider } from './store/PermissionContext.jsx'
+import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
+import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import api from './services/api.js'
 import { clearClientSession } from './services/sessionCleanup.js'
@@ -123,23 +125,29 @@ function App() {
         } />
         <Route path="/job-orders" element={
           <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <JobOrders />
-            </Layout>
+            <WorkflowModeRouteGate blockInMsme moduleLabel="Job Orders">
+              <Layout currentPageName={currentPageName}>
+                <JobOrders />
+              </Layout>
+            </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
         <Route path="/stock-movements" element={
           <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <StockMovements />
-            </Layout>
+            <WorkflowModeRouteGate blockInMsme moduleLabel="Stock Movements">
+              <Layout currentPageName={currentPageName}>
+                <StockMovements />
+              </Layout>
+            </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
         <Route path="/dispatch-orders" element={
           <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <DispatchOrders />
-            </Layout>
+            <WorkflowModeRouteGate blockInMsme moduleLabel="Dispatch Orders">
+              <Layout currentPageName={currentPageName}>
+                <DispatchOrders />
+              </Layout>
+            </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
         <Route path="/reports" element={
@@ -151,9 +159,11 @@ function App() {
         } />
         <Route path="/ai-chat" element={
           <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <AiChat />
-            </Layout>
+            <WorkflowModeRouteGate blockInMsme moduleLabel="AI Chat">
+              <Layout currentPageName={currentPageName}>
+                <AiChat />
+              </Layout>
+            </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
         <Route path="/pos" element={
@@ -212,9 +222,11 @@ ReactDOM.createRoot(rootElement).render(
         }}
       >
         <PermissionProvider>
-          <GlobalApiErrorListener />
-          <Toaster position="top-right" />
-          <App />
+          <WorkflowModeProvider>
+            <GlobalApiErrorListener />
+            <Toaster position="top-right" />
+            <App />
+          </WorkflowModeProvider>
         </PermissionProvider>
       </BrowserRouter>
     </ErrorBoundary>

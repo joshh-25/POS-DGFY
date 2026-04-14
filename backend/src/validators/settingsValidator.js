@@ -1,6 +1,9 @@
 import Joi from 'joi';
+import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -84,6 +87,71 @@ const posOrderMethodFeesSchema = Joi.object({
     'any.invalid': '{{#message}}'
   });
 
+const posTerminalRegistryEntrySchema = Joi.object({
+  terminal_id: Joi.string().trim().uppercase().pattern(TERMINAL_ID_PATTERN).required().messages({
+    'any.required': 'Terminal ID is required',
+    'string.pattern.base': 'Terminal ID may only contain letters, numbers, dot, underscore, or hyphen'
+  }),
+  label: Joi.string().trim().max(80).allow('', null).optional(),
+  is_active: Joi.boolean().default(true),
+  is_default: Joi.boolean().default(false)
+});
+
+const posTerminalRegistrySchema = Joi.array()
+  .items(posTerminalRegistryEntrySchema)
+  .max(40)
+  .custom((entries, helpers) => {
+    if (!Array.isArray(entries)) {
+      return helpers.error('any.invalid', { message: 'Terminal registry must be an array' });
+    }
+
+    const seenIds = new Set();
+    let defaultCount = 0;
+    let activeCount = 0;
+
+    for (const entry of entries) {
+      const terminalId = String(entry?.terminal_id || '').trim().toUpperCase();
+      if (!terminalId) continue;
+
+      if (seenIds.has(terminalId)) {
+        return helpers.error('any.invalid', {
+          message: `Duplicate terminal ID: ${terminalId}`
+        });
+      }
+      seenIds.add(terminalId);
+
+      const isActive = entry?.is_active !== false;
+      if (isActive) {
+        activeCount += 1;
+      }
+      if (entry?.is_default === true) {
+        defaultCount += 1;
+        if (!isActive) {
+          return helpers.error('any.invalid', {
+            message: `Default terminal must be active: ${terminalId}`
+          });
+        }
+      }
+    }
+
+    if (defaultCount > 1) {
+      return helpers.error('any.invalid', {
+        message: 'Only one default terminal is allowed'
+      });
+    }
+    if (entries.length > 0 && activeCount === 0) {
+      return helpers.error('any.invalid', {
+        message: 'At least one terminal must be active'
+      });
+    }
+
+    return entries;
+  })
+  .messages({
+    'array.max': 'A maximum of 40 terminal registry entries is allowed',
+    'any.invalid': '{{#message}}'
+  });
+
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
   low_stock_threshold: Joi.number().min(0).optional(),
@@ -117,6 +185,10 @@ export const updateSettingsSchema = Joi.object({
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
+  pos_terminal_registry: posTerminalRegistrySchema.optional(),
+  pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
+    'any.only': 'Terminal registry mode must be warn or enforce'
+  }),
   pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
@@ -125,7 +197,10 @@ export const updateSettingsSchema = Joi.object({
   }),
   store_is_visible: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
-  pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional()
+  pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
+  ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).optional().messages({
+    'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
+  })
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -223,6 +298,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,
+    pos_terminal_registry: posTerminalRegistrySchema,
+    pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
+      'any.only': 'Terminal registry mode must be warn or enforce'
+    }),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     store_delivery_fee: Joi.number().min(0).precision(4),
@@ -231,7 +310,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     }),
     store_is_visible: Joi.boolean(),
     pos_open_status: Joi.boolean(),
-    pos_wait_time_minutes: Joi.number().integer().min(0).max(720)
+    pos_wait_time_minutes: Joi.number().integer().min(0).max(720),
+    ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).messages({
+      'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
+    })
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

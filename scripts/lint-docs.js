@@ -8,6 +8,8 @@ const registryPath = path.join(repoRoot, 'docs', '_meta', 'document-registry.jso
 
 const FRONT_MATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const CHECKLIST_CONTROL_REGEX = /^- \[(x|~| )] (.+)$/;
+const CHECKLIST_REFERENCE_REGEX = /`([^`]+)`/g;
 
 const fail = (errors) => {
   console.error('[docs-lint] FAILED');
@@ -67,6 +69,97 @@ const extractMarkdownLinks = (body) => {
     links.push(match[1]);
   }
   return links;
+};
+
+const extractBacktickRefs = (line) => {
+  const refs = [];
+  CHECKLIST_REFERENCE_REGEX.lastIndex = 0;
+  let match;
+  while ((match = CHECKLIST_REFERENCE_REGEX.exec(line)) !== null) {
+    refs.push(match[1]);
+  }
+  return refs;
+};
+
+const isPathLikeChecklistRef = (ref) => /^(backend|frontend|docs|scripts)\//.test(ref);
+
+const validateDgfyChecklist = (errors) => {
+  const checklistRelativePath = 'docs/compliance/DGFY Compliance Certification Checklist.md';
+  const checklistPath = path.join(repoRoot, checklistRelativePath);
+  if (!fs.existsSync(checklistPath)) {
+    errors.push(`${checklistRelativePath}: file is missing`);
+    return;
+  }
+
+  const rawContent = fs.readFileSync(checklistPath, 'utf8');
+  const parsed = parseFrontMatter(rawContent);
+  const checklistBody = parsed ? parsed.body : rawContent;
+  const lines = checklistBody.split(/\r?\n/);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const controlMatch = lines[i].match(CHECKLIST_CONTROL_REGEX);
+    if (!controlMatch) continue;
+
+    const status = controlMatch[1];
+    const controlTitle = String(controlMatch[2] || '').trim();
+    if (status !== 'x') continue;
+
+    let hasEvidence = false;
+    let hasReferences = false;
+    const controlRefs = [];
+
+    let j = i + 1;
+    while (j < lines.length) {
+      const line = lines[j];
+      if (CHECKLIST_CONTROL_REGEX.test(line) || line.startsWith('## ')) {
+        break;
+      }
+
+      if (line.includes('- Evidence:')) {
+        hasEvidence = true;
+      }
+      if (line.includes('- References:')) {
+        hasReferences = true;
+      }
+      controlRefs.push(...extractBacktickRefs(line));
+      j += 1;
+    }
+
+    if (!hasEvidence) {
+      errors.push(`${checklistRelativePath}: control "${controlTitle}" is marked [x] but missing "- Evidence:" block`);
+    }
+    if (!hasReferences) {
+      errors.push(`${checklistRelativePath}: control "${controlTitle}" is marked [x] but missing "- References:" block`);
+    }
+
+    const pathRefs = controlRefs
+      .filter((ref) => isPathLikeChecklistRef(ref) && !ref.includes('*'))
+      .map((ref) => ref.trim());
+
+    if (pathRefs.length === 0) {
+      errors.push(`${checklistRelativePath}: control "${controlTitle}" must include at least one path-like reference`);
+      continue;
+    }
+
+    pathRefs.forEach((ref) => {
+      const resolved = path.resolve(repoRoot, ref);
+      if (!fs.existsSync(resolved)) {
+        errors.push(`${checklistRelativePath}: control "${controlTitle}" references missing path "${ref}"`);
+      }
+    });
+
+    const hasTestOrDocumentaryEvidence = pathRefs.some((ref) => (
+      /^backend\/tests\//.test(ref)
+      || /^frontend\/src\/.*__tests__\//.test(ref)
+      || /^docs\/compliance\/(evidence|submission)\//.test(ref)
+      || ref === 'docs/api/specification.md'
+      || ref === 'docs/database/schema.md'
+    ));
+
+    if (!hasTestOrDocumentaryEvidence) {
+      errors.push(`${checklistRelativePath}: control "${controlTitle}" must include at least one test or documentary evidence artifact`);
+    }
+  }
 };
 
 const run = () => {
@@ -137,6 +230,8 @@ const run = () => {
       errors.push(`Topic "${topic}" has multiple authoritative docs: ${docs.join(', ')}`);
     }
   });
+
+  validateDgfyChecklist(errors);
 
   if (errors.length > 0) {
     fail(errors);

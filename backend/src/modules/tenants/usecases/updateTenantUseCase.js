@@ -1,5 +1,18 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+
+const extractWorkflowModeFromTenant = (tenant) => {
+    let settings = tenant?.settings || {};
+    if (typeof settings === 'string') {
+        try {
+            settings = JSON.parse(settings);
+        } catch {
+            settings = {};
+        }
+    }
+    return normalizeWorkflowMode(settings?.workflow_mode);
+};
 
 export const buildUpdateTenantUseCase = ({
     tenantAdminRepository,
@@ -27,7 +40,8 @@ export const buildUpdateTenantUseCase = ({
                     dbName: tenant.db_name,
                     companyToken: tenant.company_token,
                     adminEmail: tenant.admin_email,
-                    adminPasswordHash: tenant.admin_password_hash
+                    adminPasswordHash: tenant.admin_password_hash,
+                    workflowMode: extractWorkflowModeFromTenant(tenant)
                 });
 
                 if (emailService?.isEmailConfigured?.()) {

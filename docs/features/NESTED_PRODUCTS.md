@@ -136,6 +136,9 @@ cd backend
 node src/scripts/calculateNestingLevels.js
 # This script will automatically iterate through ALL active tenants and the default database.
 ```
+
+Path note:
+- Script source: `backend/src/scripts/calculateNestingLevels.js`
 ```
 
 ## Example Workflow

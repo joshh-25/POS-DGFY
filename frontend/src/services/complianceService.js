@@ -50,6 +50,26 @@ export const updateCompliancePeripheralVerification = async (peripheralId, paylo
   unwrapData(await api.post(`/compliance/peripherals/${peripheralId}/verification`, payload))
 );
 
+export const listFinalReviewDocuments = async () => unwrapData(await api.get('/compliance/final-review/documents'));
+
+export const upsertFinalReviewDocument = async (payload) => (
+  unwrapData(await api.post('/compliance/final-review/documents', payload))
+);
+
+export const uploadFinalReviewDocument = async (documentId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return unwrapData(await api.post(`/compliance/final-review/documents/${documentId}/upload`, formData));
+};
+
+export const reviewFinalReviewDocument = async (documentId, payload) => (
+  unwrapData(await api.post(`/compliance/final-review/documents/${documentId}/review`, payload))
+);
+
+export const upsertFinalReviewSignoff = async (payload) => (
+  unwrapData(await api.put('/compliance/final-review/signoff-metadata', payload))
+);
+
 export const listComplianceAuditLogs = async ({ limit = 100 } = {}) => (
   unwrapData(await api.get('/compliance/audit-logs', { params: { limit } }))
 );

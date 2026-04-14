@@ -3,8 +3,10 @@ import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
 import logger from '../../../config/logger.js';
+import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const ORDER_METHOD_DEFAULT_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
@@ -101,6 +103,52 @@ const normalizeOrderMethodFees = (rawValue) => {
     return normalized;
 };
 
+const normalizeTerminalRegistry = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    if (!Array.isArray(parsed)) return [];
+
+    const seenTerminalIds = new Set();
+    const normalized = [];
+
+    for (const entry of parsed) {
+        const terminalId = String(entry?.terminal_id || '')
+            .trim()
+            .toUpperCase();
+        if (!terminalId || !TERMINAL_ID_PATTERN.test(terminalId)) continue;
+        if (seenTerminalIds.has(terminalId)) continue;
+        seenTerminalIds.add(terminalId);
+
+        const isActive = parseBooleanLike(entry?.is_active !== false);
+        normalized.push({
+            terminal_id: terminalId,
+            label: String(entry?.label || '').trim(),
+            is_active: isActive,
+            is_default: isActive && parseBooleanLike(entry?.is_default)
+        });
+    }
+
+    const activeEntries = normalized.filter((entry) => entry.is_active);
+    if (activeEntries.length === 0) {
+        return [];
+    }
+
+    const firstDefaultIndex = normalized.findIndex((entry) => entry.is_default === true);
+    if (firstDefaultIndex >= 0) {
+        normalized.forEach((entry, index) => {
+            if (index !== firstDefaultIndex) {
+                entry.is_default = false;
+            }
+        });
+    } else {
+        const firstActiveIndex = normalized.findIndex((entry) => entry.is_active);
+        if (firstActiveIndex >= 0) {
+            normalized[firstActiveIndex].is_default = true;
+        }
+    }
+
+    return normalized.slice(0, 40);
+};
+
 const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'pos_discount_profiles') {
         return normalizeDiscountProfiles(value);
@@ -108,10 +156,16 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'pos_order_method_fees') {
         return normalizeOrderMethodFees(value);
     }
+    if (settingKey === 'pos_terminal_registry') {
+        return normalizeTerminalRegistry(value);
+    }
+    if (settingKey === 'ops_workflow_mode') {
+        return normalizeWorkflowMode(value);
+    }
     return value;
 };
 
-const POS_JSON_SETTING_KEYS = new Set(['pos_discount_profiles', 'pos_order_method_fees']);
+const POS_JSON_SETTING_KEYS = new Set(['pos_discount_profiles', 'pos_order_method_fees', 'pos_terminal_registry']);
 
 const shouldRepairPosJsonSetting = (setting, parsedValue) => {
     if (!POS_JSON_SETTING_KEYS.has(setting.setting_key)) return false;

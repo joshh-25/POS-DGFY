@@ -10,6 +10,7 @@ import { buildGetItemBatchesUseCase } from './usecases/getItemBatchesUseCase.js'
 import { buildGetItemMovementsUseCase } from './usecases/getItemMovementsUseCase.js';
 import { buildValidateCompositionUseCase } from './usecases/validateCompositionUseCase.js';
 import { buildGetItemSupplierCoverageUseCase } from './usecases/getItemSupplierCoverageUseCase.js';
+import { buildReplaceItemSuppliersUseCase } from './usecases/replaceItemSuppliersUseCase.js';
 import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
 import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
 import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
@@ -26,6 +27,7 @@ export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository
 export const getItemMovementsUseCase = buildGetItemMovementsUseCase({ itemRepository });
 export const validateCompositionUseCase = buildValidateCompositionUseCase({ itemRepository });
 export const getItemSupplierCoverageUseCase = buildGetItemSupplierCoverageUseCase({ itemRepository });
+export const replaceItemSuppliersUseCase = buildReplaceItemSuppliersUseCase({ itemRepository });
 export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
 export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
 export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });

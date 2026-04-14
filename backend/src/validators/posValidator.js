@@ -56,11 +56,19 @@ const checkoutPosSchema = Joi.object({
 }).custom((value, helpers) => {
     const discountAmount = Number(value?.discount_amount || 0);
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
-    if (discountAmount > 0 && !hasProfile) {
+    const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
+
+    if (hasDiscountRate && !hasProfile) {
         return helpers.error('any.invalid', {
-            message: 'Non-zero discount requires a configured discount profile'
+            message: 'discount_rate requires discount_profile_name'
         });
     }
+
+    // Manual discount (without profile) is allowed in MSME-friendly checkout.
+    if (discountAmount > 0 && !hasProfile) {
+        return value;
+    }
+
     return value;
 }).messages({
     'any.invalid': '{{#message}}'
@@ -140,7 +148,10 @@ const shiftIdParamSchema = Joi.object({
 
 const openTerminalShiftSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
-    terminal_id: Joi.string().trim().max(100).allow(null, '').default('WEB-POS-01'),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required().messages({
+        'any.required': 'terminal_id is required',
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
     business_date: Joi.date().iso().optional(),
     opening_float_amount: Joi.number().min(0).precision(4).default(0),
     opening_note: Joi.string().trim().max(255).allow(null, '').optional()

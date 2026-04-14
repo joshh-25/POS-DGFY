@@ -22,7 +22,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 import { useItems } from '@/hooks/useItems.js';
-import { canBeSupplierItem, isManufactured } from '@/components/utils/categoryHelpers';
+import { canBeSupplierItem } from '@/components/utils/categoryHelpers';
+import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 
 /**
  * SupplierFormModal - Create or edit suppliers
@@ -48,10 +49,10 @@ export default function SupplierFormModal({ supplier, open, onClose, onSave, onS
 
   const [itemSearch, setItemSearch] = useState('');
   const [activeItemIndex, setActiveItemIndex] = useState(null);
+  const { workflowMode } = useWorkflowMode();
 
   const { items: allItems, loading: loadingItems } = useItems({ status: 'active', limit: 1000 });
-  // Only show purchasable items (raw materials, packaging, supplies) - exclude manufactured products
-  const availableItems = (allItems || []).filter(i => canBeSupplierItem(i));
+  const availableItems = (allItems || []).filter((item) => canBeSupplierItem(item, workflowMode));
 
   const filteredItems = (availableItems || []).filter(item =>
     item.name.toLowerCase().includes(itemSearch.toLowerCase()) ||

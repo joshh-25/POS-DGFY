@@ -126,7 +126,8 @@ export default function TenantManager() {
         adminEmail: '',
         adminPassword: '',
         plan: 'standard',
-        complianceMode: 'non_compliant'
+        complianceMode: 'non_compliant',
+        workflowMode: 'manufacturing'
     });
 
     // Edit Tenant Modal State
@@ -228,7 +229,8 @@ export default function TenantManager() {
                 adminEmail: '',
                 adminPassword: '',
                 plan: 'standard',
-                complianceMode: 'non_compliant'
+                complianceMode: 'non_compliant',
+                workflowMode: 'manufacturing'
             });
             loadTenants();
             toast.success('Tenant created successfully');
@@ -1286,7 +1288,7 @@ export default function TenantManager() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-700">Plan</label>
                                     <input
@@ -1311,6 +1313,20 @@ export default function TenantManager() {
                                     </select>
                                     <p className="text-xs text-slate-500">
                                         Compliant mode is irreversible after activation.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Business Mode</label>
+                                    <select
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                        value={addForm.workflowMode}
+                                        onChange={e => setAddForm({ ...addForm, workflowMode: e.target.value })}
+                                    >
+                                        <option value="manufacturing">Manufacturing (Full)</option>
+                                        <option value="msme">MSME (Simplified)</option>
+                                    </select>
+                                    <p className="text-xs text-slate-500">
+                                        Controls initial IMS/POS workflow simplification for this tenant.
                                     </p>
                                 </div>
                             </div>

@@ -2,10 +2,38 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
+import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
+
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+
+const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY)) {
+        return;
+    }
+
+    const requestedMode = settingsData[WORKFLOW_MODE_SETTING_KEY];
+    if (!isWorkflowMode(requestedMode)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `ops_workflow_mode must be one of: manufacturing, msme`,
+            { statusCode: 422 }
+        );
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update ops_workflow_mode',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[WORKFLOW_MODE_SETTING_KEY] = normalizeWorkflowMode(requestedMode);
+};
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -31,6 +59,8 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
         }
 
         try {
+            assertWorkflowModeAuthorization({ settingsData, actorUser });
+
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
                 const complianceResult = await assertComplianceOperationAllowed({

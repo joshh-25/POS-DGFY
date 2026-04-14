@@ -163,6 +163,72 @@ const evaluateSystemFlowDiagramQuality = ({ absolutePath = null, absolute_path: 
     };
 };
 
+const COMPLIANCE_DOCUMENT_REQUIREMENTS = Object.freeze([
+    {
+        requirement_code: 'submission_system_flow_diagram_mmd',
+        code: 'submission.system_flow_diagram',
+        label: 'System flow diagram (Mermaid source)',
+        source_category: 'submission',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'submission_system_flow_diagram_png',
+        code: 'submission.system_flow_diagram_image',
+        label: 'System flow diagram (exported image)',
+        source_category: 'submission',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'submission_software_specification',
+        code: 'submission.software_specification',
+        label: 'Software specification packet',
+        source_category: 'submission',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'submission_backup_dr_plan',
+        code: 'submission.backup_disaster_recovery_plan',
+        label: 'Data backup and disaster recovery plan',
+        source_category: 'submission',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'submission_filing_instructions',
+        code: 'submission.filing_instructions',
+        label: 'Filing instructions',
+        source_category: 'submission',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'evidence_restore_drill',
+        code: 'submission.restore_drill_evidence',
+        label: 'Latest restore drill evidence',
+        source_category: 'evidence',
+        requires_freshness: true
+    },
+    {
+        requirement_code: 'evidence_encryption_verification',
+        code: 'submission.encryption_verification_evidence',
+        label: 'Latest encryption verification evidence',
+        source_category: 'evidence',
+        requires_freshness: true
+    }
+]);
+
+const normalizeComplianceDocumentarySource = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'tenant_only') return 'tenant_only';
+    if (normalized === 'repo_only') return 'repo_only';
+    return 'hybrid';
+};
+
+const DOCUMENT_UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads', 'compliance-final-review');
+
+const sanitizeFilename = (value = '') => String(value)
+    .replace(/[^\w.\-() ]+/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 200);
+
 const getModel = (name) => dbStore.get(name);
 
 const assertTransitionAllowed = ({ previousState, nextState }) => {
@@ -311,6 +377,87 @@ export const complianceRepository = {
         return rows.map(toPlain);
     },
 
+    async listFinalReviewDocumentsByTenantId(tenantId, options = {}) {
+        const TenantComplianceFinalReviewDocument = getModel('TenantComplianceFinalReviewDocument');
+        const rows = await TenantComplianceFinalReviewDocument.findAll({
+            where: { tenant_id: tenantId },
+            order: [['updated_at', 'DESC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async upsertFinalReviewDocument(tenantId, requirementCode, payload = {}, options = {}) {
+        const TenantComplianceFinalReviewDocument = getModel('TenantComplianceFinalReviewDocument');
+        const existing = await TenantComplianceFinalReviewDocument.findOne({
+            where: { tenant_id: tenantId, requirement_code: requirementCode },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+
+        if (existing) {
+            await existing.update(payload, { transaction: options.transaction });
+            return toPlain(existing);
+        }
+
+        const created = await TenantComplianceFinalReviewDocument.create({
+            tenant_id: tenantId,
+            requirement_code: requirementCode,
+            ...payload
+        }, { transaction: options.transaction });
+        return toPlain(created);
+    },
+
+    async getFinalReviewDocumentById(documentId, options = {}) {
+        const TenantComplianceFinalReviewDocument = getModel('TenantComplianceFinalReviewDocument');
+        const row = await TenantComplianceFinalReviewDocument.findByPk(documentId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async updateFinalReviewDocumentById(documentId, payload = {}, options = {}) {
+        const TenantComplianceFinalReviewDocument = getModel('TenantComplianceFinalReviewDocument');
+        const row = await TenantComplianceFinalReviewDocument.findByPk(documentId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async getFinalReviewSignoffByTenantId(tenantId, options = {}) {
+        const TenantComplianceFinalReviewSignoff = getModel('TenantComplianceFinalReviewSignoff');
+        const row = await TenantComplianceFinalReviewSignoff.findOne({
+            where: { tenant_id: tenantId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async upsertFinalReviewSignoffByTenantId(tenantId, payload = {}, options = {}) {
+        const TenantComplianceFinalReviewSignoff = getModel('TenantComplianceFinalReviewSignoff');
+        const row = await TenantComplianceFinalReviewSignoff.findOne({
+            where: { tenant_id: tenantId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+
+        if (row) {
+            await row.update(payload, { transaction: options.transaction });
+            return toPlain(row);
+        }
+
+        const created = await TenantComplianceFinalReviewSignoff.create({
+            tenant_id: tenantId,
+            ...payload
+        }, { transaction: options.transaction });
+        return toPlain(created);
+    },
+
     async getFiscalAccumulatorState() {
         const PosInvoiceCounter = getModel('PosInvoiceCounter');
         if (!PosInvoiceCounter) {
@@ -381,7 +528,145 @@ export const complianceRepository = {
         }
     },
 
-    async getSubmissionArtifactReadiness() {
+    async resolveFinalReviewDocumentUploadPath({ tenantId, requirementCode, originalName = '' }) {
+        const safeName = sanitizeFilename(originalName || `${requirementCode}.bin`);
+        const tenantDir = path.join(DOCUMENT_UPLOAD_ROOT, String(tenantId || 'unknown'));
+        if (!fs.existsSync(tenantDir)) {
+            fs.mkdirSync(tenantDir, { recursive: true });
+        }
+        const uniquePrefix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        return path.join(tenantDir, `${uniquePrefix}-${safeName}`);
+    },
+
+    async storeFinalReviewUpload({ tenantId, requirementCode, file = {} }) {
+        const sourcePath = String(file.path || '').trim();
+        if (!sourcePath || !fs.existsSync(sourcePath)) {
+            return null;
+        }
+
+        const destinationPath = await this.resolveFinalReviewDocumentUploadPath({
+            tenantId,
+            requirementCode,
+            originalName: file.originalname || file.filename || `${requirementCode}.bin`
+        });
+        fs.copyFileSync(sourcePath, destinationPath);
+
+        return {
+            file_name: file.originalname || path.basename(destinationPath),
+            file_path: destinationPath,
+            mime_type: file.mimetype || null,
+            file_size_bytes: Number.isFinite(Number(file.size)) ? Number(file.size) : null
+        };
+    },
+
+    evaluateTenantDocumentQuality({ requirement, row, evidenceMaxAgeDays }) {
+        const issues = [];
+        const sourceType = String(row?.source_type || '').trim();
+        const hasUpload = sourceType === 'upload' && String(row?.file_path || '').trim().length > 0;
+        const hasExternal = sourceType === 'external_url' && String(row?.external_url || '').trim().length > 0;
+        const hasAnySource = hasUpload || hasExternal;
+        if (!hasAnySource) issues.push('source_missing');
+        if (sourceType === 'external_url' && !/^https?:\/\//i.test(String(row?.external_url || '').trim())) {
+            issues.push('external_url_invalid');
+        }
+
+        let freshnessDate = row?.freshness_date || row?.parsed_metadata?.freshness_date || null;
+        if (!freshnessDate && requirement.requires_freshness) {
+            const parsedMeta = row?.parsed_metadata && typeof row.parsed_metadata === 'object' ? row.parsed_metadata : {};
+            freshnessDate = parsedMeta.executed_at || parsedMeta.verified_at || null;
+        }
+        const freshnessAgeDays = freshnessDate ? computeAgeInDays(freshnessDate) : null;
+        const isFresh = requirement.requires_freshness
+            ? Number.isFinite(freshnessAgeDays) && freshnessAgeDays <= evidenceMaxAgeDays
+            : null;
+        if (requirement.requires_freshness && freshnessAgeDays == null) issues.push('invalid_freshness_date');
+        if (requirement.requires_freshness && Number.isFinite(freshnessAgeDays) && freshnessAgeDays > evidenceMaxAgeDays) {
+            issues.push(`stale:${freshnessAgeDays}d`);
+        }
+        if (String(row?.status || '').trim() === 'revoked') {
+            issues.push('status_revoked');
+        }
+
+        return {
+            quality_ok: issues.length === 0,
+            quality_issues: issues,
+            fresh: isFresh,
+            age_days: Number.isFinite(freshnessAgeDays) ? freshnessAgeDays : null
+        };
+    },
+
+    async getTenantSubmissionArtifactReadiness(tenantId) {
+        const evidenceMaxAgeDays = normalizePositiveInt(process.env.COMPLIANCE_EVIDENCE_MAX_AGE_DAYS, 45);
+        const [rows, signoff] = await Promise.all([
+            this.listFinalReviewDocumentsByTenantId(tenantId),
+            this.getFinalReviewSignoffByTenantId(tenantId)
+        ]);
+        const byRequirement = new Map(rows.map((row) => [row.requirement_code, row]));
+
+        const signoffReady = hasRequiredTokens(
+            `${String(signoff?.engineering_approver || '').trim()}|${String(signoff?.compliance_approver || '').trim()}|${String(signoff?.filing_batch_id || '').trim()}`,
+            ['|', '|']
+        ) && String(signoff?.engineering_approver || '').trim().length > 0
+            && String(signoff?.compliance_approver || '').trim().length > 0
+            && String(signoff?.filing_batch_id || '').trim().length > 0;
+
+        const items = COMPLIANCE_DOCUMENT_REQUIREMENTS.map((requirement) => {
+            const row = byRequirement.get(requirement.requirement_code) || null;
+            const quality = this.evaluateTenantDocumentQuality({
+                requirement,
+                row,
+                evidenceMaxAgeDays
+            });
+            const ready = Boolean(row) && quality.quality_ok;
+            return {
+                code: requirement.code,
+                requirement_code: requirement.requirement_code,
+                label: requirement.label,
+                source_type: row?.source_type || null,
+                ready,
+                exists: Boolean(row),
+                quality_ok: quality.quality_ok,
+                quality_issues: quality.quality_issues,
+                fresh: quality.fresh,
+                age_days: quality.age_days,
+                external_url: row?.external_url || null,
+                file_name: row?.file_name || null,
+                review_state: row?.review_state || null,
+                review_note: row?.review_note || null,
+                requires_platform_followup: row?.review_state === 'revoked'
+            };
+        });
+
+        const signoffItem = {
+            code: 'submission.signoff_metadata',
+            requirement_code: 'submission_signoff_metadata',
+            label: 'Sign-off metadata',
+            source_type: 'form',
+            ready: signoffReady,
+            exists: Boolean(signoff),
+            quality_ok: signoffReady,
+            quality_issues: signoffReady ? [] : ['signoff_metadata_incomplete'],
+            fresh: null,
+            age_days: null,
+            review_state: null,
+            review_note: null,
+            requires_platform_followup: false
+        };
+        const itemsWithSignoff = [...items, signoffItem];
+        const complete = itemsWithSignoff.filter((entry) => entry.ready).length;
+
+        return {
+            source: 'tenant',
+            evidence_max_age_days: evidenceMaxAgeDays,
+            complete,
+            total: itemsWithSignoff.length,
+            missing: Math.max(0, itemsWithSignoff.length - complete),
+            ready: complete === itemsWithSignoff.length,
+            items: itemsWithSignoff
+        };
+    },
+
+    async getRepoSubmissionArtifactReadiness() {
         const configuredSubmissionRoot = String(process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT || '').trim();
         const configuredEvidenceRoot = String(process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT || '').trim();
         const evidenceMaxAgeDays = normalizePositiveInt(process.env.COMPLIANCE_EVIDENCE_MAX_AGE_DAYS, 45);
@@ -503,6 +788,7 @@ export const complianceRepository = {
         const complete = items.filter((entry) => entry.ready).length;
 
         return {
+            source: 'repo',
             docs_root: submissionRoot,
             evidence_root: evidenceRoot,
             evidence_max_age_days: evidenceMaxAgeDays,
@@ -512,6 +798,32 @@ export const complianceRepository = {
             ready: complete === items.length,
             items
         };
+    },
+
+    async getSubmissionArtifactReadiness(tenantId = null) {
+        const sourceMode = normalizeComplianceDocumentarySource(process.env.COMPLIANCE_DOCUMENTARY_SOURCE || 'hybrid');
+        if (sourceMode === 'repo_only' || !tenantId) {
+            return this.getRepoSubmissionArtifactReadiness();
+        }
+
+        const tenantReadiness = await this.getTenantSubmissionArtifactReadiness(tenantId);
+        if (sourceMode === 'tenant_only') {
+            return tenantReadiness;
+        }
+
+        if (tenantReadiness.ready) {
+            return tenantReadiness;
+        }
+
+        const repoReadiness = await this.getRepoSubmissionArtifactReadiness();
+        if (repoReadiness.ready) {
+            return {
+                ...repoReadiness,
+                source: 'repo_fallback'
+            };
+        }
+
+        return tenantReadiness;
     },
 
     async getEncryptionPolicyPrerequisitesState() {

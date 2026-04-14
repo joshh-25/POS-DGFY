@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -38,7 +38,7 @@ import { toast } from 'sonner';
 import { cn } from "@/lib/utils.js";
 import { formatNumber } from '@/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
-import { isManufactured, getEffectiveCategory } from '@/components/utils/categoryHelpers';
+import { getMsmeCategoryView, isManufactured, getEffectiveCategory } from '@/components/utils/categoryHelpers';
 import { calculateTotalProductCost } from '@/components/items/details/helpers';
 import FolderCard from '@/components/items/FolderCard';
 import CreateFolderCard from '@/components/items/CreateFolderCard';
@@ -47,14 +47,27 @@ import { useItemSelection } from '@/hooks/useItemSelection';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { usePermission } from '@/hooks/usePermission';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
+import { useNavigate } from 'react-router-dom';
 import {
   getPosCatalogOverrides,
   updatePosCatalogOverride,
   uploadPosCatalogImage,
   deletePosCatalogImage
 } from '@/services/posCatalogService.js';
+import { replaceItemSuppliers } from '@/src/services/itemService.js';
+import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
+import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+
+const MSME_ITEM_PRESET = Object.freeze({
+  SELLABLE_POS: 'sellable_pos',
+  INVENTORY_ONLY: 'inventory_only'
+});
+
+const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
+const POS_READINESS_INCOMPLETE = 'POS_READINESS_INCOMPLETE';
 
 export default function Items() {
+  const navigate = useNavigate();
   const { items, loading, error, refetch } = useInventoryItems({ limit: 1000 });
   const { createItem } = useInventoryCreateItem();
   const { updateItem } = useInventoryUpdateItem();
@@ -70,6 +83,8 @@ export default function Items() {
     canImport: canImportPermission,
     canExport: canExportPermission
   } = usePermission();
+  const { workflowMode } = useWorkflowMode();
+  const isMsmeMode = isMsmeWorkflowMode(workflowMode);
 
   const { finalizeItem } = useInventoryFinalizeItem();
   const {
@@ -122,6 +137,8 @@ export default function Items() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showProductWizard, setShowProductWizard] = useState(false);
+  const [msmeItemPreset, setMsmeItemPreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
+  const [activeCreatePreset, setActiveCreatePreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
   const [folderFilter, setFolderFilter] = useState(() => getInitialState('folderFilter', 'all'));
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -144,6 +161,7 @@ export default function Items() {
   const [posChecklistStatus, setPosChecklistStatus] = useState('all');
   const [posChecklistSelectedIds, setPosChecklistSelectedIds] = useState(new Set());
   const [bulkPosToggleLoading, setBulkPosToggleLoading] = useState(false);
+  const [guidedPosReadyItemId, setGuidedPosReadyItemId] = useState(null);
 
   // DnD Sensors
   const sensors = useSensors(
@@ -167,6 +185,20 @@ export default function Items() {
     };
     fetchUser();
   }, []);
+
+  useEffect(() => {
+    if (!isMsmeMode) return;
+    if (MSME_RESTRICTED_CATEGORY_FILTERS.has(categoryFilter)) {
+      setCategoryFilter('all');
+    }
+  }, [categoryFilter, isMsmeMode]);
+
+  const resolveCategoryFilterValue = useCallback((item) => {
+    if (isMsmeMode) {
+      return getMsmeCategoryView(item);
+    }
+    return getEffectiveCategory(item);
+  }, [isMsmeMode]);
 
   const canConfigurePosCatalog = can('items:edit');
   const canViewPosCatalog = can('pos:view');
@@ -218,14 +250,15 @@ export default function Items() {
     fetchPosOverrides();
   }, [fetchPosOverrides]);
 
-  const resolvePosConfig = (item) => {
+  const resolvePosConfig = useCallback((item) => {
     const itemId = item?.item_id || item?.id;
     const override = posCatalogOverrides[itemId];
     return {
       pos_visible: override ? override.pos_visible !== false : getDefaultPosVisibility(item),
-      pos_image_url: override?.pos_image_url || null
+      pos_image_url: override?.pos_image_url || null,
+      pos_readiness: override?.pos_readiness || null
     };
-  };
+  }, [getDefaultPosVisibility, posCatalogOverrides]);
 
   const handleTogglePosVisibility = async (item, nextVisible) => {
     const itemId = item?.item_id || item?.id;
@@ -239,7 +272,26 @@ export default function Items() {
       }));
       toast.success(`POS visibility ${nextVisible ? 'enabled' : 'disabled'} for ${item.name}`);
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS visibility');
+      if (error?.reason_code === POS_READINESS_INCOMPLETE) {
+        const missing = Array.isArray(error?.missing_requirements) ? error.missing_requirements : [];
+        const nextState = {
+          ...(posCatalogOverrides[itemId] || {}),
+          pos_readiness: error?.readiness_snapshot || {
+            ready: false,
+            missing_requirements: missing
+          }
+        };
+        setPosCatalogOverrides((prev) => ({
+          ...prev,
+          [itemId]: nextState
+        }));
+        const headline = missing.length > 0
+          ? `Cannot enable POS yet: ${missing.length} requirement${missing.length === 1 ? '' : 's'} missing.`
+          : 'Cannot enable POS yet until readiness requirements are completed.';
+        toast.error(headline);
+        return;
+      }
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update POS visibility');
     }
   };
 
@@ -280,14 +332,14 @@ export default function Items() {
       .filter((item) => {
         const matchesSearch = (item.name || '').toLowerCase().includes(posChecklistSearch.toLowerCase()) ||
           (item.sku_code || '').toLowerCase().includes(posChecklistSearch.toLowerCase());
-        const effectiveCategory = getEffectiveCategory(item);
-        const matchesCategory = posChecklistCategory === 'all' || effectiveCategory === posChecklistCategory || item.category === posChecklistCategory;
+        const filterCategory = resolveCategoryFilterValue(item);
+        const matchesCategory = posChecklistCategory === 'all' || filterCategory === posChecklistCategory || item.category === posChecklistCategory;
         const status = String(item.status || '').toLowerCase();
         const matchesStatus = posChecklistStatus === 'all' || status === posChecklistStatus;
         return matchesSearch && matchesCategory && matchesStatus;
       })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  }, [items, posChecklistSearch, posChecklistCategory, posChecklistStatus]);
+  }, [items, posChecklistSearch, posChecklistCategory, posChecklistStatus, resolveCategoryFilterValue]);
 
   const checklistSelectedCount = posChecklistSelectedIds.size;
   const checklistFilteredCount = posChecklistItems.length;
@@ -332,6 +384,9 @@ export default function Items() {
         .filter((result) => result.status === 'fulfilled')
         .map((result) => result.value);
       const failures = updates.length - successes.length;
+      const blockedReadiness = updates.filter((result) => (
+        result.status === 'rejected' && result.reason?.reason_code === POS_READINESS_INCOMPLETE
+      ));
 
       if (successes.length > 0) {
         setPosCatalogOverrides((prev) => {
@@ -346,11 +401,15 @@ export default function Items() {
       if (failures === 0) {
         toast.success(`Updated POS visibility for ${successes.length} item${successes.length !== 1 ? 's' : ''}.`);
       } else {
-        toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${failures} failed.`);
+        if (blockedReadiness.length > 0 && nextVisible) {
+          toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${blockedReadiness.length} blocked by readiness requirements.`);
+        } else {
+          toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${failures} failed.`);
+        }
       }
       clearChecklistSelection();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to apply bulk POS visibility update.');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to apply bulk POS visibility update.');
     } finally {
       setBulkPosToggleLoading(false);
     }
@@ -473,6 +532,97 @@ export default function Items() {
     return counts;
   }, [items, folderEntries, doesItemMatchFolder]);
 
+  const isLikelyPosSellable = useCallback((item) => (
+    item?.category === 'product' && item?.product_type === 'finished_goods'
+  ), []);
+
+  const buildFallbackPosReadiness = useCallback((item) => {
+    // Non-authoritative UI fallback only. Primary readiness contract comes from backend
+    // /pos/catalog-overrides payloads and gate decisions.
+    const posConfig = resolvePosConfig(item);
+    const folderName = resolveItemFolderName(item);
+    const assignedFolder = folderName ? folderByName.get(folderName) : null;
+    const defaultSalePrice = Number(item?.default_sale_price ?? 0);
+    const currentStock = Number(item?.current_stock ?? 0);
+    const checks = {
+      pos_visible: posConfig.pos_visible !== false,
+      has_menu_image: Boolean(posConfig.pos_image_url),
+      has_folder_assignment: Boolean(folderName),
+      folder_visible_in_pos_filter: assignedFolder ? assignedFolder.show_in_pos_filter !== false : true,
+      has_sale_price: Number.isFinite(defaultSalePrice) && defaultSalePrice > 0,
+      stock_non_negative: Number.isFinite(currentStock) && currentStock >= 0,
+      status_active: String(item?.status || '').toLowerCase() === 'active',
+      has_available_stock: Number.isFinite(currentStock) && currentStock > 0
+    };
+
+    const missingRequirements = [];
+    if (!checks.pos_visible) missingRequirements.push({ code: 'POS_VISIBILITY_DISABLED', label: 'Enable POS visibility' });
+    if (!checks.has_menu_image) missingRequirements.push({ code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' });
+    if (!checks.has_folder_assignment) missingRequirements.push({ code: 'FOLDER_UNASSIGNED', label: 'Assign item folder' });
+    if (!checks.folder_visible_in_pos_filter) missingRequirements.push({ code: 'FOLDER_FILTER_HIDDEN', label: 'Enable folder in POS filters' });
+    if (!checks.has_sale_price) missingRequirements.push({ code: 'SALE_PRICE_MISSING', label: 'Set a sale price' });
+    if (!checks.stock_non_negative) missingRequirements.push({ code: 'STOCK_INVALID', label: 'Fix stock value' });
+    if (!checks.status_active) missingRequirements.push({ code: 'ITEM_NOT_ACTIVE', label: 'Activate item' });
+
+    const checkValues = Object.values(checks);
+    const score = Math.round((checkValues.filter(Boolean).length / checkValues.length) * 100);
+    return {
+      ready: missingRequirements.length === 0,
+      state: missingRequirements.length === 0 ? 'ready' : 'needs_attention',
+      score,
+      checks,
+      missing_requirements: missingRequirements
+    };
+  }, [folderByName, resolveItemFolderName, resolvePosConfig]);
+
+  const getPosReadinessForItem = useCallback((item) => {
+    const existing = resolvePosConfig(item)?.pos_readiness;
+    if (existing && typeof existing === 'object') {
+      return existing;
+    }
+    return buildFallbackPosReadiness(item);
+  }, [buildFallbackPosReadiness, resolvePosConfig]);
+
+  const posReadinessByItemId = useMemo(() => {
+    const map = {};
+    items.forEach((item) => {
+      const itemId = item?.item_id || item?.id;
+      if (!itemId) return;
+      map[itemId] = getPosReadinessForItem(item);
+    });
+    return map;
+  }, [getPosReadinessForItem, items]);
+
+  const totalPosNeedsAttentionCount = useMemo(() => (
+    Object.values(posReadinessByItemId).filter((entry) => entry?.ready !== true).length
+  ), [posReadinessByItemId]);
+
+  const openItemInTerminal = useCallback((item) => {
+    const query = encodeURIComponent(item?.name || item?.sku_code || '');
+    navigate(`/terminal?catalog_search=${query}&catalog_focus=item`);
+  }, [navigate]);
+
+  const launchPosReadinessFlow = useCallback((item) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId) return;
+    setGuidedPosReadyItemId(itemId);
+    setPosChecklistSearch(String(item?.name || item?.sku_code || ''));
+    setPosChecklistCategory('all');
+    setPosChecklistStatus('all');
+    setPosChecklistSelectedIds(new Set([itemId]));
+    setShowPosChecklistModal(true);
+  }, []);
+
+  const checklistNeedsAttentionIds = useMemo(() => (
+    posChecklistItems
+      .map((item) => item?.item_id || item?.id)
+      .filter((itemId) => itemId && !posReadinessByItemId[itemId]?.ready)
+  ), [posChecklistItems, posReadinessByItemId]);
+
+  const selectChecklistNeedsAttention = useCallback(() => {
+    setPosChecklistSelectedIds(new Set(checklistNeedsAttentionIds));
+  }, [checklistNeedsAttentionIds]);
+
   const handleToggleFolderFilter = (folderName) => {
     setFolderFilter((prev) => (prev === folderName ? 'all' : folderName));
   };
@@ -498,7 +648,7 @@ export default function Items() {
           (item.sku_code || '').toLowerCase().includes(searchQuery.toLowerCase());
 
         // Category filter matches effective category
-        const effectiveCategory = getEffectiveCategory(item);
+        const effectiveCategory = resolveCategoryFilterValue(item);
         const matchesCategory = categoryFilter === 'all' ||
           effectiveCategory === categoryFilter ||
           item.category === categoryFilter;
@@ -558,7 +708,7 @@ export default function Items() {
             return 0;
         }
       });
-  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
@@ -607,7 +757,11 @@ export default function Items() {
   };
 
   const handleEdit = async (item) => {
-    if (isManufactured(item)) {
+    if (isMsmeMode && isManufactured(item) && item?.product_type === 'work_in_progress') {
+      toast.info('Advanced manufactured product editing is available in Manufacturing mode. Switch mode to edit this item.');
+      return;
+    }
+    if (!isMsmeMode && isManufactured(item)) {
       try {
         // Fetch complete item data with all associations
         const fullItemData = await getInventoryItemById(item.item_id);
@@ -622,7 +776,9 @@ export default function Items() {
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = (presetOverride = null) => {
+    const nextPreset = presetOverride || msmeItemPreset;
+    setActiveCreatePreset(nextPreset);
     setEditingItem(null);
     setShowFormModal(true);
   };
@@ -634,24 +790,29 @@ export default function Items() {
 
   const handleProductSubmit = async (productData) => {
     try {
+      let savedProduct = null;
       if (editingProduct) {
         // If finalizing a draft, use finalizeItem with the updated data
         if (editingProduct.status === 'draft' && productData.status === 'active') {
-          await finalizeItem(editingProduct.item_id, productData);
+          savedProduct = await finalizeItem(editingProduct.item_id, productData);
           toast.success('Product finalized successfully');
         } else {
           // Regular update (draft->draft or active->active)
-          await updateItem(editingProduct.item_id, productData);
+          savedProduct = await updateItem(editingProduct.item_id, productData);
           toast.success('Product updated successfully');
         }
       } else {
         // Creating new product
-        await createItem(productData);
+        savedProduct = await createItem(productData);
         toast.success('Product created successfully');
       }
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
+      if (isLikelyPosSellable(savedProduct || editingProduct || productData)) {
+        launchPosReadinessFlow(savedProduct || editingProduct || productData);
+        toast.message('Product saved. Complete POS readiness checks before checkout.');
+      }
     } catch (error) {
       console.error('Save product error:', error);
       const errorMessage = error.response?.data?.errors?.map(e => e.message).join(', ') ||
@@ -688,15 +849,83 @@ export default function Items() {
 
   const handleSave = async (itemData) => {
     try {
-      if (editingItem) {
-        await updateItem(editingItem.item_id, itemData);
-        toast.success('Item updated successfully');
+      const {
+        supplier_links: supplierLinks = [],
+        supplier_links_dirty: supplierLinksDirty = false,
+        ...itemPayload
+      } = itemData || {};
+      const isEditingExistingItem = Boolean(editingItem);
+      if (
+        isEditingExistingItem
+        && isMsmeMode
+        && Object.keys(itemPayload).length === 0
+        && !supplierLinksDirty
+      ) {
+        toast.message('No item changes detected.');
+        setShowFormModal(false);
+        setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+        setEditingItem(null);
+        return;
+      }
+
+      let savedItem = null;
+      if (isEditingExistingItem) {
+        if (Object.keys(itemPayload).length > 0) {
+          savedItem = await updateItem(editingItem.item_id, itemPayload);
+          toast.success('Item updated successfully');
+        } else {
+          savedItem = editingItem;
+        }
       } else {
-        await createItem(itemData);
+        savedItem = await createItem(itemPayload);
         toast.success('Item created successfully');
       }
+
+      const targetItemId = Number(savedItem?.item_id || savedItem?.id || editingItem?.item_id || 0);
+      if (isMsmeMode && supplierLinksDirty && Number.isInteger(targetItemId) && targetItemId > 0) {
+        try {
+          await replaceItemSuppliers(targetItemId, supplierLinks);
+          toast.success('Item supplier links synced.');
+        } catch (supplierSyncError) {
+          toast.warning('Item saved, but supplier sync failed. Please retry from item edit.');
+        }
+      }
+
+      const createdViaMsmeSellablePreset = (
+        isMsmeMode
+        && !isEditingExistingItem
+        && activeCreatePreset === MSME_ITEM_PRESET.SELLABLE_POS
+      );
+
+      if (createdViaMsmeSellablePreset) {
+        const createdItemId = Number(savedItem?.item_id || savedItem?.id || 0);
+        if (Number.isInteger(createdItemId) && createdItemId > 0) {
+          try {
+            const updatedOverride = await updatePosCatalogOverride(createdItemId, { pos_visible: true });
+            setPosCatalogOverrides((prev) => ({
+              ...prev,
+              [createdItemId]: { ...(prev[createdItemId] || {}), ...updatedOverride }
+            }));
+            toast.success('Item created and set to show in POS.');
+          } catch (overrideError) {
+            if (overrideError?.reason_code === POS_READINESS_INCOMPLETE) {
+              toast.warning('Item created. POS visibility is blocked until readiness requirements are completed.');
+            } else {
+              toast.warning('Item was created, but auto-show in POS failed. Use "Fix POS Setup" to enable it.');
+            }
+          }
+        }
+      }
+
       refetch();
       setShowFormModal(false);
+      const candidate = savedItem || editingItem || itemData;
+      if (isLikelyPosSellable(candidate) || createdViaMsmeSellablePreset) {
+        launchPosReadinessFlow(candidate);
+        toast.message('Review POS readiness before selling this item in terminal.');
+      }
+      setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+      setEditingItem(null);
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save item';
       if (!normalizeApiError(error).isGlobalCandidate) {
@@ -708,10 +937,15 @@ export default function Items() {
 
   const handleSaveDraft = async (itemData) => {
     try {
-      await createItemDraft(itemData);
+      const draftPayload = { ...(itemData || {}) };
+      delete draftPayload.supplier_links;
+      delete draftPayload.supplier_links_dirty;
+      await createItemDraft(draftPayload);
       toast.success('Item draft saved successfully');
       refetch();
       setShowFormModal(false);
+      setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+      setEditingItem(null);
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save draft';
       if (!normalizeApiError(error).isGlobalCandidate) {
@@ -974,7 +1208,7 @@ export default function Items() {
         )}
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
               {currentFolder || 'Inventory Items'}
@@ -985,29 +1219,70 @@ export default function Items() {
                 : `${filteredItems.length} items found`
               }
             </p>
+            {isMsmeMode && (
+              <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+                MSME mode uses one simple item flow. Choose <span className="font-semibold">Sell in POS (auto-show)</span> to make items available in POS by default, or <span className="font-semibold">Inventory only</span> for stock tracking only.
+              </p>
+            )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
             {(canImportPermission('items') || canExportPermission('items')) && (
-              <Button variant="outline" onClick={() => setShowImportExportModal(true)}>
+              <Button variant="outline" className="shrink-0" onClick={() => setShowImportExportModal(true)}>
                 <ArrowUpDown className="w-4 h-4 mr-2" />
                 Import / Export
               </Button>
             )}
             {canConfigurePosCatalog && (
-              <Button variant="outline" onClick={() => setShowPosChecklistModal(true)}>
-                <ListChecks className="w-4 h-4 mr-2" />
-                POS Checklist
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={() => {
+                    setGuidedPosReadyItemId(null);
+                    setShowPosChecklistModal(true);
+                  }}
+                >
+                  <ListChecks className="w-4 h-4 mr-2" />
+                  {isMsmeMode ? `POS Setup (${totalPosNeedsAttentionCount})` : `Fix POS Setup (${totalPosNeedsAttentionCount})`}
+                </Button>
+                {!isMsmeMode && (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700"
+                    title="Checks POS sell-readiness requirements: POS visibility, menu image, folder assignment/filter visibility, sale price, active status, and stock validity."
+                    aria-label="What Fix POS Setup checks"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             )}
-            {(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
+            {!isMsmeMode && (categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
               <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
                 <Package className="w-4 h-4 mr-2" />
                 Create Product
               </Button>
             )}
-            {canCreate('items') && (
+            {canCreate('items') && isMsmeMode && (
+              <>
+                <Select value={msmeItemPreset} onValueChange={setMsmeItemPreset}>
+                  <SelectTrigger className="w-full min-w-[220px] shrink-0 sm:w-52">
+                    <SelectValue placeholder="Choose item type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={MSME_ITEM_PRESET.SELLABLE_POS}>Sell in POS (auto-show)</SelectItem>
+                    <SelectItem value={MSME_ITEM_PRESET.INVENTORY_ONLY}>Inventory only</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={() => handleCreate(msmeItemPreset)} className="shrink-0 bg-teal-600 hover:bg-teal-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </>
+            )}
+            {canCreate('items') && !isMsmeMode && (
               <Button
-                onClick={handleCreate}
+                onClick={() => handleCreate()}
                 variant={(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') ? 'outline' : 'default'}
                 className={(categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
               >
@@ -1043,11 +1318,20 @@ export default function Items() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    <SelectItem value="raw_material">Raw Material</SelectItem>
-                    <SelectItem value="packaging">Packaging</SelectItem>
-                    <SelectItem value="work_in_progress">Work In Progress</SelectItem>
-                    <SelectItem value="finished_goods">Finished Goods</SelectItem>
-                    <SelectItem value="supplies">Supplies</SelectItem>
+                    {isMsmeMode ? (
+                      <>
+                        <SelectItem value="product">Products</SelectItem>
+                        <SelectItem value="supplies">Supplies</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="raw_material">Raw Material</SelectItem>
+                        <SelectItem value="packaging">Packaging</SelectItem>
+                        <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+                        <SelectItem value="finished_goods">Finished Goods</SelectItem>
+                        <SelectItem value="supplies">Supplies</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1180,14 +1464,11 @@ export default function Items() {
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
                     onMoveToFolder={openMoveModal}
-                    posConfig={resolvePosConfig(item)}
-                    canConfigurePosCatalog={canConfigurePosCatalog}
-                    onTogglePosVisibility={handleTogglePosVisibility}
-                    onUploadPosImage={handleUploadPosImage}
-                    onDeletePosImage={handleDeletePosImage}
+                    posReadiness={posReadinessByItemId[item.item_id || item.id]}
+                    onOpenInTerminal={openItemInTerminal}
+                    isMsmeMode={isMsmeMode}
                     isSelected={selectedIds.has(item.item_id || item.id)}
                     onSelect={toggleSelection}
-                    currentUserRole={currentUser?.role}
                   />
                 ))}
             </div>
@@ -1209,21 +1490,18 @@ export default function Items() {
                   onEdit={handleEdit}
                   onDelete={handleDeleteClick}
                   onMoveToFolder={openMoveModal}
-                  posConfig={resolvePosConfig(item)}
-                  canConfigurePosCatalog={canConfigurePosCatalog}
-                  onTogglePosVisibility={handleTogglePosVisibility}
-                  onUploadPosImage={handleUploadPosImage}
-                  onDeletePosImage={handleDeletePosImage}
+                  posReadiness={posReadinessByItemId[item.item_id || item.id]}
+                  onOpenInTerminal={openItemInTerminal}
+                  isMsmeMode={isMsmeMode}
                   isSelected={selectedIds.has(item.item_id || item.id)}
                   onSelect={toggleSelection}
-                  currentUserRole={currentUser?.role}
                 />
               ))}
             </div>
           )
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[1100px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="text-left p-4 font-medium text-slate-600">Item</th>
@@ -1323,19 +1601,25 @@ export default function Items() {
           onOpenChange={(open) => {
             setShowPosChecklistModal(open);
             if (!open) {
+              setGuidedPosReadyItemId(null);
               clearChecklistSelection();
             }
           }}
         >
           <DialogContent className="sm:max-w-5xl">
             <DialogHeader>
-              <DialogTitle className="text-xl">POS Checklist</DialogTitle>
+              <DialogTitle className="text-xl">Make Item POS-Ready</DialogTitle>
               <DialogDescription>
-                Manage POS visibility for any item category. Use filters, then select rows for bulk enable/disable.
+                Resolve POS readiness requirements from item setup through terminal preview.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 p-6 pt-0">
+              {guidedPosReadyItemId && (
+                <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+                  Guided mode: item #{guidedPosReadyItemId}. Complete missing readiness fields, then preview in terminal.
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="md:col-span-2">
                   <Input
@@ -1350,11 +1634,20 @@ export default function Items() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    <SelectItem value="raw_material">Raw Material</SelectItem>
-                    <SelectItem value="packaging">Packaging</SelectItem>
-                    <SelectItem value="work_in_progress">Work In Progress</SelectItem>
-                    <SelectItem value="finished_goods">Finished Goods</SelectItem>
-                    <SelectItem value="supplies">Supplies</SelectItem>
+                    {isMsmeMode ? (
+                      <>
+                        <SelectItem value="product">Products</SelectItem>
+                        <SelectItem value="supplies">Supplies</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="raw_material">Raw Material</SelectItem>
+                        <SelectItem value="packaging">Packaging</SelectItem>
+                        <SelectItem value="work_in_progress">Work In Progress</SelectItem>
+                        <SelectItem value="finished_goods">Finished Goods</SelectItem>
+                        <SelectItem value="supplies">Supplies</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
                 <Select value={posChecklistStatus} onValueChange={setPosChecklistStatus}>
@@ -1373,9 +1666,19 @@ export default function Items() {
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs text-slate-600">
                   Showing <span className="font-semibold text-slate-900">{checklistFilteredCount}</span> filtered item(s),
-                  selected <span className="font-semibold text-slate-900">{checklistSelectedCount}</span>.
+                  selected <span className="font-semibold text-slate-900">{checklistSelectedCount}</span>,
+                  needs attention <span className="font-semibold text-amber-700">{checklistNeedsAttentionIds.length}</span>.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={selectChecklistNeedsAttention}
+                    disabled={checklistNeedsAttentionIds.length === 0}
+                  >
+                    Select Needs Attention
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -1422,18 +1725,33 @@ export default function Items() {
                       <th className="p-3 text-left">Item</th>
                       <th className="p-3 text-left">Category</th>
                       <th className="p-3 text-left">Status</th>
+                      <th className="p-3 text-left">Readiness</th>
+                      <th className="p-3 text-left">Missing</th>
                       <th className="p-3 text-left">POS Visible</th>
+                      <th className="p-3 text-left">Menu Image</th>
+                      <th className="p-3 text-left">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {posChecklistItems.map((item) => {
                       const itemId = item.item_id || item.id;
-                      const effectiveCategory = getEffectiveCategory(item);
-                      const posVisible = resolvePosConfig(item).pos_visible !== false;
+                      const effectiveCategory = resolveCategoryFilterValue(item) || getEffectiveCategory(item);
+                      const posConfigResolved = resolvePosConfig(item);
+                      const posVisible = posConfigResolved.pos_visible !== false;
+                      const posImageUrl = posConfigResolved.pos_image_url || null;
                       const checked = posChecklistSelectedIds.has(itemId);
+                      const readiness = posReadinessByItemId[itemId] || buildFallbackPosReadiness(item);
+                      const missingCount = Array.isArray(readiness?.missing_requirements) ? readiness.missing_requirements.length : 0;
+                      const readinessReady = readiness?.ready === true;
 
                       return (
-                        <tr key={itemId} className="hover:bg-slate-50">
+                        <tr
+                          key={itemId}
+                          className={cn(
+                            'hover:bg-slate-50',
+                            guidedPosReadyItemId === itemId && 'bg-teal-50/50'
+                          )}
+                        >
                           <td className="p-3">
                             <Checkbox
                               checked={checked}
@@ -1447,6 +1765,21 @@ export default function Items() {
                           <td className="p-3 capitalize text-slate-700">{effectiveCategory}</td>
                           <td className="p-3 capitalize text-slate-700">{item.status || 'active'}</td>
                           <td className="p-3">
+                            <Badge
+                              variant="outline"
+                              className={readinessReady
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'}
+                            >
+                              {readinessReady ? `Ready (${readiness?.score ?? 100}%)` : `Needs attention (${readiness?.score ?? 0}%)`}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-xs text-slate-600">
+                            {missingCount === 0
+                              ? 'None'
+                              : `${missingCount} requirement${missingCount === 1 ? '' : 's'}`}
+                          </td>
+                          <td className="p-3">
                             <Button
                               type="button"
                               variant="outline"
@@ -1456,12 +1789,70 @@ export default function Items() {
                               {posVisible ? 'Enabled' : 'Disabled'}
                             </Button>
                           </td>
+                          <td className="p-3">
+                            <div className="space-y-2">
+                              {posImageUrl ? (
+                                <img
+                                  src={posImageUrl}
+                                  alt={`${item.name} POS menu`}
+                                  className="h-16 w-20 rounded-md border border-slate-200 object-cover"
+                                />
+                              ) : (
+                                <span className="text-xs text-slate-500">No image</span>
+                              )}
+                              <div className="flex flex-wrap gap-2">
+                                <label className="cursor-pointer rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                                  Upload
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(event) => {
+                                      const file = event.target.files?.[0];
+                                      if (file) {
+                                        handleUploadPosImage(item, file);
+                                      }
+                                      event.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeletePosImage(item)}
+                                  disabled={!posImageUrl}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => launchPosReadinessFlow(item)}
+                              >
+                                Guide
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => openItemInTerminal(item)}
+                              >
+                                Preview in Terminal
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
                     {posChecklistItems.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="p-6 text-center text-slate-500">
+                        <td colSpan={9} className="p-6 text-center text-slate-500">
                           No items match the current filters.
                         </td>
                       </tr>
@@ -1491,10 +1882,28 @@ export default function Items() {
         <ItemFormModal
           item={editingItem}
           open={showFormModal}
-          onClose={() => setShowFormModal(false)}
+          onClose={() => {
+            setShowFormModal(false);
+            setEditingItem(null);
+            setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+          }}
           onSave={handleSave}
           onSaveDraft={handleSaveDraft}
           folders={folders}
+          msmeMode={isMsmeMode}
+          createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
+          posConfig={editingItem ? resolvePosConfig(editingItem) : null}
+          onTogglePosVisibility={handleTogglePosVisibility}
+          onUploadPosImage={handleUploadPosImage}
+          onDeletePosImage={handleDeletePosImage}
+          onOpenBulkPosSetup={() => {
+            if (editingItem) {
+              launchPosReadinessFlow(editingItem);
+            } else {
+              setGuidedPosReadyItemId(null);
+              setShowPosChecklistModal(true);
+            }
+          }}
         />
         <MoveToFolderModal
           open={showMoveModal}
@@ -1516,6 +1925,18 @@ export default function Items() {
             product={editingProduct}
             items={items}
             folders={productFolders}
+            posConfig={editingProduct ? resolvePosConfig(editingProduct) : null}
+            onTogglePosVisibility={handleTogglePosVisibility}
+            onUploadPosImage={handleUploadPosImage}
+            onDeletePosImage={handleDeletePosImage}
+            onOpenBulkPosSetup={() => {
+              if (editingProduct) {
+                launchPosReadinessFlow(editingProduct);
+              } else {
+                setGuidedPosReadyItemId(null);
+                setShowPosChecklistModal(true);
+              }
+            }}
           />
         )}
         <DeleteConfirmDialog
@@ -1620,9 +2041,8 @@ export default function Items() {
                 onEdit={() => { }}
                 onDelete={() => { }}
                 onMoveToFolder={() => { }}
-                posConfig={resolvePosConfig(activeDragItem)}
-                canConfigurePosCatalog={false}
-                currentUserRole={currentUser?.role}
+                posReadiness={posReadinessByItemId[activeDragItem.item_id || activeDragItem.id]}
+                isMsmeMode={isMsmeMode}
               />
             </div>
           ) : null}

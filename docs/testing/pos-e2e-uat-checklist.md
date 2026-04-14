@@ -36,6 +36,7 @@ Execution support artifacts:
 5. Finished goods have non-zero stock.
 6. Cashier role has POS permissions.
 7. Admin role has settings + reports/sales visibility permissions.
+8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
 
 ## 3) Admin UAT Scenarios
 
@@ -53,20 +54,21 @@ Evidence:
 - Screenshot before save
 - Screenshot after reload
 
-### 3.2 Strict Compliance Gate
-1. Enable `Strict POS Compliance` toggle.
-2. Clear one required field (example: PTU).
-3. Attempt checkout as cashier.
+### 3.2 Compliance Gate (Dual-Mode Lifecycle)
+1. For a tenant in `compliant_pending`, clear one required checklist field (example: PTU).
+2. Attempt checkout as cashier.
+3. Repeat for a tenant in `non_compliant_active` and verify non-fiscal output contract.
 
 Expected:
 1. Checkout is blocked.
-2. Error explicitly lists missing field(s).
+2. Error explicitly lists missing field(s) with deterministic reason code and fix path.
+3. Non-compliant tenant remains operational with `non_fiscal_slip` output (no fiscal escalation).
 
 Evidence:
 - Screenshot of blocked checkout message
 - Screenshot of missing field in settings
 
-### 3.3 Strict Gate Recovery
+### 3.3 Compliance Gate Recovery
 1. Fill missing required field.
 2. Retry checkout.
 
@@ -80,14 +82,16 @@ Evidence:
 
 ### 4.1 POS Catalog + Cart
 1. Open POS terminal page.
-2. Confirm finished goods catalog loads.
-3. Add 3 items (vatable/exempt/zero-rated) to cart.
-4. Change quantity and sale price on one line.
-5. Apply discount amount.
+2. Unlock terminal using a selected terminal identity.
+3. Confirm finished goods catalog loads.
+4. Add 3 items (vatable/exempt/zero-rated) to cart.
+5. Change quantity and sale price on one line.
+6. Apply discount amount.
 
 Expected:
 1. Totals recalculate correctly.
 2. No console or UI error.
+3. Terminal identity policy banner/warning behavior matches configured mode (`warn` vs `enforce`).
 
 Evidence:
 - Screenshot of cart before checkout
@@ -127,11 +131,13 @@ Evidence:
 2. Filter by invoice text, date range, payment type, order method.
 3. Open a transaction from history.
 4. Reopen receipt preview/print action.
+5. Use `Open in Sales Report` from history/receipt context.
 
 Expected:
 1. Filters return expected records.
 2. Selected history row matches receipt details and totals.
 3. Reprint/review path works for historical transaction.
+4. Sales page opens with matching filters/transaction context.
 
 Evidence:
 - Screenshot of filtered history
@@ -170,6 +176,7 @@ Evidence:
 Expected:
 1. Detail panel values match selected row.
 2. CSV downloads successfully and reflects current filter set.
+3. Export feedback includes completion state and filter-aware filename/context.
 
 Evidence:
 - Screenshot of detail panel
@@ -177,7 +184,7 @@ Evidence:
 
 ## 6) Fail Conditions (Automatic UAT Rejection)
 
-1. Checkout succeeds while strict mode enabled and required POS setup field is blank.
+1. Checkout succeeds for `compliant_pending`/`compliant_active` while required compliance setup fields remain blank.
 2. Same-day transaction is missing when filtering `date_from == date_to`.
 3. Receipt VAT totals differ from transaction snapshot.
 4. Z-reading totals do not reconcile with same-day completed POS transactions.

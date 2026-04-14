@@ -11,6 +11,7 @@ const mockGetItemBatchesUseCase = jest.fn();
 const mockGetItemMovementsUseCase = jest.fn();
 const mockValidateCompositionUseCase = jest.fn();
 const mockGetItemSupplierCoverageUseCase = jest.fn();
+const mockReplaceItemSuppliersUseCase = jest.fn();
 const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
 const mockUpdateFolderUseCase = jest.fn();
@@ -29,6 +30,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getItemMovementsUseCase: mockGetItemMovementsUseCase,
   validateCompositionUseCase: mockValidateCompositionUseCase,
   getItemSupplierCoverageUseCase: mockGetItemSupplierCoverageUseCase,
+  replaceItemSuppliersUseCase: mockReplaceItemSuppliersUseCase,
   getFoldersUseCase: mockGetFoldersUseCase,
   createFolderUseCase: mockCreateFolderUseCase,
   updateFolderUseCase: mockUpdateFolderUseCase,
@@ -44,6 +46,7 @@ let createItem;
 let deleteItem;
 let validateComposition;
 let updateFolder;
+let replaceItemSuppliers;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -52,6 +55,7 @@ beforeAll(async () => {
   deleteItem = mod.deleteItem;
   validateComposition = mod.validateComposition;
   updateFolder = mod.updateFolder;
+  replaceItemSuppliers = mod.replaceItemSuppliers;
 });
 
 const createRes = () => {
@@ -234,6 +238,55 @@ describe('itemHandlers transport contracts', () => {
         message: 'Folder "FG" updated successfully.'
       },
       message: 'Folder "FG" updated successfully.',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('replaceItemSuppliers returns standardized success payload', async () => {
+    mockReplaceItemSuppliersUseCase.mockResolvedValue({
+      item_id: 100,
+      supplier_count: 2,
+      suppliers: [
+        { supplier_id: 1, supplier_name: 'Vendor A', moq: 2, price_per_unit: 15 },
+        { supplier_id: 2, supplier_name: 'Vendor B', moq: 3, price_per_unit: 14.5 }
+      ]
+    });
+
+    const req = {
+      params: { item_id: '100' },
+      validatedData: {
+        suppliers: [
+          { supplier_id: 1, moq: 2, price_per_unit: 15 },
+          { supplier_id: 2, moq: 3, price_per_unit: 14.5 }
+        ]
+      },
+      requestId: 'req-item-supplier-sync'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await replaceItemSuppliers(req, res, next);
+
+    expect(mockReplaceItemSuppliersUseCase).toHaveBeenCalledWith({
+      itemId: '100',
+      suppliers: [
+        { supplier_id: 1, moq: 2, price_per_unit: 15 },
+        { supplier_id: 2, moq: 3, price_per_unit: 14.5 }
+      ]
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        item_id: 100,
+        supplier_count: 2,
+        suppliers: [
+          { supplier_id: 1, supplier_name: 'Vendor A', moq: 2, price_per_unit: 15 },
+          { supplier_id: 2, supplier_name: 'Vendor B', moq: 3, price_per_unit: 14.5 }
+        ]
+      },
+      message: 'Item suppliers synced successfully',
       timestamp: expect.any(String)
     });
     expect(next).not.toHaveBeenCalled();

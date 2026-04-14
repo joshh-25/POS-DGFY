@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "../../src/lib/utils.js";
 import { isManufactured, isPurchasable } from '@/components/utils/categoryHelpers';
+import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
+import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import { formatQty } from '../../src/lib/numberUtils.js';
 
 import { useState } from 'react';
@@ -27,6 +29,8 @@ import {
 
 export default function LowStockList({ items }) {
   const navigate = useNavigate();
+  const { workflowMode } = useWorkflowMode();
+  const isMsmeMode = isMsmeWorkflowMode(workflowMode);
   const [selectedItem, setSelectedItem] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('materials');
@@ -37,8 +41,10 @@ export default function LowStockList({ items }) {
     .sort((a, b) => (a.current_stock / a.min_threshold) - (b.current_stock / b.min_threshold));
 
   // Split into Manufactured (Finished Goods + WIP) vs Purchased (Raw Material, Packaging, Supplies)
-  const lowStockProducts = allLowStockItems.filter(item => isManufactured(item));
-  const lowStockMaterials = allLowStockItems.filter(item => isPurchasable(item));
+  const lowStockProducts = isMsmeMode
+    ? []
+    : allLowStockItems.filter((item) => isManufactured(item));
+  const lowStockMaterials = allLowStockItems.filter((item) => isPurchasable(item, workflowMode));
 
   const handleItemClick = (item) => {
     setSelectedItem(item);
@@ -50,7 +56,7 @@ export default function LowStockList({ items }) {
 
     // Determine action based on category
     // Job Order for products
-    if (selectedItem.category === 'product') {
+    if (selectedItem.category === 'product' && !isMsmeMode) {
       navigate(`/job-orders?action=create&productId=${selectedItem.id || selectedItem.item_id}`);
     } else {
       // Purchase Order for ingredients, packaging, etc.
@@ -58,6 +64,8 @@ export default function LowStockList({ items }) {
     }
     setDialogOpen(false);
   };
+
+  const usesJobOrderRestock = selectedItem?.category === 'product' && !isMsmeMode;
 
   const renderItemList = (itemList, emptyMessage) => {
     if (itemList.length === 0) {
@@ -152,17 +160,19 @@ export default function LowStockList({ items }) {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="materials" className="text-sm">
-                Ingredients & Supplies ({lowStockMaterials.length})
+                {isMsmeMode ? 'Purchasable Items' : 'Ingredients & Supplies'} ({lowStockMaterials.length})
               </TabsTrigger>
-              <TabsTrigger value="products" className="text-sm">
-                Products ({lowStockProducts.length})
-              </TabsTrigger>
+              {!isMsmeMode && (
+                <TabsTrigger value="products" className="text-sm">
+                  Products ({lowStockProducts.length})
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
         </div>
 
-        {activeTab === 'materials' && renderItemList(lowStockMaterials, "All ingredients and supplies are well stocked!")}
-        {activeTab === 'products' && renderItemList(lowStockProducts, "All products are well stocked!")}
+        {activeTab === 'materials' && renderItemList(lowStockMaterials, isMsmeMode ? "All purchasable items are well stocked!" : "All ingredients and supplies are well stocked!")}
+        {!isMsmeMode && activeTab === 'products' && renderItemList(lowStockProducts, "All products are well stocked!")}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -170,7 +180,7 @@ export default function LowStockList({ items }) {
           <DialogHeader>
             <DialogTitle>Restock Item</DialogTitle>
             <DialogDescription>
-              {selectedItem?.category === 'product'
+              {usesJobOrderRestock
                 ? `Would you like to create a Job Order for ${selectedItem?.name}?`
                 : `Would you like to create a Purchase Order for ${selectedItem?.name}?`
               }
@@ -179,7 +189,7 @@ export default function LowStockList({ items }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleConfirm} className="bg-teal-600 hover:bg-teal-700">
-              {selectedItem?.category === 'product' ? 'Create Job Order' : 'Create Purchase Order'}
+              {usesJobOrderRestock ? 'Create Job Order' : 'Create Purchase Order'}
             </Button>
           </DialogFooter>
         </DialogContent>

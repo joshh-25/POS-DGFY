@@ -110,6 +110,39 @@ const verificationActionSchema = Joi.object({
     verification_evidence_ref: Joi.string().trim().max(255).allow('', null)
 });
 
+const finalReviewDocumentSchema = Joi.object({
+    requirement_code: Joi.string().trim().valid(
+        'submission_system_flow_diagram_mmd',
+        'submission_system_flow_diagram_png',
+        'submission_software_specification',
+        'submission_backup_dr_plan',
+        'submission_filing_instructions',
+        'evidence_restore_drill',
+        'evidence_encryption_verification'
+    ).required(),
+    source_type: Joi.string().trim().valid('upload', 'external_url').required(),
+    external_url: Joi.string().trim().uri({ scheme: [/https?/] }).max(1000).allow('', null),
+    freshness_date: Joi.date().iso().allow(null),
+    metadata: Joi.object().unknown(true).default({})
+}).unknown(false);
+
+const finalReviewDocumentIdParamSchema = Joi.object({
+    document_id: Joi.number().integer().positive().required()
+});
+
+const finalReviewDocumentReviewSchema = Joi.object({
+    action: Joi.string().trim().valid('note_review', 'revoke', 'restore_valid').required(),
+    review_note: Joi.string().trim().max(4000).allow('', null)
+}).unknown(false);
+
+const finalReviewSignoffSchema = Joi.object({
+    engineering_approver: Joi.string().trim().max(255).allow('', null),
+    compliance_approver: Joi.string().trim().max(255).allow('', null),
+    filing_batch_id: Joi.string().trim().max(120).allow('', null),
+    engineering_signed_at: Joi.date().iso().allow('', null),
+    compliance_signed_at: Joi.date().iso().allow('', null)
+}).unknown(false);
+
 const auditLogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(100)
 });
@@ -193,3 +226,7 @@ export const validateComplianceSecurityIncidentQuery = validateSchema(securityIn
 export const validateComplianceSecurityIncidentParam = validateSchema(securityIncidentParamSchema, 'params', 'validatedParams');
 export const validateComplianceSecurityIncidentAction = validateSchema(securityIncidentActionSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateCompliancePreflight = validateSchema(preflightSchema, 'body', 'validatedData');
+export const validateFinalReviewDocumentUpsert = validateSchema(finalReviewDocumentSchema, 'body', 'validatedData', { stripUnknown: false });
+export const validateFinalReviewDocumentIdParam = validateSchema(finalReviewDocumentIdParamSchema, 'params', 'validatedParams');
+export const validateFinalReviewDocumentReview = validateSchema(finalReviewDocumentReviewSchema, 'body', 'validatedData', { stripUnknown: false });
+export const validateFinalReviewSignoff = validateSchema(finalReviewSignoffSchema, 'body', 'validatedData', { stripUnknown: false });

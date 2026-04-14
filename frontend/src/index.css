@@ -24,3 +24,32 @@ body {
   }
 }
 
+/* Wizard consistency: keep create/edit flows visually compact and aligned. */
+.wizard-modal-shell {
+  width: min(95vw, 1100px);
+}
+
+.wizard-modal-compact .space-y-6 {
+  row-gap: 1rem;
+}
+
+.wizard-modal-compact .space-y-5 {
+  row-gap: 0.875rem;
+}
+
+.wizard-modal-compact .space-y-4 {
+  row-gap: 0.75rem;
+}
+
+.wizard-modal-compact .p-6 {
+  padding: 1rem;
+}
+
+.wizard-modal-compact .rounded-xl {
+  border-radius: 0.75rem;
+}
+
+.wizard-step-content {
+  scrollbar-gutter: stable;
+}
+

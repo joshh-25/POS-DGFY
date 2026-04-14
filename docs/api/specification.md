@@ -1639,6 +1639,13 @@ List POS catalog overrides for admin inventory/POS configuration screens.
 | `search` | string | Optional item name/SKU search |
 | `limit` | number | Max rows (default 200, capped at 1000) |
 
+**Response Notes**
+- Includes normalized `pos_readiness` object for guided UX:
+  - `ready`, `state`, `score`
+  - `checks` map
+  - `missing_requirements[]` with `code`, `label`, `fix_hint`
+- Readiness is used by IMS setup flows to resolve POS blockers before cashier checkout.
+
 ### PATCH /pos/catalog-overrides/:item_id
 Create/update POS catalog override for an item.
 
@@ -1733,6 +1740,18 @@ Compliance checklist contract (used by Settings > Compliance and Admin review):
 - `POST /api/v1/compliance/activate` requires body payload:
   - `{ "confirmation_text": "ACTIVATE COMPLIANT" }`
 
+Final Review documentary (tenant self-serve):
+- `GET /api/v1/compliance/final-review/documents`
+  - Returns tenant documentary records plus sign-off metadata.
+- `POST /api/v1/compliance/final-review/documents`
+  - Create or update a requirement submission (source type `upload` or `external_url`).
+- `POST /api/v1/compliance/final-review/documents/:document_id/upload`
+  - Attach or replace uploaded file (multipart form field `file`).
+- `PUT /api/v1/compliance/final-review/signoff-metadata`
+  - Store tenant sign-off metadata (`engineering_approver`, `compliance_approver`, `filing_batch_id`, signed-at dates).
+- `POST /api/v1/compliance/final-review/documents/:document_id/review`
+  - Platform-admin only review/revoke/restore (tenant path supports only platform admin actors).
+
 **Calculation Contract**
 1. `items_subtotal = sum(line qty * line sale_price)`
 2. `discount_amount = selected_discount_percentage * items_subtotal`
@@ -1778,7 +1797,7 @@ Get the current open shift and cash summary for a terminal.
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `terminal_id` | string | Terminal identifier (e.g. `WEB-POS-01`) |
+| `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
 
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
@@ -1789,8 +1808,8 @@ Open a terminal shift for cashier operations.
 **Request Body**
 ```json
 {
-  "idempotency_key": "shift-open-20260409-web-pos-01",
-  "terminal_id": "WEB-POS-01",
+  "idempotency_key": "shift-open-20260409-counter-01",
+  "terminal_id": "COUNTER-01",
   "opening_float_amount": 500.0,
   "opening_note": "Start of day float"
 }
@@ -1800,7 +1819,12 @@ Open a terminal shift for cashier operations.
 - Successful responses include:
   - `data.idempotent_replay` (`true` for replay hit, otherwise `false`)
   - `data.replay_outcome` (`processed` or `idempotent_replay`)
+  - `data.terminal_identity_policy` with mode/registry context and optional warning metadata
 - Idempotency conflict/blocked outcomes return error payloads with `errors.idempotency.outcome` (`conflict` or `blocked`).
+- Frontend contract: terminal unlock/sign-in must collect user-selected `terminal_id` and forward it to shift/dashboard/checkout flows (UI should not rely on hard-coded terminal identity).
+- Registry policy is mode-driven:
+  - `warn`: operation continues with warning reason codes (`TERMINAL_ID_MISSING_WARN`, `TERMINAL_ID_UNREGISTERED_WARN`)
+  - `enforce`: operation is denied when registry controls fail (`TERMINAL_REGISTRY_REQUIRED`, `TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY`, `TERMINAL_ID_NOT_REGISTERED`)
 
 ### POST /pos/terminal/shifts/:id/cash-events
 Record a cash drawer adjustment event for an active shift.
@@ -1848,7 +1872,7 @@ Get today dashboard totals for terminal operations.
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `terminal_id` | string | Terminal identifier (e.g. `WEB-POS-01`) |
+| `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
 
 ### GET /pos/incoming-orders
 List incoming online orders for POS fulfillment queue.
@@ -2162,6 +2186,7 @@ For POS rows, service-fee snapshots are included (`service_fee_amount`, label/me
 | `page` | number | Page number (default 1) |
 | `limit` | number | Rows per page (default 20, max 200) |
 | `source` | string | `POS`, `DISPATCH`, or omitted for both |
+| `source_id` | number | Optional source transaction ID (`pos_transaction_id` or `do_id`) |
 | `search` | string | Search reference/customer/recipient |
 | `status` | string | Source status filter |
 | `payment_type` | string | POS-only filter |
@@ -2806,6 +2831,9 @@ No body required.
 
 ### GET /admin/tenants/:id/compliance/security-incidents
 List tenant security incidents aggregated from immutable compliance audit logs.
+
+### POST /admin/tenants/:id/compliance/final-review/documents/:document_id/review
+Platform-admin review action for tenant documentary records (note/revoke/restore).
 
 **Access:** Admin JWT required (`authenticateAdmin`)
 

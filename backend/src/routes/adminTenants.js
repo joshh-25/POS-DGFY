@@ -19,6 +19,7 @@ import {
     adminListComplianceSecurityIncidents,
     adminUpdateComplianceArtifactVerification,
     adminUpdateCompliancePeripheralVerification,
+    adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
     resubmitRegistration
@@ -33,7 +34,9 @@ import {
     validateComplianceAuditLogQuery,
     validateComplianceSecurityIncidentQuery,
     validateComplianceSecurityIncidentParam,
-    validateComplianceSecurityIncidentAction
+    validateComplianceSecurityIncidentAction,
+    validateFinalReviewDocumentIdParam,
+    validateFinalReviewDocumentReview
 } from '../validators/complianceValidator.js';
 
 const router = express.Router();
@@ -78,6 +81,7 @@ router.post('/:id/compliance/security-incidents/:incident_id/resolve', authentic
 // ADMIN: Compliance verification operations (platform admin)
 router.post('/:id/compliance/artifacts/:artifact_id/verification', authenticateAdmin, validateComplianceArtifactIdParam, validateComplianceVerificationAction, adminUpdateComplianceArtifactVerification);
 router.post('/:id/compliance/peripherals/:peripheral_id/verification', authenticateAdmin, validateCompliancePeripheralIdParam, validateComplianceVerificationAction, adminUpdateCompliancePeripheralVerification);
+router.post('/:id/compliance/final-review/documents/:document_id/review', authenticateAdmin, validateFinalReviewDocumentIdParam, validateFinalReviewDocumentReview, adminUpdateComplianceFinalReviewDocumentReview);
 
 // ADMIN: Update tenant details (status, plan)
 router.put('/:id', authenticateAdmin, updateTenant);

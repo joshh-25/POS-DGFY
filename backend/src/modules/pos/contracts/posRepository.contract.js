@@ -10,6 +10,7 @@ const REQUIRED_METHODS = [
     'getZReadingSummary',
     'createZReadingSnapshot',
     'getLatestZReadingSnapshotByBusinessDate',
+    'getTerminalIdentityPolicySettings',
     'listCatalog',
     'listCatalogOverrides',
     'findCatalogOverrideByItemId',

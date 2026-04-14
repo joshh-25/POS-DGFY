@@ -16,6 +16,7 @@ export const ItemRepositoryContract = Object.freeze([
     'getItemMovements',
     'validateComposition',
     'getItemSupplierCoverage',
+    'replaceItemSuppliers',
     'listFolders',
     'createFolder',
     'updateFolder',

@@ -12,6 +12,7 @@ const terminalSidebarPanelPath = path.resolve(__dirname, '../components/Terminal
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
+const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -20,6 +21,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalOperationsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
   let terminalPageLayoutContent = '';
+  let terminalLockDrawerContent = '';
 
   beforeAll(() => {
     terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
@@ -28,6 +30,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
     terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
+    terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -87,6 +90,14 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Go to History');
   });
 
+  it('adds keyboard and semantic accessibility affordances in POS history table', () => {
+    expect(posCheckoutTerminalContent).toContain('aria-label="POS transaction history table"');
+    expect(posCheckoutTerminalContent).toContain('aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}');
+    expect(posCheckoutTerminalContent).toContain('aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}');
+    expect(posCheckoutTerminalContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>');
+    expect(posCheckoutTerminalContent).toContain('event.stopPropagation();');
+  });
+
   it('keeps queue-to-receipt ownership in POSCheckoutTerminal and avoids prefetch in TerminalPage', () => {
     expect(terminalPageContent).not.toContain('fetchPosTransactionById');
     expect(
@@ -133,5 +144,26 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Compliance policy blocked checkout (');
     expect(posCheckoutTerminalContent).toContain('Resolve blocker in');
     expect(posCheckoutTerminalContent).toContain('BSP_OPS_REGISTRATION_REQUIRED');
+  });
+
+  it('requires terminal identity selection and propagates terminal id to checkout payload', () => {
+    expect(terminalPageContent).toContain("const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';");
+    expect(terminalPageContent).toContain('pos_terminal_registry');
+    expect(terminalPageContent).toContain('pos_terminal_registry_mode');
+    expect(terminalPageContent).toContain('terminalRegistryMode');
+    expect(terminalPageContent).toContain('registryEnforced');
+    expect(terminalPageContent).toContain('terminalId: readStoredTerminalId()');
+    expect(terminalLockDrawerContent).toContain('Terminal ID');
+    expect(terminalLockDrawerContent).toContain('registryEnforced ?');
+    expect(terminalLockDrawerContent).toContain('Select configured terminal');
+    expect(terminalLockDrawerContent).toContain('list="terminal-id-options"');
+    expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
+    expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
+  });
+
+  it('supports history/receipt handoff into unified sales report with preserved query params', () => {
+    expect(posCheckoutTerminalContent).toContain('openInSalesReport');
+    expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
+    expect(posCheckoutTerminalContent).toContain('navigate(`/sales');
   });
 });

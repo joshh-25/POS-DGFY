@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as complianceService from '@/services/complianceService.js';
 
 const MODE_LABEL = {
@@ -100,10 +100,81 @@ const STEP_META = {
   settings: { title: 'Settings', actionTarget: '/settings?tab=pos#receipt-contract-settings' },
   artifacts: { title: 'Artifacts', actionTarget: '#section-artifacts' },
   peripherals: { title: 'Peripherals', actionTarget: '#section-peripherals' },
-  final_review: { title: 'Final Review', actionTarget: '#section-activation' }
+  final_review: { title: 'Final Review', actionTarget: '#section-final-review' }
 };
 
+const FINAL_REVIEW_REQUIREMENTS = [
+  {
+    requirementCode: 'submission_system_flow_diagram_mmd',
+    checklistCode: 'submission.system_flow_diagram',
+    label: 'System flow diagram (Mermaid source)',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'submission_system_flow_diagram_png',
+    checklistCode: 'submission.system_flow_diagram_image',
+    label: 'System flow diagram (exported image)',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'submission_software_specification',
+    checklistCode: 'submission.software_specification',
+    label: 'Software specification packet',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'submission_backup_dr_plan',
+    checklistCode: 'submission.backup_disaster_recovery_plan',
+    label: 'Data backup and disaster recovery plan',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'submission_filing_instructions',
+    checklistCode: 'submission.filing_instructions',
+    label: 'Filing instructions',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'evidence_restore_drill',
+    checklistCode: 'submission.restore_drill_evidence',
+    label: 'Latest restore drill evidence',
+    requiresFreshness: true
+  },
+  {
+    requirementCode: 'evidence_encryption_verification',
+    checklistCode: 'submission.encryption_verification_evidence',
+    label: 'Latest encryption verification evidence',
+    requiresFreshness: true
+  }
+];
+
 const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+const ACTION_TARGET_HASH_ALIASES = Object.freeze({
+  '#section-activation': '#section-final-review'
+});
+const HASH_ID_PATTERN = /^[A-Za-z][-A-Za-z0-9_:.]*$/;
+
+const findElementByHashTarget = (target) => {
+  const normalizedTarget = String(target || '').trim();
+  if (!normalizedTarget.startsWith('#')) return null;
+  const rawId = normalizedTarget.slice(1);
+  if (!rawId) return null;
+  let decodedId = rawId;
+  try {
+    decodedId = decodeURIComponent(rawId);
+  } catch {
+    return null;
+  }
+  if (!HASH_ID_PATTERN.test(decodedId)) {
+    return null;
+  }
+  return document.getElementById(decodedId);
+};
+
+const slugifyCode = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
 
 const fmtDate = (value) => {
   if (!value) return 'N/A';
@@ -261,6 +332,7 @@ const PROFILE_ERROR_FIELD_ORDER = [
 ];
 
 export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -282,20 +354,50 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
     model: '',
     serial_number: ''
   });
+  const [finalReviewFormByRequirement, setFinalReviewFormByRequirement] = useState({});
+  const [finalReviewFiles, setFinalReviewFiles] = useState({});
+  const [finalReviewSignoff, setFinalReviewSignoff] = useState({
+    engineering_approver: '',
+    compliance_approver: '',
+    filing_batch_id: '',
+    engineering_signed_at: '',
+    compliance_signed_at: ''
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, a, d] = await Promise.all([
+      const [p, a, d, f] = await Promise.all([
         complianceService.getComplianceProfile(),
         complianceService.listComplianceArtifacts(),
-        complianceService.listCompliancePeripherals()
+        complianceService.listCompliancePeripherals(),
+        complianceService.listFinalReviewDocuments()
       ]);
       setProfile(p || null);
       setProfileForm(mergeProfile(PROFILE_DEFAULT, p?.profile || {}));
       setProfileErrors({});
       setArtifacts(Array.isArray(a?.artifacts) ? a.artifacts : []);
       setPeripherals(Array.isArray(d?.peripherals) ? d.peripherals : []);
+      const loadedDocuments = Array.isArray(f?.documents) ? f.documents : [];
+      const formSeed = {};
+      FINAL_REVIEW_REQUIREMENTS.forEach((entry) => {
+        const existing = loadedDocuments.find((doc) => doc.requirement_code === entry.requirementCode);
+        formSeed[entry.requirementCode] = {
+          source_type: existing?.source_type || 'upload',
+          external_url: existing?.external_url || '',
+          freshness_date: existing?.freshness_date ? normalizeDateInput(existing.freshness_date) : ''
+        };
+      });
+      setFinalReviewFormByRequirement(formSeed);
+      setFinalReviewFiles({});
+      const signoff = f?.signoff || {};
+      setFinalReviewSignoff({
+        engineering_approver: signoff.engineering_approver || '',
+        compliance_approver: signoff.compliance_approver || '',
+        filing_batch_id: signoff.filing_batch_id || '',
+        engineering_signed_at: normalizeDateInput(signoff.engineering_signed_at),
+        compliance_signed_at: normalizeDateInput(signoff.compliance_signed_at)
+      });
       if (p?.mode_state && p.mode_state !== 'non_compliant_active') {
         setModeChoice('compliant');
       }
@@ -317,6 +419,13 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
   const modeChoiceRequired = profile?.mode_choice_required === true;
   const activationBlockers = Array.isArray(checklist.activation_blockers) ? checklist.activation_blockers : [];
   const missingRequirements = requirements.filter((entry) => entry.status !== 'complete');
+  const documentaryReadinessItems = Array.isArray(checklist?.documentary_readiness?.items)
+    ? checklist.documentary_readiness.items
+    : [];
+  const documentaryItemByCode = documentaryReadinessItems.reduce((acc, item) => {
+    if (item?.code) acc[item.code] = item;
+    return acc;
+  }, {});
   const unresolvedRequirementCount = missingRequirements.length;
   const nextBlockingStepKey = String(checklist.next_blocking_step || '').trim();
   const nextBlockingStepMeta = STEP_META[nextBlockingStepKey] || null;
@@ -354,6 +463,55 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
     }
   };
 
+  const setFinalReviewField = (requirementCode, key, value) => {
+    setFinalReviewFormByRequirement((prev) => ({
+      ...prev,
+      [requirementCode]: {
+        ...(prev?.[requirementCode] || {}),
+        [key]: value
+      }
+    }));
+  };
+
+  const setSignoffField = (key, value) => {
+    setFinalReviewSignoff((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const saveFinalReviewDocument = async (requirement) => {
+    const form = finalReviewFormByRequirement?.[requirement.requirementCode] || {};
+    await run(
+      `final-review-doc-${requirement.requirementCode}`,
+      async () => {
+        const updated = await complianceService.upsertFinalReviewDocument({
+          requirement_code: requirement.requirementCode,
+          source_type: form.source_type || 'upload',
+          external_url: form.source_type === 'external_url' ? form.external_url || null : null,
+          freshness_date: requirement.requiresFreshness && form.freshness_date ? form.freshness_date : null
+        });
+
+        const pendingFile = finalReviewFiles?.[requirement.requirementCode] || null;
+        if (pendingFile && (form.source_type || 'upload') === 'upload') {
+          const documentId = updated?.tenant_compliance_final_review_document_id;
+          if (documentId) {
+            await complianceService.uploadFinalReviewDocument(documentId, pendingFile);
+          }
+        }
+      },
+      'Final review document updated'
+    );
+  };
+
+  const saveFinalReviewSignoff = async () => {
+    await run(
+      'final-review-signoff',
+      () => complianceService.upsertFinalReviewSignoff(finalReviewSignoff),
+      'Final review sign-off metadata updated'
+    );
+  };
+
   const verifyArtifact = (id, action) => run(`a-${id}-${action}`, () => (
     complianceService.updateComplianceArtifactVerification(id, { action, verification_note: `dashboard ${action}` })
   ), `Artifact ${action}d`);
@@ -380,15 +538,55 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
   const openActionTarget = (target) => {
     const normalized = String(target || '').trim();
     if (!normalized) return;
+    const scrollToHashTarget = (hash) => {
+      const normalizedHash = String(hash || '').trim();
+      if (!normalizedHash.startsWith('#')) return false;
+      const lookup = [normalizedHash, ACTION_TARGET_HASH_ALIASES[normalizedHash]].filter(Boolean);
+      for (const currentHash of lookup) {
+        const node = findElementByHashTarget(currentHash);
+        if (node) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return true;
+        }
+      }
+      return false;
+    };
+
     if (normalized.startsWith('#')) {
-      const node = document.querySelector(normalized);
-      if (node) {
-        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!scrollToHashTarget(normalized)) {
+        toast.info('Target section is not available on this screen yet.');
       }
       return;
     }
+
+    const hashIndex = normalized.indexOf('#');
+    if (hashIndex > 0) {
+      const routeTarget = normalized.slice(0, hashIndex);
+      const hashTarget = normalized.slice(hashIndex);
+      const currentRoute = `${location.pathname}${location.search}`;
+      if (routeTarget === currentRoute && scrollToHashTarget(hashTarget)) {
+        return;
+      }
+      if (routeTarget === currentRoute) {
+        toast.info('Target section is not available on this screen yet.');
+        return;
+      }
+    }
     navigate(normalized);
   };
+
+  useEffect(() => {
+    if (loading) return;
+    const hashTarget = String(location.hash || '').trim();
+    if (!hashTarget.startsWith('#')) return;
+    const normalizedHash = ACTION_TARGET_HASH_ALIASES[hashTarget] || hashTarget;
+    requestAnimationFrame(() => {
+      const node = findElementByHashTarget(normalizedHash);
+      if (node) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }, [loading, location.hash, modeState]);
 
   const focusFirstProfileError = (errors) => {
     const firstFieldKey = PROFILE_ERROR_FIELD_ORDER.find((key) => Boolean(errors?.[key]));
@@ -533,36 +731,160 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
             </div>
           )}
 
-          {modeState === 'compliant_pending' && (
-            <div id="section-activation" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-              <Label>Type ACTIVATE COMPLIANT</Label>
-              <Input value={activateText} onChange={(event) => setActivateText(event.target.value)} placeholder="ACTIVATE COMPLIANT" />
-              <Button
-                type="button"
-                disabled={!isMasterAdmin || busy === 'activate' || activateText.trim() !== 'ACTIVATE COMPLIANT' || checklist.ready_for_compliant_activation !== true}
-                onClick={() => run('activate', () => complianceService.activateCompliantMode({ confirmation_text: activateText.trim() }), 'Compliant mode activated')}
-              >
-                Activate compliant mode
-              </Button>
-              {activationBlockers.length > 0 && (
-                <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
-                  {activationBlockers.map((blocker) => (
-                    <div key={`${blocker.code}-${blocker.section}`} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="text-amber-800">{blocker.message}</span>
-                      <Button type="button" size="sm" variant="outline" onClick={() => openActionTarget(blocker.action_target)}>
-                        Go to step
-                      </Button>
+          <div id="section-final-review" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+            <Label>Final review</Label>
+            {modeState === 'compliant_pending' ? (
+              <>
+                <Label>Type ACTIVATE COMPLIANT</Label>
+                <Input value={activateText} onChange={(event) => setActivateText(event.target.value)} placeholder="ACTIVATE COMPLIANT" />
+                <Button
+                  type="button"
+                  disabled={!isMasterAdmin || busy === 'activate' || activateText.trim() !== 'ACTIVATE COMPLIANT' || checklist.ready_for_compliant_activation !== true}
+                  onClick={() => run('activate', () => complianceService.activateCompliantMode({ confirmation_text: activateText.trim() }), 'Compliant mode activated')}
+                >
+                  Activate compliant mode
+                </Button>
+              </>
+            ) : (
+              <p className="text-xs text-slate-700">
+                {modeChoiceRequired
+                  ? 'Select a compliance mode to continue activation planning.'
+                  : modeState === 'non_compliant_active'
+                    ? 'Upgrade to compliant mode to unlock activation controls.'
+                    : 'Compliant mode is active. Review any remaining final-review blockers below.'}
+              </p>
+            )}
+            <div className="rounded-md border border-slate-200 bg-white p-3 space-y-3">
+              <p className="text-sm font-semibold text-slate-900">Submission Documents</p>
+              <p className="text-xs text-slate-600">Auto-valid now; subject to platform review. Platform admin may revoke documentary validity.</p>
+              {FINAL_REVIEW_REQUIREMENTS.map((requirement) => {
+                const form = finalReviewFormByRequirement?.[requirement.requirementCode] || {};
+                const file = finalReviewFiles?.[requirement.requirementCode] || null;
+                const checklistItem = documentaryItemByCode?.[requirement.checklistCode] || null;
+                const slugId = `final-review-doc-${slugifyCode(requirement.checklistCode)}`;
+                return (
+                  <div id={slugId} key={requirement.requirementCode} className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-slate-900">{requirement.label}</p>
+                      <span className={`text-xs px-2 py-1 rounded-full ${checklistItem?.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {checklistItem?.ready ? 'Ready' : 'Missing'}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
-              {activationBlockingReasons.length > 0 && (
-                <p className="text-xs text-slate-600">
-                  Activation blocked: {activationBlockingReasons.join(' ')}
-                </p>
-              )}
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <div>
+                        <Label className="text-xs">Source</Label>
+                        <select
+                          className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+                          value={form.source_type || 'upload'}
+                          onChange={(event) => setFinalReviewField(requirement.requirementCode, 'source_type', event.target.value)}
+                        >
+                          <option value="upload">Upload file</option>
+                          <option value="external_url">External URL</option>
+                        </select>
+                      </div>
+                      {(form.source_type || 'upload') === 'external_url' ? (
+                        <div className="md:col-span-2">
+                          <Label className="text-xs">External URL</Label>
+                          <Input
+                            value={form.external_url || ''}
+                            onChange={(event) => setFinalReviewField(requirement.requirementCode, 'external_url', event.target.value)}
+                            placeholder="https://..."
+                          />
+                        </div>
+                      ) : (
+                        <div className="md:col-span-2">
+                          <Label className="text-xs">File upload</Label>
+                          <Input
+                            type="file"
+                            onChange={(event) => {
+                              const selected = event.target.files?.[0] || null;
+                              setFinalReviewFiles((prev) => ({
+                                ...prev,
+                                [requirement.requirementCode]: selected
+                              }));
+                            }}
+                          />
+                          <p className="mt-1 text-xs text-slate-500">
+                            {file ? `Selected: ${file.name}` : (checklistItem?.file_name ? `Current: ${checklistItem.file_name}` : 'No file selected')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {requirement.requiresFreshness && (
+                      <div>
+                        <Label className="text-xs">Evidence date</Label>
+                        <Input
+                          type="date"
+                          value={form.freshness_date || ''}
+                          onChange={(event) => setFinalReviewField(requirement.requirementCode, 'freshness_date', event.target.value)}
+                        />
+                      </div>
+                    )}
+                    {Array.isArray(checklistItem?.quality_issues) && checklistItem.quality_issues.length > 0 && (
+                      <p className="text-xs text-amber-700">Issues: {checklistItem.quality_issues.join(', ')}</p>
+                    )}
+                    {checklistItem?.review_note && (
+                      <p className="text-xs text-slate-600">Platform review note: {checklistItem.review_note}</p>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === `final-review-doc-${requirement.requirementCode}`}
+                      onClick={() => saveFinalReviewDocument(requirement)}
+                    >
+                      Save document
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
-          )}
+            <div className="rounded-md border border-slate-200 bg-white p-3 space-y-2">
+              <p className="text-sm font-semibold text-slate-900">Sign-off Metadata</p>
+              <div className="grid gap-2 md:grid-cols-3">
+                <div>
+                  <Label className="text-xs">Engineering approver</Label>
+                  <Input value={finalReviewSignoff.engineering_approver || ''} onChange={(event) => setSignoffField('engineering_approver', event.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Compliance approver</Label>
+                  <Input value={finalReviewSignoff.compliance_approver || ''} onChange={(event) => setSignoffField('compliance_approver', event.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Filing batch ID</Label>
+                  <Input value={finalReviewSignoff.filing_batch_id || ''} onChange={(event) => setSignoffField('filing_batch_id', event.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Engineering signed at</Label>
+                  <Input type="date" value={finalReviewSignoff.engineering_signed_at || ''} onChange={(event) => setSignoffField('engineering_signed_at', event.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Compliance signed at</Label>
+                  <Input type="date" value={finalReviewSignoff.compliance_signed_at || ''} onChange={(event) => setSignoffField('compliance_signed_at', event.target.value)} />
+                </div>
+              </div>
+              <Button type="button" size="sm" variant="outline" disabled={busy === 'final-review-signoff'} onClick={saveFinalReviewSignoff}>
+                Save sign-off metadata
+              </Button>
+            </div>
+            {activationBlockers.length > 0 && (
+              <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
+                {activationBlockers.map((blocker) => (
+                  <div key={`${blocker.code}-${blocker.section}`} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-amber-800">{blocker.message}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => openActionTarget(blocker.action_target)}>
+                      Go to step
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {activationBlockingReasons.length > 0 && (
+              <p className="text-xs text-slate-600">
+                Activation blocked: {activationBlockingReasons.join(' ')}
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

@@ -1,18 +1,34 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 
 export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
     return async ({ body }) => {
         try {
-            const { name, adminEmail, adminPassword, plan = 'standard', subscriptionId, complianceMode } = body || {};
+            const {
+                name,
+                adminEmail,
+                adminPassword,
+                plan = 'standard',
+                subscriptionId,
+                complianceMode,
+                workflowMode
+            } = body || {};
             const normalizedComplianceMode = typeof complianceMode === 'string'
                 ? complianceMode.trim().toLowerCase()
                 : '';
+            const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
 
-            if (!name || !adminEmail || !adminPassword || !['non_compliant', 'compliant'].includes(normalizedComplianceMode)) {
+            if (
+                !name
+                || !adminEmail
+                || !adminPassword
+                || !['non_compliant', 'compliant'].includes(normalizedComplianceMode)
+                || !isWorkflowMode(workflowMode)
+            ) {
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword, complianceMode',
+                    'Missing required fields: name, adminEmail, adminPassword, complianceMode, workflowMode',
                     { statusCode: 400 }
                 ));
             }
@@ -23,7 +39,8 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 adminPassword,
                 plan,
                 subscriptionId,
-                complianceMode: normalizedComplianceMode
+                complianceMode: normalizedComplianceMode,
+                workflowMode: normalizedWorkflowMode
             });
 
             return ok({

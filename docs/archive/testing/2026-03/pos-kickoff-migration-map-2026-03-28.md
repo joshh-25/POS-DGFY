@@ -1,5 +1,7 @@
 # POS Kickoff Migration Dependency Map
 
+> Legacy terminology note (2026-04-09): this migration map includes historical "strict compliance toggle" wording. Current runtime policy is governed by dual-mode compliance lifecycle (`non_compliant_active`, `compliant_pending`, `compliant_active`) per ADR 0007 and `docs/compliance/ph-pos-software-developer-compliance-guide.md`.
+
 Date: 2026-03-28  
 Status: in_progress  
 Purpose: Batch 0 baseline artifact for POS/Sales implementation kickoff.

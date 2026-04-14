@@ -702,7 +702,7 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Standardized UOMs**: 14 predefined UOMs across Weight (5), Volume (6), and Count (3) groups.
 - **Grouped Dropdown**: New `UomSelect` component with visually grouped options.
 - **Backend Integration**: `jobOrderService` functions updated for accurate stock calculations with conversion.
-- **Migration Script**: `scripts/migrate-uom-data.js` normalizes legacy UOM values.
+- **Migration Script**: `backend/scripts/migrate-uom-data.js` normalizes legacy UOM values.
 - **Verification**: 24 unit tests for the UOM converter utility.
 
 ### v1.4.1 (February 4, 2026) - Production Stability & Onboarding

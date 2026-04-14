@@ -103,6 +103,7 @@ export default function TerminalSidebarPanel({
   isCollapsed = false,
   onToggleCollapse,
   workspaceView = null,
+  isMsmeMode = false,
   terminalUser,
   locked,
   terminalMeta,
@@ -146,8 +147,12 @@ export default function TerminalSidebarPanel({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
+  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
 
-  const showSection = (key) => !isWorkspaceMode || workspaceView === key;
+  const showSection = (key) => {
+    if (isMsmeMode && hiddenSectionsInMsme.has(key)) return false;
+    return !isWorkspaceMode || workspaceView === key;
+  };
   const showCashDrawerCard = showSection('cash_drawer') && (isWorkspaceMode || (shiftState.shift && canAdjustCashDrawer));
   const showCloseShiftCard = showSection('close_shift') && (isWorkspaceMode || (shiftState.shift && canCloseDay));
 

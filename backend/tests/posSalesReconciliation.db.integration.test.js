@@ -11,6 +11,8 @@ import {
   updateOnlineOrderStatusUseCase
 } from '../src/modules/pos/index.js';
 import { listSalesTransactionsUseCase } from '../src/modules/sales/index.js';
+import { updateSettingsUseCase } from '../src/modules/settings/index.js';
+import { itemRepository } from '../src/modules/inventory/repositories/itemRepository.js';
 import {
   cancelStoreOrderUseCase,
   storeCheckoutUseCase,
@@ -111,6 +113,18 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       password_hash: 'test-hash',
       role: 'staff',
       is_active: true
+    });
+  };
+
+  const createMasterAdmin = async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    return models.User.create({
+      username: `master_${suffix}`,
+      email: `master_${suffix}@pos.recon.test`,
+      password_hash: 'test-hash',
+      role: 'admin',
+      is_active: true,
+      is_master_admin: true
     });
   };
 
@@ -339,6 +353,109 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     const txCogs = money4((2 * 5) + (1 * 4) + (1 * 3));
     expect(money4(matched.cogs)).toBe(txCogs);
     expect(money4(matched.gross_profit)).toBe(money4(txTotal - txCogs));
+  });
+
+  it('preserves manufacturing data and cash checkout continuity across workflow mode roundtrip', async () => {
+    const masterAdmin = await createMasterAdmin();
+    const cashier = await createCashier();
+    const item = await createFinishedGood({
+      current_stock: 30,
+      cost_per_unit: 14,
+      default_sale_price: 55,
+      batch_size: 120,
+      yield_percentage: 96.5,
+      processing_loss: 3.5,
+      production_notes: 'Legacy manufacturing notes'
+    });
+
+    const setWorkflowMode = async (mode) => runInTenantContext(() => updateSettingsUseCase({
+      settingsData: { ops_workflow_mode: mode },
+      actorUser: masterAdmin
+    }));
+
+    const setManufacturing = await setWorkflowMode('manufacturing');
+    expect(setManufacturing.success).toBe(true);
+
+    const checkoutInManufacturing = await runInTenantContext(() => checkoutPosUseCase({
+      userId: cashier.user_id,
+      payload: {
+        idempotency_key: `workflow-manufacturing-${crypto.randomUUID()}`,
+        payment_type: 'cash',
+        order_method: 'dine_in',
+        lines: [
+          { item_id: item.item_id, quantity: 1, sale_price: null }
+        ]
+      }
+    }));
+    expect(checkoutInManufacturing.success).toBe(true);
+    expect(checkoutInManufacturing.data.transaction.payment_type).toBe('cash');
+
+    const switchToMsme = await setWorkflowMode('msme');
+    expect(switchToMsme.success).toBe(true);
+
+    const msmeVisiblePatch = {
+      name: `${item.name} MSME`,
+      cost_per_unit: 15,
+      description: 'Updated from MSME simplified flow'
+    };
+    const updatedItem = await runInTenantContext(() => itemRepository.updateItem(
+      item.item_id,
+      msmeVisiblePatch,
+      masterAdmin.user_id
+    ));
+
+    expect(updatedItem.name).toBe(msmeVisiblePatch.name);
+    expect(Number(updatedItem.cost_per_unit)).toBe(msmeVisiblePatch.cost_per_unit);
+    expect(Number(updatedItem.batch_size)).toBe(120);
+    expect(Number(updatedItem.yield_percentage)).toBe(96.5);
+    expect(Number(updatedItem.processing_loss)).toBe(3.5);
+    expect(updatedItem.production_notes).toBe('Legacy manufacturing notes');
+
+    const checkoutInMsme = await runInTenantContext(() => checkoutPosUseCase({
+      userId: cashier.user_id,
+      payload: {
+        idempotency_key: `workflow-msme-${crypto.randomUUID()}`,
+        payment_type: 'cash',
+        order_method: 'dine_in',
+        lines: [
+          { item_id: item.item_id, quantity: 1, sale_price: null }
+        ]
+      }
+    }));
+    expect(checkoutInMsme.success).toBe(true);
+    expect(checkoutInMsme.data.transaction.payment_type).toBe('cash');
+
+    const switchBackToManufacturing = await setWorkflowMode('manufacturing');
+    expect(switchBackToManufacturing.success).toBe(true);
+
+    const workflowSetting = await runInTenantContext(() => models.SystemSetting.findOne({
+      where: { setting_key: 'ops_workflow_mode' }
+    }));
+    expect(workflowSetting).not.toBeNull();
+    expect(workflowSetting.setting_value).toBe('manufacturing');
+
+    const checkoutAfterRoundtrip = await runInTenantContext(() => checkoutPosUseCase({
+      userId: cashier.user_id,
+      payload: {
+        idempotency_key: `workflow-roundtrip-${crypto.randomUUID()}`,
+        payment_type: 'cash',
+        order_method: 'dine_in',
+        lines: [
+          { item_id: item.item_id, quantity: 1, sale_price: null }
+        ]
+      }
+    }));
+    expect(checkoutAfterRoundtrip.success).toBe(true);
+
+    const finalItem = await runInTenantContext(() => models.Item.findByPk(item.item_id));
+    expect(finalItem).not.toBeNull();
+    expect(finalItem.name).toBe(msmeVisiblePatch.name);
+    expect(Number(finalItem.cost_per_unit)).toBe(msmeVisiblePatch.cost_per_unit);
+    expect(Number(finalItem.batch_size)).toBe(120);
+    expect(Number(finalItem.yield_percentage)).toBe(96.5);
+    expect(Number(finalItem.processing_loss)).toBe(3.5);
+    expect(finalItem.production_notes).toBe('Legacy manufacturing notes');
+    expect(Number(finalItem.current_stock)).toBe(27);
   });
 
   it('blocks checkout when legacy tenant mode selection is still required', async () => {

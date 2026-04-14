@@ -52,6 +52,8 @@ import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
 import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog.js';
 import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
+import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplianceFinalReviewDocument.js';
+import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
@@ -62,6 +64,8 @@ const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
 const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
+const TenantComplianceFinalReviewDocument = TenantComplianceFinalReviewDocumentFactory(sequelize);
+const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -81,6 +85,10 @@ Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compl
 TenantCompliancePeripheral.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceAuditLog, { foreignKey: 'tenant_id', as: 'complianceAuditLogs' });
 TenantComplianceAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantComplianceFinalReviewDocument, { foreignKey: 'tenant_id', as: 'complianceFinalReviewDocuments' });
+TenantComplianceFinalReviewDocument.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantComplianceFinalReviewSignoff, { foreignKey: 'tenant_id', as: 'complianceFinalReviewSignoff' });
+TenantComplianceFinalReviewSignoff.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -309,7 +317,9 @@ const db = {
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
-  TenantComplianceAuditFailure
+  TenantComplianceAuditFailure,
+  TenantComplianceFinalReviewDocument,
+  TenantComplianceFinalReviewSignoff
 };
 
 export default db;
@@ -368,5 +378,7 @@ export {
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
-  TenantComplianceAuditFailure
+  TenantComplianceAuditFailure,
+  TenantComplianceFinalReviewDocument,
+  TenantComplianceFinalReviewSignoff
 };

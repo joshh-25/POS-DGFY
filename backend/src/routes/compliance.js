@@ -15,8 +15,13 @@ import {
     validateComplianceChecklistQuery,
     validateComplianceAuditLogQuery,
     validateCompliancePreflight,
-    validateComplianceActivateMode
+    validateComplianceActivateMode,
+    validateFinalReviewDocumentUpsert,
+    validateFinalReviewDocumentIdParam,
+    validateFinalReviewDocumentReview,
+    validateFinalReviewSignoff
 } from '../validators/complianceValidator.js';
+import { upload } from '../config/uploadConfig.js';
 
 const router = express.Router();
 
@@ -34,6 +39,12 @@ router.get('/artifacts', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTING
 router.post('/artifacts', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceArtifactCreate, complianceController.createComplianceArtifact);
 router.patch('/artifacts/:artifact_id', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceArtifactIdParam, validateComplianceArtifactUpdate, complianceController.updateComplianceArtifact);
 router.post('/artifacts/:artifact_id/verification', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceArtifactIdParam, validateComplianceVerificationAction, complianceController.updateComplianceArtifactVerification);
+
+router.get('/final-review/documents', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), complianceController.listFinalReviewDocuments);
+router.post('/final-review/documents', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateFinalReviewDocumentUpsert, complianceController.upsertFinalReviewDocument);
+router.post('/final-review/documents/:document_id/upload', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateFinalReviewDocumentIdParam, upload.single('file'), complianceController.uploadFinalReviewDocument);
+router.post('/final-review/documents/:document_id/review', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateFinalReviewDocumentIdParam, validateFinalReviewDocumentReview, complianceController.reviewFinalReviewDocument);
+router.put('/final-review/signoff-metadata', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateFinalReviewSignoff, complianceController.upsertFinalReviewSignoff);
 
 router.get('/peripherals', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), complianceController.listCompliancePeripherals);
 router.post('/peripherals', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateCompliancePeripheralCreate, complianceController.createCompliancePeripheral);

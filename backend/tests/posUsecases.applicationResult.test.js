@@ -4,6 +4,7 @@ import {
     buildGetPosTransactionByIdUseCase,
     buildGetDailyZReadingUseCase,
     buildListPosCatalogUseCase,
+    buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
     buildUpdateOnlineOrderStatusUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
@@ -98,6 +99,40 @@ describe('pos use-cases application result contract', () => {
         ]);
     });
 
+    it('listPosCatalogOverrides preserves normalized pos_readiness metadata contract', async () => {
+        const listCatalogOverrides = jest.fn().mockResolvedValue([
+            {
+                item_id: 9,
+                name: 'Milk Tea Large',
+                pos_visible: true,
+                pos_readiness: {
+                    ready: false,
+                    state: 'needs_attention',
+                    score: 75,
+                    checks: { pos_visible: true, has_menu_image: false },
+                    missing_requirements: [{ code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' }]
+                }
+            }
+        ]);
+
+        const useCase = buildListPosCatalogOverridesUseCase({
+            posRepository: { listCatalogOverrides }
+        });
+
+        const result = await useCase({ query: { search: 'milk' } });
+        expect(listCatalogOverrides).toHaveBeenCalledWith({ search: 'milk', limit: 200 });
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual([
+            expect.objectContaining({
+                item_id: 9,
+                pos_readiness: expect.objectContaining({
+                    ready: false,
+                    missing_requirements: expect.any(Array)
+                })
+            })
+        ]);
+    });
+
     it('updatePosCatalogOverride requires items:edit permission', async () => {
         const getItemById = jest.fn().mockResolvedValue({ item_id: 101 });
         const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 101, pos_visible: true });
@@ -124,6 +159,57 @@ describe('pos use-cases application result contract', () => {
         expect(allowedResult.success).toBe(true);
         expect(getItemById).toHaveBeenCalledWith(101);
         expect(upsertCatalogOverride).toHaveBeenCalledWith(101, { pos_visible: true });
+    });
+
+    it('updatePosCatalogOverride blocks enabling pos visibility when readiness is incomplete', async () => {
+        const getItemById = jest.fn().mockResolvedValue({ item_id: 202 });
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 202,
+            pos_readiness: {
+                ready: false,
+                missing_requirements: [
+                    { code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' }
+                ]
+            }
+        });
+        const upsertCatalogOverride = jest.fn();
+        const useCase = buildUpdatePosCatalogOverrideUseCase({
+            posRepository: { getItemById, getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            itemId: 202,
+            payload: { pos_visible: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toMatchObject({
+            reason_code: 'POS_READINESS_INCOMPLETE',
+            missing_requirements: expect.any(Array)
+        });
+        expect(upsertCatalogOverride).not.toHaveBeenCalled();
+    });
+
+    it('updatePosCatalogOverride allows disabling pos visibility even when readiness is incomplete', async () => {
+        const getItemById = jest.fn().mockResolvedValue({ item_id: 203 });
+        const getCatalogReadinessByItemId = jest.fn();
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 203, pos_visible: false });
+        const useCase = buildUpdatePosCatalogOverrideUseCase({
+            posRepository: { getItemById, getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            itemId: 203,
+            payload: { pos_visible: false },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(getCatalogReadinessByItemId).not.toHaveBeenCalled();
+        expect(upsertCatalogOverride).toHaveBeenCalledWith(203, { pos_visible: false });
     });
 
     it('updateOnlineOrderStatus deducts inventory when online order transitions to completed', async () => {

@@ -442,6 +442,26 @@ const updateFolderSchema = Joi.object({
   show_in_pos_filter: Joi.boolean().required()
 });
 
+const replaceItemSuppliersSchema = Joi.object({
+  suppliers: Joi.array().items(Joi.object({
+    supplier_id: Joi.number().integer().positive().required().messages({
+      'number.base': 'supplier_id must be a number',
+      'number.integer': 'supplier_id must be an integer',
+      'number.positive': 'supplier_id must be a positive number',
+      'any.required': 'supplier_id is required'
+    }),
+    moq: Joi.number().min(0).allow(null).messages({
+      'number.min': 'moq must be 0 or greater'
+    }),
+    price_per_unit: Joi.number().min(0).allow(null).messages({
+      'number.min': 'price_per_unit must be 0 or greater'
+    })
+  }).required()).required().messages({
+    'array.base': 'suppliers must be an array',
+    'any.required': 'suppliers is required'
+  })
+});
+
 const validateSchema = (schema, source, target) => (req, res, next) => {
   const { error, value } = schema.validate(req[source], {
     abortEarly: false,
@@ -467,4 +487,5 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 
 export const validateFolderIdParam = validateSchema(folderIdParamSchema, 'params', 'validatedParams');
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
+export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 

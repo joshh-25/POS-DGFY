@@ -226,8 +226,10 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
 
 export default function POSCheckoutTerminal({
     sessionLocked = false,
+    isMsmeMode = false,
     canViewHistory = true,
     activeShiftId = null,
+    terminalId = '',
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
     complianceBlockerDetails = null,
@@ -236,7 +238,9 @@ export default function POSCheckoutTerminal({
     externalReceiptTransactionId = null,
     onExternalReceiptHydrated = null,
     externalHistoryQuery = '',
-    onExternalHistoryHydrated = null
+    onExternalHistoryHydrated = null,
+    externalCatalogSearch = '',
+    onExternalCatalogHydrated = null
 }) {
     const navigate = useNavigate();
     const { can } = usePermission();
@@ -257,6 +261,7 @@ export default function POSCheckoutTerminal({
     const [serviceFeeInput, setServiceFeeInput] = useState('');
     const [serviceFeeEdited, setServiceFeeEdited] = useState(false);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
+    const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
@@ -280,6 +285,7 @@ export default function POSCheckoutTerminal({
     const [imagePreview, setImagePreview] = useState(null);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
+    const normalizedTerminalId = String(terminalId || '').trim();
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -523,6 +529,31 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    const buildSalesReportQuery = useCallback((row = null) => {
+        const params = new URLSearchParams();
+        params.set('source', 'POS');
+        params.set('source_context', 'pos_history');
+        if (historySearch) params.set('search', historySearch);
+        if (historyStatus !== 'all') params.set('status', historyStatus);
+        if (historyPaymentType !== 'all') params.set('payment_type', historyPaymentType);
+        if (historyOrderMethod !== 'all') params.set('order_method', historyOrderMethod);
+        if (historyDateFrom) params.set('date_from', historyDateFrom);
+        if (historyDateTo) params.set('date_to', historyDateTo);
+        const sourceId = Number.parseInt(row?.pos_transaction_id || row?.source_id, 10);
+        if (Number.isInteger(sourceId) && sourceId > 0) {
+            params.set('source_id', String(sourceId));
+        }
+        if (row?.invoice_number || row?.reference_no) {
+            params.set('reference', String(row.invoice_number || row.reference_no));
+        }
+        return params.toString();
+    }, [historyDateFrom, historyDateTo, historyOrderMethod, historyPaymentType, historySearch, historyStatus]);
+
+    const openInSalesReport = useCallback((row = null) => {
+        const query = buildSalesReportQuery(row);
+        navigate(`/sales${query ? `?${query}` : ''}`);
+    }, [buildSalesReportQuery, navigate]);
+
     useEffect(() => {
         if (sessionLocked) return;
         const id = Number(externalReceiptTransactionId);
@@ -567,6 +598,18 @@ export default function POSCheckoutTerminal({
             onExternalHistoryHydrated();
         }
     }, [externalHistoryQuery, onExternalHistoryHydrated, sessionLocked, setCurrentViewMode]);
+
+    useEffect(() => {
+        if (sessionLocked) return;
+        const query = String(externalCatalogSearch || '').trim();
+        if (!query) return;
+        setSearch(query);
+        setSelectedFolderId(null);
+        setCurrentViewMode('checkout');
+        if (typeof onExternalCatalogHydrated === 'function') {
+            onExternalCatalogHydrated();
+        }
+    }, [externalCatalogSearch, onExternalCatalogHydrated, sessionLocked, setCurrentViewMode]);
 
     useEffect(() => {
         if (sessionLocked) return;
@@ -644,9 +687,19 @@ export default function POSCheckoutTerminal({
         [discountProfiles, selectedDiscountProfile]
     );
 
+    const manualDiscountAmount = useMemo(() => {
+        const parsed = Number(manualDiscountAmountInput);
+        if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+        return round4(Math.min(parsed, cartSubtotal));
+    }, [cartSubtotal, manualDiscountAmountInput]);
+
     const calculatedDiscountAmount = useMemo(
-        () => round4(selectedDiscount ? (cartSubtotal * selectedDiscount.percentage) / 100 : 0),
-        [cartSubtotal, selectedDiscount]
+        () => (
+            selectedDiscount
+                ? round4(Math.min((cartSubtotal * selectedDiscount.percentage) / 100, cartSubtotal))
+                : manualDiscountAmount
+        ),
+        [cartSubtotal, manualDiscountAmount, selectedDiscount]
     );
 
     const currentMethodFeeConfig = useMemo(
@@ -662,6 +715,12 @@ export default function POSCheckoutTerminal({
         }
         setServiceFeeEdited(false);
     }, [orderMethod, currentMethodFeeConfig?.enabled, currentMethodFeeConfig?.amount]);
+
+    useEffect(() => {
+        if (selectedDiscountProfile && manualDiscountAmountInput) {
+            setManualDiscountAmountInput('');
+        }
+    }, [manualDiscountAmountInput, selectedDiscountProfile]);
 
     const serviceFeeAmount = useMemo(() => {
         if (!currentMethodFeeConfig?.enabled) return 0;
@@ -830,6 +889,10 @@ export default function POSCheckoutTerminal({
             toast.error(checkoutBlockedReason);
             return;
         }
+        if (!normalizedTerminalId) {
+            toast.error('Select a terminal ID before checkout.');
+            return;
+        }
 
         if (cart.length === 0) {
             toast.error('Add at least one item before checkout.');
@@ -838,7 +901,7 @@ export default function POSCheckoutTerminal({
 
         const payload = {
             idempotency_key: createIdempotencyKey(),
-            terminal_id: 'WEB-POS-01',
+            terminal_id: normalizedTerminalId || undefined,
             order_method: orderMethod,
             payment_type: paymentType,
             payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
@@ -859,6 +922,7 @@ export default function POSCheckoutTerminal({
             enqueueCheckoutIntent(payload, source);
             setCart([]);
             setSelectedDiscountProfile('');
+            setManualDiscountAmountInput('');
             setServiceFeeEdited(false);
             toast.message(
                 `You are offline. Checkout queued locally and will auto-replay when connection is restored (${queuedCheckouts.length + 1} queued).`
@@ -877,6 +941,7 @@ export default function POSCheckoutTerminal({
             setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
             setCart([]);
             setSelectedDiscountProfile('');
+            setManualDiscountAmountInput('');
             setServiceFeeEdited(false);
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
@@ -886,6 +951,9 @@ export default function POSCheckoutTerminal({
                     ? `Checkout replayed from idempotent request (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
                     : `Checkout completed successfully (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
             );
+            if (data?.terminal_identity_policy?.warning?.message) {
+                toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
+            }
             removeCheckoutIntentById(payload.idempotency_key);
             syncQueuedCheckoutsState();
             loadCatalog();
@@ -951,9 +1019,14 @@ export default function POSCheckoutTerminal({
                     Receipt Preview
                 </Button>
                 </div>
-                <p className="mt-2 text-xs text-slate-600">
-                    Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
-                </p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-slate-600">
+                        Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
+                    </p>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                        {normalizedTerminalId ? `Terminal ${normalizedTerminalId}` : 'No terminal selected'}
+                    </span>
+                </div>
             </div>
 
             {(queuedCheckouts.length > 0 || replayingQueuedCheckouts) && (
@@ -985,12 +1058,21 @@ export default function POSCheckoutTerminal({
                             <h2 className="text-xl font-bold text-slate-900">POS Sales History</h2>
                             <p className="text-sm text-slate-600">Track invoice times, cashier accountability, and receipt totals.</p>
                         </div>
-                        <Input
-                            value={historySearch}
-                            onChange={(event) => setHistorySearch(event.target.value)}
-                            placeholder="Search by invoice number..."
-                            className="sm:max-w-xs"
-                        />
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                            <Input
+                                value={historySearch}
+                                onChange={(event) => setHistorySearch(event.target.value)}
+                                placeholder="Search by invoice number..."
+                                className="sm:max-w-xs"
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => openInSalesReport()}
+                            >
+                                Open in Sales Report
+                            </Button>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
                         <select
@@ -1049,67 +1131,95 @@ export default function POSCheckoutTerminal({
                             placeholder="Date to"
                         />
                     </div>
-                    {historyLoading ? (
-                        <p className="text-sm text-slate-500">Loading transactions...</p>
-                    ) : (
-                        <div className="overflow-auto">
-                            <table className="w-full min-w-[760px] text-sm">
-                                <thead>
-                                    <tr className="border-b border-slate-200 text-slate-500">
-                                        <th className="text-left py-2">Invoice</th>
-                                        <th className="text-left py-2">Datetime</th>
-                                        <th className="text-left py-2">Cashier</th>
-                                        <th className="text-left py-2">Payment</th>
-                                        <th className="text-left py-2">Discount</th>
-                                        <th className="text-right py-2">Fee</th>
-                                        <th className="text-right py-2">Vatable</th>
-                                        <th className="text-right py-2">VAT</th>
-                                        <th className="text-right py-2">Total</th>
-                                        <th className="text-right py-2">Action</th>
+                    <div className="overflow-auto" aria-busy={historyLoading}>
+                        <table className="w-full min-w-[760px] text-sm" aria-label="POS transaction history table">
+                            <caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>
+                            <thead>
+                                <tr className="border-b border-slate-200 text-slate-500">
+                                    <th scope="col" className="text-left py-2">Invoice</th>
+                                    <th scope="col" className="text-left py-2">Datetime</th>
+                                    <th scope="col" className="text-left py-2">Cashier</th>
+                                    <th scope="col" className="text-left py-2">Payment</th>
+                                    <th scope="col" className="text-left py-2">Discount</th>
+                                    <th scope="col" className="text-right py-2">Fee</th>
+                                    <th scope="col" className="text-right py-2">Vatable</th>
+                                    <th scope="col" className="text-right py-2">VAT</th>
+                                    <th scope="col" className="text-right py-2">Total</th>
+                                    <th scope="col" className="text-right py-2">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {historyLoading ? (
+                                    <tr>
+                                        <td colSpan={10} className="py-4 text-center text-slate-500" aria-live="polite">
+                                            Loading transactions...
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {historyRows.map((row) => (
-                                        <tr key={row.pos_transaction_id} className="border-b border-slate-100">
-                                            <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
-                                            <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
-                                            <td className="py-2 text-slate-600">
-                                                {row.cashier?.username
-                                                    || row.acceptedByUser?.username
-                                                    || (row.order_source === 'online_store' ? 'Awaiting Staff' : '-')}
-                                            </td>
-                                            <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
-                                            <td className="py-2 text-slate-600">
-                                                {row.discount_label_snapshot
-                                                    ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                    : '-'}
-                                            </td>
-                                            <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
-                                            <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
-                                            <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
-                                            <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
-                                            <td className="py-2 text-right">
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => openHistoryDetail(row.pos_transaction_id)}
-                                                    disabled={historyDetailLoading}
-                                                >
-                                                    View
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {historyRows.length === 0 && (
-                                        <tr>
-                                            <td colSpan={10} className="py-6 text-center text-slate-500">No transactions found.</td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                                ) : (
+                                    <>
+                                        {historyRows.map((row) => (
+                                            <tr
+                                                key={row.pos_transaction_id}
+                                                className="border-b border-slate-100 hover:bg-slate-50"
+                                            >
+                                                <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
+                                                <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
+                                                <td className="py-2 text-slate-600">
+                                                    {row.cashier?.username
+                                                        || row.acceptedByUser?.username
+                                                        || (row.order_source === 'online_store' ? 'Awaiting Staff' : '-')}
+                                                </td>
+                                                <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
+                                                <td className="py-2 text-slate-600">
+                                                    {row.discount_label_snapshot
+                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
+                                                        : '-'}
+                                                </td>
+                                                <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
+                                                <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
+                                                <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
+                                                <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
+                                                <td className="py-2 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                openHistoryDetail(row.pos_transaction_id);
+                                                            }}
+                                                            disabled={historyDetailLoading}
+                                                            aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}
+                                                        >
+                                                            View
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                openInSalesReport(row);
+                                                            }}
+                                                            aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}
+                                                        >
+                                                            Sales
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {historyRows.length === 0 && (
+                                            <tr>
+                                                <td colSpan={10} className="py-6 text-center text-slate-500">No transactions found.</td>
+                                            </tr>
+                                        )}
+                                    </>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                     <div className="flex justify-end gap-2">
                         <Button
                             type="button"
@@ -1369,11 +1479,16 @@ export default function POSCheckoutTerminal({
                             className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm"
                         >
                             <option value="cash">Cash</option>
-                            <option value="gcash">GCash</option>
-                            <option value="maya">Maya</option>
-                            <option value="card">Card</option>
-                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
+                            <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
+                            <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
+                            <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
                         </select>
+                        {isMsmeMode && paymentType !== 'cash' && (
+                            <span className="mt-1 block text-[11px] text-amber-700">
+                                MSME mode uses a placeholder/manual flow for non-cash entries (no live gateway in v1).
+                            </span>
+                        )}
                     </label>
 
                     {currentMethodFeeConfig?.enabled && (
@@ -1409,13 +1524,41 @@ export default function POSCheckoutTerminal({
                             <div className="grid grid-cols-2 gap-2 mt-2">
                                 <label className="text-xs text-slate-500">
                                     Qty
-                                    <Input
-                                        type="number"
-                                        min="0.0001"
-                                        step="0.0001"
-                                        value={line.quantity}
-                                        onChange={(event) => updateCartQuantity(line.item_id, event.target.value || 0)}
-                                    />
+                                    <div className="mt-1 flex items-center gap-1">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-11 px-3 text-base"
+                                            onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) - 1)}
+                                        >
+                                            -
+                                        </Button>
+                                        <Input
+                                            type="number"
+                                            min="0.0001"
+                                            step="0.0001"
+                                            value={line.quantity}
+                                            onChange={(event) => updateCartQuantity(line.item_id, event.target.value || 0)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                                                    event.preventDefault();
+                                                    const delta = event.key === 'ArrowUp' ? 1 : -1;
+                                                    updateCartQuantity(line.item_id, Number(line.quantity || 0) + delta);
+                                                }
+                                            }}
+                                            className="h-11 text-base"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-11 px-3 text-base"
+                                            onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) + 1)}
+                                        >
+                                            +
+                                        </Button>
+                                    </div>
                                 </label>
                                 <label className="text-xs text-slate-500">
                                     Price
@@ -1427,6 +1570,15 @@ export default function POSCheckoutTerminal({
                                         onChange={(event) => updateCartLine(line.item_id, {
                                             sale_price: Number(event.target.value || 0)
                                         })}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                                                event.preventDefault();
+                                                const delta = event.key === 'ArrowUp' ? 0.25 : -0.25;
+                                                const nextValue = Math.max(0, Number(line.sale_price || 0) + delta);
+                                                updateCartLine(line.item_id, { sale_price: nextValue });
+                                            }
+                                        }}
+                                        className="h-11 text-base"
                                         disabled={!canOverridePrice}
                                     />
                                 </label>
@@ -1467,7 +1619,13 @@ export default function POSCheckoutTerminal({
                     Discount Preset
                     <select
                         value={selectedDiscountProfile}
-                        onChange={(event) => setSelectedDiscountProfile(event.target.value)}
+                        onChange={(event) => {
+                            const nextProfile = event.target.value;
+                            setSelectedDiscountProfile(nextProfile);
+                            if (nextProfile) {
+                                setManualDiscountAmountInput('');
+                            }
+                        }}
                         className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm"
                     >
                         <option value="">No Discount</option>
@@ -1479,6 +1637,27 @@ export default function POSCheckoutTerminal({
                                 </option>
                             ))}
                     </select>
+                </label>
+
+                <label className="text-xs text-slate-500 block mb-3">
+                    Manual Discount Amount (PHP)
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={manualDiscountAmountInput}
+                        onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setManualDiscountAmountInput(nextValue);
+                            if (Number(nextValue) > 0) {
+                                setSelectedDiscountProfile('');
+                            }
+                        }}
+                        placeholder="0.00"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-500">
+                        Manual and profile discounts are mutually exclusive.
+                    </span>
                 </label>
 
                 <label className="text-xs text-slate-500 block mb-3">
@@ -1494,6 +1673,10 @@ export default function POSCheckoutTerminal({
                     {selectedDiscount ? (
                         <span className="mt-1 block text-[11px] text-slate-500">
                             Auto-calculated from {selectedDiscount.name} ({money(selectedDiscount.percentage)}%).
+                        </span>
+                    ) : manualDiscountAmount > 0 ? (
+                        <span className="mt-1 block text-[11px] text-slate-500">
+                            Manual discount applied: PHP {money(manualDiscountAmount)}.
                         </span>
                     ) : (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -1590,9 +1773,27 @@ export default function POSCheckoutTerminal({
 
             {currentViewMode === 'receipt' && (
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                    <div className="mb-4">
-                        <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
-                        <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
+                            <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {normalizedTerminalId && (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                                    Terminal {normalizedTerminalId}
+                                </span>
+                            )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={!lastReceipt}
+                                onClick={() => openInSalesReport(lastReceipt)}
+                            >
+                                Open in Sales Report
+                            </Button>
+                        </div>
                     </div>
                     {lastReceipt ? (
                         <div className="space-y-3">

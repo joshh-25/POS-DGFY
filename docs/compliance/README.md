@@ -24,6 +24,10 @@ Evidence and submission packet:
 - `docs/compliance/evidence/drills/`
 - `docs/compliance/submission/`
 
+Final Review self-serve:
+- Tenant documentary requirements are completed in Settings > Compliance > Final review (upload or external URL).
+- Backend stores tenant documentary records and sign-off metadata; submission docs remain internal reference artifacts.
+
 Change declaration workflow:
 - `docs/compliance/impact-declarations/`
 

@@ -12,6 +12,7 @@ import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
+import { toast } from 'sonner';
 
 // Import step components
 import BasicInfoStep from './wizard/BasicInfoStep';
@@ -25,6 +26,7 @@ import PackagingLabelingStep from './wizard/PackagingLabelingStep';
 import CostFinancialStep from './wizard/CostFinancialStep';
 import QualityControlStep from './wizard/QualityControlStep';
 import RegulatoryComplianceStep from './wizard/RegulatoryComplianceStep';
+import POSSetupStep from './wizard/POSSetupStep';
 import SummaryStep from './wizard/SummaryStep';
 
 const STEPS = [
@@ -37,9 +39,10 @@ const STEPS = [
   { id: 7, name: 'Shelf Life', component: ShelfLifeStep },
   { id: 8, name: 'Packaging', component: PackagingLabelingStep },
   { id: 9, name: 'Costing', component: CostFinancialStep },
-  { id: 10, name: 'Quality Control', component: QualityControlStep },
-  { id: 11, name: 'Compliance', component: RegulatoryComplianceStep },
-  { id: 12, name: 'Review', component: SummaryStep },
+  { id: 10, name: 'POS Setup', component: POSSetupStep },
+  { id: 11, name: 'Quality Control', component: QualityControlStep },
+  { id: 12, name: 'Compliance', component: RegulatoryComplianceStep },
+  { id: 13, name: 'Review', component: SummaryStep },
 ];
 
 const defaultProductData = {
@@ -72,7 +75,19 @@ const defaultProductData = {
   fifo_enabled: false
 };
 
-export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDraft, items, product }) {
+export default function ProductCreateWizard({
+  open,
+  onClose,
+  onSubmit,
+  onSaveDraft,
+  items,
+  product,
+  posConfig = null,
+  onTogglePosVisibility,
+  onUploadPosImage,
+  onDeletePosImage,
+  onOpenBulkPosSetup
+}) {
   const [step, setStep] = useState(1);
   const [initialStep, setInitialStep] = useState(1);
   const [productData, setProductData] = useState(defaultProductData);
@@ -262,7 +277,7 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
 
   const handleFinalize = () => {
     if (productData.product_type === 'finished_goods' && !productData.vat_type) {
-      alert('VAT type is required to finalize finished goods.');
+      toast.error('VAT type is required to finalize finished goods.');
       return;
     }
     const finalData = {
@@ -278,7 +293,7 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
 
   const handleSubmit = async () => {
     if (productData.product_type === 'finished_goods' && !productData.vat_type) {
-      alert('VAT type is required for finished goods.');
+      toast.error('VAT type is required for finished goods.');
       return;
     }
     // Common cleanup function to ensure data validity before submission
@@ -370,7 +385,7 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="w-[90vw] max-w-4xl h-[90vh] max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-5 h-5 text-teal-600" />
@@ -390,7 +405,7 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
           </DialogHeader>
 
           {/* Progress Bar */}
-          <div className="py-4 border-b border-slate-200">
+          <div className="border-b border-slate-200 py-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-600">
                 Step {step} of {STEPS.length}
@@ -406,11 +421,17 @@ export default function ProductCreateWizard({ open, onClose, onSubmit, onSaveDra
           </div>
 
           {/* Step Content */}
-          <div className="flex-1 overflow-y-auto py-6">
+          <div className="wizard-step-content flex-1 overflow-y-auto py-4">
             <CurrentStepComponent
               data={productData}
               updateData={updateProductData}
               items={items}
+              productItem={product}
+              posConfig={posConfig}
+              onTogglePosVisibility={onTogglePosVisibility}
+              onUploadPosImage={onUploadPosImage}
+              onDeletePosImage={onDeletePosImage}
+              onOpenBulkPosSetup={onOpenBulkPosSetup}
             />
           </div>
 

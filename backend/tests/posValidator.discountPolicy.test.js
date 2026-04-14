@@ -9,7 +9,7 @@ const mockRes = () => {
 };
 
 describe('POS checkout discount policy validator', () => {
-    it('rejects non-zero discount without a discount profile', () => {
+    it('allows non-zero manual discount without a discount profile', () => {
         const req = {
             body: {
                 idempotency_key: 'idem-12345678',
@@ -24,9 +24,9 @@ describe('POS checkout discount policy validator', () => {
 
         validatePosCheckout(req, res, next);
 
-        expect(next).not.toHaveBeenCalled();
-        expect(res.status).toHaveBeenCalledWith(422);
-        expect(res.json).toHaveBeenCalled();
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.discount_amount).toBe(10);
     });
 
   it('allows non-zero discount when discount profile is provided', () => {
@@ -49,6 +49,27 @@ describe('POS checkout discount policy validator', () => {
         expect(res.status).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedData.discount_profile_name).toBe('Employee Discount');
+    });
+
+    it('rejects discount_rate without discount profile', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-12345678',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                discount_amount: 10,
+                discount_rate: 20,
+                lines: [{ item_id: 1, quantity: 1, sale_price: 100 }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+        expect(res.json).toHaveBeenCalled();
     });
 
     it('accepts optional non-negative service_fee_amount', () => {

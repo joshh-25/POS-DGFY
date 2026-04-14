@@ -18,6 +18,8 @@ describe('ComplianceProgramPanel contracts', () => {
   it('derives next blocking step and unresolved requirement guidance from checklist metadata', () => {
     expect(content).toContain("const nextBlockingStepKey = String(checklist.next_blocking_step || '').trim();");
     expect(content).toContain('const nextBlockingStepMeta = STEP_META[nextBlockingStepKey] || null;');
+    expect(content).toContain("final_review: { title: 'Final Review', actionTarget: '#section-final-review' }");
+    expect(content).toContain('id="section-final-review"');
     expect(content).toContain("Next blocking step: <strong>{nextBlockingStepMeta.title}</strong>");
     expect(content).toContain("unresolved requirement{unresolvedRequirementCount === 1 ? '' : 's'}");
   });

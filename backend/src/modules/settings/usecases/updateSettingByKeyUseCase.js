@@ -2,10 +2,13 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
+import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
+
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -38,6 +41,25 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
         }
 
         try {
+            let normalizedValue = value;
+            if (key === WORKFLOW_MODE_SETTING_KEY) {
+                if (!isWorkflowMode(value)) {
+                    return fail(new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `ops_workflow_mode must be one of: manufacturing, msme`,
+                        { statusCode: 422 }
+                    ));
+                }
+                if (actorUser?.is_master_admin !== true) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only master admin can update ops_workflow_mode',
+                        { statusCode: 403 }
+                    ));
+                }
+                normalizedValue = normalizeWorkflowMode(value);
+            }
+
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
                 const complianceResult = await assertComplianceOperationAllowed({
@@ -46,7 +68,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                     operation: COMPLIANCE_OPERATION.SETTINGS_UPDATE,
                     context: {
                         setting_keys: [key],
-                        setting_updates: { [key]: value }
+                        setting_updates: { [key]: normalizedValue }
                     },
                     actorUser
                 });
@@ -55,7 +77,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                 }
             }
 
-            const updatedSetting = await settingsRepository.updateSettingByKey(key, value);
+            const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
             return ok(updatedSetting);
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update setting'));

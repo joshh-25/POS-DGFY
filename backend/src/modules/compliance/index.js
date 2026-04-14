@@ -13,6 +13,11 @@ import {
     buildCreateComplianceArtifactUseCase,
     buildUpdateComplianceArtifactUseCase,
     buildUpdateComplianceArtifactVerificationUseCase,
+    buildListFinalReviewDocumentsUseCase,
+    buildUpsertFinalReviewDocumentUseCase,
+    buildUploadFinalReviewDocumentUseCase,
+    buildReviewFinalReviewDocumentUseCase,
+    buildUpsertFinalReviewSignoffUseCase,
     buildListCompliancePeripheralsUseCase,
     buildCreateCompliancePeripheralUseCase,
     buildUpdateCompliancePeripheralUseCase,
@@ -93,6 +98,30 @@ export const updateComplianceArtifactUseCase = buildUpdateComplianceArtifactUseC
 });
 
 export const updateComplianceArtifactVerificationUseCase = buildUpdateComplianceArtifactVerificationUseCase({
+    complianceRepository,
+    logger
+});
+
+export const listFinalReviewDocumentsUseCase = buildListFinalReviewDocumentsUseCase({
+    complianceRepository
+});
+
+export const upsertFinalReviewDocumentUseCase = buildUpsertFinalReviewDocumentUseCase({
+    complianceRepository,
+    logger
+});
+
+export const uploadFinalReviewDocumentUseCase = buildUploadFinalReviewDocumentUseCase({
+    complianceRepository,
+    logger
+});
+
+export const reviewFinalReviewDocumentUseCase = buildReviewFinalReviewDocumentUseCase({
+    complianceRepository,
+    logger
+});
+
+export const upsertFinalReviewSignoffUseCase = buildUpsertFinalReviewSignoffUseCase({
     complianceRepository,
     logger
 });

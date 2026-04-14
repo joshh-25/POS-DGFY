@@ -28,6 +28,43 @@ const SECURITY_INCIDENT_STATUS = Object.freeze({
     RESOLVED: 'resolved'
 });
 const SECURITY_SIGNAL_EVENT_TYPE = 'security_signal';
+const FINAL_REVIEW_DOCUMENT_REQUIREMENTS = Object.freeze({
+    submission_system_flow_diagram_mmd: {
+        code: 'submission.system_flow_diagram',
+        label: 'System flow diagram (Mermaid source)',
+        requiresFreshness: false
+    },
+    submission_system_flow_diagram_png: {
+        code: 'submission.system_flow_diagram_image',
+        label: 'System flow diagram (exported image)',
+        requiresFreshness: false
+    },
+    submission_software_specification: {
+        code: 'submission.software_specification',
+        label: 'Software specification packet',
+        requiresFreshness: false
+    },
+    submission_backup_dr_plan: {
+        code: 'submission.backup_disaster_recovery_plan',
+        label: 'Data backup and disaster recovery plan',
+        requiresFreshness: false
+    },
+    submission_filing_instructions: {
+        code: 'submission.filing_instructions',
+        label: 'Filing instructions',
+        requiresFreshness: false
+    },
+    evidence_restore_drill: {
+        code: 'submission.restore_drill_evidence',
+        label: 'Latest restore drill evidence',
+        requiresFreshness: true
+    },
+    evidence_encryption_verification: {
+        code: 'submission.encryption_verification_evidence',
+        label: 'Latest encryption verification evidence',
+        requiresFreshness: true
+    }
+});
 
 const normalizeComplianceProfileValue = (value) => {
     if (!value) return {};
@@ -52,6 +89,17 @@ const parseDate = (value) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeDateValue = (value) => {
+    const parsed = parseDate(value);
+    return parsed ? parsed.toISOString() : null;
+};
+
+const getFinalReviewRequirement = (requirementCode) => {
+    const normalized = String(requirementCode || '').trim();
+    if (!normalized) return null;
+    return FINAL_REVIEW_DOCUMENT_REQUIREMENTS[normalized] || null;
+};
+
 const isTrueLike = (value) => {
     if (value === true || value === 1) return true;
     if (typeof value === 'string') {
@@ -74,7 +122,7 @@ const resolvePaymentHandoffPolicyReady = (profile = {}, now = new Date()) => {
     return isTrueLike(profile?.bsp?.payment_control_reviewed);
 };
 
-const resolveChecklistEvidence = async ({ complianceRepository, profile = {} }) => {
+const resolveChecklistEvidence = async ({ complianceRepository, tenantId = null, profile = {} }) => {
     const [fiscalState, appendOnlyState, submissionReadiness, encryptionPolicyState] = await Promise.all([
         typeof complianceRepository?.getFiscalAccumulatorState === 'function'
             ? complianceRepository.getFiscalAccumulatorState()
@@ -83,7 +131,7 @@ const resolveChecklistEvidence = async ({ complianceRepository, profile = {} }) 
             ? complianceRepository.getComplianceAuditAppendOnlyState()
             : Promise.resolve({ ready: true, trigger_names: [] }),
         typeof complianceRepository?.getSubmissionArtifactReadiness === 'function'
-            ? complianceRepository.getSubmissionArtifactReadiness()
+            ? complianceRepository.getSubmissionArtifactReadiness(tenantId)
             : Promise.resolve({ ready: true, complete: 0, total: 0, missing: 0, items: [] }),
         typeof complianceRepository?.getEncryptionPolicyPrerequisitesState === 'function'
             ? complianceRepository.getEncryptionPolicyPrerequisitesState()
@@ -575,6 +623,7 @@ export const buildEvaluateComplianceOperationUseCase = ({ complianceRepository, 
             if (needsStatefulChecks) {
                 checklistEvidence = await resolveChecklistEvidence({
                     complianceRepository,
+                    tenantId: effectiveTenant.id,
                     profile: normalizedProfile
                 });
             }
@@ -689,6 +738,7 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
             const normalizedProfile = normalizeComplianceProfileValue(tenant.compliance_profile);
             const checklistEvidence = await resolveChecklistEvidence({
                 complianceRepository,
+                tenantId: tenant.id,
                 profile: normalizedProfile
             });
             const checklist = evaluateComplianceChecklist({
@@ -948,6 +998,7 @@ export const buildGetComplianceChecklistUseCase = ({ complianceRepository, getSe
             const normalizedProfile = normalizeComplianceProfileValue(tenant.compliance_profile);
             const checklistEvidence = await resolveChecklistEvidence({
                 complianceRepository,
+                tenantId: tenant.id,
                 profile: normalizedProfile
             });
             const checklist = evaluateComplianceChecklist({
@@ -1599,6 +1650,362 @@ export const buildUpdateCompliancePeripheralVerificationUseCase = ({ complianceR
             return ok(updated);
         } catch (error) {
             return failWithDomainOrInternal(error, 'Failed to update compliance peripheral verification');
+        }
+    };
+};
+
+export const buildListFinalReviewDocumentsUseCase = ({ complianceRepository }) => {
+    return async ({ tenantId }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            const [documents, signoff] = await Promise.all([
+                complianceRepository.listFinalReviewDocumentsByTenantId(tenantId),
+                complianceRepository.getFinalReviewSignoffByTenantId(tenantId)
+            ]);
+            return ok({ documents, signoff });
+        } catch (error) {
+            return fail(new DomainError(
+                DomainErrorCode.INTERNAL_ERROR,
+                error.message || 'Failed to list final review documents',
+                { statusCode: 500 }
+            ));
+        }
+    };
+};
+
+export const buildUpsertFinalReviewDocumentUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, payload = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const requirementCode = String(payload.requirement_code || '').trim();
+        const requirement = getFinalReviewRequirement(requirementCode);
+        if (!requirement) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Unsupported requirement_code',
+                { statusCode: 422 }
+            ));
+        }
+
+        const sourceType = String(payload.source_type || '').trim();
+        if (!['external_url', 'upload'].includes(sourceType)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'source_type must be upload or external_url',
+                { statusCode: 422 }
+            ));
+        }
+
+        const evidenceMaxAgeDays = Number.parseInt(process.env.COMPLIANCE_EVIDENCE_MAX_AGE_DAYS || '45', 10) || 45;
+        const freshnessDate = normalizeDateValue(payload.freshness_date);
+        let isValid = true;
+        const qualityIssues = [];
+
+        if (sourceType === 'external_url') {
+            const externalUrl = String(payload.external_url || '').trim();
+            if (!/^https?:\/\//i.test(externalUrl)) {
+                isValid = false;
+                qualityIssues.push('external_url_invalid');
+            }
+            if (requirement.requiresFreshness) {
+                const ageDays = freshnessDate ? Math.floor((Date.now() - new Date(freshnessDate).getTime()) / (24 * 60 * 60 * 1000)) : null;
+                if (!freshnessDate || !Number.isFinite(ageDays)) {
+                    isValid = false;
+                    qualityIssues.push('invalid_freshness_date');
+                } else if (ageDays > evidenceMaxAgeDays) {
+                    isValid = false;
+                    qualityIssues.push(`stale:${ageDays}d`);
+                }
+            }
+        }
+
+        try {
+            assertMasterAdminLevelActor(actorUser);
+            const updated = await complianceRepository.upsertFinalReviewDocument(tenantId, requirementCode, {
+                source_type: sourceType,
+                external_url: sourceType === 'external_url' ? String(payload.external_url || '').trim() : null,
+                freshness_date: freshnessDate,
+                status: isValid ? 'auto_valid' : 'invalid',
+                review_state: 'pending_review',
+                review_note: null,
+                reviewed_by_actor_type: null,
+                reviewed_by_user_id: null,
+                reviewed_at: null,
+                parsed_metadata: {
+                    quality_issues: qualityIssues
+                }
+            }, { lock: true });
+
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.final_review.upsert_document',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        requirement_code: requirementCode,
+                        source_type: sourceType,
+                        status: updated.status
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpsertFinalReviewDocumentUseCase',
+                    stage: 'final_review_document_upsert'
+                }
+            });
+
+            return ok(updated);
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to update final review document');
+        }
+    };
+};
+
+export const buildUploadFinalReviewDocumentUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, documentId, file = null, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedDocumentId = parsePositiveInt(documentId);
+        if (!normalizedDocumentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'documentId must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+        if (!file) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'file is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            assertMasterAdminLevelActor(actorUser);
+            const existing = await complianceRepository.getFinalReviewDocumentById(normalizedDocumentId, { lock: true });
+            if (!existing || existing.tenant_id !== tenantId) {
+                return fail(new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Final review document not found',
+                    { statusCode: 404 }
+                ));
+            }
+
+            const stored = await complianceRepository.storeFinalReviewUpload({
+                tenantId,
+                requirementCode: existing.requirement_code,
+                file
+            });
+            if (!stored) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Unable to process uploaded file',
+                    { statusCode: 422 }
+                ));
+            }
+
+            const updated = await complianceRepository.updateFinalReviewDocumentById(normalizedDocumentId, {
+                source_type: 'upload',
+                external_url: null,
+                ...stored,
+                status: 'auto_valid',
+                review_state: 'pending_review',
+                review_note: null,
+                reviewed_by_actor_type: null,
+                reviewed_by_user_id: null,
+                reviewed_at: null
+            }, { lock: true });
+
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.final_review.upload_document',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        document_id: normalizedDocumentId,
+                        requirement_code: existing.requirement_code,
+                        file_name: updated.file_name
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUploadFinalReviewDocumentUseCase',
+                    stage: 'final_review_document_upload'
+                }
+            });
+
+            return ok(updated);
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to upload final review document');
+        }
+    };
+};
+
+export const buildReviewFinalReviewDocumentUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, documentId, payload = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+        const normalizedDocumentId = parsePositiveInt(documentId);
+        if (!normalizedDocumentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'documentId must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        const action = String(payload.action || '').trim().toLowerCase();
+        if (!['note_review', 'revoke', 'restore_valid'].includes(action)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'action must be one of: note_review, revoke, restore_valid',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            if (!isPlatformAdminActor(actorUser)) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Platform admin access is required for documentary review actions',
+                    { statusCode: 403 }
+                ));
+            }
+
+            const existing = await complianceRepository.getFinalReviewDocumentById(normalizedDocumentId, { lock: true });
+            if (!existing || existing.tenant_id !== tenantId) {
+                return fail(new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Final review document not found',
+                    { statusCode: 404 }
+                ));
+            }
+
+            const nextPayload = {
+                review_note: payload.review_note || null,
+                reviewed_by_actor_type: 'platform_admin',
+                reviewed_by_user_id: parsePositiveInt(actorUser?.user_id),
+                reviewed_at: new Date()
+            };
+            if (action === 'note_review') {
+                nextPayload.review_state = 'review_noted';
+            } else if (action === 'revoke') {
+                nextPayload.review_state = 'revoked';
+                nextPayload.status = 'revoked';
+            } else {
+                nextPayload.review_state = 'review_noted';
+                nextPayload.status = 'auto_valid';
+            }
+
+            const updated = await complianceRepository.updateFinalReviewDocumentById(normalizedDocumentId, nextPayload, { lock: true });
+
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.final_review.review_document',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        document_id: normalizedDocumentId,
+                        requirement_code: existing.requirement_code,
+                        action
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildReviewFinalReviewDocumentUseCase',
+                    stage: 'final_review_document_review'
+                }
+            });
+
+            return ok(updated);
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to review final review document');
+        }
+    };
+};
+
+export const buildUpsertFinalReviewSignoffUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, payload = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            assertMasterAdminLevelActor(actorUser);
+            const updated = await complianceRepository.upsertFinalReviewSignoffByTenantId(tenantId, {
+                engineering_approver: String(payload.engineering_approver || '').trim() || null,
+                compliance_approver: String(payload.compliance_approver || '').trim() || null,
+                filing_batch_id: String(payload.filing_batch_id || '').trim() || null,
+                engineering_signed_at: normalizeDateValue(payload.engineering_signed_at),
+                compliance_signed_at: normalizeDateValue(payload.compliance_signed_at)
+            }, { lock: true });
+
+            await persistAuditLogWithFallback({
+                complianceRepository,
+                logger,
+                auditPayload: {
+                    tenant_id: tenantId,
+                    event_type: 'preflight_evaluation',
+                    operation: 'compliance.final_review.upsert_signoff',
+                    decision: COMPLIANCE_DECISION.ALLOW,
+                    reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    metadata: {
+                        has_engineering_approver: Boolean(updated.engineering_approver),
+                        has_compliance_approver: Boolean(updated.compliance_approver),
+                        has_filing_batch_id: Boolean(updated.filing_batch_id)
+                    }
+                },
+                fallbackContext: {
+                    path: 'buildUpsertFinalReviewSignoffUseCase',
+                    stage: 'final_review_signoff_upsert'
+                }
+            });
+
+            return ok(updated);
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to update final review signoff metadata');
         }
     };
 };

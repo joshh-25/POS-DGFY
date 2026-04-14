@@ -13,6 +13,15 @@ const DEFAULT_REPOSITORY_DEPENDENCIES = {
 };
 
 describe('inventory itemRepository', () => {
+  beforeEach(() => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'manufacturing' },
+      enable_auto_reorder: { value: true },
+      min_stock_threshold_percent: { value: 40 },
+      purchase_allowance_percent: { value: 20 }
+    });
+  });
+
   afterEach(() => {
     inventoryRepositoryDependencies.validateComposition = DEFAULT_REPOSITORY_DEPENDENCIES.validateComposition;
     inventoryRepositoryDependencies.invalidateDependencyGraphCache = DEFAULT_REPOSITORY_DEPENDENCIES.invalidateDependencyGraphCache;
@@ -441,6 +450,10 @@ describe('inventory itemRepository', () => {
   });
 
   it('returns supplier coverage summary grouped by supplier assignment', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'manufacturing' }
+    });
+
     const Item = {
       findAll: jest.fn().mockResolvedValue([
         {
@@ -485,6 +498,7 @@ describe('inventory itemRepository', () => {
 
     const result = await itemRepository.getItemSupplierCoverage();
 
+    expect(inventoryRepositoryDependencies.getAllSettings).toHaveBeenCalled();
     expect(Item.findAll).toHaveBeenCalled();
     expect(SupplierItem.findAll).toHaveBeenCalled();
     expect(result.items_with_supplier).toHaveLength(1);
@@ -494,6 +508,96 @@ describe('inventory itemRepository', () => {
       items_with_supplier_count: 1,
       items_without_supplier_count: 1,
       coverage_percent: 50
+    });
+  });
+
+  it('includes product category in supplier coverage when workflow mode is MSME', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'msme' }
+    });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-msme-coverage' });
+
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([])
+    };
+    const Supplier = {};
+    const SupplierItem = {
+      findAll: jest.fn().mockResolvedValue([])
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'Supplier') return Supplier;
+      if (name === 'SupplierItem') return SupplierItem;
+      return {};
+    });
+
+    await itemRepository.getItemSupplierCoverage();
+
+    const args = Item.findAll.mock.calls[0][0];
+    expect(args.where.category[Op.in]).toContain('product');
+    expect(args.where.category[Op.in]).toContain('supplies');
+  });
+
+  it('replaces supplier links for an item deterministically', async () => {
+    const itemRecord = { item_id: 77 };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const Supplier = {
+      findAll: jest.fn().mockResolvedValue([
+        { supplier_id: 5, name: 'Vendor A' },
+        { supplier_id: 9, name: 'Vendor B' }
+      ])
+    };
+    const SupplierItem = {
+      destroy: jest.fn().mockResolvedValue(2),
+      bulkCreate: jest.fn().mockResolvedValue([])
+    };
+
+    const transaction = {
+      finished: false,
+      commit: jest.fn(async () => {
+        transaction.finished = 'commit';
+      }),
+      rollback: jest.fn(async () => {
+        transaction.finished = 'rollback';
+      })
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'Supplier') return Supplier;
+      if (name === 'SupplierItem') return SupplierItem;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.replaceItemSuppliers(77, [
+      { supplier_id: 5, moq: 2, price_per_unit: 10.5 },
+      { supplier_id: 9, moq: 4, price_per_unit: 10.2 }
+    ]);
+
+    expect(sequelize.transaction).toHaveBeenCalled();
+    expect(Item.findOne).toHaveBeenCalled();
+    expect(SupplierItem.destroy).toHaveBeenCalledWith({
+      where: { item_id: 77 },
+      transaction
+    });
+    expect(SupplierItem.bulkCreate).toHaveBeenCalledWith([
+      { item_id: 77, supplier_id: 5, moq: 2, price_per_unit: 10.5 },
+      { item_id: 77, supplier_id: 9, moq: 4, price_per_unit: 10.2 }
+    ], { transaction });
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(result).toEqual({
+      item_id: 77,
+      supplier_count: 2,
+      suppliers: [
+        { supplier_id: 5, supplier_name: 'Vendor A', moq: 2, price_per_unit: 10.5 },
+        { supplier_id: 9, supplier_name: 'Vendor B', moq: 4, price_per_unit: 10.2 }
+      ]
     });
   });
 
@@ -723,6 +827,48 @@ describe('inventory itemRepository', () => {
 
     expect(Item.create).not.toHaveBeenCalled();
     expect(transaction.commit).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalled();
+  });
+
+  it('enforces MSME pricing requirements on create for non-draft items', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'msme' }
+    });
+
+    const Item = {
+      findOne: jest.fn(),
+      create: jest.fn()
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-create-msme-pricing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.createItem({
+      status: 'active',
+      category: 'supplies',
+      sku_code: 'MSME-001',
+      name: 'Soap',
+      cost_per_unit: 12.5,
+      default_sale_price: null
+    }, 12)).rejects.toMatchObject({
+      statusCode: 422,
+      message: 'default_sale_price is required for MSME items'
+    });
+
+    expect(Item.findOne).not.toHaveBeenCalled();
+    expect(Item.create).not.toHaveBeenCalled();
     expect(transaction.rollback).toHaveBeenCalled();
   });
 
@@ -1015,6 +1161,52 @@ describe('inventory itemRepository', () => {
     await expect(itemRepository.updateItem(17, { sku_code: 'NEW-SKU' }, 9)).rejects.toMatchObject({
       statusCode: 409,
       message: 'Item with this SKU code already exists'
+    });
+
+    expect(transaction.commit).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalled();
+  });
+
+  it('enforces MSME pricing requirements on update when final payload is incomplete', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'msme' }
+    });
+
+    const itemRecord = {
+      item_id: 18,
+      sku_code: 'MSME-UPD-18',
+      current_stock: 1,
+      fifo_enabled: false,
+      status: 'active',
+      category: 'supplies',
+      cost_per_unit: null,
+      default_sale_price: null,
+      wizard_metadata: null,
+      update: jest.fn()
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-update-msme-pricing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.updateItem(18, { name: 'Updated MSME Item' }, 9)).rejects.toMatchObject({
+      statusCode: 422,
+      message: 'cost_per_unit is required for MSME items'
     });
 
     expect(transaction.commit).not.toHaveBeenCalled();

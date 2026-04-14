@@ -15,7 +15,7 @@ Documentation was updated to match current compliance hardening/test flows. Stal
 ## Documentation Updates
 1. Updated `docs/testing/README.md` with compliance activation readiness E2E commands and matrix usage.
 2. Updated `docs/guides/SCRIPTS_GUIDE.md` to document `seed_compliance_activation_data.js` usage and safety flags.
-3. Rewrote `docs/testing/receive-token-fix-evaluation.md` to remove a stale missing-script reference and normalize text encoding.
+3. Rewrote receive-token verification report (now archived at `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`) to remove a stale missing-script reference and normalize text encoding.
 
 ## Workspace Cleanup Performed
 Removed unreferenced and outdated ad-hoc scripts from `backend/scripts`:

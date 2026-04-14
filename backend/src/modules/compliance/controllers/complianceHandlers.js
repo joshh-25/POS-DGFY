@@ -9,6 +9,11 @@ import {
     createComplianceArtifactUseCase,
     updateComplianceArtifactUseCase,
     updateComplianceArtifactVerificationUseCase,
+    listFinalReviewDocumentsUseCase,
+    upsertFinalReviewDocumentUseCase,
+    uploadFinalReviewDocumentUseCase,
+    reviewFinalReviewDocumentUseCase,
+    upsertFinalReviewSignoffUseCase,
     listCompliancePeripheralsUseCase,
     createCompliancePeripheralUseCase,
     updateCompliancePeripheralUseCase,
@@ -282,6 +287,132 @@ export const updateComplianceArtifactVerification = async (req, res, next) => {
     }
 };
 
+export const listFinalReviewDocuments = async (req, res, next) => {
+    try {
+        const result = await listFinalReviewDocumentsUseCase({
+            tenantId: resolveTenantId(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertFinalReviewDocument = async (req, res, next) => {
+    try {
+        const result = await upsertFinalReviewDocumentUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body,
+            actorUser: req.user
+        });
+        if (result?.success) {
+            invalidateTenantCache(req);
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Final review document updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const uploadFinalReviewDocument = async (req, res, next) => {
+    try {
+        const result = await uploadFinalReviewDocumentUseCase({
+            tenantId: resolveTenantId(req),
+            documentId: req.validatedParams?.document_id || req.params?.document_id,
+            file: req.file || null,
+            actorUser: req.user
+        });
+        if (result?.success) {
+            invalidateTenantCache(req);
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Final review document uploaded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reviewFinalReviewDocument = async (req, res, next) => {
+    try {
+        const result = await reviewFinalReviewDocumentUseCase({
+            tenantId: resolveTenantId(req),
+            documentId: req.validatedParams?.document_id || req.params?.document_id,
+            payload: req.validatedData || req.body,
+            actorUser: req.user
+        });
+        if (result?.success) {
+            invalidateTenantCache(req);
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Final review document review updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertFinalReviewSignoff = async (req, res, next) => {
+    try {
+        const result = await upsertFinalReviewSignoffUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body,
+            actorUser: req.user
+        });
+        if (result?.success) {
+            invalidateTenantCache(req);
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Final review sign-off metadata updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const listCompliancePeripherals = async (req, res, next) => {
     try {
         const result = await listCompliancePeripheralsUseCase({
@@ -438,6 +569,11 @@ export default {
     createComplianceArtifact,
     updateComplianceArtifact,
     updateComplianceArtifactVerification,
+    listFinalReviewDocuments,
+    upsertFinalReviewDocument,
+    uploadFinalReviewDocument,
+    reviewFinalReviewDocument,
+    upsertFinalReviewSignoff,
     listCompliancePeripherals,
     createCompliancePeripheral,
     updateCompliancePeripheral,

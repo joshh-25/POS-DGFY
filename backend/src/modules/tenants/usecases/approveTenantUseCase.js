@@ -1,5 +1,22 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+
+const extractWorkflowModeFromTenant = (tenant) => {
+    const rawSettings = tenant?.settings;
+    if (!rawSettings) return normalizeWorkflowMode(null);
+
+    let parsedSettings = rawSettings;
+    if (typeof parsedSettings === 'string') {
+        try {
+            parsedSettings = JSON.parse(parsedSettings);
+        } catch {
+            parsedSettings = {};
+        }
+    }
+
+    return normalizeWorkflowMode(parsedSettings?.workflow_mode);
+};
 
 export const buildApproveTenantUseCase = ({
     tenantAdminRepository,
@@ -32,7 +49,8 @@ export const buildApproveTenantUseCase = ({
                 dbName: tenant.db_name,
                 companyToken: tenant.company_token,
                 adminEmail: tenant.admin_email,
-                adminPasswordHash: tenant.admin_password_hash
+                adminPasswordHash: tenant.admin_password_hash,
+                workflowMode: extractWorkflowModeFromTenant(tenant)
             });
 
             let emailSent = false;

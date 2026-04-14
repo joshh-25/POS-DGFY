@@ -182,4 +182,31 @@ describe('salesHandlers transport contracts', () => {
     expect(res.json).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('forwards source_id handoff query to use-case for cross-page transaction context', async () => {
+    mockListSalesTransactionsUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        transactions: [{ source: 'POS', source_id: 99, reference_no: 'INV-000099' }],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        summary: { gross_sales: 220, cogs: 120, gross_profit: 100 }
+      }
+    });
+
+    const req = {
+      user: { permissions: ['reports:view'], is_master_admin: false },
+      query: { source: 'POS', source_id: '99' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await listSalesTransactions(req, res, next);
+
+    expect(mockListSalesTransactionsUseCase).toHaveBeenCalledWith({
+      query: { source: 'POS', source_id: '99' },
+      userPermissions: ['reports:view']
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(next).not.toHaveBeenCalled();
+  });
 });

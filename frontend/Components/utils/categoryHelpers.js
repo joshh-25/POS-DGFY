@@ -1,4 +1,5 @@
 import { Package, Beaker, Box, Factory, Wrench } from 'lucide-react';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 
 /**
  * Category Constants - Single Source of Truth for Frontend
@@ -22,6 +23,16 @@ export const CATEGORIES = {
 export const PRODUCT_TYPES = {
     WORK_IN_PROGRESS: 'work_in_progress',
     FINISHED_GOODS: 'finished_goods'
+};
+
+const resolveWorkflowMode = (workflowModeOrOptions = DEFAULT_WORKFLOW_MODE) => {
+    if (typeof workflowModeOrOptions === 'string') {
+        return normalizeWorkflowMode(workflowModeOrOptions);
+    }
+    if (workflowModeOrOptions && typeof workflowModeOrOptions === 'object') {
+        return normalizeWorkflowMode(workflowModeOrOptions.workflowMode);
+    }
+    return DEFAULT_WORKFLOW_MODE;
 };
 
 // Centralized display configuration
@@ -129,13 +140,32 @@ export const isManufactured = (item) => {
  * @param {object} item - Item object
  * @returns {boolean}
  */
-export const isPurchasable = (item) => {
+export const isPurchasable = (item, workflowModeOrOptions = DEFAULT_WORKFLOW_MODE) => {
     if (!item) return false;
+    const workflowMode = resolveWorkflowMode(workflowModeOrOptions);
+    const categories = workflowMode === 'msme'
+        ? [CATEGORIES.RAW_MATERIAL, CATEGORIES.PACKAGING, CATEGORIES.SUPPLIES, CATEGORIES.PRODUCT]
+        : [CATEGORIES.RAW_MATERIAL, CATEGORIES.PACKAGING, CATEGORIES.SUPPLIES];
+
+    return categories.includes(item.category);
+};
+
+/**
+ * Check if item should be shown under MSME category filters.
+ * Legacy manufacturing categories map to supplies for MSME visibility.
+ * @param {object} item - Item object
+ * @returns {'product'|'supplies'|null}
+ */
+export const getMsmeCategoryView = (item) => {
+    if (!item) return null;
+    if (item.category === CATEGORIES.PRODUCT) {
+        return CATEGORIES.PRODUCT;
+    }
     return [
         CATEGORIES.RAW_MATERIAL,
         CATEGORIES.PACKAGING,
         CATEGORIES.SUPPLIES
-    ].includes(item.category);
+    ].includes(item.category) ? CATEGORIES.SUPPLIES : null;
 };
 
 /**
@@ -143,8 +173,8 @@ export const isPurchasable = (item) => {
  * @param {object} item - Item object
  * @returns {boolean}
  */
-export const canBeSupplierItem = (item) => {
-    return isPurchasable(item);
+export const canBeSupplierItem = (item, workflowModeOrOptions = DEFAULT_WORKFLOW_MODE) => {
+    return isPurchasable(item, workflowModeOrOptions);
 };
 
 /**
@@ -242,6 +272,7 @@ export default {
     getCategoryBadgeColor,
     isManufactured,
     isPurchasable,
+    getMsmeCategoryView,
     canBeSupplierItem,
     canBeJobOrderOutput,
     canBeJobOrderInput,

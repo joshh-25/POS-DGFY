@@ -16,6 +16,8 @@ export const createItem = async (itemData, userId = null) => itemCommandUseCases
 
 export const updateItem = async (itemId, itemData, userId = null) => itemCommandUseCases.updateItem(itemId, itemData, userId);
 
+export const replaceItemSuppliers = async (itemId, suppliers = []) => itemCommandUseCases.replaceItemSuppliers(itemId, suppliers);
+
 export const deleteItem = async (itemId, userId) => itemCommandUseCases.deleteItem(itemId, userId);
 
 export const finalizeItem = async (itemId, itemData = {}, userId = null) => itemCommandUseCases.finalizeItem(itemId, itemData, userId);

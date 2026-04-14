@@ -317,7 +317,7 @@ Without automation, adding a new AI tool requires editing 3-4 files. Missing any
 
 #### Implementation Template
 
-**Validation Script (`scripts/validate-ai-tools.js`):**
+**Validation Script (`backend/scripts/validate-ai-tools.js`):**
 ```javascript
 #!/usr/bin/env node
 /**
@@ -388,7 +388,7 @@ if (errors.length === 0) {
 }
 ```
 
-**Documentation Generator (`scripts/generate-ai-docs.js`):**
+**Documentation Generator (`backend/scripts/generate-ai-docs.js`):**
 ```javascript
 #!/usr/bin/env node
 /**
@@ -472,8 +472,8 @@ fi
 ```json
 {
   "scripts": {
-    "validate:ai": "node scripts/validate-ai-tools.js",
-    "generate:ai-docs": "node scripts/generate-ai-docs.js",
+    "validate:ai": "cd backend && node scripts/validate-ai-tools.js",
+    "generate:ai-docs": "cd backend && node scripts/generate-ai-docs.js",
     "ai:check": "npm run validate:ai && npm run generate:ai-docs"
   }
 }

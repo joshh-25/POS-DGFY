@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Settings as SettingsIcon,
   Save,
@@ -44,8 +44,19 @@ import * as tenantLocationService from '../src/services/tenantLocationService.js
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import OpenStreetMapPinPicker from '../src/components/maps/OpenStreetMapPinPicker.jsx';
 import ComplianceProgramPanel from '../src/features/compliance/components/ComplianceProgramPanel.jsx';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
+import {
+  resolveSettingsDeepLink,
+  resolveSettingsTab,
+  withSettingsTabInSearch
+} from '../src/features/settings/settingsDeepLink.js';
+import { broadcastWorkflowModeChange } from '../src/features/settings/WorkflowModeContext.jsx';
+import {
+  DEFAULT_WORKFLOW_MODE,
+  getWorkflowModeLabel,
+  normalizeWorkflowMode
+} from '../src/features/settings/workflowMode.js';
 
 const ORDER_METHOD_FEE_DEFINITIONS = [
   { key: 'dine_in', label: 'Dine In', defaultFeeLabel: 'Dine In Fee' },
@@ -54,6 +65,32 @@ const ORDER_METHOD_FEE_DEFINITIONS = [
   { key: 'delivery', label: 'Delivery', defaultFeeLabel: 'Delivery Fee' },
   { key: 'online', label: 'Online', defaultFeeLabel: 'Online Fee' }
 ];
+const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
+const HASH_TARGET_ID_PATTERN = /^[A-Za-z][-A-Za-z0-9_:.]*$/;
+
+const findElementByHashTarget = (target) => {
+  const normalizedTarget = String(target || '').trim();
+  if (!normalizedTarget.startsWith('#')) return null;
+  const rawId = normalizedTarget.slice(1);
+  if (!rawId) return null;
+  let decodedId = rawId;
+  try {
+    decodedId = decodeURIComponent(rawId);
+  } catch {
+    return null;
+  }
+  if (!HASH_TARGET_ID_PATTERN.test(decodedId)) {
+    return null;
+  }
+  return document.getElementById(decodedId);
+};
+
+const sanitizeTerminalRegistryId = (value) => String(value || '')
+  .trim()
+  .toUpperCase()
+  .replace(/\s+/g, '-')
+  .replace(/[^A-Z0-9._-]/g, '');
 
 const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((acc, method) => {
   acc[method.key] = {
@@ -63,6 +100,54 @@ const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((
   };
   return acc;
 }, {});
+
+const normalizeTerminalRegistry = (rawRegistry) => {
+  let parsed = rawRegistry;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  const seen = new Set();
+  const normalized = [];
+  parsed.forEach((entry) => {
+    const terminalId = sanitizeTerminalRegistryId(entry?.terminal_id);
+    if (!terminalId || !TERMINAL_ID_PATTERN.test(terminalId)) return;
+    if (seen.has(terminalId)) return;
+    seen.add(terminalId);
+
+    const isActive = entry?.is_active !== false;
+    normalized.push({
+      terminal_id: terminalId,
+      label: String(entry?.label || '').trim(),
+      is_active: isActive,
+      is_default: isActive && entry?.is_default === true
+    });
+  });
+
+  if (normalized.length === 0) return [];
+
+  const defaultIndex = normalized.findIndex((entry) => entry.is_default === true);
+  if (defaultIndex >= 0) {
+    normalized.forEach((entry, index) => {
+      if (index !== defaultIndex) {
+        entry.is_default = false;
+      }
+    });
+  } else {
+    const firstActiveIndex = normalized.findIndex((entry) => entry.is_active);
+    if (firstActiveIndex >= 0) {
+      normalized[firstActiveIndex].is_default = true;
+    }
+  }
+
+  return normalized;
+};
 
 const SETTINGS_FIELD_LABELS = {
   username: 'Username',
@@ -77,8 +162,10 @@ const SETTINGS_FIELD_LABELS = {
   pos_min_number: 'MIN Number',
   pos_accreditation_number: 'Accreditation Number',
   pos_receipt_footer_message: 'Receipt Footer Message',
+  pos_terminal_registry_mode: 'Terminal Registry Mode',
   pos_petty_cash_symbol: 'Petty Cash Currency Symbol',
   pos_petty_cash_amount: 'Petty Cash Amount',
+  ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
   store_tenant_slug: 'Store Slug',
   pos_wait_time_minutes: 'POS Wait Time'
@@ -115,9 +202,17 @@ const createDefaultLocationForm = () => ({
 });
 
 export default function Settings() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const currentTab = searchParams.get('tab') || 'profile';
+  const location = useLocation();
+  const navigate = useNavigate();
   const subscriptionFeaturesEnabled = subscriptionsEnabled();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const unknownHashToastRef = useRef('');
+  const settingsDeepLink = useMemo(() => resolveSettingsDeepLink({
+    search: location.search,
+    hash: location.hash,
+    subscriptionEnabled: subscriptionFeaturesEnabled
+  }), [location.hash, location.search, subscriptionFeaturesEnabled]);
+  const currentTab = settingsDeepLink.tab;
 
   const [settings, setSettings] = useState({
     defaultMinThreshold: 40,
@@ -136,8 +231,11 @@ export default function Settings() {
     posReceiptFooterMessage: '',
     posDiscountProfiles: [],
     posOrderMethodFees: createDefaultOrderMethodFees(),
+    posTerminalRegistry: [],
+    posTerminalRegistryMode: 'warn',
     posPettyCashSymbol: 'PHP',
     posPettyCashAmount: 0,
+    opsWorkflowMode: DEFAULT_WORKFLOW_MODE,
     storeDeliveryFee: 0,
     storeTenantSlug: '',
     storeIsVisible: true,
@@ -174,12 +272,25 @@ export default function Settings() {
   const [paymongoSubscriptionIdInput, setPaymongoSubscriptionIdInput] = useState('');
   const [isStartingPayMongoSetup, setIsStartingPayMongoSetup] = useState(false);
   const [pendingPlanInfo, setPendingPlanInfo] = useState(null);
+  const [persistedWorkflowMode, setPersistedWorkflowMode] = useState(DEFAULT_WORKFLOW_MODE);
   const [tenantLocations, setTenantLocations] = useState([]);
   const [storefrontSyncHealth, setStorefrontSyncHealth] = useState(null);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationSaving, setLocationSaving] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
+
+  const setSettingsTab = useCallback((nextTab, { replace = false, preserveHash = true } = {}) => {
+    const resolvedTab = resolveSettingsTab(nextTab, { subscriptionEnabled: subscriptionFeaturesEnabled });
+    const nextParams = withSettingsTabInSearch(location.search, resolvedTab);
+    const nextSearch = nextParams.toString();
+    navigate({
+      pathname: location.pathname,
+      search: nextSearch ? `?${nextSearch}` : '',
+      hash: preserveHash ? location.hash : ''
+    }, { replace });
+    return resolvedTab;
+  }, [location.hash, location.pathname, location.search, navigate, subscriptionFeaturesEnabled]);
 
   const loadTenantLocations = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -225,6 +336,8 @@ export default function Settings() {
         const systemSettings = await settingsService.getAllSettings();
 
         // Map backend settings to frontend state
+        const normalizedWorkflowMode = normalizeWorkflowMode(systemSettings.ops_workflow_mode?.value);
+
         setSettings({
           defaultMinThreshold: systemSettings.min_stock_threshold_percent?.value || 40,
           defaultPurchaseAllowance: systemSettings.purchase_allowance_percent?.value || 20,
@@ -242,14 +355,20 @@ export default function Settings() {
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
           posOrderMethodFees: normalizeOrderMethodFees(systemSettings.pos_order_method_fees?.value),
+          posTerminalRegistry: normalizeTerminalRegistry(systemSettings.pos_terminal_registry?.value),
+          posTerminalRegistryMode: TERMINAL_REGISTRY_MODE_OPTIONS.includes(String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase())
+            ? String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
+            : 'warn',
           posPettyCashSymbol: systemSettings.pos_petty_cash_symbol?.value || 'PHP',
           posPettyCashAmount: Number(systemSettings.pos_petty_cash_amount?.value ?? 0) || 0,
+          opsWorkflowMode: normalizedWorkflowMode,
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value ?? true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15
         });
+        setPersistedWorkflowMode(normalizedWorkflowMode);
 
         await loadTenantLocations({ silent: true });
 
@@ -273,15 +392,64 @@ export default function Settings() {
 
   // Fetch billing data when tab changes to subscription
   useEffect(() => {
-    if (!subscriptionFeaturesEnabled && currentTab === 'subscription') {
-      setSearchParams({ tab: 'profile' });
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab !== currentTab) {
+      setSettingsTab(currentTab, { replace: true });
       return;
     }
+
+    if (!subscriptionFeaturesEnabled && currentTab === 'subscription') {
+      setSettingsTab('profile', { replace: true });
+      return;
+    }
+
     if (currentTab === 'subscription') {
       fetchBillingHistory();
       fetchPendingPlan();
     }
-  }, [currentTab, setSearchParams, subscriptionFeaturesEnabled]);
+  }, [currentTab, searchParams, setSettingsTab, subscriptionFeaturesEnabled]);
+
+  useEffect(() => {
+    if (!settingsDeepLink.normalizedHash) {
+      return undefined;
+    }
+
+    if (settingsDeepLink.hashStatus === 'unknown') {
+      if (unknownHashToastRef.current !== settingsDeepLink.normalizedHash) {
+        unknownHashToastRef.current = settingsDeepLink.normalizedHash;
+        toast.info('Section link not found on Settings. Staying on the selected tab.');
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    let attemptCount = 0;
+    const maxAttempts = 20;
+
+    const tryScroll = () => {
+      if (cancelled) return;
+      const node = findElementByHashTarget(settingsDeepLink.normalizedHash);
+      if (node) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      attemptCount += 1;
+      if (attemptCount >= maxAttempts) {
+        if (unknownHashToastRef.current !== settingsDeepLink.normalizedHash) {
+          unknownHashToastRef.current = settingsDeepLink.normalizedHash;
+          toast.info('Section link is not currently available. Complete page loading and try again.');
+        }
+        return;
+      }
+      window.setTimeout(tryScroll, 50);
+    };
+
+    window.setTimeout(tryScroll, 0);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsDeepLink.hashStatus, settingsDeepLink.normalizedHash, currentTab]);
 
   const fetchPendingPlan = async () => {
     try {
@@ -397,6 +565,90 @@ export default function Settings() {
       posDiscountProfiles: (Array.isArray(prev.posDiscountProfiles) ? prev.posDiscountProfiles : [])
         .filter((_, idx) => idx !== index)
     }));
+  };
+
+  const handleTerminalRegistryChange = (index, key, value) => {
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.posTerminalRegistry)
+        ? prev.posTerminalRegistry.map((entry) => ({
+          terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          is_active: entry?.is_active !== false,
+          is_default: entry?.is_default === true
+        }))
+        : [];
+      const existing = entries[index] || {
+        terminal_id: '',
+        label: '',
+        is_active: true,
+        is_default: entries.length === 0
+      };
+      entries[index] = {
+        ...existing,
+        [key]: key === 'terminal_id' ? sanitizeTerminalRegistryId(value) : value
+      };
+
+      if (key === 'is_active' && value === false && entries[index].is_default === true) {
+        entries[index].is_default = false;
+        const fallbackActiveIndex = entries.findIndex((entry, entryIndex) => entryIndex !== index && entry.is_active);
+        if (fallbackActiveIndex >= 0) {
+          entries[fallbackActiveIndex].is_default = true;
+        }
+      }
+
+      if (key === 'is_default' && value === true) {
+        entries.forEach((entry, entryIndex) => {
+          if (entryIndex !== index) {
+            entry.is_default = false;
+          }
+        });
+        entries[index].is_active = true;
+      }
+
+      return { ...prev, posTerminalRegistry: entries };
+    });
+  };
+
+  const addTerminalRegistryEntry = () => {
+    setSettings((prev) => {
+      const entries = Array.isArray(prev.posTerminalRegistry)
+        ? prev.posTerminalRegistry.map((entry) => ({
+          terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          is_active: entry?.is_active !== false,
+          is_default: entry?.is_default === true
+        }))
+        : [];
+      entries.push({
+        terminal_id: '',
+        label: '',
+        is_active: true,
+        is_default: entries.length === 0
+      });
+      return { ...prev, posTerminalRegistry: entries };
+    });
+  };
+
+  const removeTerminalRegistryEntry = (index) => {
+    setSettings((prev) => {
+      const entries = (Array.isArray(prev.posTerminalRegistry) ? prev.posTerminalRegistry : [])
+        .map((entry) => ({
+          terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          is_active: entry?.is_active !== false,
+          is_default: entry?.is_default === true
+        }))
+        .filter((_, entryIndex) => entryIndex !== index);
+
+      if (entries.length > 0 && !entries.some((entry) => entry.is_default === true && entry.is_active)) {
+        const firstActiveIndex = entries.findIndex((entry) => entry.is_active);
+        if (firstActiveIndex >= 0) {
+          entries[firstActiveIndex].is_default = true;
+        }
+      }
+
+      return { ...prev, posTerminalRegistry: entries };
+    });
   };
 
   const handleLocationFormChange = (key, value) => {
@@ -567,6 +819,18 @@ export default function Settings() {
     setProfileErrors(prev => ({ ...prev, [key]: '' }));
   };
 
+  const copyToClipboard = async (value, successMessage) => {
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable');
+      }
+      await navigator.clipboard.writeText(String(value || ''));
+      toast.success(successMessage);
+    } catch {
+      toast.error('Clipboard copy failed. Please copy the value manually.');
+    }
+  };
+
   const handleSave = async () => {
     setProfileErrors({});
 
@@ -630,9 +894,61 @@ export default function Settings() {
       }
 
       const posOrderMethodFees = normalizeOrderMethodFees(settings.posOrderMethodFees);
+      const rawTerminalRegistry = Array.isArray(settings.posTerminalRegistry)
+        ? settings.posTerminalRegistry
+        : [];
 
-      // Save threshold settings to backend
-      await settingsService.updateSettings({
+      const candidateTerminalEntries = rawTerminalRegistry
+        .map((entry) => ({
+          terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          is_active: entry?.is_active !== false,
+          is_default: entry?.is_default === true
+        }))
+        .filter((entry) => (
+          entry.terminal_id
+          || entry.label
+          || entry.is_default
+          || entry.is_active === false
+        ));
+
+      const invalidTerminalEntry = candidateTerminalEntries.find((entry) => (
+        !entry.terminal_id || !TERMINAL_ID_PATTERN.test(entry.terminal_id)
+      ));
+      if (invalidTerminalEntry) {
+        toast.error(`Invalid terminal ID: ${invalidTerminalEntry.terminal_id || '(empty)'}`);
+        return;
+      }
+
+      const seenTerminalIds = new Set();
+      for (const entry of candidateTerminalEntries) {
+        if (seenTerminalIds.has(entry.terminal_id)) {
+          toast.error(`Duplicate terminal ID: ${entry.terminal_id}`);
+          return;
+        }
+        seenTerminalIds.add(entry.terminal_id);
+      }
+
+      const defaultTerminalCount = candidateTerminalEntries.filter((entry) => entry.is_default === true).length;
+      if (defaultTerminalCount > 1) {
+        toast.error('Only one default terminal can be configured.');
+        return;
+      }
+
+      const posTerminalRegistry = normalizeTerminalRegistry(candidateTerminalEntries);
+      const posTerminalRegistryMode = TERMINAL_REGISTRY_MODE_OPTIONS.includes(
+        String(settings.posTerminalRegistryMode || '').trim().toLowerCase()
+      )
+        ? String(settings.posTerminalRegistryMode || '').trim().toLowerCase()
+        : 'warn';
+      const activeRegistryEntries = posTerminalRegistry.filter((entry) => entry?.is_active !== false);
+      if (posTerminalRegistryMode === 'enforce' && activeRegistryEntries.length === 0) {
+        toast.error('Terminal registry mode "enforce" requires at least one active terminal entry.');
+        return;
+      }
+
+      const nextWorkflowMode = normalizeWorkflowMode(settings.opsWorkflowMode);
+      const updatePayload = {
         enable_auto_reorder: settings.autoCalculateThresholds,
         min_stock_threshold_percent: settings.defaultMinThreshold,
         purchase_allowance_percent: settings.defaultPurchaseAllowance,
@@ -645,6 +961,8 @@ export default function Settings() {
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
         pos_order_method_fees: posOrderMethodFees,
+        pos_terminal_registry: posTerminalRegistry,
+        pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_petty_cash_symbol: settings.posPettyCashSymbol,
         pos_petty_cash_amount: Number(settings.posPettyCashAmount || 0),
         store_delivery_fee: Number(settings.storeDeliveryFee || 0),
@@ -652,7 +970,21 @@ export default function Settings() {
         store_is_visible: settings.storeIsVisible === true,
         pos_open_status: settings.posOpenStatus === true,
         pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0)
-      });
+      };
+      if (currentUser?.is_master_admin === true) {
+        updatePayload.ops_workflow_mode = nextWorkflowMode;
+      }
+
+      // Save threshold settings to backend
+      await settingsService.updateSettings(updatePayload);
+
+      if (currentUser?.is_master_admin === true && nextWorkflowMode !== persistedWorkflowMode) {
+        setPersistedWorkflowMode(nextWorkflowMode);
+        broadcastWorkflowModeChange({
+          mode: nextWorkflowMode,
+          source: 'settings_save'
+        });
+      }
 
       toast.success("Settings saved successfully!");
     } catch (error) {
@@ -703,8 +1035,11 @@ export default function Settings() {
       posReceiptFooterMessage: '',
       posDiscountProfiles: [],
       posOrderMethodFees: createDefaultOrderMethodFees(),
+      posTerminalRegistry: [],
+      posTerminalRegistryMode: 'warn',
       posPettyCashSymbol: 'PHP',
       posPettyCashAmount: 0,
+      opsWorkflowMode: currentUser?.is_master_admin === true ? persistedWorkflowMode : DEFAULT_WORKFLOW_MODE,
       storeDeliveryFee: 0,
       storeTenantSlug: '',
       storeIsVisible: true,
@@ -833,11 +1168,11 @@ export default function Settings() {
         <div className="flex gap-3">
           {currentTab !== 'compliance' ? (
             <>
-              <Button variant="outline" onClick={handleReset}>
+              <Button type="button" variant="outline" onClick={handleReset}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Reset
               </Button>
-              <Button onClick={handleSave} className="bg-teal-600 hover:bg-teal-700">
+              <Button type="button" onClick={handleSave} className="bg-teal-600 hover:bg-teal-700">
                 <Save className="w-4 h-4 mr-2" />
                 Save Changes
               </Button>
@@ -850,18 +1185,18 @@ export default function Settings() {
         </div>
       </div>
 
-      <Tabs value={currentTab} onValueChange={(v) => setSearchParams({ tab: v })} className="w-full">
-        <TabsList className={`grid w-full ${subscriptionFeaturesEnabled ? 'grid-cols-6 lg:w-[860px]' : 'grid-cols-5 lg:w-[740px]'} mb-8`}>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="company">Company</TabsTrigger>
-          {subscriptionFeaturesEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
-          <TabsTrigger value="pos">POS Setup</TabsTrigger>
-          <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
+      <Tabs value={currentTab} onValueChange={(v) => setSettingsTab(v, { preserveHash: false })} className="w-full">
+        <TabsList className={`mb-8 flex h-auto w-full flex-wrap gap-1 ${subscriptionFeaturesEnabled ? 'lg:w-[920px]' : 'lg:w-[780px]'} lg:flex-nowrap`}>
+          <TabsTrigger value="profile" className="flex-1 sm:flex-none">Profile</TabsTrigger>
+          <TabsTrigger value="company" className="flex-1 sm:flex-none">Company</TabsTrigger>
+          {subscriptionFeaturesEnabled && <TabsTrigger value="subscription" className="flex-1 sm:flex-none">Subscription</TabsTrigger>}
+          <TabsTrigger value="pos" className="flex-1 sm:flex-none">POS Setup</TabsTrigger>
+          <TabsTrigger value="compliance" className="flex-1 sm:flex-none">Compliance</TabsTrigger>
+          <TabsTrigger value="system" className="flex-1 sm:flex-none">System</TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
-        <TabsContent value="profile" className="space-y-6">
+        <TabsContent value="profile" id="tab-profile" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -916,7 +1251,7 @@ export default function Settings() {
         </TabsContent>
 
         {/* Company Tab */}
-        <TabsContent value="company" className="space-y-6">
+        <TabsContent value="company" id="tab-company" className="space-y-6">
           {currentUser?.is_master_admin && companyInfo ? (
             <Card>
               <CardHeader>
@@ -925,7 +1260,7 @@ export default function Settings() {
                     <Building2 className="w-5 h-5 text-teal-600" />
                     Company Details
                   </CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => setShowUserManagement(true)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowUserManagement(true)}>
                     <Users className="w-4 h-4 mr-2" />
                     Manage Users
                   </Button>
@@ -940,10 +1275,13 @@ export default function Settings() {
                   <Label className="text-xs uppercase text-slate-500">Company Token</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="bg-white px-2 py-1 rounded border flex-1">{companyInfo.company_token}</code>
-                    <Button variant="ghost" size="icon" onClick={() => {
-                      navigator.clipboard.writeText(companyInfo.company_token);
-                      toast.success("Token copied!");
-                    }}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy company token"
+                      onClick={() => copyToClipboard(companyInfo.company_token, 'Token copied!')}
+                    >
                       <Copy className="w-4 h-4" />
                     </Button>
                   </div>
@@ -955,10 +1293,13 @@ export default function Settings() {
                     <code className="bg-white px-2 py-1 rounded border flex-1 text-xs truncate">
                       {`${window.location.origin}/register?token=${companyInfo.company_token}`}
                     </code>
-                    <Button variant="ghost" size="icon" onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/register?token=${companyInfo.company_token}`);
-                      toast.success("Invite link copied!");
-                    }}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy company join link"
+                      onClick={() => copyToClipboard(`${window.location.origin}/register?token=${companyInfo.company_token}`, 'Invite link copied!')}
+                    >
                       <Copy className="w-4 h-4" />
                     </Button>
                   </div>
@@ -972,7 +1313,7 @@ export default function Settings() {
                   View company details and manage team members.
                 </div>
                 {currentUser?.role === 'admin' && (
-                  <Button onClick={() => setShowUserManagement(true)} className="w-full sm:w-auto">
+                  <Button type="button" onClick={() => setShowUserManagement(true)} className="w-full sm:w-auto">
                     <Users className="w-4 h-4 mr-2" />
                     Manage Users
                   </Button>
@@ -980,12 +1321,46 @@ export default function Settings() {
               </CardContent>
             </Card>
           )}
+
+          <Card id="business-mode-settings">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Business Mode
+              </CardTitle>
+              <CardDescription>
+                Manufacturing keeps full IMS/POS surfaces; MSME simplifies IMS + POS while preserving existing data.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label>Workflow Mode</Label>
+                <select
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
+                  value={normalizeWorkflowMode(settings.opsWorkflowMode)}
+                  onChange={(event) => handleChange('opsWorkflowMode', normalizeWorkflowMode(event.target.value))}
+                  disabled={currentUser?.is_master_admin !== true}
+                >
+                  <option value="manufacturing">Manufacturing (Full)</option>
+                  <option value="msme">MSME (Simplified)</option>
+                </select>
+              </div>
+              <p className="text-xs text-slate-600">
+                Active mode after save: <span className="font-semibold text-slate-900">{getWorkflowModeLabel(settings.opsWorkflowMode)}</span>
+              </p>
+              {currentUser?.is_master_admin !== true && (
+                <p className="text-xs text-amber-700">
+                  Only master admin can change Business Mode.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {subscriptionFeaturesEnabled && (
         <>
         {/* Subscription Tab */}
-        <TabsContent value="subscription" className="space-y-6">
+        <TabsContent value="subscription" id="tab-subscription" className="space-y-6">
           <Card className="overflow-hidden">
             <div className={`h-2 w-full ${currentUser?.company?.plan === 'premium' ? 'bg-amber-400' : 'bg-slate-300'}`} />
             <CardHeader>
@@ -1061,6 +1436,7 @@ export default function Settings() {
               {currentUser?.company?.payment_method === 'paymongo' && (
                 <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-100">
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleSyncSubscription}
@@ -1072,6 +1448,7 @@ export default function Settings() {
 
                   {currentUser?.company?.plan === 'standard' && !pendingPlanInfo?.pending_plan && (
                     <Button
+                      type="button"
                       size="sm"
                       className="bg-indigo-600 hover:bg-indigo-700 text-white"
                       onClick={() => handleChangePlan('premium')}
@@ -1084,6 +1461,7 @@ export default function Settings() {
 
                   {currentUser?.company?.plan === 'premium' && !pendingPlanInfo?.pending_plan && (
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       className="text-slate-600"
@@ -1097,6 +1475,7 @@ export default function Settings() {
 
                   {currentUser?.company?.subscription_status !== 'cancelled' && (
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       className="text-slate-500 hover:text-red-600 hover:bg-red-50 ml-auto"
@@ -1142,6 +1521,7 @@ export default function Settings() {
                       />
                       <div className="flex gap-2">
                         <Button
+                          type="button"
                           onClick={() => handleMigrateToPayMongo(paymongoSubscriptionIdInput)}
                           disabled={!paymongoSubscriptionIdInput.trim()}
                           className="bg-teal-600 hover:bg-teal-700"
@@ -1150,6 +1530,7 @@ export default function Settings() {
                           Link Subscription
                         </Button>
                         <Button
+                          type="button"
                           variant="outline"
                           onClick={handleSetupPayMongoRecurring}
                           disabled={isStartingPayMongoSetup}
@@ -1221,6 +1602,7 @@ export default function Settings() {
 
                       <div className="max-w-[320px]">
                         <Button
+                          type="button"
                           className="bg-white text-indigo-700 hover:bg-slate-100"
                           onClick={handleSetupPayMongoRecurring}
                           disabled={isStartingPayMongoSetup}
@@ -1239,8 +1621,8 @@ export default function Settings() {
         </>
         )}
 
-        {/* System Tab */}
-        <TabsContent value="pos" className="space-y-6">
+        {/* POS Setup Tab */}
+        <TabsContent value="pos" id="tab-pos" className="space-y-6">
           <Card id="receipt-contract-settings">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1385,6 +1767,98 @@ export default function Settings() {
                     onChange={(e) => handleChange('posWaitTimeMinutes', e.target.value)}
                     placeholder="15"
                   />
+                </div>
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Terminal Registry</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addTerminalRegistryEntry}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Terminal
+                    </Button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Managed list of terminal identities used in POS unlock and shift-open flows.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3 bg-slate-50">
+                    <div className="md:col-span-5 space-y-1">
+                      <Label className="text-xs text-slate-500">Terminal Registry Mode</Label>
+                      <select
+                        value={settings.posTerminalRegistryMode || 'warn'}
+                        onChange={(event) => handleChange('posTerminalRegistryMode', event.target.value)}
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                      >
+                        <option value="warn">Warn (allow manual IDs)</option>
+                        <option value="enforce">Enforce (registry only)</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-7 text-xs text-slate-600">
+                      {(settings.posTerminalRegistryMode || 'warn') === 'enforce'
+                        ? 'Enforce mode blocks unlock/open-shift/checkout when terminal_id is not an active registry entry.'
+                        : 'Warn mode allows manual/fallback terminal IDs but surfaces policy warnings.'}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {(Array.isArray(settings.posTerminalRegistry) ? settings.posTerminalRegistry : []).map((terminal, index) => (
+                      <div
+                        key={`terminal-registry-${index}`}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3"
+                      >
+                        <div className="md:col-span-3 space-y-1">
+                          <Label className="text-xs text-slate-500">Terminal ID</Label>
+                          <Input
+                            value={terminal.terminal_id || ''}
+                            onChange={(e) => handleTerminalRegistryChange(index, 'terminal_id', e.target.value)}
+                            placeholder="COUNTER-01"
+                          />
+                        </div>
+                        <div className="md:col-span-4 space-y-1">
+                          <Label className="text-xs text-slate-500">Label</Label>
+                          <Input
+                            value={terminal.label || ''}
+                            onChange={(e) => handleTerminalRegistryChange(index, 'label', e.target.value)}
+                            placeholder="Front Counter"
+                          />
+                        </div>
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-slate-500">Active</Label>
+                          <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
+                            <Switch
+                              checked={terminal.is_active !== false}
+                              onCheckedChange={(checked) => handleTerminalRegistryChange(index, 'is_active', checked)}
+                            />
+                          </div>
+                        </div>
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-slate-500">Default</Label>
+                          <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
+                            <Switch
+                              checked={terminal.is_default === true}
+                              disabled={terminal.is_active === false}
+                              onCheckedChange={(checked) => handleTerminalRegistryChange(index, 'is_default', checked)}
+                            />
+                          </div>
+                        </div>
+                        <div className="md:col-span-1 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => removeTerminalRegistryEntry(index)}
+                            aria-label={`Remove terminal ${terminal.terminal_id || index + 1}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {(Array.isArray(settings.posTerminalRegistry) ? settings.posTerminalRegistry : []).length === 0 && (
+                      <p className="text-xs text-slate-500 border border-dashed border-slate-300 rounded-lg p-3">
+                        {(settings.posTerminalRegistryMode || 'warn') === 'enforce'
+                          ? 'No terminals configured yet. Add at least one active terminal before enabling enforce mode.'
+                          : 'No terminals configured yet. In warn mode, terminal users can still enter an ID manually.'}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-3 md:col-span-2">
                   <Label>Order Method Fees</Label>
@@ -1751,12 +2225,12 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="compliance" className="space-y-6">
+        <TabsContent value="compliance" id="tab-compliance" className="space-y-6">
           <ComplianceProgramPanel isMasterAdmin={currentUser?.is_master_admin === true} />
         </TabsContent>
 
         {/* System Tab */}
-        <TabsContent value="system" className="space-y-6">
+        <TabsContent value="system" id="tab-system" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
