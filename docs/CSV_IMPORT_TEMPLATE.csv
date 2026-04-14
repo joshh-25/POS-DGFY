@@ -1,4 +1,0 @@
-sku_code,name,category,product_type,description,product_folder,max_capacity,min_threshold,purchase_allowance,unit_of_measure,cost_per_unit,fifo_enabled,shelf_life_days,opened_shelf_life_days,batch_size,yield_percentage,processing_loss,production_notes,packaging_height,packaging_width,packaging_thickness,packaging_material,packaging_design,packaging_contents,allergens
-RM-FL-001,All-Purpose Flour,raw_material,,Premium wheat flour for baking,,100,40,20,kg,45.50,TRUE,365,90,,,,,,,,,,,wheat
-PKG-BTL-500,Glass Bottle 500ml,packaging,,Clear glass bottle for beverages,,500,200,100,pcs,12.00,FALSE,,,,,,,,,15,6,0.3,Glass,Clear,500ml,
-PROD-BRD-001,Whole Wheat Bread,product,finished_goods,Artisan whole wheat bread,Bakery Products,200,80,40,pcs,55.00,TRUE,7,3,50,95,5,Bake at 180°C for 25 minutes,,,,,,,,"wheat,milk,eggs"

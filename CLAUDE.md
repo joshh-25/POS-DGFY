@@ -400,7 +400,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 ## 📖 Documentation References
 
 **Quick Reference:**
-- `docs/QUICK_REFERENCE.md` - Common commands and troubleshooting
+- `docs/reference/QUICK_REFERENCE.md` - Common commands and troubleshooting
 
 **Backend Documentation:**
 - `backend/CREDENTIALS.md` - Default admin credentials
@@ -492,4 +492,3 @@ These files have TOCs for efficient navigation:
 - `docs/database/schema.md` — Database tables
 - `docs/architecture/system-architecture.md` — System diagrams
 - `TROUBLESHOOTING.md` — Error solutions
-

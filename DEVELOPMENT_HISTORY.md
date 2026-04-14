@@ -1096,7 +1096,7 @@ The architecture was correct - data WAS being saved properly:
 - **[phase3n4.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/phase3n4.md)** - Delete/archive implementation guide
 - **[SETUP.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/SETUP.md)** - Complete setup instructions
 - **[spec-kit/](file:///c:/xampp/htdocs/SKU-Inventory-Manager/spec-kit/)** - Full technical specifications
-- **[docs/NESTED_PRODUCTS.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/docs/NESTED_PRODUCTS.md)** - Nested products feature documentation
+- **[docs/features/NESTED_PRODUCTS.md](file:///c:/xampp/htdocs/SKU-Inventory-Manager/docs/features/NESTED_PRODUCTS.md)** - Nested products feature documentation
 
 ---
 
@@ -1139,7 +1139,7 @@ Enable products to be used as ingredients for other products with full batch lin
 - [x] Create calculateNestingLevels.js script for existing products
 
 ### Documentation
-- [x] Create docs/NESTED_PRODUCTS.md
+- [x] Create docs/features/NESTED_PRODUCTS.md
 
 ---
 
@@ -3502,8 +3502,8 @@ Integrated OpenAI's GPT API to create an intelligent AI assistant ("SKUpervisor"
   - CLAUDE.md (project overview)
   - docs/api/specification.md (API endpoints)
   - docs/database/schema.md (database structure)
-  - docs/NESTED_PRODUCTS.md (recipe system)
-  - docs/CSV_IMPORT_GUIDE.md (import format)
+  - docs/features/NESTED_PRODUCTS.md (recipe system)
+  - docs/guides/csv_import_guide.md (import format)
   - TROUBLESHOOTING.md (common issues)
   - QUICK_START.md (getting started)
 - [x] Implemented keyword matching with relevance scoring
@@ -7078,3 +7078,4 @@ Migrate critical business logic, validation, and transaction management from the
 
 ### Objective
 Improve the user interface by removing unnecessary trailing zeroes from numeric input fields and displays without compromising backend data precision or calculation accuracy.
+
