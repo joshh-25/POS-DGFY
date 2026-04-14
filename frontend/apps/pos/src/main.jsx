@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import TerminalPage from '../../../src/features/pos/pages/TerminalPage.jsx';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../src/components/common/GlobalApiErrorListener.jsx';
@@ -13,9 +14,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <PermissionProvider>
         <WorkflowModeProvider>
-          <GlobalApiErrorListener />
-          <Toaster position="top-right" />
-          <TerminalPage />
+          <BrowserRouter>
+            <GlobalApiErrorListener />
+            <Toaster position="top-right" />
+            <TerminalPage />
+          </BrowserRouter>
         </WorkflowModeProvider>
       </PermissionProvider>
     </ErrorBoundary>
