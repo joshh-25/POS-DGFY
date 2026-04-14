@@ -1815,7 +1815,7 @@ Implemented comprehensive CSV bulk import functionality for items (raw materials
 | File | Purpose |
 |------|---------|
 | `CSV_IMPORT_GUIDE.md` | Complete user guide with column descriptions, examples, and troubleshooting |
-| `CSV_IMPORT_TEMPLATE.csv` | Sample CSV with 3 example rows (raw material, packaging, product) |
+| `CSV_IMPORT_TEMPLATE.csv` | Sample CSV with 3 example rows (raw material, packaging, product) - removed/replaced by `docs/guides/csv_import_guide.md` |
 
 ### Dependencies Added
 - `csv-parse@6.1.0` - CSV parsing library with RFC 4180 compliance
@@ -7078,4 +7078,5 @@ Migrate critical business logic, validation, and transaction management from the
 
 ### Objective
 Improve the user interface by removing unnecessary trailing zeroes from numeric input fields and displays without compromising backend data precision or calculation accuracy.
+
 
