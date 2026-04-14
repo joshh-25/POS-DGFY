@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-04-13
 related_adr: 0008-tenant-workflow-mode-msme-simplification.md
 declaration_id: 2026-04-13-msme-sari-sari-simplification-v1-1
-classification: major
-surfaces: settings,pos,terminal
+classification: regulatory
+surfaces: compliance,settings,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.04.07
 verification_evidence: npm -C backend test -- tests/itemHandlers.transport.test.js tests/inventoryItemRepository.test.js,npm -C frontend test -- --run src/features/inventory/__tests__/msmeItemPatch.contract.test.js,npm run check:architecture
@@ -19,7 +19,7 @@ preflight_request_ref: MSME-V1-1-PR-2026-04-13
 # 2026-04-13 MSME Sari-Sari Simplification v1.1
 
 ## Compliance Impact Classification
-Major
+Regulatory
 
 Computed classification rationale:
 1. Change is cross-boundary across settings, inventory, and POS-adjacent workflows.

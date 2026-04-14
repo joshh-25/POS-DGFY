@@ -227,6 +227,7 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
 export default function POSCheckoutTerminal({
     sessionLocked = false,
     isMsmeMode = false,
+    layoutContext = 'standalone',
     canViewHistory = true,
     activeShiftId = null,
     terminalId = '',
@@ -283,6 +284,15 @@ export default function POSCheckoutTerminal({
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
     const [imagePreview, setImagePreview] = useState(null);
+    const isEmbeddedLayout = layoutContext === 'embedded';
+    const shellClassName = isEmbeddedLayout ? 'flex h-full min-h-0 flex-col gap-5' : 'space-y-5';
+    const checkoutGridClassName = isEmbeddedLayout
+        ? 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6 h-full min-h-0'
+        : 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';
+    const checkoutPaneClassName = isEmbeddedLayout ? '2xl:max-h-none' : '2xl:max-h-[70dvh]';
+    const splitPaneScrollClassName = isEmbeddedLayout
+        ? 'h-full overflow-y-auto pr-1 2xl:overscroll-contain'
+        : 'pr-1 2xl:h-full 2xl:overflow-y-auto 2xl:overscroll-contain';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
@@ -993,7 +1003,7 @@ export default function POSCheckoutTerminal({
     };
 
     return (
-        <div className="space-y-5">
+        <div className={shellClassName}>
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -1242,8 +1252,8 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:h-[calc(100vh-13.5rem)] xl:min-h-[40rem] xl:max-h-[calc(100vh-13.5rem)]">
-            <section className="xl:col-span-9 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden">
+                <div className={checkoutGridClassName}>
+            <section className={`2xl:col-span-8 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
                     <div>
                         <h2 className="text-xl font-bold text-slate-900">POS Catalog</h2>
@@ -1343,7 +1353,7 @@ export default function POSCheckoutTerminal({
                 <div className="relative flex-1 min-h-0">
                     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
-                    <div className="h-full overflow-y-auto pr-1 xl:overscroll-contain">
+                    <div className={splitPaneScrollClassName}>
                 {catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
@@ -1444,7 +1454,7 @@ export default function POSCheckoutTerminal({
                 </div>
             </section>
 
-            <section className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden">
+            <section className={`2xl:col-span-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
                 <h2 className="text-xl font-bold text-slate-900 mb-1">Current Sale</h2>
                 <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
                 <div className="mb-2 flex justify-end">
@@ -1455,7 +1465,7 @@ export default function POSCheckoutTerminal({
                 <div className="relative flex-1 min-h-0">
                     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
-                    <div className="h-full overflow-y-auto pr-1 xl:overscroll-contain">
+                    <div className={splitPaneScrollClassName}>
                 <div className="space-y-3 mb-4">
                     <label className="text-xs text-slate-500 block">
                         Order Method
@@ -1729,7 +1739,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2">
+                <div className="sticky bottom-0 grid grid-cols-1 gap-2 border-t border-slate-200 bg-white/95 pt-3 supports-[backdrop-filter]:bg-white/85">
                     {checkoutBlockedReason && (
                         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                             <p className="text-xs text-amber-700">{checkoutBlockedReason}</p>

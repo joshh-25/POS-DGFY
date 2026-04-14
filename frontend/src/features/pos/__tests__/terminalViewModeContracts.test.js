@@ -166,4 +166,14 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain('navigate(`/sales');
   });
+
+  it('uses adaptive responsive layout primitives and avoids hard-coded viewport math', () => {
+    expect(terminalPageLayoutContent).toContain('min-h-[100dvh]');
+    expect(terminalPageLayoutContent).toContain("2xl:grid-cols-[260px_minmax(0,1fr)_360px]");
+    expect(terminalPageLayoutContent).toContain('layoutContext="embedded"');
+    expect(posCheckoutTerminalContent).toContain("layoutContext = 'standalone'");
+    expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
+    expect(posCheckoutTerminalContent).toContain('splitPaneScrollClassName');
+    expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');
+  });
 });

@@ -1,5 +1,6 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
+import { paymentsEnabled } from '../config/paymentsFeature.js';
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -149,8 +150,10 @@ export const authenticate = async (req, res, next) => {
     // req.tenant is set by tenantHandler which runs before authenticate.
     if (req.tenant) {
       const tenantStatus = req.tenant.status;
+      const tenantPlan = String(req.tenant.plan || '').toLowerCase();
       const subStatus = req.tenant.subscription_status;
       const bypassSubscriptionGate = shouldBypassSubscriptionGate(req);
+      const shouldEnforceSubscriptionGate = paymentsEnabled && tenantPlan === 'premium';
       const now = new Date();
       const periodEnd = req.tenant.current_period_end ? new Date(req.tenant.current_period_end) : null;
 
@@ -164,7 +167,7 @@ export const authenticate = async (req, res, next) => {
         });
       }
 
-      if (!bypassSubscriptionGate && tenantStatus === 'active' && subStatus === 'inactive') {
+      if (!bypassSubscriptionGate && shouldEnforceSubscriptionGate && tenantStatus === 'active' && subStatus === 'inactive') {
         return res.status(403).json({
           success: false,
           data: null,
@@ -174,7 +177,7 @@ export const authenticate = async (req, res, next) => {
         });
       }
 
-      if (!bypassSubscriptionGate && tenantStatus === 'active' && subStatus === 'cancelled' && periodEnd && periodEnd < now) {
+      if (!bypassSubscriptionGate && shouldEnforceSubscriptionGate && tenantStatus === 'active' && subStatus === 'cancelled' && periodEnd && periodEnd < now) {
         return res.status(403).json({
           success: false,
           data: null,

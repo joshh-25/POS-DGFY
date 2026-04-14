@@ -120,7 +120,7 @@ export default function TerminalPageLayout({
   ];
 
     return (
-        <div className="min-h-screen bg-slate-100 xl:flex xl:h-screen xl:flex-col xl:overflow-hidden">
+        <div className="min-h-screen min-h-[100dvh] bg-slate-100 flex flex-col">
             <div className="border-b border-slate-200 bg-gradient-to-r from-white via-teal-50/70 to-white px-6 py-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -321,11 +321,17 @@ export default function TerminalPageLayout({
                 </div>
             )}
 
-            <div className={`grid grid-cols-1 gap-4 p-4 ${effectiveSidebarCollapsed ? 'xl:grid-cols-[260px_minmax(0,1fr)_72px]' : 'xl:grid-cols-[260px_minmax(0,1fr)_360px]'} xl:grid-rows-[minmax(0,1fr)] xl:flex-1 xl:min-h-0 xl:overflow-hidden`}>
+            <div
+                className={`grid grid-cols-1 gap-4 p-4 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)] ${
+                    effectiveSidebarCollapsed
+                        ? '2xl:grid-cols-[260px_minmax(0,1fr)_72px]'
+                        : '2xl:grid-cols-[260px_minmax(0,1fr)_360px]'
+                }`}
+            >
                 <div className="hidden xl:flex xl:min-h-0 xl:overflow-hidden">
                     <Suspense fallback={<div className="hidden xl:block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading POS navigation...</div>}>
                         <TerminalWorkspaceSidebar
-                            className="hidden xl:flex xl:h-fit xl:w-full xl:self-start xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
+                            className="hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain"
                             locked={locked}
                             isMsmeMode={isMsmeMode}
                             terminalUser={terminalUser}
@@ -354,6 +360,7 @@ export default function TerminalPageLayout({
                             <POSCheckoutTerminal
                                 sessionLocked={locked}
                                 isMsmeMode={isMsmeMode}
+                                layoutContext="embedded"
                                 canViewHistory={canViewPos}
                                 activeShiftId={activeShiftId}
                                 terminalId={activeTerminalId}
@@ -422,7 +429,7 @@ export default function TerminalPageLayout({
                     )}
                 </div>
 
-                <div className="xl:min-h-0 xl:overflow-hidden">
+                <div className="xl:min-h-0 xl:overflow-hidden xl:col-span-2 2xl:col-span-1">
                     <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading terminal controls...</div>}>
                         <TerminalSidebarPanel
                             className="flex xl:h-full xl:min-h-0"

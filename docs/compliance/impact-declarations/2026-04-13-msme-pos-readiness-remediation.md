@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-04-13
 related_adr: 0008-tenant-workflow-mode-msme-simplification.md
 declaration_id: 2026-04-13-msme-pos-readiness-remediation
-classification: major
-surfaces: pos,terminal,settings
+classification: regulatory
+surfaces: compliance,pos,terminal,settings
 reason_codes_impacted: POS_READINESS_INCOMPLETE,ALLOWED
 policy_version: 2026.04.07
 verification_evidence: npm --prefix backend test -- posUsecases.applicationResult.test.js,npm --prefix frontend test -- msmeItemPatch.contract.test.js,npm --prefix frontend run build:skupervisor,npm --prefix backend run check:architecture-guardrails,npm --prefix backend run check:controller-boundaries,npm run check:compliance
@@ -19,7 +19,7 @@ preflight_request_ref: MSME-POS-READINESS-REMEDIATION-2026-04-13
 # 2026-04-13 MSME POS Readiness Remediation
 
 ## Compliance Impact Classification
-Major
+Regulatory
 
 Computed classification rationale:
 1. Change touches POS override behavior and terminal-facing readiness flows.
@@ -42,4 +42,3 @@ Computed classification rationale:
 4. `npm --prefix backend run check:architecture-guardrails`
 5. `npm --prefix backend run check:controller-boundaries`
 6. `npm run check:compliance`
-
