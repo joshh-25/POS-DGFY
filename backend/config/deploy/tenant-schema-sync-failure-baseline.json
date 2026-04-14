@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "last_updated": "2026-04-14",
+  "notes": "Known legacy tenant schema sync failures accepted by deploy gate. Deploy fails on new or mutated failures.",
+  "failures": [
+    {
+      "tenant_db": "sku_inventory_manager",
+      "error_code": "mysql_too_many_keys",
+      "fingerprint": "8516ffd691d70b58"
+    },
+    {
+      "tenant_db": "tenant_premium",
+      "error_code": "mysql_too_many_keys",
+      "fingerprint": "8516ffd691d70b58"
+    },
+    {
+      "tenant_db": "sku_tenant_reyven_69443791",
+      "error_code": "mysql_too_many_keys",
+      "fingerprint": "8516ffd691d70b58"
+    },
+    {
+      "tenant_db": "sku_tenant_carlocorp_c3636628",
+      "error_code": "mysql_too_many_keys",
+      "fingerprint": "8516ffd691d70b58"
+    },
+    {
+      "tenant_db": "sku_tenant_carlohubo_dd39259d",
+      "error_code": "mysql_too_many_keys",
+      "fingerprint": "8516ffd691d70b58"
+    }
+  ]
+}

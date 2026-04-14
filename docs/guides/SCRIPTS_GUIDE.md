@@ -27,8 +27,18 @@ What it does:
 10. Skips optional legacy maintenance hooks by default
 11. Repairs required indexes (`npm run repair:indexes`)
 12. Runs strict index audit (`npm run audit:indexes`)
-13. Runs tenant schema sync
-14. Reloads PM2 and runs health checks
+13. Runs billing telemetry checks only when billing checks are enabled (`PAYMENTS_ENABLED` + `DEPLOY_RUN_BILLING_VERIFY`)
+14. Runs tenant schema sync and writes report artifact
+15. Applies tenant schema sync regression gate against baseline
+16. Reloads PM2 and runs health checks
+
+Billing verification mode override:
+```bash
+DEPLOY_RUN_BILLING_VERIFY=auto|0|1
+```
+- `auto` (default): run billing hooks only when `PAYMENTS_ENABLED=true`
+- `0`: force skip billing hooks
+- `1`: force run billing hooks
 
 Optional flag:
 ```bash
@@ -120,6 +130,36 @@ Notes:
 
 ## 5. `backend/scripts/audit-billing-funnel.js`
 Legacy script for subscription-billing telemetry integrity. Do not include this as a required deploy gate while `PAYMENTS_ENABLED=false`.
+
+## 5a. `backend/scripts/sync-tenant-schemas.js`
+Tenant schema sync script with machine-readable reporting.
+
+Usage:
+```bash
+cd backend
+node scripts/sync-tenant-schemas.js --report-file ../logs/deploy/tenant_schema_sync.json
+```
+
+Report includes:
+- per-tenant status
+- normalized error code
+- normalized message
+- stable fingerprint
+- summary counts
+
+## 5b. `backend/scripts/check-tenant-schema-sync-regressions.js`
+Regression gate for tenant schema sync failures.
+
+Usage:
+```bash
+cd backend
+node scripts/check-tenant-schema-sync-regressions.js --report-file ../logs/deploy/tenant_schema_sync.json --baseline-file config/deploy/tenant-schema-sync-failure-baseline.json
+```
+
+Gate behavior:
+- passes when failures are only known baseline signatures
+- fails when new or mutated failure signatures appear
+- logs resolved baseline signatures as informational output
 
 ## 6. `backend/scripts/cleanup-duplicate-indexes.js`
 Removes duplicate indexes (e.g., `email_2`, `sku_code_3`) that accumulate from repeated Sequelize syncs and hit the MySQL 64-key limit.

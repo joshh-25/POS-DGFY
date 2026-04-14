@@ -21,6 +21,11 @@ Use this guide for:
   - `DB_NAME`
   - `JWT_SECRET`
   - Payment-provider config only when `PAYMENTS_ENABLED=true`
+- Optional deploy override:
+  - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
+    - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
+    - `0`: billing checks always skipped
+    - `1`: force billing checks even if payments are disabled
 
 ## Standard Deployment (Simplified)
 Run on the production server for a one-command deploy:
@@ -62,10 +67,11 @@ What `deploy.sh` does:
 7. Skips legacy maintenance hooks by default
 8. Runs required-index self-heal (`npm run repair:indexes`)
 9. Runs strict index audit (`npm run audit:indexes`)
-10. Runs billing verification gate only when payments are enabled
-11. Runs tenant schema sync
-12. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
-13. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
+10. Runs billing verification/audit only when billing checks are enabled (`DEPLOY_RUN_BILLING_VERIFY` + `PAYMENTS_ENABLED`)
+11. Runs tenant schema sync and emits machine-readable report
+12. Applies tenant schema sync regression gate (`fail on new/mutated failures` vs baseline)
+13. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
+14. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
   - `https://skupervisor.surebizcorp.com`
   - `https://pos.surebizcorp.com`
   - `https://surebizcorp.com`
@@ -75,7 +81,11 @@ Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.log`
 - `logs/deploy/deploy_<timestamp>.changed_files.txt`
 - `logs/deploy/deploy_<timestamp>.summary.txt`
+- `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
 - `.deploy-state/last_deployed_commit`
+
+Tenant sync baseline file (repo-tracked):
+- `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
 
 ## Legacy Hook Mode (Recovery Only)
 Legacy hooks are intentionally disabled by default.
@@ -146,7 +156,17 @@ cd backend
 npm run audit:billing-funnel
 ```
 
-Audit must return healthy (`exit 0`) before deploy can complete.
+Audit must return healthy (`exit 0`) before deploy can complete when billing checks are enabled.
+
+If your current business model has billing paused, keep `PAYMENTS_ENABLED=false` and leave `DEPLOY_RUN_BILLING_VERIFY=auto` (or set `0` explicitly) so billing hooks are skipped by policy.
+
+## Tenant Schema Sync Regression Gate
+Deploy now fails only when tenant schema sync introduces a new failure signature or mutates an existing baseline signature.
+
+Operational workflow:
+1. Review latest report: `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
+2. If failure is known/accepted, update `backend/config/deploy/tenant-schema-sync-failure-baseline.json` in Git with the new normalized fingerprint.
+3. If failure is not expected, fix root cause and redeploy (do not baseline unknown regressions).
 
 ## Local-to-Production Safety Rules
 1. Push your commit to GitHub first. Server deploy pulls from remote only.
@@ -192,7 +212,7 @@ Use only if deploy script itself is broken:
 cd /var/www/skupervisor
 git pull --ff-only origin master
 npm ci --no-audit --no-fund
-cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && npm run audit:billing-funnel && cd ..
+cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && cd ..
 cd frontend && npm ci --no-audit --no-fund && npm run build && cd ..
 pm2 startOrReload ecosystem.config.cjs --env production --update-env
 pm2 save

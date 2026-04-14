@@ -83,6 +83,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Environment overrides:"
             echo "  PAYMENTS_ENABLED=true|false (read from backend/.env; default false)"
+            echo "  DEPLOY_RUN_BILLING_VERIFY=auto|0|1 (default auto)"
             echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
@@ -596,6 +597,8 @@ validate_paymongo_env() {
 
 PAYMENTS_ENABLED_RAW="$(env_value "$ENV_FILE" "PAYMENTS_ENABLED")"
 PAYMENTS_ENABLED_NORMALIZED="$(echo "${PAYMENTS_ENABLED_RAW:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+DEPLOY_RUN_BILLING_VERIFY_RAW="${DEPLOY_RUN_BILLING_VERIFY:-auto}"
+DEPLOY_RUN_BILLING_VERIFY_MODE="$(echo "$DEPLOY_RUN_BILLING_VERIFY_RAW" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 
 if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
     PAYMENT_PROVIDER_MODE_RAW="${DEPLOY_PAYMENT_PROVIDER:-auto}"
@@ -636,6 +639,28 @@ if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
     esac
 else
     log "PAYMENTS_ENABLED is not true in backend/.env; skipping payment provider validation."
+fi
+
+case "$DEPLOY_RUN_BILLING_VERIFY_MODE" in
+    auto|0|1)
+        ;;
+    *)
+        fatal "Invalid DEPLOY_RUN_BILLING_VERIFY='$DEPLOY_RUN_BILLING_VERIFY_RAW'. Use: auto | 0 | 1"
+        ;;
+esac
+
+BILLING_CHECKS_ENABLED="0"
+if [[ "$DEPLOY_RUN_BILLING_VERIFY_MODE" == "1" ]]; then
+    BILLING_CHECKS_ENABLED="1"
+    warn "Billing verification override enabled (DEPLOY_RUN_BILLING_VERIFY=1)."
+elif [[ "$DEPLOY_RUN_BILLING_VERIFY_MODE" == "0" ]]; then
+    BILLING_CHECKS_ENABLED="0"
+    log "Billing verification disabled by override (DEPLOY_RUN_BILLING_VERIFY=0)."
+elif [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
+    BILLING_CHECKS_ENABLED="1"
+else
+    BILLING_CHECKS_ENABLED="0"
+    log "Billing verification skipped by policy because PAYMENTS_ENABLED is not true."
 fi
 
 PRE_DEPLOY_COMMIT="$(git rev-parse HEAD)"
@@ -826,18 +851,25 @@ fi
 
 run_step "Running schema/index audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:indexes"
 
-if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
+if [[ "$BILLING_CHECKS_ENABLED" == "1" ]]; then
     run_step "Running billing-funnel telemetry audit..." bash -lc "cd \"$BACKEND_DIR\" && npm run audit:billing-funnel"
 else
-    log "Skipping billing-funnel telemetry audit because PAYMENTS_ENABLED is not true."
+    log "Skipping billing-funnel telemetry audit (billing checks disabled)."
 fi
 
 # ===========================================================================
 # Tenant schema sync
 # ===========================================================================
 log "Running tenant schema sync..."
+TENANT_SYNC_REPORT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.tenant_schema_sync.json"
+TENANT_SYNC_BASELINE_FILE="$BACKEND_DIR/config/deploy/tenant-schema-sync-failure-baseline.json"
 if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
-    (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js)
+    (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js --report-file "$TENANT_SYNC_REPORT_FILE")
+    if [[ -f "$TENANT_SYNC_BASELINE_FILE" ]]; then
+        run_step "Running tenant schema sync regression gate..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/check-tenant-schema-sync-regressions.js --report-file \"$TENANT_SYNC_REPORT_FILE\" --baseline-file \"$TENANT_SYNC_BASELINE_FILE\""
+    else
+        warn "Tenant schema sync baseline not found: $TENANT_SYNC_BASELINE_FILE (regression gate skipped)."
+    fi
 else
     warn "sync-tenant-schemas.js not found; skipped."
 fi
@@ -961,7 +993,11 @@ else
     warn "Public endpoint checks disabled (DEPLOY_VERIFY_PUBLIC_ENDPOINTS=$VERIFY_PUBLIC_ENDPOINTS)."
 fi
 
-run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
+if [[ "$BILLING_CHECKS_ENABLED" == "1" ]]; then
+    run_optional_node_script "$BACKEND_DIR" "scripts/verify_production_billing.js" "production billing verification"
+else
+    log "Skipping production billing verification hook (billing checks disabled)."
+fi
 
 # ===========================================================================
 # Deep AI Verification (Optional Gate)
@@ -997,6 +1033,9 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "log_file=$LOG_FILE"
     echo "migrations_changed=$MIGRATIONS_CHANGED"
     echo "db_backup_file=${BACKUP_FILE:-none}"
+    echo "payments_enabled=$PAYMENTS_ENABLED_NORMALIZED"
+    echo "deploy_run_billing_verify_mode=$DEPLOY_RUN_BILLING_VERIFY_MODE"
+    echo "billing_checks_enabled=$BILLING_CHECKS_ENABLED"
     echo "total_changed_files=$TOTAL_CHANGED_FILES"
     echo "backend_changed_files=$BACKEND_CHANGED_FILES"
     echo "frontend_changed_files=$FRONTEND_CHANGED_FILES"
@@ -1010,6 +1049,8 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "pos_public_url=${POS_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "storefront_public_url=${STOREFRONT_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "tenant_store_public_url=${TENANT_STORE_PUBLIC_VERIFIED_URL:-not_checked}"
+    echo "tenant_schema_sync_report_file=${TENANT_SYNC_REPORT_FILE:-none}"
+    echo "tenant_schema_sync_baseline_file=${TENANT_SYNC_BASELINE_FILE:-none}"
     echo "elapsed_seconds=$ELAPSED"
 } > "$SUMMARY_FILE"
 
@@ -1024,5 +1065,3 @@ echo -e "${GREEN}${BOLD}║${NC}  Duration: ${YELLOW}${ELAPSED_MIN}m ${ELAPSED_S
 echo -e "${GREEN}${BOLD}║${NC}  Health  : ${GREEN}OK Backend${NC}  ${GREEN}OK IMS${NC}  ${GREEN}OK POS${NC}  ${GREEN}OK Store${NC}"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-
-
