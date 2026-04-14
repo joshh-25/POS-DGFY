@@ -788,7 +788,7 @@ function App() {
         name: item.name,
         quantity: maxStock > 0 ? 1 : 0,
         price,
-        image_url: item.image_url || null,
+        image_url: withApiOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
         max_stock: maxStock
       }];
@@ -1432,7 +1432,7 @@ function App() {
                               <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {line.image_url ? (
                                   <img
-                                    src={line.image_url}
+                                    src={withApiOrigin(line.image_url)}
                                     alt={line.name}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                   />
@@ -1557,7 +1557,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <Toaster richColors position="top-right" />
   </React.StrictMode>
 );
-
 
 
 

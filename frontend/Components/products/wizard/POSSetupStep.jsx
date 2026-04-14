@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 
 export default function POSSetupStep({
   productItem,
@@ -71,7 +72,7 @@ export default function POSSetupStep({
           <div className="space-y-3">
             {posConfig?.pos_image_url ? (
               <img
-                src={posConfig.pos_image_url}
+                src={resolveAssetUrl(posConfig.pos_image_url)}
                 alt={`${productItem?.name || 'Product'} POS menu`}
                 className="h-28 w-40 rounded-md border border-slate-200 object-cover"
               />
@@ -113,4 +114,3 @@ export default function POSSetupStep({
     </div>
   );
 }
-

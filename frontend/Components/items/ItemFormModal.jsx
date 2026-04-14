@@ -24,6 +24,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -992,7 +993,7 @@ export default function ItemFormModal({
                 <div className="space-y-3">
                   {posConfig?.pos_image_url ? (
                     <img
-                      src={posConfig.pos_image_url}
+                      src={resolveAssetUrl(posConfig.pos_image_url)}
                       alt={`${item.name} POS menu`}
                       className="h-28 w-40 rounded-md border border-slate-200 object-cover"
                     />

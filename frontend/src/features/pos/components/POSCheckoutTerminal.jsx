@@ -14,6 +14,7 @@ import {
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 
@@ -1360,6 +1361,7 @@ export default function POSCheckoutTerminal({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
                         {catalog.map((item) => {
                             const isOutOfStock = Number(item.current_stock || 0) <= 0;
+                            const posImageSrc = resolveAssetUrl(item.pos_image_url);
                             return (
                                 <div
                                     key={item.item_id}
@@ -1389,17 +1391,17 @@ export default function POSCheckoutTerminal({
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             setImagePreview({
-                                                src: item.pos_image_url || '',
+                                                src: posImageSrc || '',
                                                 alt: `${item.name} menu`,
-                                                hasImage: Boolean(item.pos_image_url)
+                                                hasImage: Boolean(posImageSrc)
                                             });
                                         }}
                                         className="w-full aspect-square max-h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                        title={item.pos_image_url ? 'Click to enlarge image' : 'Click to preview placeholder'}
+                                        title={posImageSrc ? 'Click to enlarge image' : 'Click to preview placeholder'}
                                     >
-                                        {item.pos_image_url ? (
+                                        {posImageSrc ? (
                                             <img
-                                                src={item.pos_image_url}
+                                                src={posImageSrc}
                                                 alt={`${item.name} menu`}
                                                 className="h-full w-full object-cover"
                                             />

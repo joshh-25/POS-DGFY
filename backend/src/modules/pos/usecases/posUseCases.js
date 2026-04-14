@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
+import path from 'path';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -63,6 +64,25 @@ const CASH_EVENT_EFFECT = Object.freeze({
 });
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
+const POS_CATALOG_IMAGE_ALLOWED_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+    'image/svg+xml',
+    'image/avif'
+]);
+const POS_CATALOG_IMAGE_ALLOWED_EXTENSIONS = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.svg',
+    '.avif'
+]);
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
@@ -521,6 +541,16 @@ const hasPermission = (user, permission) => {
     if (!user) return false;
     if (user.is_master_admin) return true;
     return parseUserPermissions(user).includes(permission);
+};
+
+const isSupportedPosCatalogImageFile = (file = {}) => {
+    const mimetype = String(file?.mimetype || '').trim().toLowerCase();
+    if (POS_CATALOG_IMAGE_ALLOWED_MIME_TYPES.has(mimetype)) {
+        return true;
+    }
+
+    const ext = String(path.extname(file?.originalname || '') || '').toLowerCase();
+    return POS_CATALOG_IMAGE_ALLOWED_EXTENSIONS.has(ext);
 };
 
 const normalizeOnlineFulfillmentStatus = (value) => {
@@ -1737,6 +1767,14 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                     DomainErrorCode.AUTHORIZATION_FAILED,
                     'You do not have permission to upload POS catalog images.',
                     { statusCode: 403 }
+                );
+            }
+
+            if (!isSupportedPosCatalogImageFile(file)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only image files are allowed for POS catalog uploads.',
+                    { statusCode: 422 }
                 );
             }
 

@@ -47,6 +47,7 @@ import { useItemSelection } from '@/hooks/useItemSelection';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { usePermission } from '@/hooks/usePermission';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { useNavigate } from 'react-router-dom';
 import {
   getPosCatalogOverrides,
@@ -255,7 +256,7 @@ export default function Items() {
     const override = posCatalogOverrides[itemId];
     return {
       pos_visible: override ? override.pos_visible !== false : getDefaultPosVisibility(item),
-      pos_image_url: override?.pos_image_url || null,
+      pos_image_url: resolveAssetUrl(override?.pos_image_url) || null,
       pos_readiness: override?.pos_readiness || null
     };
   }, [getDefaultPosVisibility, posCatalogOverrides]);
