@@ -2809,6 +2809,8 @@ Update tenant status or subscription plan.
 - `status` values: "active", "inactive" (soft delete), "pending", "rejected"
 - `plan` values: "standard", "premium"
 - Changing status to "inactive" prevents all users of that tenant from logging in.
+- In default billing-paused mode (`PAYMENTS_ENABLED=false`), this endpoint still allows manual tenant `plan` metadata edits.
+- Billing automation endpoints remain disabled in that mode (`POST /admin/tenants/:id/change-plan`, `/payments/*` return `503` + `PAYMENTS_DISABLED`).
 
 ### DELETE /admin/tenants/:id
 Permanently delete a tenant and their isolated database. **IRREVERSIBLE**.

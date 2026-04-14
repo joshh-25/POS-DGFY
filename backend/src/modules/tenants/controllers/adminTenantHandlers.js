@@ -203,16 +203,6 @@ export const updatePricingSettings = async (req, res) => {
  * ADMIN: Update tenant details (status, plan)
  */
 export const updateTenant = async (req, res) => {
-    const tenantPlanChangeRequested = typeof req.body?.plan === 'string';
-    const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
-        plan: req.body?.plan,
-        subscriptionId: null
-    });
-
-    if (!paymentsEnabled && tenantPlanChangeRequested && requestsSubscriptionFlow) {
-        return sendPaymentsDisabled(res);
-    }
-
     const result = await updateTenantUseCase({
         id: req.params?.id,
         body: req.body

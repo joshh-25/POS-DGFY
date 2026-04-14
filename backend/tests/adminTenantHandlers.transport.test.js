@@ -200,7 +200,16 @@ describe('adminTenantHandlers transport contracts', () => {
     expect(mockProvisionNewTenantUseCase).not.toHaveBeenCalled();
   });
 
-  it('updateTenant rejects premium plan changes when payments are disabled', async () => {
+  it('updateTenant allows manual premium plan metadata updates when payments are disabled', async () => {
+    mockUpdateTenantUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        status: 'active',
+        plan: 'premium'
+      }
+    });
+
     const req = {
       params: { id: 'tenant-1' },
       body: { status: 'active', plan: 'premium' }
@@ -209,11 +218,16 @@ describe('adminTenantHandlers transport contracts', () => {
 
     await updateTenant(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(503);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      success: false,
-      code: 'PAYMENTS_DISABLED'
+    expect(mockUpdateTenantUseCase).toHaveBeenCalledWith({
+      id: 'tenant-1',
+      body: { status: 'active', plan: 'premium' }
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_tenant_updated',
+      surface: 'admin_tenants',
+      action: 'update_tenant'
     }));
-    expect(mockUpdateTenantUseCase).not.toHaveBeenCalled();
   });
 });

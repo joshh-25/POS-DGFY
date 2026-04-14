@@ -50,8 +50,9 @@ Tenants still store plan metadata, but billing/subscription workflows are hard-d
 
 Current policy notes:
 1. Payment/subscription endpoints return `503` with `PAYMENTS_DISABLED`.
-2. Admin subscription actions (plan change/setup) are disabled in the admin UI.
-3. Premium registration via provider verification is disabled.
+2. Legacy billing admin actions (`/admin/tenants/:id/change-plan`, billing setup) are disabled while billing is paused.
+3. Admin can still edit tenant `plan` metadata in Tenant Manager via `PUT /admin/tenants/:id` as an operational override.
+4. Premium registration via provider verification is disabled.
 
 ### Feature Gating
 

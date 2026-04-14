@@ -120,7 +120,6 @@ export default function TenantManager() {
     // Add Tenant Modal State
     const [showAddModal, setShowAddModal] = useState(false);
     const [addLoading, setAddLoading] = useState(false);
-    const billingControlsDisabled = true;
     const [addForm, setAddForm] = useState({
         name: '',
         adminEmail: '',
@@ -258,10 +257,7 @@ export default function TenantManager() {
         e.preventDefault();
         setEditLoading(true);
         try {
-            const payload = { status: editForm.status };
-            if (!billingControlsDisabled) {
-                payload.plan = editForm.plan;
-            }
+            const payload = { status: editForm.status, plan: editForm.plan };
             await adminService.updateTenant(editForm.id, payload);
             setShowEditModal(false);
             loadTenants();
@@ -1403,14 +1399,16 @@ export default function TenantManager() {
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">Plan</label>
-                                <input
-                                    type="text"
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                                <select
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
                                     value={editForm.plan || 'standard'}
-                                    readOnly
-                                />
+                                    onChange={e => setEditForm({ ...editForm, plan: e.target.value })}
+                                >
+                                    <option value="standard">Standard</option>
+                                    <option value="premium">Premium</option>
+                                </select>
                                 <p className="text-xs text-slate-500">
-                                    Plan edits are disabled while subscription billing is paused.
+                                    Plan is updated as tenant metadata. Billing automation remains paused.
                                 </p>
                             </div>
 
