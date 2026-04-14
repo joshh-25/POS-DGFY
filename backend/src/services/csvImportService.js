@@ -4,12 +4,17 @@ import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
 import { createItem, updateItem } from './itemService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { getAllSettingsUseCase } from '../modules/settings/index.js';
+import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
 const VALID_PRODUCT_TYPES = ['work_in_progress', 'finished_goods'];
 const VALID_VAT_TYPES = ['vatable', 'vat_exempt', 'zero_rated'];
 const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'];
+const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', 'msme'];
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 /**
  * Parse CSV content and transform rows to item format
@@ -73,6 +78,7 @@ const transformRow = (row) => {
     if (row.min_threshold) item.min_threshold = parseFloat(row.min_threshold) || null;
     if (row.purchase_allowance) item.purchase_allowance = parseFloat(row.purchase_allowance) || null;
     if (row.cost_per_unit) item.cost_per_unit = parseFloat(row.cost_per_unit) || null;
+    if (row.default_sale_price) item.default_sale_price = parseFloat(row.default_sale_price) || null;
     if (row.shelf_life_days) item.shelf_life_days = parseInt(row.shelf_life_days) || null;
     if (row.opened_shelf_life_days) item.opened_shelf_life_days = parseInt(row.opened_shelf_life_days) || null;
     if (row.batch_size) item.batch_size = parseFloat(row.batch_size) || null;
@@ -89,6 +95,9 @@ const transformRow = (row) => {
 
     // Text fields
     if (row.production_notes) item.production_notes = row.production_notes.trim();
+    if (row.template_workflow_mode) {
+        item.template_workflow_mode = String(row.template_workflow_mode || '').trim().toLowerCase();
+    }
 
     // Packaging specs (flattened columns for Items template)
     const packagingSpecs = {};
@@ -277,6 +286,55 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
     };
 };
 
+const resolveTenantWorkflowMode = async () => {
+    const settings = unwrapApplicationResultOrThrow(
+        await getAllSettingsUseCase(),
+        'Failed to retrieve settings for workflow-mode validation'
+    );
+    return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
+};
+
+const normalizeTemplateWorkflowMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (VALID_TEMPLATE_WORKFLOW_MODES.includes(normalized)) {
+        return normalized;
+    }
+    return null;
+};
+
+const resolveTemplateWorkflowModeFromRecords = (headers = [], records = []) => {
+    const normalizedHeaders = headers.map((header) => String(header || '').trim().toLowerCase());
+    if (normalizedHeaders.includes('template_workflow_mode')) {
+        for (const record of records) {
+            const marker = normalizeTemplateWorkflowMode(record?.template_workflow_mode);
+            if (marker) return marker;
+        }
+    }
+
+    // Backwards compatibility fallback:
+    // unmarked templates are treated as manufacturing-oriented.
+    return 'manufacturing';
+};
+
+const inferTemplateWorkflowModeFromRows = (rows = []) => {
+    for (const row of rows) {
+        const rowMarker = normalizeTemplateWorkflowMode(row?.template_workflow_mode);
+        if (rowMarker) return rowMarker;
+
+        const marker = normalizeTemplateWorkflowMode(row?.data?.template_workflow_mode);
+        if (marker) return marker;
+    }
+
+    // Backwards compatibility fallback:
+    // unmarked templates are treated as manufacturing-oriented.
+    return 'manufacturing';
+};
+
+const buildWorkflowMismatchMessage = ({ templateWorkflowMode, tenantWorkflowMode }) => (
+    `Template workflow mode '${templateWorkflowMode}' does not match tenant workflow mode '${tenantWorkflowMode}'. `
+    + `Download the '${tenantWorkflowMode}' CSV template and try again.`
+);
+
 /**
  * Preview CSV import - validate all rows and return preview data
  */
@@ -295,6 +353,21 @@ export const previewImport = async (csvContent) => {
     // Detect template type from headers
     const headers = Object.keys(records[0]);
     const templateType = detectTemplateType(headers);
+    const templateWorkflowMode = resolveTemplateWorkflowModeFromRecords(headers, records);
+    const tenantWorkflowMode = await resolveTenantWorkflowMode();
+
+    if (templateWorkflowMode !== tenantWorkflowMode) {
+        return {
+            success: false,
+            error: buildWorkflowMismatchMessage({ templateWorkflowMode, tenantWorkflowMode }),
+            details: {
+                code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
+                template_workflow_mode: templateWorkflowMode,
+                tenant_workflow_mode: tenantWorkflowMode,
+                remediation: `Use the ${tenantWorkflowMode} CSV template for this tenant before importing.`
+            }
+        };
+    }
 
     // Get all existing SKUs for upsert detection
     const Item = dbStore.get('Item');
@@ -329,10 +402,14 @@ export const previewImport = async (csvContent) => {
             sku_code: itemData.sku_code || '',
             name: itemData.name || '',
             category: itemData.category || '',
+            template_workflow_mode: templateWorkflowMode,
             action: validation.action,
             valid: validation.valid,
             errors: validation.errors,
-            data: validation.data,
+            data: {
+                ...validation.data,
+                template_workflow_mode: templateWorkflowMode
+            },
             existingItemId: validation.existingItemId
         });
 
@@ -346,6 +423,8 @@ export const previewImport = async (csvContent) => {
     return {
         success: true,
         templateType,
+        templateWorkflowMode,
+        tenantWorkflowMode,
         totalRows: records.length,
         validRows: validCount,
         invalidRows: records.length - validCount,
@@ -372,6 +451,21 @@ export const confirmImport = async (rows, userId) => {
 
     if (!rows || !Array.isArray(rows)) {
         return { success: false, error: 'Invalid rows data provided' };
+    }
+
+    const templateWorkflowMode = inferTemplateWorkflowModeFromRows(rows);
+    const tenantWorkflowMode = await resolveTenantWorkflowMode();
+    if (templateWorkflowMode !== tenantWorkflowMode) {
+        return {
+            success: false,
+            error: buildWorkflowMismatchMessage({ templateWorkflowMode, tenantWorkflowMode }),
+            details: {
+                code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
+                template_workflow_mode: templateWorkflowMode,
+                tenant_workflow_mode: tenantWorkflowMode,
+                remediation: `Use the ${tenantWorkflowMode} CSV template for this tenant before importing.`
+            }
+        };
     }
 
     // Get all existing SKUs for re-validation for efficiency
@@ -696,6 +790,70 @@ export const PRODUCTS_HEADERS = [
     'compliance_halal_certified'
 ];
 
+const TEMPLATE_MARKER_HEADERS = Object.freeze([
+    'template_workflow_mode',
+    'mode_compatibility_note'
+]);
+
+export const MANUFACTURING_TEMPLATE_HEADERS = Object.freeze([
+    'sku_code',
+    'name',
+    'category',
+    'product_type',
+    'vat_type',
+    'description',
+    'product_folder',
+    'max_capacity',
+    'current_stock',
+    'min_threshold',
+    'purchase_allowance',
+    'unit_of_measure',
+    'cost_per_unit',
+    'default_sale_price',
+    'fifo_enabled',
+    'shelf_life_days',
+    'opened_shelf_life_days',
+    'batch_size',
+    'yield_percentage',
+    'processing_loss',
+    'production_notes',
+    'packaging_height',
+    'packaging_width',
+    'packaging_thickness',
+    'packaging_material',
+    'packaging_design',
+    'packaging_contents',
+    'allergens',
+    ...TEMPLATE_MARKER_HEADERS
+]);
+
+export const MSME_TEMPLATE_HEADERS = Object.freeze([
+    'sku_code',
+    'name',
+    'category',
+    'product_type',
+    'vat_type',
+    'description',
+    'max_capacity',
+    'current_stock',
+    'min_threshold',
+    'purchase_allowance',
+    'unit_of_measure',
+    'cost_per_unit',
+    'default_sale_price',
+    'fifo_enabled',
+    'shelf_life_days',
+    'opened_shelf_life_days',
+    'packaging_height',
+    'packaging_width',
+    'packaging_thickness',
+    'packaging_material',
+    'packaging_design',
+    'packaging_contents',
+    'allergens',
+    ...TEMPLATE_MARKER_HEADERS
+]);
+
 // Valid categories for each template type
 export const ITEMS_CATEGORIES = ['raw_material', 'packaging', 'supplies'];
 export const PRODUCTS_CATEGORIES = ['product'];
@@ -768,6 +926,61 @@ export const validateCategoryForTemplate = (category, templateType) => {
     }
 
     return { valid: true };
+};
+
+export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateType }) => {
+    const normalizedMode = normalizeTemplateWorkflowMode(workflowMode);
+    if (normalizedMode) return normalizedMode;
+
+    // Backwards compatibility:
+    // legacy callers that only pass `type` map to manufacturing templates.
+    if (templateType) {
+        return 'manufacturing';
+    }
+
+    return 'manufacturing';
+};
+
+const getTemplateCompatibilityNote = (workflowMode) => (
+    workflowMode === 'msme'
+        ? 'This CSV template is for MSME mode only. It will be rejected in manufacturing mode.'
+        : 'This CSV template is for manufacturing mode only. It will be rejected in MSME mode.'
+);
+
+const appendTemplateMarkersToRows = (rows, workflowMode) => {
+    const note = getTemplateCompatibilityNote(workflowMode);
+    return rows.map((row) => [
+        ...row,
+        workflowMode,
+        note
+    ]);
+};
+
+export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
+    const resolvedWorkflowMode = resolveRequestedTemplateWorkflowMode({ workflowMode, templateType });
+
+    if (resolvedWorkflowMode === 'msme') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'msme_items_import_template.csv',
+            headers: [...MSME_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['MSME-PROD-001', 'Chocolate Cookies Pack', 'product', 'finished_goods', 'vatable', 'Retail-ready cookies', '120', '40', '20', '10', 'pack', '65.00', '95.00', 'TRUE', '60', '20', '12', '8', '0.05', 'plastic', 'Retail pouch', '10 pcs', 'wheat,milk'],
+                ['MSME-SUP-001', 'Paper Bag Medium', 'supplies', '', '', 'Takeout packaging bag', '500', '180', '75', '30', 'pcs', '4.50', '8.00', 'FALSE', '', '', '12', '6', '0.01', 'paper', 'Brown kraft', '1 bag', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
+    return {
+        workflowMode: resolvedWorkflowMode,
+        filename: 'manufacturing_items_import_template.csv',
+        headers: [...MANUFACTURING_TEMPLATE_HEADERS],
+        sampleRows: appendTemplateMarkersToRows([
+            ['RM-001', 'Flour - All Purpose', 'raw_material', '', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', '70.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', 'wheat'],
+            ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', '25.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake', ''],
+            ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'vatable', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', '680.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', 'milk,eggs,wheat']
+        ], resolvedWorkflowMode)
+    };
 };
 
 /**

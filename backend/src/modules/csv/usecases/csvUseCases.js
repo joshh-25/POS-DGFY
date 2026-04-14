@@ -106,15 +106,28 @@ export const buildConfirmItemsImportUseCase = ({ csvImportService }) => {
 };
 
 export const buildGetItemsTemplateHeadersUseCase = ({ csvImportService }) => {
-  return async ({ templateType }) => {
+  return async ({ templateType, workflowMode }) => {
     const validTypes = ['items', 'products', 'master'];
     if (templateType !== undefined && !validTypes.includes(templateType)) {
       return failWithValidation(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
     }
 
+    const validWorkflowModes = ['manufacturing', 'msme'];
+    if (
+      workflowMode !== undefined
+      && !validWorkflowModes.includes(String(workflowMode).trim().toLowerCase())
+    ) {
+      return failWithValidation(
+        `Invalid workflow_mode. Must be one of: ${validWorkflowModes.join(', ')}`
+      );
+    }
+
     return withServiceExecution(
-      () => csvImportService.getTemplateHeaders(templateType || 'master'),
-      'Failed to retrieve item template headers'
+      () => csvImportService.getTemplateDefinition({
+        templateType: templateType || 'master',
+        workflowMode
+      }),
+      'Failed to retrieve item template definition'
     );
   };
 };

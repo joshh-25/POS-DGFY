@@ -139,7 +139,8 @@ export const confirmImport = async (req, res) => {
 export const getTemplate = async (req, res) => {
   try {
     const templateType = req.query.type || 'master';
-    const result = await getItemsTemplateHeadersUseCase({ templateType });
+    const workflowMode = req.query.workflow_mode;
+    const result = await getItemsTemplateHeadersUseCase({ templateType, workflowMode });
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -148,7 +149,8 @@ export const getTemplate = async (req, res) => {
       action: 'download_items_template',
       result,
       successMetadataResolver: () => ({
-        template_type: templateType
+        template_type: templateType,
+        workflow_mode: workflowMode || null
       })
     });
     if (!result?.success) {
@@ -157,31 +159,10 @@ export const getTemplate = async (req, res) => {
       });
     }
 
-    const headers = result.data || [];
-    let sampleRows = [];
-    let filename = 'item_import_template.csv';
-
-    if (templateType === 'items') {
-      filename = 'items_import_template.csv';
-      sampleRows = [
-        ['RM-001', 'Flour - All Purpose', 'raw_material', 'High quality wheat flour', '500', '1000', '100', '50', 'kg', '45.00', 'TRUE', '365', '30', 'wheat', '', '', '', '', '', ''],
-        ['PKG-001', 'Cake Box - 8 inch', 'packaging', 'Standard cake box', '250', '500', '50', '25', 'pcs', '15.00', 'FALSE', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake'],
-        ['SUP-001', 'Disposable Gloves - M', 'supplies', 'Medium size latex gloves', '800', '1000', '200', '100', 'pcs', '2.50', 'FALSE', '', '', '', '', '', '', '', '', '']
-      ];
-    } else if (templateType === 'products') {
-      filename = 'products_import_template.csv';
-      sampleRows = [
-        ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'Premium chocolate cake', 'Cakes', '10', '50', '10', 'pcs', '450.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place'],
-        ['WIP-001', 'Cake Base Mix', 'product', 'work_in_progress', 'Pre-mixed cake base', 'Preparations', '25', '100', '20', 'kg', '120.00', 'TRUE', '14', '7', '10', '98', '2', 'Keep refrigerated']
-      ];
-    } else {
-      sampleRows = [
-        ['RM-001', 'Flour - All Purpose', 'raw_material', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', '', 'wheat'],
-        ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake'],
-        ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', '', 'milk,eggs,wheat'],
-        ['SUP-001', 'Disposable Gloves - M', 'supplies', '', 'Medium size latex gloves', '', '1000', '800', '200', '100', 'pcs', '2.50', 'FALSE', '', '', '', '', '', '', '', '', '', '', '', '', '']
-      ];
-    }
+    const templateData = result.data || {};
+    const headers = templateData.headers || [];
+    const sampleRows = templateData.sampleRows || [];
+    const filename = templateData.filename || 'manufacturing_items_import_template.csv';
 
     let csvContent = `${headers.join(',')}\n`;
     for (const row of sampleRows) {

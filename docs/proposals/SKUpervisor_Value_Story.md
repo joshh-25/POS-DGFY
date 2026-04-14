@@ -5,7 +5,7 @@ This proposal-ready document summarizes SKUpervisor's value for restaurants and 
 ## Executive Summary
 - SKUpervisor centralizes inventory, purchase orders, and job/production planning inside a single, tenant-aware platform.
 - The GPT-4-powered SKUpervisor AI assistant controls inventory with 52 tools, letting users ask questions like "Show me low stock soy sauce" or "Create a PO for kitchen pantry staples" while high-impact write actions require confirmation before execution (`docs/ai/AI_GUIDELINES.md`).
-- Multi-tenancy with a database-per-tenant model isolates every company, while premium plan gating unlocks the AI assistant and advanced forecasting only after entitlement verification (`docs/features/TENANT_MANAGEMENT.md`, `System_Audit/Comprehensive_Subscription_Audit.md`).
+- Multi-tenancy with a database-per-tenant model isolates every company, while premium plan gating unlocks AI assistant and forecasting capabilities based on tenant plan metadata managed by platform admin workflows (`docs/features/TENANT_MANAGEMENT.md`).
 - Because SKUpervisor maps every inventory, supplier, and production process into data that the AI assistant, dashboards, and diagnostics can query, it is a SaaS platform with enough flexibility to support hospitality, food manufacturing, wholesale, and much more.
 
 ## Restaurant & Food Manufacturing Focus
@@ -40,8 +40,8 @@ Each vertical benefits from the same SaaS plumbing: a stateless diagnostics micr
 - **Nested Products & Traceability** - Supports up to three nesting levels, automatic lineage, circular dependency prevention, and batch-level queries that suit recipe-based food production and any BOM-driven manufacturer (`docs/features/NESTED_PRODUCTS.md`).
 - **Advanced Analytics** - The AI assistant can run production feasibility, bottleneck detection, reorder suggestions, supplier performance assessments, cost analysis, and executive summaries, giving teams the data they need without building custom reports (`docs/ai/AI_GUIDELINES.md` analysis feature table).
 - **AI Diagnostics & Gap Reporting** - A dedicated diagnostics endpoint plus front-end panel surfaces which capabilities are fully covered, which need manual intervention, and what data SKUpervisor does or does not know yet (`docs/ai/AI_GUIDELINES.md` diagnostics section).
-- **Multi-Tenant Architecture** - Database-per-tenant provisioning, plan gating, premium activation flows, and the admin console mint the right experience for each company while enforcing security boundaries (`docs/features/TENANT_MANAGEMENT.md`).
-- **Subscription & Operational Hardening** - Subscription lifecycle, webhook safety, and premium gating have been audited (for example, the comprehensive subscription audit) to show resilient PayPal handling and plan propagation for premium features (`System_Audit/Comprehensive_Subscription_Audit.md`).
+- **Multi-Tenant Architecture** - Database-per-tenant provisioning, plan gating, and the admin console deliver tenant-specific behavior while enforcing security boundaries (`docs/features/TENANT_MANAGEMENT.md`).
+- **Subscription & Operational Hardening** - Billing/subscription automation endpoints are intentionally paused in the current phase, while tenant plan metadata controls feature gating and operational safety checks remain enforced (`docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`).
 
 ## Unique Selling Propositions
 
@@ -52,9 +52,9 @@ Each vertical benefits from the same SaaS plumbing: a stateless diagnostics micr
 
 ## Security, Subscription, and Operations Assurance
 
-- Premium subscriptions (required for AI chat and forecasting) are gated by PayPal verification, plan propagation, and database isolation, so clients only get unlocked capabilities after the system proves entitlement (`docs/features/TENANT_MANAGEMENT.md`, `System_Audit/Comprehensive_Subscription_Audit.md`).
+- Premium feature availability (AI chat and forecasting) is gated by tenant plan state with database isolation, while billing automation remains paused in the current operating mode (`docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`).
 - Diagnostic endpoints are read-only and layered behind premium+AI permissions, so operational teams can review coverage percentages without exposing write paths (`docs/ai/AI_GUIDELINES.md` diagnostics section).
-- The platform ships with comprehensive tests for subscription flows, webhook idempotency, and engagement telemetry, which means restaurants and manufacturers can trust that premium AI actions stay aligned with subscription status (`System_Audit/Comprehensive_Subscription_Audit.md` operative sections).
+- The platform ships with comprehensive tests for plan gating, transport contracts, and telemetry, which means restaurants and manufacturers can trust that premium AI actions stay aligned with current tenant plan state (`docs/testing/README.md`).
 
 ## Recommended Next Steps
 
