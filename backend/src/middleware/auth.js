@@ -341,7 +341,8 @@ export const requirePremium = (req, res, next) => {
     });
   }
 
-  if (req.tenant.plan !== 'premium') {
+  const tenantPlan = String(req.tenant.plan || '').toLowerCase();
+  if (tenantPlan !== 'premium') {
     return res.status(403).json({
       success: false,
       message: 'This feature requires a Premium subscription.',
@@ -349,9 +350,14 @@ export const requirePremium = (req, res, next) => {
     });
   }
 
+  // Billing-paused mode allows manual plan metadata overrides to unlock premium-gated features.
+  if (!paymentsEnabled) {
+    return next();
+  }
+
   // G7: Also verify the premium subscription is still live (active or in grace period).
   const now = new Date();
-  const subStatus = req.tenant.subscription_status;
+  const subStatus = String(req.tenant.subscription_status || '').toLowerCase();
   const gracePeriodEnd = req.tenant.grace_period_end ? new Date(req.tenant.grace_period_end) : null;
   const inGrace = subStatus === 'past_due' && gracePeriodEnd && gracePeriodEnd > now;
 

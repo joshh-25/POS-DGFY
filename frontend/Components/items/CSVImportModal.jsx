@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { useCSVImport } from '../../src/hooks/useCSVImport.js';
+import { useWorkflowMode } from '../../src/features/settings/WorkflowModeContext.jsx';
+import { getWorkflowModeLabel } from '../../src/features/settings/workflowMode.js';
 import { toast } from 'sonner';
 
 export default function CSVImportModal({ open, onClose, onSuccess }) {
@@ -39,6 +41,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         downloadTemplate,
         reset
     } = useCSVImport();
+    const { workflowMode } = useWorkflowMode();
 
     const handleClose = () => {
         setStep(1);
@@ -90,6 +93,12 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         if (result.success) {
             setStep(2);
         } else {
+            if (result?.details?.code === 'WORKFLOW_MODE_TEMPLATE_MISMATCH') {
+                const expectedMode = result?.details?.tenant_workflow_mode || workflowMode;
+                const expectedLabel = getWorkflowModeLabel(expectedMode);
+                toast.error(`${result.error} Expected template: ${expectedLabel}.`);
+                return;
+            }
             toast.error(result.error);
         }
     };
@@ -115,9 +124,9 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
     };
 
     const handleDownloadTemplate = async () => {
-        const result = await downloadTemplate();
+        const result = await downloadTemplate({ workflowMode });
         if (result.success) {
-            toast.success('Template downloaded');
+            toast.success(`${getWorkflowModeLabel(result.workflowMode)} template downloaded`);
         } else {
             toast.error(result.error);
         }
@@ -175,36 +184,24 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     <AlertCircle className="w-4 h-4" />
                     <span>Download a template to get started:</span>
                 </div>
-                <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => downloadTemplate('items')}
-                        className="text-teal-600 border-teal-200 hover:bg-teal-50"
-                    >
-                        <Download className="w-3 h-3 mr-1" />
-                        Items Template
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => downloadTemplate('products')}
-                        className="text-purple-600 border-purple-200 hover:bg-purple-50"
-                    >
-                        <Download className="w-3 h-3 mr-1" />
-                        Products Template
-                    </Button>
-                </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadTemplate}
+                    className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                >
+                    <Download className="w-3 h-3 mr-1" />
+                    Download {getWorkflowModeLabel(workflowMode)} Template
+                </Button>
                 <p className="text-xs text-slate-400">
-                    Items = Raw Materials, Packaging, Supplies | Products = WIP, Finished Goods
+                    Current tenant mode: <span className="font-semibold text-slate-600">{getWorkflowModeLabel(workflowMode)}</span>
                 </p>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
                 <p className="font-medium text-amber-800 mb-1">📋 Import Order Reminder</p>
                 <p className="text-amber-700">
-                    Import components (raw materials, packaging, supplies) <strong>before</strong> products.
-                    Product recipes must be added manually via UI after import.
+                    Template mode must match your tenant mode. Mismatched templates are blocked at preview and confirm import.
                 </p>
             </div>
         </div>

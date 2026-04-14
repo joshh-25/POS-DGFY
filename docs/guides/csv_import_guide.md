@@ -45,6 +45,9 @@ Both templates include machine-readable marker columns:
 
 1. `template_workflow_mode`
 2. `mode_compatibility_note`
+3. `template_schema_version`
+4. `template_issued_at`
+5. `template_signature`
 
 ## Template Behavior by Mode
 
@@ -82,7 +85,8 @@ During preview and confirm import:
 
 1. Backend resolves tenant mode from `ops_workflow_mode`.
 2. Backend reads CSV template marker (`template_workflow_mode`).
-3. If mismatch, request is rejected.
+3. If signature markers are present, backend validates `template_signature`.
+4. If mismatch, request is rejected.
 
 Mismatch response includes:
 
@@ -96,6 +100,7 @@ Mismatch response includes:
 | Error | Meaning | Action |
 |-------|---------|--------|
 | `WORKFLOW_MODE_TEMPLATE_MISMATCH` | CSV template mode does not match tenant mode | Download the matching mode template and retry |
+| `TEMPLATE_SIGNATURE_INVALID` | Signed template markers are missing or invalid | Download a fresh template and retry |
 | `Category 'product' is not valid for Items template` | Category does not match detected template columns | Use the correct row/category schema |
 | `product_type is required when category is "product"` | Product row missing `product_type` | Set `work_in_progress` or `finished_goods` |
 | `default_sale_price is required for MSME items` | MSME non-draft row missing sale price | Provide `default_sale_price` |

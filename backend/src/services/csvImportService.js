@@ -1,5 +1,6 @@
 import { parse } from 'csv-parse'; // Fix 4.3/6.3: async variant, not csv-parse/sync
 import { Op } from 'sequelize';
+import crypto from 'crypto';
 import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
 import { createItem, updateItem } from './itemService.js';
@@ -15,6 +16,7 @@ const VALID_VAT_TYPES = ['vatable', 'vat_exempt', 'zero_rated'];
 const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'];
 const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', 'msme'];
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const TEMPLATE_SCHEMA_VERSION = 'v1';
 
 /**
  * Parse CSV content and transform rows to item format
@@ -97,6 +99,15 @@ const transformRow = (row) => {
     if (row.production_notes) item.production_notes = row.production_notes.trim();
     if (row.template_workflow_mode) {
         item.template_workflow_mode = String(row.template_workflow_mode || '').trim().toLowerCase();
+    }
+    if (row.template_schema_version) {
+        item.template_schema_version = String(row.template_schema_version || '').trim();
+    }
+    if (row.template_issued_at) {
+        item.template_issued_at = String(row.template_issued_at || '').trim();
+    }
+    if (row.template_signature) {
+        item.template_signature = String(row.template_signature || '').trim();
     }
 
     // Packaging specs (flattened columns for Items template)
@@ -302,32 +313,138 @@ const normalizeTemplateWorkflowMode = (value) => {
     return null;
 };
 
-const resolveTemplateWorkflowModeFromRecords = (headers = [], records = []) => {
+const getTemplateSigningSecret = () => (
+    process.env.CSV_TEMPLATE_SIGNING_SECRET
+    || process.env.JWT_SECRET
+    || 'csv-template-signing-secret'
+);
+
+const buildTemplateSignature = ({ workflowMode, schemaVersion, issuedAt }) => {
+    const payload = `${String(workflowMode || '').trim().toLowerCase()}|${String(schemaVersion || '').trim()}|${String(issuedAt || '').trim()}`;
+    return crypto
+        .createHmac('sha256', getTemplateSigningSecret())
+        .update(payload)
+        .digest('hex');
+};
+
+const resolveTemplateMetadataFromRecords = (headers = [], records = []) => {
     const normalizedHeaders = headers.map((header) => String(header || '').trim().toLowerCase());
-    if (normalizedHeaders.includes('template_workflow_mode')) {
+    const hasModeMarker = normalizedHeaders.includes('template_workflow_mode');
+    const hasSignatureMarkers = normalizedHeaders.includes('template_signature')
+        && normalizedHeaders.includes('template_schema_version')
+        && normalizedHeaders.includes('template_issued_at');
+
+    if (hasModeMarker) {
         for (const record of records) {
             const marker = normalizeTemplateWorkflowMode(record?.template_workflow_mode);
-            if (marker) return marker;
+            if (!marker) continue;
+
+            const schemaVersion = String(record?.template_schema_version || '').trim();
+            const issuedAt = String(record?.template_issued_at || '').trim();
+            const signature = String(record?.template_signature || '').trim();
+            const expectedSignature = buildTemplateSignature({
+                workflowMode: marker,
+                schemaVersion,
+                issuedAt
+            });
+
+            if (hasSignatureMarkers) {
+                if (!schemaVersion || !issuedAt || !signature) {
+                    return {
+                        workflowMode: marker,
+                        signatureValid: false,
+                        reason: 'missing_signature_markers',
+                        schemaVersion,
+                        issuedAt
+                    };
+                }
+
+                if (signature !== expectedSignature) {
+                    return {
+                        workflowMode: marker,
+                        signatureValid: false,
+                        reason: 'signature_mismatch',
+                        schemaVersion,
+                        issuedAt
+                    };
+                }
+            }
+
+            return {
+                workflowMode: marker,
+                signatureValid: true,
+                reason: hasSignatureMarkers ? 'signed' : 'legacy_unsigned',
+                schemaVersion,
+                issuedAt
+            };
         }
     }
 
     // Backwards compatibility fallback:
     // unmarked templates are treated as manufacturing-oriented.
-    return 'manufacturing';
+    return {
+        workflowMode: 'manufacturing',
+        signatureValid: true,
+        reason: 'legacy_unmarked',
+        schemaVersion: '',
+        issuedAt: ''
+    };
 };
 
-const inferTemplateWorkflowModeFromRows = (rows = []) => {
+const inferTemplateMetadataFromRows = (rows = []) => {
     for (const row of rows) {
-        const rowMarker = normalizeTemplateWorkflowMode(row?.template_workflow_mode);
-        if (rowMarker) return rowMarker;
+        const rowMarker = normalizeTemplateWorkflowMode(row?.template_workflow_mode || row?.data?.template_workflow_mode);
+        if (!rowMarker) continue;
 
-        const marker = normalizeTemplateWorkflowMode(row?.data?.template_workflow_mode);
-        if (marker) return marker;
+        const schemaVersion = String(row?.template_schema_version || row?.data?.template_schema_version || '').trim();
+        const issuedAt = String(row?.template_issued_at || row?.data?.template_issued_at || '').trim();
+        const signature = String(row?.template_signature || row?.data?.template_signature || '').trim();
+        const expectedSignature = buildTemplateSignature({
+            workflowMode: rowMarker,
+            schemaVersion,
+            issuedAt
+        });
+
+        if (schemaVersion || issuedAt || signature) {
+            if (!schemaVersion || !issuedAt || !signature) {
+                return {
+                    workflowMode: rowMarker,
+                    signatureValid: false,
+                    reason: 'missing_signature_markers',
+                    schemaVersion,
+                    issuedAt
+                };
+            }
+
+            if (signature !== expectedSignature) {
+                return {
+                    workflowMode: rowMarker,
+                    signatureValid: false,
+                    reason: 'signature_mismatch',
+                    schemaVersion,
+                    issuedAt
+                };
+            }
+        }
+
+        return {
+            workflowMode: rowMarker,
+            signatureValid: true,
+            reason: signature ? 'signed' : 'legacy_unsigned',
+            schemaVersion,
+            issuedAt
+        };
     }
 
     // Backwards compatibility fallback:
     // unmarked templates are treated as manufacturing-oriented.
-    return 'manufacturing';
+    return {
+        workflowMode: 'manufacturing',
+        signatureValid: true,
+        reason: 'legacy_unmarked',
+        schemaVersion: '',
+        issuedAt: ''
+    };
 };
 
 const buildWorkflowMismatchMessage = ({ templateWorkflowMode, tenantWorkflowMode }) => (
@@ -353,8 +470,22 @@ export const previewImport = async (csvContent) => {
     // Detect template type from headers
     const headers = Object.keys(records[0]);
     const templateType = detectTemplateType(headers);
-    const templateWorkflowMode = resolveTemplateWorkflowModeFromRecords(headers, records);
+    const templateMetadata = resolveTemplateMetadataFromRecords(headers, records);
+    const templateWorkflowMode = templateMetadata.workflowMode;
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
+
+    if (!templateMetadata.signatureValid) {
+        return {
+            success: false,
+            error: 'CSV template signature is invalid or missing required signature markers. Download a fresh template and retry.',
+            details: {
+                code: 'TEMPLATE_SIGNATURE_INVALID',
+                reason: templateMetadata.reason,
+                template_workflow_mode: templateWorkflowMode,
+                tenant_workflow_mode: tenantWorkflowMode
+            }
+        };
+    }
 
     if (templateWorkflowMode !== tenantWorkflowMode) {
         return {
@@ -408,7 +539,20 @@ export const previewImport = async (csvContent) => {
             errors: validation.errors,
             data: {
                 ...validation.data,
-                template_workflow_mode: templateWorkflowMode
+                template_workflow_mode: templateWorkflowMode,
+                ...(templateMetadata.schemaVersion ? { template_schema_version: templateMetadata.schemaVersion } : {}),
+                ...(templateMetadata.issuedAt ? { template_issued_at: templateMetadata.issuedAt } : {}),
+                ...(
+                    templateMetadata.schemaVersion && templateMetadata.issuedAt
+                        ? {
+                            template_signature: buildTemplateSignature({
+                                workflowMode: templateWorkflowMode,
+                                schemaVersion: templateMetadata.schemaVersion,
+                                issuedAt: templateMetadata.issuedAt
+                            })
+                        }
+                        : {}
+                )
             },
             existingItemId: validation.existingItemId
         });
@@ -425,6 +569,7 @@ export const previewImport = async (csvContent) => {
         templateType,
         templateWorkflowMode,
         tenantWorkflowMode,
+        templateSchemaVersion: templateMetadata.schemaVersion || null,
         totalRows: records.length,
         validRows: validCount,
         invalidRows: records.length - validCount,
@@ -453,8 +598,22 @@ export const confirmImport = async (rows, userId) => {
         return { success: false, error: 'Invalid rows data provided' };
     }
 
-    const templateWorkflowMode = inferTemplateWorkflowModeFromRows(rows);
+    const templateMetadata = inferTemplateMetadataFromRows(rows);
+    const templateWorkflowMode = templateMetadata.workflowMode;
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
+    if (!templateMetadata.signatureValid) {
+        return {
+            success: false,
+            error: 'CSV template signature is invalid or missing required signature markers. Download a fresh template and retry.',
+            details: {
+                code: 'TEMPLATE_SIGNATURE_INVALID',
+                reason: templateMetadata.reason,
+                template_workflow_mode: templateWorkflowMode,
+                tenant_workflow_mode: tenantWorkflowMode
+            }
+        };
+    }
+
     if (templateWorkflowMode !== tenantWorkflowMode) {
         return {
             success: false,
@@ -792,7 +951,10 @@ export const PRODUCTS_HEADERS = [
 
 const TEMPLATE_MARKER_HEADERS = Object.freeze([
     'template_workflow_mode',
-    'mode_compatibility_note'
+    'mode_compatibility_note',
+    'template_schema_version',
+    'template_issued_at',
+    'template_signature'
 ]);
 
 export const MANUFACTURING_TEMPLATE_HEADERS = Object.freeze([
@@ -949,10 +1111,16 @@ const getTemplateCompatibilityNote = (workflowMode) => (
 
 const appendTemplateMarkersToRows = (rows, workflowMode) => {
     const note = getTemplateCompatibilityNote(workflowMode);
+    const schemaVersion = TEMPLATE_SCHEMA_VERSION;
+    const issuedAt = new Date().toISOString();
+    const signature = buildTemplateSignature({ workflowMode, schemaVersion, issuedAt });
     return rows.map((row) => [
         ...row,
         workflowMode,
-        note
+        note,
+        schemaVersion,
+        issuedAt,
+        signature
     ]);
 };
 

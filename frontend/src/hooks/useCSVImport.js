@@ -1,5 +1,21 @@
 import { useState } from 'react';
 import api from '../services/api.js';
+import { normalizeWorkflowMode } from '../features/settings/workflowMode.js';
+
+const normalizeTemplateRequest = (input) => {
+    if (typeof input === 'object' && input !== null) {
+        return normalizeWorkflowMode(input.workflowMode);
+    }
+
+    const normalized = String(input || '').trim().toLowerCase();
+
+    // Legacy compatibility: old callers passed template type values.
+    if (normalized === 'items' || normalized === 'products' || normalized === 'master') {
+        return 'manufacturing';
+    }
+
+    return normalizeWorkflowMode(normalized);
+};
 
 export const useCSVImport = () => {
     const [loading, setLoading] = useState(false);
@@ -28,7 +44,11 @@ export const useCSVImport = () => {
         } catch (err) {
             const errorMessage = err.response?.data?.message || err.message || 'Failed to preview CSV';
             setError(errorMessage);
-            return { success: false, error: errorMessage };
+            return {
+                success: false,
+                error: errorMessage,
+                details: err.response?.data?.errors || null
+            };
         } finally {
             setLoading(false);
         }
@@ -47,7 +67,11 @@ export const useCSVImport = () => {
         } catch (err) {
             const errorMessage = err.response?.data?.message || err.message || 'Failed to import';
             setError(errorMessage);
-            return { success: false, error: errorMessage };
+            return {
+                success: false,
+                error: errorMessage,
+                details: err.response?.data?.errors || null
+            };
         } finally {
             setLoading(false);
         }
@@ -55,34 +79,27 @@ export const useCSVImport = () => {
 
     /**
      * Get template download URL for specific type
-     * @param {string} type - 'items', 'products', or 'master'
+     * @param {string|object} templateRequest - workflow mode or legacy template type
      */
-    const getTemplateUrl = (type = 'master') => {
-        return `${api.defaults.baseURL}/items/import/template?type=${type}`;
+    const getTemplateUrl = (templateRequest = 'manufacturing') => {
+        const workflowMode = normalizeTemplateRequest(templateRequest);
+        return `${api.defaults.baseURL}/items/import/template?workflow_mode=${workflowMode}`;
     };
 
     /**
      * Download template directly
-     * @param {string} type - 'items', 'products', or 'master'
+     * @param {string|object} templateRequest - workflow mode or legacy template type
      */
-    const downloadTemplate = async (type = 'master') => {
+    const downloadTemplate = async (templateRequest = 'manufacturing') => {
         try {
-            const response = await api.get(`/items/import/template?type=${type}`, {
+            const workflowMode = normalizeTemplateRequest(templateRequest);
+            const response = await api.get(`/items/import/template?workflow_mode=${workflowMode}`, {
                 responseType: 'blob'
             });
 
-            // Determine filename based on type
-            let filename;
-            switch (type) {
-                case 'items':
-                    filename = 'items_import_template.csv';
-                    break;
-                case 'products':
-                    filename = 'products_import_template.csv';
-                    break;
-                default:
-                    filename = 'item_import_template.csv';
-            }
+            const filename = workflowMode === 'msme'
+                ? 'msme_items_import_template.csv'
+                : 'manufacturing_items_import_template.csv';
 
             // Create download link
             const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -94,7 +111,7 @@ export const useCSVImport = () => {
             link.remove();
             window.URL.revokeObjectURL(url);
 
-            return { success: true };
+            return { success: true, workflowMode };
         } catch (err) {
             const errorMessage = err.response?.data?.message || err.message || 'Failed to download template';
             setError(errorMessage);

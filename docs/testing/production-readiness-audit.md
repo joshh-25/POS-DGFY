@@ -36,7 +36,7 @@ The project has resolved major infrastructure and deployment blockers, and key o
 
 ### 3. Insecure Development Defaults 🟠 (READY FOR OPS)
 *   **Action Taken:** Production server secrets have been rotated.
-*   **Recommendation:** Continue following the [Production Transition Guide](../deployment/transition-guide.md) for secret management.
+*   **Recommendation:** Continue following `docs/ops/PRODUCTION_CHECKLIST.md` and `docs/guides/SCRIPTS_GUIDE.md` for secret management and deployment hygiene.
 
 ### 4. Model DECIMAL Precision Alignment ✅ (RESOLVED — Phase 40)
 *   **Issue:** `deploy_fix_precision.js` patched `product_composition.quantity_required` at the DB level in Phase 32, but 6 other Sequelize models still declared physical quantity columns as `DECIMAL(12, 2)`, creating a mismatch between model definitions and actual DB column types.

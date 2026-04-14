@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import crypto from 'crypto';
 
 const mockItemModel = {
   findAll: jest.fn()
@@ -23,11 +24,13 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
 
 describe('csvImportService workflow-mode template enforcement', () => {
   let previewImport;
+  let confirmImport;
   let getTemplateDefinition;
 
   beforeAll(async () => {
     const mod = await import('../src/services/csvImportService.js');
     previewImport = mod.previewImport;
+    confirmImport = mod.confirmImport;
     getTemplateDefinition = mod.getTemplateDefinition;
   });
 
@@ -49,6 +52,14 @@ describe('csvImportService workflow-mode template enforcement', () => {
     'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note',
     `SKU-001,Sample Supplies,supplies,100,pcs,${mode},"mode note"`
   ].join('\n');
+
+  const buildSignature = ({ workflowMode, schemaVersion, issuedAt }) => {
+    const payload = `${workflowMode}|${schemaVersion}|${issuedAt}`;
+    return crypto
+      .createHmac('sha256', process.env.CSV_TEMPLATE_SIGNING_SECRET || process.env.JWT_SECRET || 'csv-template-signing-secret')
+      .update(payload)
+      .digest('hex');
+  };
 
   it('allows manufacturing template when tenant mode is manufacturing', async () => {
     mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('manufacturing'));
@@ -106,7 +117,74 @@ describe('csvImportService workflow-mode template enforcement', () => {
     expect(template.headers).toEqual(expect.arrayContaining([
       'default_sale_price',
       'template_workflow_mode',
-      'mode_compatibility_note'
+      'mode_compatibility_note',
+      'template_schema_version',
+      'template_issued_at',
+      'template_signature'
     ]));
+  });
+
+  it('blocks preview when signed markers are present but signature is invalid', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
+    const schemaVersion = 'v1';
+    const issuedAt = '2026-04-14T00:00:00.000Z';
+    const csv = [
+      'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note,template_schema_version,template_issued_at,template_signature',
+      `SKU-001,Sample Supplies,supplies,100,pcs,msme,"mode note",${schemaVersion},${issuedAt},bad-signature`
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(false);
+    expect(result.details).toMatchObject({
+      code: 'TEMPLATE_SIGNATURE_INVALID',
+      template_workflow_mode: 'msme',
+      tenant_workflow_mode: 'msme'
+    });
+  });
+
+  it('allows preview when signed markers are valid', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
+    const schemaVersion = 'v1';
+    const issuedAt = '2026-04-14T00:00:00.000Z';
+    const signature = buildSignature({ workflowMode: 'msme', schemaVersion, issuedAt });
+    const csv = [
+      'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note,template_schema_version,template_issued_at,template_signature',
+      `SKU-001,Sample Supplies,supplies,100,pcs,msme,"mode note",${schemaVersion},${issuedAt},${signature}`
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(true);
+    expect(result.templateWorkflowMode).toBe('msme');
+  });
+
+  it('blocks confirm when row metadata signature is invalid', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
+
+    const result = await confirmImport([
+      {
+        rowNumber: 1,
+        sku_code: 'SKU-001',
+        data: {
+          sku_code: 'SKU-001',
+          name: 'Sample Supplies',
+          category: 'supplies',
+          max_capacity: 100,
+          unit_of_measure: 'pcs',
+          template_workflow_mode: 'msme',
+          template_schema_version: 'v1',
+          template_issued_at: '2026-04-14T00:00:00.000Z',
+          template_signature: 'bad-signature'
+        }
+      }
+    ], 'test-user');
+
+    expect(result.success).toBe(false);
+    expect(result.details).toMatchObject({
+      code: 'TEMPLATE_SIGNATURE_INVALID',
+      template_workflow_mode: 'msme',
+      tenant_workflow_mode: 'msme'
+    });
   });
 });
