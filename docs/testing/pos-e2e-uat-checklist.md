@@ -22,6 +22,8 @@ Execution support artifacts:
 
 1. Tenant is active and login works.
 2. Tenant plan allows POS (`premium`).
+   - If `PAYMENTS_ENABLED=false`, plan metadata alone satisfies premium route gate.
+   - If `PAYMENTS_ENABLED=true`, premium subscription state must also be active/in-grace.
 3. POS setup fields are configured in **Settings > POS Setup**:
    - `pos_business_name`
    - `pos_tin_branch`
@@ -34,7 +36,7 @@ Execution support artifacts:
    - one `vat_exempt`
    - one `zero_rated`
 5. Finished goods have non-zero stock.
-6. Cashier role has POS permissions.
+6. Cashier role has POS permissions (`pos:view`, plus `pos:transact` for checkout flows).
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
 

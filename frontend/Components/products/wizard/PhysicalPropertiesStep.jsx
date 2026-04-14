@@ -65,6 +65,7 @@ export default function PhysicalPropertiesStep({ data, updateData }) {
             onValueChange={([val]) => updateProperty('ph_level', val)}
             min={0}
             max={14}
+            // Deliberate precision control: pH values are naturally fractional.
             step={0.1}
             className="w-full"
           />
@@ -87,6 +88,7 @@ export default function PhysicalPropertiesStep({ data, updateData }) {
             onValueChange={([val]) => updateProperty('water_activity', val)}
             min={0}
             max={1}
+            // Deliberate precision control: water activity requires high precision.
             step={0.001}
             className="w-full"
           />

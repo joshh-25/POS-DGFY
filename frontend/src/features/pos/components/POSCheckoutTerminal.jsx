@@ -1583,7 +1583,7 @@ export default function POSCheckoutTerminal({
                                         onKeyDown={(event) => {
                                             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                                                 event.preventDefault();
-                                                const delta = event.key === 'ArrowUp' ? 0.25 : -0.25;
+                                                const delta = event.key === 'ArrowUp' ? 1 : -1;
                                                 const nextValue = Math.max(0, Number(line.sale_price || 0) + delta);
                                                 updateCartLine(line.item_id, { sale_price: nextValue });
                                             }

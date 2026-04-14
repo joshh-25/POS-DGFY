@@ -103,4 +103,5 @@ High-value docs:
 ## Notes
 
 - Frontend build outputs are generated into `dist-apps/` and should not be treated as source.
-- Some root-level historical planning files remain for reference, but governed documentation lives under `docs/`.
+- Historical implementation planning artifacts are archived under `docs/archive/reference/`.
+- Governed/active documentation lives under `docs/`.

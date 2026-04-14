@@ -1,3 +1,12 @@
+---
+status: reference
+authority_level: reference
+owner: product
+last_reviewed: 2026-04-14
+applies_to: tenant_management_and_plan_gating
+topic: tenant_management
+---
+
 # Tenant Management System
 
 ## Overview
@@ -53,6 +62,7 @@ Current policy notes:
 2. Legacy billing admin actions (`/admin/tenants/:id/change-plan`, billing setup) are disabled while billing is paused.
 3. Admin can still edit tenant `plan` metadata in Tenant Manager via `PUT /admin/tenants/:id` as an operational override.
 4. Premium registration via provider verification is disabled.
+5. Premium route gates in billing-paused mode are plan-driven (`plan === premium`); live subscription-status enforcement is only applied when `PAYMENTS_ENABLED=true`.
 
 ### Feature Gating
 
@@ -64,10 +74,19 @@ Current policy notes:
 | Settings & User Management | Yes | Yes |
 | **AI Chat Assistant** | No (upgrade prompt) | Yes |
 | **AI Demand Forecasting** | No (upgrade prompt) | Yes |
+| **POS API surfaces** | No | Yes (with POS permissions) |
 
 ### Gating Implementation
 - **Frontend**: `PermissionContext.jsx` exposes `tenantPlan` from the user's company record. Components check `tenantPlan === 'premium'` to show/hide premium features.
-- **Backend**: AI endpoints (`/api/v1/ai/chat`, `/api/v1/forecast/*`) return `403` for non-premium tenants.
+- **Backend plan gate (`requirePremium`)**:
+  - `plan !== premium` returns `403` with upgrade-required metadata.
+  - When `PAYMENTS_ENABLED=false`, premium-only routes are unlocked by plan metadata alone.
+  - When `PAYMENTS_ENABLED=true`, premium routes additionally enforce active/grace subscription state.
+- **Backend permission gate (`checkPermission`)**:
+  - Premium plan does not bypass user permissions.
+  - POS endpoints still require permissions such as `pos:view` and `pos:transact`.
+- **Example**:
+  - A premium tenant user without `pos:view` still receives `403` on `/api/v1/pos/catalog`.
 
 > **Known Caveat**: MariaDB may return the `permissions` JSON column as a string. `PermissionContext.jsx` handles this with `JSON.parse()` pre-processing (fixed in Phase 32).
 

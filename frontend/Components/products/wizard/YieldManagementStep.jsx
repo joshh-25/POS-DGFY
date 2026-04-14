@@ -70,6 +70,7 @@ export default function YieldManagementStep({ data, updateData }) {
           onValueChange={([val]) => updateData({ yield_percentage: val })}
           min={50}
           max={100}
+          // Deliberate precision control: production percentages require sub-integer adjustments.
           step={0.5}
           className="w-full"
         />
@@ -96,6 +97,7 @@ export default function YieldManagementStep({ data, updateData }) {
           onValueChange={([val]) => updateData({ processing_loss: val })}
           min={0}
           max={50}
+          // Deliberate precision control: processing loss uses fractional percentages.
           step={0.5}
           className="w-full"
         />

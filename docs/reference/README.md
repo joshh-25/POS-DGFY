@@ -10,6 +10,7 @@ When to use:
 1. `docs/reference/IMPLEMENTATION_CHECKLIST.md`
 2. `docs/reference/QUICK_REFERENCE.md`
 3. `docs/reference/CLEANUP_LOG_2026-04-08.md`
+4. `docs/reference/CLEANUP_LOG_2026-04-14.md`
 
 ## Historical Material
 

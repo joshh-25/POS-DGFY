@@ -11,11 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import NumberStepper from "@/components/ui/number-stepper";
 import { AlertTriangle, Search } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import { convertQuantity, areCompatible, normalizeUom } from '../../src/utils/uomConverter';
+import { toUomAbbreviation } from '../../src/utils/uomDisplay';
 
 /**
  * Calculate suggested production quantity to bring stock to healthy level
@@ -33,6 +35,8 @@ const calculateSuggestedProductionQty = (product) => {
   // At minimum, produce the purchase_allowance amount or 1
   return Math.max(Math.ceil(deficit), Math.ceil(purchaseAllowance), 1);
 };
+
+const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
 
 export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, products, items, jobOrder, initialProductId }) {
   // If editing an existing JO, we operate in single-mode
@@ -222,7 +226,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
       stock_after: item.current_stock - item.quantity_required,
       isInsufficient: item.current_stock < item.quantity_required,
       affected_products: Array.from(item.affected_products),
-      conversionNote: item.wasConverted ? `(from ${formatNumber(item.quantity_required_original, 2)} ${item.recipe_uom})` : null
+      conversionNote: item.wasConverted ? `(from ${formatNumber(item.quantity_required_original, 2)} ${getDisplayUom(item.recipe_uom)})` : null
     }));
 
   }, [isEditing, singleSelectedProduct, singleQuantity, selectedProductIds, quantities, products, items]);
@@ -377,6 +381,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                 const isSelected = selectedProductIds.includes(p.id || p.item_id);
                 // Handle different ID keys if necessary. Usually p.id from products list.
                 const pid = p.id || p.item_id;
+                const productUom = getDisplayUom(p.unit_of_measure);
                 const minThreshold = p.min_threshold || 0;
                 const isLowStock = (p.current_stock || 0) <= minThreshold;
 
@@ -403,13 +408,13 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                       </div>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
                         <span className={cn(isLowStock && "text-red-600 font-medium")}>
-                          Stock: {formatNumber(p.current_stock || 0)}
+                          Stock: {formatNumber(p.current_stock || 0)} {productUom}
                         </span>
                         <span className="text-slate-400">|</span>
-                        <span>Min: {formatNumber(minThreshold)}</span>
+                        <span>Min: {formatNumber(minThreshold)} {productUom}</span>
                         <span className="text-slate-400">|</span>
                         <span className="text-teal-600 font-medium">
-                          Suggested: {calculateSuggestedProductionQty(p)}
+                          Suggested: {calculateSuggestedProductionQty(p)} {productUom}
                         </span>
                       </div>
                     </div>
@@ -417,21 +422,16 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                     {isSelected && (
                       <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                         <Label className="text-xs">Qty:</Label>
-                        <div className="relative">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={1}
-                            className="w-24 h-8 pr-8"
-                            value={quantities[pid] !== undefined ? quantities[pid] : 1}
-                            onChange={(e) => handleQuantityChange(pid, e.target.value)}
-                          />
-                          {products.find(p => (p.id || p.item_id) === pid)?.unit_of_measure && (
-                            <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
-                              {products.find(p => (p.id || p.item_id) === pid)?.unit_of_measure}
-                            </span>
-                          )}
-                        </div>
+                        <NumberStepper
+                          value={quantities[pid] !== undefined ? quantities[pid] : 1}
+                          onChange={(nextValue) => handleQuantityChange(pid, nextValue)}
+                          min={0}
+                          step={1}
+                          allowEmpty
+                          size="sm"
+                          uomLabel={productUom}
+                          controlsPosition="right-vertical"
+                        />
                       </div>
                     )}
                   </div>
@@ -445,24 +445,16 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                 <Label className="text-base font-medium">{products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.name}</Label>
                 <div className="flex items-center gap-2">
                   <Label>Quantity:</Label>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min={0}
-                      step={1}
-                      className="w-24 pr-8"
-                      value={singleQuantity}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSingleQuantity(val === '' ? '' : parseInt(val, 10));
-                      }}
-                    />
-                    {products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure && (
-                      <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
-                        {products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure}
-                      </span>
-                    )}
-                  </div>
+                  <NumberStepper
+                    value={singleQuantity}
+                    onChange={(nextValue) => setSingleQuantity(nextValue)}
+                    min={0}
+                    step={1}
+                    allowEmpty
+                    size="sm"
+                    uomLabel={getDisplayUom(products.find(p => (p.id || p.item_id) === singleSelectedProduct)?.unit_of_measure)}
+                    controlsPosition="right-vertical"
+                  />
                 </div>
               </div>
             </div>
@@ -492,14 +484,14 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
                     <div className="text-right">
                       <div className={cn("font-medium", req.isInsufficient ? "text-red-600" : "text-emerald-600")}>
                         {req.isInsufficient ? "Missing " : "Available "}
-                        {formatNumber(req.isInsufficient ? Math.abs(req.stock_after) : req.stock_after)} {req.unit}
+                        {formatNumber(req.isInsufficient ? Math.abs(req.stock_after) : req.stock_after)} {getDisplayUom(req.unit)}
                       </div>
                       <div className="text-xs text-slate-500">
-                        Req: {formatNumber(req.quantity_required, req.quantity_required > 0 && req.quantity_required < 0.01 ? 8 : 2)} {req.unit}
+                        Req: {formatNumber(req.quantity_required, req.quantity_required > 0 && req.quantity_required < 0.01 ? 8 : 2)} {getDisplayUom(req.unit)}
                         {req.conversionNote && (
                           <span className="text-blue-500 ml-1">{req.conversionNote}</span>
                         )}
-                        {' / Stock: '}{formatNumber(req.current_stock)}
+                        {' / Stock: '}{formatNumber(req.current_stock)} {getDisplayUom(req.unit)}
                       </div>
                     </div>
                   </div>

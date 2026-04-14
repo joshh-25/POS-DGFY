@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import NumberStepper from "@/components/ui/number-stepper";
 import {
   ArrowRight,
   ArrowLeft,
@@ -34,6 +35,7 @@ import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { isPurchasable } from '@/components/utils/categoryHelpers';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
+import { toUomAbbreviation } from '../../src/utils/uomDisplay';
 
 /**
  * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
@@ -43,6 +45,8 @@ const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
   const purchaseAllowance = parseFloat(item?.purchase_allowance) || 0;
   return Math.max(Math.ceil(purchaseAllowance), Math.ceil(supplierMOQ), 1);
 };
+
+const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
 
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
   const navigate = useNavigate();
@@ -275,7 +279,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
             projectedStock,
             maxCapacity,
             excess: projectedStock - maxCapacity,
-            unit: item.unit_of_measure || 'units'
+            unit: getDisplayUom(item.unit_of_measure)
           });
         }
       }
@@ -561,31 +565,26 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                           )}
                         </div>
                         <p className="text-sm text-slate-500">
-                          Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {item.unit_of_measure}
+                          Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
                         </p>
                       </div>
                       {isSelected && (
                         <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-2">
                             <Label className="text-xs">Qty:</Label>
-                            <div className="relative">
-                              <Input
-                                type="number"
-                                min={0}
-                                step={1}
-                                className={cn(
-                                  "w-20 pr-8",
-                                  (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
-                                )}
-                                value={orderQuantities[item.id] || ''}
-                                onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
-                              />
-                              {item.unit_of_measure && (
-                                <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium uppercase pointer-events-none">
-                                  {item.unit_of_measure}
-                                </span>
+                            <NumberStepper
+                              value={orderQuantities[item.id] ?? ''}
+                              onChange={(nextValue) => handleQuantityChange(item.id, nextValue === '' ? '' : parseInt(nextValue, 10) || 0)}
+                              min={0}
+                              step={1}
+                              allowEmpty
+                              size="sm"
+                              uomLabel={getDisplayUom(item.unit_of_measure)}
+                              controlsPosition="right-vertical"
+                              inputClassName={cn(
+                                (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
                               )}
-                            </div>
+                            />
                             <Button
                               variant="ghost"
                               size="icon"
@@ -710,8 +709,8 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                                         </Badge>
                                       </div>
                                       <p className="text-xs text-slate-500">
-                                        Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {item.unit_of_measure}
-                                        {supplierItem && ` • ₱${supplierItem.price_per_unit}/${item.unit_of_measure}`}
+                                        Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
+                                        {supplierItem && ` • ₱${supplierItem.price_per_unit}/${getDisplayUom(item.unit_of_measure)}`}
                                       </p>
                                     </div>
                                     {!isAdded ? (

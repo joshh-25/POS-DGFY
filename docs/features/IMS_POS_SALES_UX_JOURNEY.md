@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-14
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -49,6 +49,15 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 5. Complete checkout and review receipt.
 6. Use `History` mode for transaction lookup and receipt re-open.
 7. Use `Open in Sales Report` when escalation/reporting is required.
+
+## PO/JO Quantity UX Contract
+1. PO and JO quantity entry use a shared numeric stepper component with:
+   - editable numeric input
+   - external UOM badge (no in-input overlap)
+   - right-side vertical `+/-` controls
+2. UOM presentation in PO/JO quantity surfaces is abbreviation-only (display normalization only).
+3. Stepper keyboard behavior (`ArrowUp`/`ArrowDown`) follows step-by-1 for quantity controls.
+4. Quantity controls are layout-consistent between PO create and JO create/edit surfaces.
 
 ## Reporting Journey
 1. Sales page receives handoff filters (`source`, `source_id`, date/search/status/payment/order method).

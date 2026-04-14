@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-14
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -54,6 +54,8 @@ Start here for all planning and implementation work:
 2. POS setup is wizard-first; item cards no longer host single-item POS setup widgets.
 3. POS visibility enablement is readiness-gated with deterministic denial metadata for unresolved requirements.
 4. Final Review documentary readiness is tenant self-serve in Settings > Compliance; repo submission docs are reference artifacts, not tenant input.
+5. PO/JO quantity inputs use a shared external numeric stepper with right-side vertical controls and display-only UOM abbreviations.
+6. POS keyboard quantity/price increment/decrement behavior is standardized to step-by-1; precision sliders in product quality/yield flows remain documented exceptions.
 
 ## Rules
 1. Use authoritative docs first.

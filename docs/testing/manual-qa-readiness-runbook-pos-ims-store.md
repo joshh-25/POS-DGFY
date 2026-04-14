@@ -83,12 +83,20 @@ Pass gate:
    - stock-out adjustment
    - void movement
 5. Create purchase order and receive it; confirm stock increase.
-6. Update settings:
+6. Validate PO create quantity UX:
+   - UOM badge is abbreviation-only
+   - UOM never overlays typed quantity value
+   - right-side vertical `+/-` controls are tappable on desktop and mobile
+7. Validate JO create/edit quantity UX:
+   - bulk and edit modes use the same stepper placement/order
+   - stock/min/suggested/summary units are abbreviation-only
+   - quantity changes still update ingredient shortage calculations
+8. Update settings:
    - company/store details
    - storefront visibility
    - location settings (open/closed, delivery/pickup toggles)
-7. Verify persisted values after browser refresh.
-8. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
+8. Verify persisted values after browser refresh.
+9. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
 
 Pass gate:
 1. CRUD and stock flows behave consistently.
@@ -100,11 +108,14 @@ Pass gate:
 2. Verify catalog list, pricing, and search.
 3. Confirm status rail accuracy (connectivity, queue, shift, compliance).
 4. Add multiple items, adjust quantities, verify totals.
-5. Complete one checkout.
-6. Verify transaction appears in POS history.
-7. Verify receipt preview readability and core fields.
-8. Execute one void/cancel/refund path (if enabled) and confirm audit/history reflects it.
-9. Run close-shift or end-of-day flow (if available in environment).
+5. Validate POS checkout keyboard step behavior:
+   - cart quantity `ArrowUp/ArrowDown` adjusts by 1
+   - editable price `ArrowUp/ArrowDown` adjusts by 1
+6. Complete one checkout.
+7. Verify transaction appears in POS history.
+8. Verify receipt preview readability and core fields.
+9. Execute one void/cancel/refund path (if enabled) and confirm audit/history reflects it.
+10. Run close-shift or end-of-day flow (if available in environment).
 
 Compliance checks:
 1. In non-compliant tenant, verify non-fiscal behavior path.

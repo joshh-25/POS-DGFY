@@ -37,6 +37,11 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+Targeted UX regression tests for PO/JO quantity controls and numeric step policy:
+1. `npm --prefix frontend test -- --run src/components/common/__tests__/NumberStepper.behavior.test.jsx`
+2. `npm --prefix frontend test -- --run src/features/__tests__/poJoQuantityUx.contract.test.js`
+3. `npm --prefix frontend test -- --run src/features/__tests__/numericStepperPolicy.contract.test.js`
+
 Historical note:
 - Early exploratory Phase 32 Gemini QA artifacts were archived to `docs/archive/testing/2026-02/`.
 - Legacy receive-token verification notes were archived to `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`.

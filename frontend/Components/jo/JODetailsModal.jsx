@@ -38,6 +38,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { useJobOrderById } from '@/hooks/useJobOrders.js';
+import { toUomAbbreviation } from '../../src/utils/uomDisplay';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700", icon: Clock },
@@ -61,6 +62,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   if (!jo) return null;
 
   const displayJO = detailedJO || jo;
+  const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
   const status = statusConfig[displayJO.status] || statusConfig.draft;
   const StatusIcon = status.icon;
 
@@ -135,7 +137,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                     {displayJO.product_name || displayJO.product?.name || 'Unknown Product'}
                   </p>
                   <p className="text-slate-500">
-                    Target Output: <span className="font-medium text-slate-900">{formatQty(displayJO.quantity_to_produce)} {displayJO.product?.unit_of_measure || 'units'}</span>
+                    Target Output: <span className="font-medium text-slate-900">{formatQty(displayJO.quantity_to_produce)} {getDisplayUom(displayJO.product?.unit_of_measure)}</span>
                   </p>
                 </div>
               </div>
@@ -210,7 +212,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                     {ingredients.length > 0 ? (
                       ingredients.map((ing, idx) => {
                         const itemName = ing.item_name || ing.item?.name || 'Unknown';
-                        const uom = ing.unit_of_measure || ing.item?.unit_of_measure || '';
+                        const uom = getDisplayUom(ing.unit_of_measure || ing.item?.unit_of_measure);
                         // Normalize batch info
                         const batch = ing.batch_info || ing.batch;
                         const isStockLow = ing.stock_after !== undefined && ing.stock_after < 0;
@@ -334,7 +336,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                 </Button>
               </div>
               <p className="text-xs text-slate-500">
-                Target: {formatQty(displayJO.quantity_to_produce)} {displayJO.product?.unit_of_measure || ''} &nbsp;|&nbsp;
+                Target: {formatQty(displayJO.quantity_to_produce)} {getDisplayUom(displayJO.product?.unit_of_measure)} &nbsp;|&nbsp;
                 Produced So Far: {formatQty(displayJO.quantity_produced || 0)} &nbsp;|&nbsp;
                 <span className="text-amber-600">Over-production allowed</span>
               </p>

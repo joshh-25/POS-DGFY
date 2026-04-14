@@ -1605,6 +1605,12 @@ Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
 
 Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. POS writes create `goods_issue` stock movements using `reference_type='POS'`.
 
+Gating notes:
+- Plan gate uses `requirePremium`.
+- Permission gate uses `checkPermission` (for example `pos:view`, `pos:transact`).
+- In billing-paused mode (`PAYMENTS_ENABLED=false`), `requirePremium` is plan-driven (`plan === premium`) and does not block on `subscription_status`.
+- In live billing mode (`PAYMENTS_ENABLED=true`), `requirePremium` also enforces active/grace subscription state.
+
 ### GET /pos/catalog
 List sellable POS catalog items.
 
@@ -2810,6 +2816,7 @@ Update tenant status or subscription plan.
 - `plan` values: "standard", "premium"
 - Changing status to "inactive" prevents all users of that tenant from logging in.
 - In default billing-paused mode (`PAYMENTS_ENABLED=false`), this endpoint still allows manual tenant `plan` metadata edits.
+- In billing-paused mode, those manual plan metadata edits are immediately honored by premium route gating.
 - Billing automation endpoints remain disabled in that mode (`POST /admin/tenants/:id/change-plan`, `/payments/*` return `503` + `PAYMENTS_DISABLED`).
 
 ### DELETE /admin/tenants/:id
