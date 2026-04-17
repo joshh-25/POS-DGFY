@@ -867,9 +867,9 @@ log "Running tenant schema sync..."
 TENANT_SYNC_REPORT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.tenant_schema_sync.json"
 TENANT_SYNC_BASELINE_FILE="$BACKEND_DIR/config/deploy/tenant-schema-sync-failure-baseline.json"
 TENANT_SYNC_MODE="${DEPLOY_TENANT_SCHEMA_SYNC_MODE:-report}"
-TENANT_SYNC_REQUIRE_ZERO="${DEPLOY_TENANT_SYNC_REQUIRE_ZERO:-0}"
+TENANT_SYNC_REQUIRE_ZERO="${DEPLOY_TENANT_SYNC_REQUIRE_ZERO:-1}"
 TENANT_INDEX_HEADROOM_REPORT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.tenant_index_headroom.json"
-TENANT_INDEX_HEADROOM_STRICT="${DEPLOY_TENANT_INDEX_HEADROOM_STRICT:-0}"
+TENANT_INDEX_HEADROOM_STRICT="${DEPLOY_TENANT_INDEX_HEADROOM_STRICT:-1}"
 if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
     (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js --mode "$TENANT_SYNC_MODE" --report-file "$TENANT_SYNC_REPORT_FILE")
     if [[ -f "$TENANT_SYNC_BASELINE_FILE" ]]; then
