@@ -251,6 +251,47 @@ const applyCatalogOverrides = async (items, options = {}) => {
         .filter((item) => item.pos_visible !== false);
 };
 
+const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+        return new Map();
+    }
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return new Map();
+    }
+
+    const ItemLocationStock = dbStore.get('ItemLocationStock');
+    if (!ItemLocationStock) {
+        return new Map();
+    }
+
+    const rows = await ItemLocationStock.findAll({
+        where: {
+            location_id: normalizedLocationId,
+            item_id: { [Op.in]: itemIds }
+        },
+        attributes: ['item_id', 'quantity_on_hand'],
+        transaction: options.transaction
+    });
+
+    return new Map(rows.map((row) => {
+        const payload = toPlain(row);
+        return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
+    }));
+};
+
+const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
+    (Array.isArray(items) ? items : []).map((item) => {
+        const payload = toPlain(item);
+        const mappedStock = locationStockMap.get(Number(payload.item_id));
+        const stockValue = Number.isFinite(mappedStock) ? Math.max(0, mappedStock) : 0;
+        return {
+            ...payload,
+            current_stock: stockValue
+        };
+    })
+);
+
 const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
@@ -342,6 +383,7 @@ export const posRepository = {
 
     async findSellableItemsByIds(itemIds, options = {}) {
         const Item = dbStore.get('Item');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
         const queryOptions = {
             where: buildVisibleWhere(
                 {
@@ -360,16 +402,32 @@ export const posRepository = {
         }
 
         try {
-            return await applyCatalogOverrides(await Item.findAll(queryOptions), options);
+            const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), options);
+            const stockMap = await loadLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStockMap(catalogItems, stockMap)
+                : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
                 throw error;
             }
 
-            return applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
+            const catalogItems = await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })), options);
+            const stockMap = await loadLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStockMap(catalogItems, stockMap)
+                : catalogItems;
         }
     },
 
@@ -499,6 +557,7 @@ export const posRepository = {
         }
         if (filters.payment_type) where.payment_type = filters.payment_type;
         if (filters.order_method) where.order_method = filters.order_method;
+        if (filters.order_source) where.order_source = filters.order_source;
         if (filters.status) where.status = filters.status;
         if (filters.search) {
             where.invoice_number = { [Op.like]: `%${String(filters.search).trim()}%` };
@@ -682,7 +741,7 @@ export const posRepository = {
         };
     },
 
-    async listCatalog({ search = '', limit = 100, folder_id = null } = {}) {
+    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
             {},
@@ -708,16 +767,32 @@ export const posRepository = {
         };
 
         try {
-            return await applyCatalogOverrides(await Item.findAll(queryOptions));
+            const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions));
+            const stockMap = await loadLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                location_id
+            );
+            const normalizedLocationId = Number.parseInt(location_id, 10);
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStockMap(catalogItems, stockMap)
+                : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
                 throw error;
             }
 
-            return applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
+            const catalogItems = await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })));
+            const stockMap = await loadLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                location_id
+            );
+            const normalizedLocationId = Number.parseInt(location_id, 10);
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStockMap(catalogItems, stockMap)
+                : catalogItems;
         }
     },
 

@@ -163,6 +163,81 @@ export const buildUpdateUserPermissionsUseCase = ({ userService }) => {
   };
 };
 
+export const buildGetUserLocationGrantsUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId, includeInactive = false }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (typeof includeInactive !== 'boolean') {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'includeInactive must be a boolean',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.getUserLocationGrants(
+        normalizedAdminUserId,
+        normalizedTargetUserId,
+        { includeInactiveLocations: includeInactive }
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to retrieve user location grants'));
+    }
+  };
+};
+
+export const buildUpdateUserLocationGrantsUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId, locationIds }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (!Array.isArray(locationIds)) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'locationIds must be an array',
+        { statusCode: 400 }
+      ));
+    }
+
+    const normalizedLocationIds = locationIds.map((id) => parsePositiveInt(id));
+    if (normalizedLocationIds.some((id) => !id)) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'locationIds must only include positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.updateUserLocationGrants(
+        normalizedAdminUserId,
+        normalizedTargetUserId,
+        normalizedLocationIds
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to update user location grants'));
+    }
+  };
+};
+
 export const buildInviteUserUseCase = ({ userService }) => {
   return async ({ adminUserId, email, role }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);

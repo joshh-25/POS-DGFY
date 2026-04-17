@@ -16,7 +16,8 @@ const baseData = (label) => ({
     adminEmail: makeEmail(label),
     adminPassword: 'TestPassword123!',
     plan: 'standard',
-    complianceMode: 'non_compliant'
+    complianceMode: 'non_compliant',
+    workflowMode: 'msme'
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -130,7 +131,8 @@ describe('Company Token Lookup — full coverage', () => {
                     adminEmail: sharedEmail,
                     adminPassword: 'TestPassword123!',
                     plan: 'standard',
-                    complianceMode: 'non_compliant'
+                    complianceMode: 'non_compliant',
+                    workflowMode: 'msme'
                 })
                 .expect(201);
 
@@ -141,7 +143,8 @@ describe('Company Token Lookup — full coverage', () => {
                     adminEmail: sharedEmail,
                     adminPassword: 'TestPassword123!',
                     plan: 'standard',
-                    complianceMode: 'non_compliant'
+                    complianceMode: 'non_compliant',
+                    workflowMode: 'msme'
                 })
                 .expect(201);
 

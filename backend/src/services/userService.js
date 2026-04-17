@@ -16,6 +16,12 @@ const findVisibleUserById = async (User, userId, queryOptions = {}) => {
   });
 };
 
+const parsePositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  if (!Number.isInteger(normalized) || normalized <= 0) return null;
+  return normalized;
+};
+
 /**
  * Get current user profile by user ID
  * @param {number} userId - User ID from authenticated request
@@ -442,6 +448,154 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
     permissions: targetUser.permissions,
     is_master_admin: targetUser.is_master_admin
   };
+};
+
+export const getUserLocationGrants = async (adminUserId, targetUserId, options = {}) => {
+  const User = dbStore.get('User');
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
+  const TenantLocation = dbStore.get('TenantLocation');
+  if (!UserLocationGrant || !TenantLocation) {
+    throw createError('Location grant models are unavailable in this tenant context', 500);
+  }
+
+  const normalizedAdminUserId = parsePositiveInt(adminUserId);
+  const normalizedTargetUserId = parsePositiveInt(targetUserId);
+  if (!normalizedAdminUserId || !normalizedTargetUserId) {
+    throw createError('adminUserId and targetUserId must be positive integers', 400);
+  }
+
+  const [adminUser, targetUser] = await Promise.all([
+    findVisibleUserById(User, normalizedAdminUserId),
+    findVisibleUserById(User, normalizedTargetUserId)
+  ]);
+
+  if (!adminUser) {
+    throw notFoundError('Admin user not found');
+  }
+  if (!targetUser) {
+    throw notFoundError('Target user not found');
+  }
+
+  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+
+  validateAdminHierarchy(adminUser, targetUser, 'view location grants for');
+
+  const includeInactiveLocations = options?.includeInactiveLocations === true;
+  const locationWhere = includeInactiveLocations ? {} : { is_active: true };
+
+  const [locations, grants] = await Promise.all([
+    TenantLocation.findAll({
+      where: locationWhere,
+      attributes: ['location_id', 'name', 'is_active', 'is_open', 'is_primary_storefront'],
+      order: [
+        ['is_primary_storefront', 'DESC'],
+        ['is_open', 'DESC'],
+        ['updated_at', 'DESC'],
+        ['location_id', 'DESC']
+      ]
+    }),
+    UserLocationGrant.findAll({
+      where: { user_id: normalizedTargetUserId },
+      attributes: ['location_id']
+    })
+  ]);
+
+  const grantedLocationIds = Array.from(new Set(grants.map((row) => Number(row.location_id))));
+  const grantedIdSet = new Set(grantedLocationIds);
+  const locationsWithGrantFlag = locations.map((location) => ({
+    ...location.toJSON(),
+    granted: grantedIdSet.has(Number(location.location_id))
+  }));
+
+  return {
+    user_id: targetUser.user_id,
+    username: targetUser.username,
+    include_inactive_locations: includeInactiveLocations,
+    granted_location_ids: grantedLocationIds,
+    locations: locationsWithGrantFlag
+  };
+};
+
+export const updateUserLocationGrants = async (adminUserId, targetUserId, locationIds = []) => {
+  const User = dbStore.get('User');
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
+  const TenantLocation = dbStore.get('TenantLocation');
+  if (!UserLocationGrant || !TenantLocation) {
+    throw createError('Location grant models are unavailable in this tenant context', 500);
+  }
+
+  const normalizedAdminUserId = parsePositiveInt(adminUserId);
+  const normalizedTargetUserId = parsePositiveInt(targetUserId);
+  if (!normalizedAdminUserId || !normalizedTargetUserId) {
+    throw createError('adminUserId and targetUserId must be positive integers', 400);
+  }
+
+  if (!Array.isArray(locationIds)) {
+    throw createError('locationIds must be an array', 400);
+  }
+  const normalizedLocationIds = Array.from(
+    new Set(locationIds.map((value) => parsePositiveInt(value)))
+  );
+  if (normalizedLocationIds.some((value) => !value)) {
+    throw createError('locationIds must only include positive integers', 400);
+  }
+
+  const [adminUser, targetUser] = await Promise.all([
+    findVisibleUserById(User, normalizedAdminUserId),
+    findVisibleUserById(User, normalizedTargetUserId)
+  ]);
+
+  if (!adminUser) {
+    throw notFoundError('Admin user not found');
+  }
+  if (!targetUser) {
+    throw notFoundError('Target user not found');
+  }
+
+  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+
+  validateAdminHierarchy(adminUser, targetUser, 'modify location grants for');
+
+  const activeLocations = await TenantLocation.findAll({
+    where: { is_active: true },
+    attributes: ['location_id']
+  });
+  const activeLocationIdSet = new Set(activeLocations.map((location) => Number(location.location_id)));
+  const invalidLocationIds = normalizedLocationIds.filter((locationId) => !activeLocationIdSet.has(Number(locationId)));
+  if (invalidLocationIds.length > 0) {
+    throw createError(`Invalid or inactive location ids: ${invalidLocationIds.join(', ')}`, 422);
+  }
+
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  try {
+    await UserLocationGrant.destroy({
+      where: { user_id: normalizedTargetUserId },
+      transaction
+    });
+
+    if (normalizedLocationIds.length > 0) {
+      const rows = normalizedLocationIds.map((locationId) => ({
+        user_id: normalizedTargetUserId,
+        location_id: Number(locationId),
+        created_by: normalizedAdminUserId
+      }));
+      await UserLocationGrant.bulkCreate(rows, { transaction });
+    }
+
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
+
+  return getUserLocationGrants(normalizedAdminUserId, normalizedTargetUserId);
 };
 
 // ============== INVITATION SYSTEM ==============

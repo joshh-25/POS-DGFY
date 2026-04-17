@@ -67,6 +67,10 @@ Required screenshots:
 4. Use `Open in Sales Report` from POS history/receipt context.
 5. Confirm Sales page opens with matching filters/transaction context and POS row totals.
 6. Export sales CSV and validate one sample row.
+7. Execute source-separation checks:
+   - POS History source filter (`In-Store`, `Online Store`)
+   - Sales POS Channel filter (`POS In-Store`, `POS Online Store`)
+   - CSV includes `pos_order_source` and values match active filter
 
 Required screenshots:
 1. `S1-pos-history-filtered.png`
@@ -75,6 +79,11 @@ Required screenshots:
 4. `S4-sales-table-pos-row.png`
 5. `S5-sales-export-sample-row.png`
 6. `S6-history-to-sales-handoff.png`
+7. `S7-pos-history-source-in-store.png`
+8. `S8-pos-history-source-online-store.png`
+9. `S9-sales-pos-channel-in-store.png`
+10. `S10-sales-pos-channel-online-store.png`
+11. `S11-sales-csv-pos-order-source-sample.png`
 
 ## 5) Failure Taxonomy (Mandatory)
 

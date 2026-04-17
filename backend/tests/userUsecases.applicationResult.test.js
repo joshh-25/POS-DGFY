@@ -3,7 +3,9 @@ import {
   buildGetCurrentUserUseCase,
   buildUpdateProfileUseCase,
   buildChangePasswordUseCase,
-  buildInviteUserUseCase
+  buildInviteUserUseCase,
+  buildGetUserLocationGrantsUseCase,
+  buildUpdateUserLocationGrantsUseCase
 } from '../src/modules/users/usecases/userUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
@@ -65,5 +67,35 @@ describe('user use-cases application result contract', () => {
       error: null,
       message: null
     });
+  });
+
+  it('getUserLocationGrants validates includeInactive boolean', async () => {
+    const useCase = buildGetUserLocationGrantsUseCase({
+      userService: { getUserLocationGrants: jest.fn() }
+    });
+
+    const result = await useCase({ adminUserId: 7, targetUserId: 11, includeInactive: 'yes' });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(400);
+  });
+
+  it('updateUserLocationGrants forwards normalized ids', async () => {
+    const updateUserLocationGrants = jest.fn().mockResolvedValue({
+      user_id: 11,
+      granted_location_ids: [1, 3]
+    });
+    const useCase = buildUpdateUserLocationGrantsUseCase({
+      userService: { updateUserLocationGrants }
+    });
+
+    const result = await useCase({
+      adminUserId: '7',
+      targetUserId: '11',
+      locationIds: ['1', 3]
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateUserLocationGrants).toHaveBeenCalledWith(7, 11, [1, 3]);
   });
 });

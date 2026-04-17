@@ -206,6 +206,10 @@ export default function PurchaseOrders() {
 
   const handleReceiptConfirm = async (receiptData) => {
     try {
+      if (!receiptData.location_id) {
+        toast.error('Please select a location before confirming receipt.');
+        return;
+      }
       // Transform receipt data to match backend expectations
       const line_items = (receiptData.items || []).map(item => {
         // Map quality_check ('pass'/'fail') to quality_check_status ('passed'/'failed')
@@ -220,6 +224,7 @@ export default function PurchaseOrders() {
       });
 
       const transformedData = {
+        location_id: receiptData.location_id,
         line_items: line_items,
         delivery_rating: receiptData.delivery_rating,
         notes: receiptData.notes

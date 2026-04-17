@@ -96,14 +96,23 @@ describe('purchaseOrderToolRegistry', () => {
     const result = await registry.receive_purchase_order({
       args: {
         po_id: 88,
-        received_items: [{ po_line_item_id: 1, quantity_received: 10 }]
+        location_id: 5,
+        received_items: [{ line_item_id: 1, received_quantity: 10 }]
       },
       user: { user_id: 7 }
     });
 
     expect(receivePurchaseOrder).toHaveBeenCalledWith(
       88,
-      [{ po_line_item_id: 1, quantity_received: 10 }],
+      {
+        location_id: 5,
+        line_items: [{
+          line_item_id: 1,
+          quantity_received: 10,
+          quality_check_status: 'passed',
+          expiry_date: null
+        }]
+      },
       7
     );
 
@@ -111,9 +120,49 @@ describe('purchaseOrderToolRegistry', () => {
       expect.objectContaining({
         success: true,
         po_id: 88,
-        items_received: 2,
-        batches_created: 3
+        items_received: 1
       })
     );
+  });
+
+  it('receive_purchase_order rejects missing location_id with deterministic validation error', async () => {
+    const receivePurchaseOrder = jest.fn();
+    const registry = buildPurchaseOrderToolRegistry({
+      purchaseOrderService: { receivePurchaseOrder }
+    });
+
+    await expect(registry.receive_purchase_order({
+      args: {
+        po_id: 88,
+        received_items: [{ line_item_id: 1, received_quantity: 10 }]
+      },
+      user: { user_id: 7 }
+    })).rejects.toMatchObject({
+      message: 'location_id is required and must be a positive integer',
+      statusCode: 422
+    });
+
+    expect(receivePurchaseOrder).not.toHaveBeenCalled();
+  });
+
+  it('receive_purchase_order rejects invalid received_items shape', async () => {
+    const receivePurchaseOrder = jest.fn();
+    const registry = buildPurchaseOrderToolRegistry({
+      purchaseOrderService: { receivePurchaseOrder }
+    });
+
+    await expect(registry.receive_purchase_order({
+      args: {
+        po_id: 88,
+        location_id: 5,
+        received_items: [{ line_item_id: 0, received_quantity: 0 }]
+      },
+      user: { user_id: 7 }
+    })).rejects.toMatchObject({
+      message: 'received_items entries require positive line_item_id and received_quantity',
+      statusCode: 422
+    });
+
+    expect(receivePurchaseOrder).not.toHaveBeenCalled();
   });
 });

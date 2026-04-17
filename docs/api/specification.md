@@ -1673,10 +1673,19 @@ Upload/replace POS catalog image override (multipart file upload).
 
 **Request**: `multipart/form-data` with `image` file field.
 
+**Validation Contract**
+- Endpoint accepts image files only.
+- Unsupported upload types are rejected with `422 Validation failed`.
+- Existing image is replaced atomically when a valid new image is uploaded.
+
 **Image URL Contract**
 - Backend stores and returns `pos_image_url` as a path under `/uploads/...`.
 - Local frontend dev/prod-preview surfaces must proxy `/uploads` to backend target (same as `/api`) so catalog/terminal/storefront images render correctly from local app hosts (for example `localhost:5173`, `localhost:5174`, `localhost:5175`).
 - If `/uploads` proxy is missing, images appear as broken placeholders even when upload succeeds.
+- Frontend clients must treat returned `/uploads/...` paths as backend assets; when API origin differs from app origin, resolve these paths with this precedence:
+  1. `VITE_ASSET_BASE_URL`
+  2. `VITE_API_BASE_URL`
+  3. absolute `VITE_API_URL` (ignore relative values such as `/api/v1`)
 
 ### DELETE /pos/catalog-overrides/:item_id/image
 Remove POS image override and revert to default item image behavior.
@@ -1785,6 +1794,7 @@ List POS transactions with cashier metadata and pagination.
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
 | `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
+| `order_source` | string | `in_store`, `online_store` |
 | `date_from` | ISO date | Inclusive start date filter |
 | `date_to` | ISO date | Inclusive end date filter |
 
@@ -2094,12 +2104,18 @@ List tenant storefront catalog items (public read).
 
 Catalog rows include:
 - `item_id`, `name`, `category`, `unit_of_measure`
-- `current_stock`
-- `default_sale_price`, `cost_per_unit`
+- `is_available` (`true`/`false`)
+- `availability_status` (`in_stock`/`out_of_stock`)
+- `default_sale_price`
 - `vat_type`
 - `image_url` (from POS catalog override when available)
   - may be an absolute URL or backend-relative `/uploads/...` path
   - storefront/POS clients should gracefully show a placeholder when image load fails
+
+**Availability Contract**
+- `current_stock` is intentionally not exposed in public storefront catalog payloads.
+- `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
+- Exact quantity remains server-side and is enforced during quote/checkout validation.
 
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.
@@ -2185,6 +2201,7 @@ List normalized sales timeline rows from:
 
 Shared fields include date/time, reference number, source, gross sales, VAT buckets (if available), COGS, gross profit, and status.
 For POS rows, service-fee snapshots are included (`service_fee_amount`, label/method/override fields).
+POS rows now also expose `pos_order_source` (`in_store`, `online_store`) for channel-level filtering/audit.
 
 **Query Parameters**
 | Name | Type | Description |
@@ -2197,11 +2214,16 @@ For POS rows, service-fee snapshots are included (`service_fee_amount`, label/me
 | `status` | string | Source status filter |
 | `payment_type` | string | POS-only filter |
 | `order_method` | string | POS-only filter (`dine_in`, `takeout`, `pickup`, `delivery`; legacy `online` accepted for historical rows) |
+| `pos_order_source` | string | POS-only channel filter (`in_store`, `online_store`) |
 | `date_from` | ISO date | Inclusive start date |
 | `date_to` | ISO date | Inclusive end date |
 | `sort_by` | string | `occurred_at`, `gross_sales`, `cogs`, `gross_profit`, `reference_no` |
 | `sort_order` | string | `asc` or `desc` |
 | `export` | string | `csv` returns CSV download |
+
+**Validation Notes**
+1. Query values are validated before read execution.
+2. Invalid enum values (for example unsupported `pos_order_source` or `sort_by`) return `422 Validation failed` with field-level errors.
 
 ---
 

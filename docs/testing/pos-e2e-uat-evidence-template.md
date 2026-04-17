@@ -48,6 +48,8 @@ Use this template to append evidence to `docs/testing/pos-e2e-uat-run-2026-03-28
 | POS row visible in unified sales |  |  |  |
 | History-to-Sales handoff query fidelity |  |  |  |
 | Sales CSV export correctness |  |  |  |
+| POS source-separation filter parity (History vs Sales) |  |  |  |
+| CSV `pos_order_source` channel auditability |  |  |  |
 
 ## 6) Blocker Ledger
 

@@ -33,6 +33,7 @@ const includesAnyPermission = (permissions, candidates) => {
 
 export const listSalesTransactions = async (req, res, next) => {
   try {
+    const query = req.validatedQuery || req.query || {};
     const userPermissions = normalizePermissions(req.user?.permissions);
     const canViewSales = req.user?.is_master_admin || includesAnyPermission(userPermissions, [
       'reports:view',
@@ -52,11 +53,11 @@ export const listSalesTransactions = async (req, res, next) => {
     }
 
     const result = await listSalesTransactionsUseCase({
-      query: req.query,
+      query,
       userPermissions
     });
 
-    if (result?.success && String(req.query?.export || '').toLowerCase() === 'csv') {
+    if (result?.success && String(query?.export || '').toLowerCase() === 'csv') {
       const rows = Array.isArray(result.data?.transactions) ? result.data.transactions : [];
       const headers = [
         'source',
@@ -66,6 +67,7 @@ export const listSalesTransactions = async (req, res, next) => {
         'customer_or_recipient',
         'payment_type',
         'order_method',
+        'pos_order_source',
         'gross_sales',
         'service_fee_amount',
         'service_fee_label_snapshot',

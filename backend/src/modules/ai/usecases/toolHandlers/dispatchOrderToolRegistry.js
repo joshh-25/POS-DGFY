@@ -103,8 +103,13 @@ export const buildDispatchOrderToolRegistry = ({ dispatchOrderService }) => {
     },
 
     dispatch_items: async ({ args, user }) => {
-      const { do_id, lines } = args;
-      const dispatchOrder = await dispatchOrderService.dispatchLines(do_id, lines, user.user_id);
+      const { do_id, lines, location_id } = args;
+      const dispatchOrder = await dispatchOrderService.dispatchLines(
+        do_id,
+        lines,
+        user.user_id,
+        location_id ?? null
+      );
       return {
         success: true,
         message: `Dispatch executed for ${dispatchOrder.do_number}`,

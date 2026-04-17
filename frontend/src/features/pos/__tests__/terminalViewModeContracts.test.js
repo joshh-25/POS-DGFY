@@ -92,6 +92,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('adds keyboard and semantic accessibility affordances in POS history table', () => {
     expect(posCheckoutTerminalContent).toContain('aria-label="POS transaction history table"');
+    expect(posCheckoutTerminalContent).toContain('All Sources');
+    expect(posCheckoutTerminalContent).toContain('Online Store');
+    expect(posCheckoutTerminalContent).not.toContain('Online (Legacy)');
     expect(posCheckoutTerminalContent).toContain('aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}');
     expect(posCheckoutTerminalContent).toContain('aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}');
     expect(posCheckoutTerminalContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>');
@@ -164,6 +167,7 @@ describe('POS terminal view-mode contracts', () => {
   it('supports history/receipt handoff into unified sales report with preserved query params', () => {
     expect(posCheckoutTerminalContent).toContain('openInSalesReport');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
+    expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
     expect(posCheckoutTerminalContent).toContain('navigate(`/sales');
   });
 

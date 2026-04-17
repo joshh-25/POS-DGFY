@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -9,6 +9,7 @@ Overall status: in_progress
 1. Human cashier/admin UAT signoff is pending.
 2. Release-gate/nightly browser E2E evidence is configured but still needs sustained green history capture.
 3. Terminal identity is policy-driven (`warn`/`enforce`) but centralized admin-managed registry governance still requires operational rollout discipline.
+4. Source-separation manual UAT parity proof (POS History source filter vs Sales POS channel filter vs CSV `pos_order_source`) is pending human evidence capture.
 
 ## 2) Current Behavior Snapshot
 
@@ -50,6 +51,15 @@ Overall status: in_progress
 18. Final Review documentary readiness is tenant self-serve:
 - requirements are completed in Settings > Compliance > Final review (upload or external URL)
 - `Go to step` targets deep-link to per-document anchors (`#final-review-doc-...`)
+19. POS/storefront source separation is now explicit on read UX/contracts:
+- POS history supports explicit source badge/filter (`in_store`, `online_store`)
+- unified sales includes POS channel discriminator (`pos_order_source`) while preserving `source=POS`
+- sales CSV export includes `pos_order_source`
+- storefront quote/checkout/track error copy is normalized for actionable operator/customer feedback
+20. Sales transactions route now enforces strict query validation (including `pos_order_source`) before use-case execution.
+21. Settings deep-link resolver now supports dynamic final-review document anchors (`#final-review-doc-*`) without hash resolution drift.
+22. POS operational surfaces now share centralized fulfillment label/action mapping (`ready_for_pickup` displayed as `Ready for pickup`).
+23. Storefront error normalization is extracted into a dedicated utility with direct unit coverage.
 
 ## 3) Automated Gate Status (Latest)
 
@@ -109,6 +119,25 @@ Overall status: in_progress
    - cross-surface remediation targets from policy/POS remain resolvable by Settings contract
    - compliance final-review `Fix now` action remains functional in `compliant_active`
    - malformed hash and clipboard failure paths provide deterministic non-blocking feedback
+
+### 3.5 POS/Storefront Source-Separation Contract Rerun (2026-04-16)
+
+1. `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/posValidator.transactionsQuery.test.js tests/salesHandlers.transport.test.js` -> PASS
+2. `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/posSalesReconciliation.db.integration.test.js -t "keeps totals consistent across POS checkout, Z-reading, and unified sales summary"` -> PASS
+3. `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/posSalesReconciliation.db.integration.test.js -t "covers storefront checkout -> tracking -> POS lifecycle -> reporting -> inventory end-to-end"` -> PASS
+4. `npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/sales/__tests__/salesHandoffContracts.test.js` -> PASS
+5. Canonical contract matrix published:
+   - `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md`
+
+### 3.6 Gap-Closure Hardening Rerun (2026-04-16)
+
+1. `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/salesValidator.transactionsQuery.test.js tests/salesHandlers.transport.test.js` -> PASS
+2. `npx vitest run src/features/settings/__tests__/settingsDeepLink.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/sales/__tests__/salesHandoffContracts.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js` -> PASS
+3. `npm run check:architecture` -> PASS
+4. `npm run check:compliance` -> PASS
+5. `npm run build:frontend` -> PASS
+6. Dedicated manual run log scaffold created:
+   - `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 
 ## 4) Canonical UAT Assets
 

@@ -144,6 +144,38 @@ describe('jobOrderHandlers transport contracts', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('completeJobOrder normalizes legacy quality_check values before use-case call', async () => {
+    mockCompleteJobOrderUseCase.mockResolvedValue({
+      success: true,
+      data: { jo_id: 11, jo_number: 'JO-011', status: 'completed' }
+    });
+
+    const req = {
+      params: { jo_id: '11' },
+      body: {
+        quantity_produced: 4,
+        quality_check: 'pass',
+        source_location_id: 2,
+        destination_location_id: 3
+      },
+      user: { user_id: 7 },
+      requestId: 'req-jo-complete-quality'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await completeJobOrder(req, res, next);
+
+    expect(mockCompleteJobOrderUseCase).toHaveBeenCalledWith({
+      jobOrderId: '11',
+      userId: 7,
+      completionData: expect.objectContaining({
+        quality_check: 'passed'
+      })
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('archiveJobOrder returns standardized error payload', async () => {
     mockArchiveJobOrderUseCase.mockResolvedValue({
       success: false,
@@ -180,6 +212,80 @@ describe('jobOrderHandlers transport contracts', () => {
       surface: 'job_orders',
       action: 'archive_job_order'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('completeJobOrder returns deterministic 422 payload for missing location fields', async () => {
+    mockCompleteJobOrderUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'source_location_id and destination_location_id are required for JO completion',
+        details: null,
+        statusCode: 422
+      }
+    });
+
+    const req = {
+      params: { jo_id: '10' },
+      body: { quantity_produced: 5 },
+      user: { user_id: 7 },
+      requestId: 'req-jo-complete-422'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await completeJobOrder(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'source_location_id and destination_location_id are required for JO completion',
+      error_code: 'VALIDATION_FAILED',
+      errors: null,
+      request_id: 'req-jo-complete-422',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('completeJobOrder returns deterministic 403 payload for location access denial', async () => {
+    mockCompleteJobOrderUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'AUTHORIZATION_FAILED',
+        message: 'You do not have location access to perform JO completion at location 9.',
+        details: null,
+        statusCode: 403
+      }
+    });
+
+    const req = {
+      params: { jo_id: '10' },
+      body: {
+        quantity_produced: 5,
+        source_location_id: 9,
+        destination_location_id: 11
+      },
+      user: { user_id: 7 },
+      requestId: 'req-jo-complete-403'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await completeJobOrder(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'You do not have location access to perform JO completion at location 9.',
+      error_code: 'AUTHORIZATION_FAILED',
+      errors: null,
+      request_id: 'req-jo-complete-403',
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 });

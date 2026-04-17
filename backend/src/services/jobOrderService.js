@@ -11,6 +11,12 @@ const visibleItemWhere = (where = {}) => {
   });
 };
 
+const parsePositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  if (!Number.isInteger(normalized) || normalized <= 0) return null;
+  return normalized;
+};
+
 export const getJobOrders = async (queryParams) => {
   const JobOrder = dbStore.get('JobOrder');
   const Item = dbStore.get('Item');
@@ -327,7 +333,7 @@ export const finalizeJobOrder = async (joId) => {
   return jo;
 };
 
-export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null, quantityProduced = null, qualityCheck = null) => {
+export const completeJobOrder = async (joId, userId, expiryDateOverride = null, notes = null, quantityProduced = null, qualityCheck = null, sourceLocationId = null, destinationLocationId = null) => {
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   // Start transaction
@@ -337,6 +343,20 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       const Item = dbStore.get('Item');
       const JOIngredient = dbStore.get('JOIngredient');
       const FIFOBatch = dbStore.get('FIFOBatch');
+      const ItemLocationStock = dbStore.get('ItemLocationStock');
+
+      const normalizedSourceLocationId = parsePositiveInt(sourceLocationId);
+      const normalizedDestinationLocationId = parsePositiveInt(destinationLocationId);
+      if (!normalizedSourceLocationId || !normalizedDestinationLocationId) {
+        const error = new Error('source_location_id and destination_location_id are required for JO completion');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (normalizedSourceLocationId === normalizedDestinationLocationId) {
+        const error = new Error('source_location_id and destination_location_id must be different');
+        error.statusCode = 422;
+        throw error;
+      }
 
       console.log(`[JO Completion] Starting completion for JO #${joId} by User ${userId}`);
 
@@ -448,7 +468,20 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
         console.log(`[JO Completion] Consuming ${quantityToConsume} ${ingredientUom} of ${item.name}`);
 
-        const stockBefore = parseFloat(item.current_stock);
+        let stockBefore = parseFloat(item.current_stock);
+        const ingredientLocationStock = await ItemLocationStock.findOne({
+          where: {
+            item_id: item.item_id,
+            location_id: normalizedSourceLocationId
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE
+        });
+        if (ingredientLocationStock) {
+          stockBefore = parseFloat(ingredientLocationStock.quantity_on_hand || 0);
+        } else {
+          stockBefore = 0;
+        }
 
         if (stockBefore < quantityToConsume) {
           console.error(`[JO Completion] Insufficient Stock for ${item.name}. Req: ${quantityToConsume}, Avail: ${stockBefore}`);
@@ -463,6 +496,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
           item_id: item.item_id,
           quantity: quantityToConsume,
           movement_type: 'production_consumption',
+          location_id: normalizedSourceLocationId,
           reference_id: jo.jo_number,
           reference_type: 'JO',
           notes: `Partial production: ${qtyToProcess} units`,
@@ -494,6 +528,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
         item_id: product.item_id,
         quantity: qtyToProcess,
         movement_type: 'production_output',
+        location_id: normalizedDestinationLocationId,
         reference_id: jo.jo_number,
         reference_type: 'JO',
         notes: notes || null,

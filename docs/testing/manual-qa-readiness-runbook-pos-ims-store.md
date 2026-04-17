@@ -78,25 +78,38 @@ Pass gate:
    - folder assignment + POS filter visibility
    - sale price
    - stock sanity
-4. Perform stock movement:
+4. Verify POS image upload validation:
+   - upload a valid image file (`.png`/`.jpg`) -> expect success
+   - attempt non-image upload -> expect fail-closed `422`
+5. Verify the same uploaded image renders in:
+   - IMS item POS setup panel
+   - POS terminal catalog card/image preview
+   - Storefront item/cart tile
+6. Confirm direct host asset fetch succeeds on all local surfaces:
+   - `http://localhost:5000/uploads/...`
+   - `http://localhost:5173/uploads/...`
+   - `http://localhost:5174/uploads/...`
+   - `http://localhost:5175/uploads/...`
+   - expected: `200` with `image/*` content type
+7. Perform stock movement:
    - stock-in adjustment
    - stock-out adjustment
    - void movement
-5. Create purchase order and receive it; confirm stock increase.
-6. Validate PO create quantity UX:
+8. Create purchase order and receive it; confirm stock increase.
+9. Validate PO create quantity UX:
    - UOM badge is abbreviation-only
    - UOM never overlays typed quantity value
    - right-side vertical `+/-` controls are tappable on desktop and mobile
-7. Validate JO create/edit quantity UX:
+10. Validate JO create/edit quantity UX:
    - bulk and edit modes use the same stepper placement/order
    - stock/min/suggested/summary units are abbreviation-only
    - quantity changes still update ingredient shortage calculations
-8. Update settings:
+11. Update settings:
    - company/store details
    - storefront visibility
    - location settings (open/closed, delivery/pickup toggles)
-8. Verify persisted values after browser refresh.
-9. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
+12. Verify persisted values after browser refresh.
+13. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
 
 Pass gate:
 1. CRUD and stock flows behave consistently.

@@ -40,6 +40,10 @@ const ORDER_METHOD_FEE_LABELS = {
     online: 'Online Fee'
 };
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_SOURCE_LABELS = {
+    in_store: 'In-Store',
+    online_store: 'Online Store'
+};
 const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
 const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_KEYS.reduce((acc, method) => {
     acc[method] = {
@@ -230,6 +234,7 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     layoutContext = 'standalone',
     canViewHistory = true,
+    selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',
     onCheckoutCompleted = null,
@@ -249,6 +254,7 @@ export default function POSCheckoutTerminal({
     const canOverridePrice = can('pos:price_override');
     const [viewMode, setViewMode] = useState('checkout');
     const [catalog, setCatalog] = useState([]);
+    const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
@@ -279,6 +285,7 @@ export default function POSCheckoutTerminal({
     const [historyStatus, setHistoryStatus] = useState('all');
     const [historyPaymentType, setHistoryPaymentType] = useState('all');
     const [historyOrderMethod, setHistoryOrderMethod] = useState('all');
+    const [historyOrderSource, setHistoryOrderSource] = useState('all');
     const [historyCashierId, setHistoryCashierId] = useState('');
     const [historyDateFrom, setHistoryDateFrom] = useState('');
     const [historyDateTo, setHistoryDateTo] = useState('');
@@ -341,8 +348,10 @@ export default function POSCheckoutTerminal({
         try {
             const params = { search: search || '', limit: 200 };
             if (selectedFolderId) params.folder_id = selectedFolderId;
+            if (selectedLocationId) params.location_id = selectedLocationId;
             const data = await fetchPosCatalog(params);
             setCatalog(data || []);
+            setCatalogImageErrors(new Set());
         } catch (error) {
             const apiMessage = error?.response?.data?.message;
             const message = error?.response?.status === 403
@@ -353,7 +362,7 @@ export default function POSCheckoutTerminal({
         } finally {
             setCatalogLoading(false);
         }
-    }, [canViewHistory, search, selectedFolderId, sessionLocked]);
+    }, [canViewHistory, search, selectedFolderId, selectedLocationId, sessionLocked]);
 
     const replayQueuedCheckouts = useCallback(async ({ toastIfEmpty = false } = {}) => {
         if (sessionLocked) return;
@@ -499,6 +508,7 @@ export default function POSCheckoutTerminal({
                 status: historyStatus === 'all' ? undefined : historyStatus,
                 payment_type: historyPaymentType === 'all' ? undefined : historyPaymentType,
                 order_method: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
+                order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
                 cashier_id: historyCashierId || undefined,
                 date_from: historyDateFrom || undefined,
                 date_to: historyDateTo || undefined
@@ -518,6 +528,7 @@ export default function POSCheckoutTerminal({
         historyDateFrom,
         historyDateTo,
         historyOrderMethod,
+        historyOrderSource,
         historyPaymentType,
         historySearch,
         historyStatus,
@@ -548,6 +559,7 @@ export default function POSCheckoutTerminal({
         if (historyStatus !== 'all') params.set('status', historyStatus);
         if (historyPaymentType !== 'all') params.set('payment_type', historyPaymentType);
         if (historyOrderMethod !== 'all') params.set('order_method', historyOrderMethod);
+        if (historyOrderSource !== 'all') params.set('pos_order_source', historyOrderSource);
         if (historyDateFrom) params.set('date_from', historyDateFrom);
         if (historyDateTo) params.set('date_to', historyDateTo);
         const sourceId = Number.parseInt(row?.pos_transaction_id || row?.source_id, 10);
@@ -558,7 +570,7 @@ export default function POSCheckoutTerminal({
             params.set('reference', String(row.invoice_number || row.reference_no));
         }
         return params.toString();
-    }, [historyDateFrom, historyDateTo, historyOrderMethod, historyPaymentType, historySearch, historyStatus]);
+    }, [historyDateFrom, historyDateTo, historyOrderMethod, historyOrderSource, historyPaymentType, historySearch, historyStatus]);
 
     const openInSalesReport = useCallback((row = null) => {
         const query = buildSalesReportQuery(row);
@@ -913,6 +925,7 @@ export default function POSCheckoutTerminal({
         const payload = {
             idempotency_key: createIdempotencyKey(),
             terminal_id: normalizedTerminalId || undefined,
+            location_id: selectedLocationId || undefined,
             order_method: orderMethod,
             payment_type: paymentType,
             payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
@@ -1085,7 +1098,7 @@ export default function POSCheckoutTerminal({
                             </Button>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
                         <select
                             value={historyStatus}
                             onChange={(event) => setHistoryStatus(event.target.value)}
@@ -1112,12 +1125,20 @@ export default function POSCheckoutTerminal({
                             onChange={(event) => setHistoryOrderMethod(event.target.value)}
                             className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
                         >
-                                <option value="all">All Order Methods</option>
-                                <option value="dine_in">Dine In</option>
-                                <option value="takeout">Takeout</option>
-                                <option value="pickup">Pickup</option>
-                                <option value="delivery">Delivery</option>
-                                <option value="online">Online (Legacy)</option>
+                            <option value="all">All Order Methods</option>
+                            <option value="dine_in">Dine In</option>
+                            <option value="takeout">Takeout</option>
+                            <option value="pickup">Pickup</option>
+                            <option value="delivery">Delivery</option>
+                        </select>
+                        <select
+                            value={historyOrderSource}
+                            onChange={(event) => setHistoryOrderSource(event.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
+                        >
+                            <option value="all">All Sources</option>
+                            <option value="in_store">In-Store</option>
+                            <option value="online_store">Online Store</option>
                         </select>
                         <Input
                             type="number"
@@ -1149,6 +1170,7 @@ export default function POSCheckoutTerminal({
                                 <tr className="border-b border-slate-200 text-slate-500">
                                     <th scope="col" className="text-left py-2">Invoice</th>
                                     <th scope="col" className="text-left py-2">Datetime</th>
+                                    <th scope="col" className="text-left py-2">Source</th>
                                     <th scope="col" className="text-left py-2">Cashier</th>
                                     <th scope="col" className="text-left py-2">Payment</th>
                                     <th scope="col" className="text-left py-2">Discount</th>
@@ -1162,7 +1184,7 @@ export default function POSCheckoutTerminal({
                             <tbody>
                                 {historyLoading ? (
                                     <tr>
-                                        <td colSpan={10} className="py-4 text-center text-slate-500" aria-live="polite">
+                                        <td colSpan={11} className="py-4 text-center text-slate-500" aria-live="polite">
                                             Loading transactions...
                                         </td>
                                     </tr>
@@ -1176,9 +1198,18 @@ export default function POSCheckoutTerminal({
                                                 <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
                                                 <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
                                                 <td className="py-2 text-slate-600">
+                                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                                        row.order_source === 'online_store'
+                                                            ? 'bg-sky-100 text-sky-700'
+                                                            : 'bg-slate-200 text-slate-700'
+                                                    }`}>
+                                                        {ORDER_SOURCE_LABELS[row.order_source] || ORDER_SOURCE_LABELS.in_store}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 text-slate-600">
                                                     {row.cashier?.username
                                                         || row.acceptedByUser?.username
-                                                        || (row.order_source === 'online_store' ? 'Awaiting Staff' : '-')}
+                                                        || '-'}
                                                 </td>
                                                 <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
                                                 <td className="py-2 text-slate-600">
@@ -1223,7 +1254,7 @@ export default function POSCheckoutTerminal({
                                         ))}
                                         {historyRows.length === 0 && (
                                             <tr>
-                                                <td colSpan={10} className="py-6 text-center text-slate-500">No transactions found.</td>
+                                                <td colSpan={11} className="py-6 text-center text-slate-500">No transactions found.</td>
                                             </tr>
                                         )}
                                     </>
@@ -1362,6 +1393,7 @@ export default function POSCheckoutTerminal({
                         {catalog.map((item) => {
                             const isOutOfStock = Number(item.current_stock || 0) <= 0;
                             const posImageSrc = resolveAssetUrl(item.pos_image_url);
+                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             return (
                                 <div
                                     key={item.item_id}
@@ -1393,17 +1425,24 @@ export default function POSCheckoutTerminal({
                                             setImagePreview({
                                                 src: posImageSrc || '',
                                                 alt: `${item.name} menu`,
-                                                hasImage: Boolean(posImageSrc)
+                                                hasImage
                                             });
                                         }}
                                         className="w-full aspect-square max-h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                        title={posImageSrc ? 'Click to enlarge image' : 'Click to preview placeholder'}
+                                        title={hasImage ? 'Click to enlarge image' : 'Click to preview placeholder'}
                                     >
-                                        {posImageSrc ? (
+                                        {hasImage ? (
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
                                                 className="h-full w-full object-cover"
+                                                onError={() => {
+                                                    setCatalogImageErrors((previous) => {
+                                                        const next = new Set(previous);
+                                                        next.add(item.item_id);
+                                                        return next;
+                                                    });
+                                                }}
                                             />
                                         ) : (
                                             <div className="flex h-full w-full items-center justify-center text-center">

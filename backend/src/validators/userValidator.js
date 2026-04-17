@@ -219,3 +219,43 @@ export const validateInviteUser = (req, res, next) => {
   req.validatedData = value;
   next();
 };
+
+export const updateUserLocationGrantsSchema = Joi.object({
+  location_ids: Joi.array()
+    .items(
+      Joi.number().integer().positive().messages({
+        'number.base': 'location_ids entries must be numbers',
+        'number.integer': 'location_ids entries must be integers',
+        'number.positive': 'location_ids entries must be positive'
+      })
+    )
+    .required()
+    .unique()
+    .messages({
+      'array.base': 'location_ids must be an array',
+      'any.required': 'location_ids is required',
+      'array.unique': 'location_ids must not contain duplicates'
+    })
+});
+
+export const validateUpdateUserLocationGrants = (req, res, next) => {
+  const { error, value } = updateUserLocationGrantsSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};

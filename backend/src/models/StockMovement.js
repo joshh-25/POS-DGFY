@@ -11,6 +11,18 @@ const StockMovement = sequelize.define('StockMovement', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  source_location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  destination_location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   movement_type: {
     type: DataTypes.ENUM('production_consumption', 'purchase_receipt', 'return', 'transfer', 'calculated_loss', 'adjustment', 'production_output', 'goods_issue'),
     allowNull: false
@@ -73,6 +85,9 @@ const StockMovement = sequelize.define('StockMovement', {
   updatedAt: false,
   indexes: [
     { fields: ['item_id'] },
+    { fields: ['location_id'] },
+    { fields: ['source_location_id'] },
+    { fields: ['destination_location_id'] },
     { fields: ['movement_type'] },
     { fields: ['timestamp'] },
     { fields: ['item_id', 'movement_type', 'timestamp'] },

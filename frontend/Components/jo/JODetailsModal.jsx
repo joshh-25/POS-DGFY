@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import {
   Dialog,
@@ -38,6 +38,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
 import { useJobOrderById } from '@/hooks/useJobOrders.js';
+import { useLocations } from '@/hooks/useLocations.js';
 import { toUomAbbreviation } from '../../src/utils/uomDisplay';
 
 const statusConfig = {
@@ -54,7 +55,14 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   const [expiryOverride, setExpiryOverride] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
   const [quantityProduced, setQuantityProduced] = useState('');
-  const [qualityCheck, setQualityCheck] = useState('pass');
+  const [qualityCheck, setQualityCheck] = useState('passed');
+  const [sourceLocationId, setSourceLocationId] = useState('');
+  const [destinationLocationId, setDestinationLocationId] = useState('');
+  const { locations, loading: locationsLoading } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
 
   // Use hook unconditionally, handle null joId internally or let hook handle it
   const { jobOrder: detailedJO, loading } = useJobOrderById(open ? jo?.jo_id : null);
@@ -83,7 +91,15 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     setCompletionNotes('');
     const remaining = (displayJO.quantity_to_produce - (displayJO.quantity_produced || 0));
     setQuantityProduced(remaining > 0 ? remaining : displayJO.quantity_to_produce);
-    setQualityCheck('pass');
+    setQualityCheck('passed');
+
+    if (activeLocations.length >= 2) {
+      setSourceLocationId(String(activeLocations[0].location_id));
+      setDestinationLocationId(String(activeLocations[1].location_id));
+    } else {
+      setSourceLocationId('');
+      setDestinationLocationId('');
+    }
   };
 
   const handleSetMaxQuantity = () => {
@@ -91,12 +107,30 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     setQuantityProduced(remaining > 0 ? remaining : displayJO.quantity_to_produce);
   };
 
+  useEffect(() => {
+    if (!completeDialogOpen) return;
+    if (activeLocations.length >= 2 && (!sourceLocationId || !destinationLocationId)) {
+      setSourceLocationId(String(activeLocations[0].location_id));
+      setDestinationLocationId(String(activeLocations[1].location_id));
+    }
+  }, [completeDialogOpen, activeLocations, sourceLocationId, destinationLocationId]);
+
   const handleConfirmComplete = () => {
     const qty = quantityProduced ? parseFloat(quantityProduced) : null;
     if (!qty || qty <= 0 || isNaN(qty)) {
       return; // Don't submit invalid quantity
     }
-    onComplete(displayJO, expiryOverride || null, completionNotes || null, qty, qualityCheck);
+    if (!sourceLocationId || !destinationLocationId) {
+      return;
+    }
+    onComplete(displayJO, {
+      expiry_date: expiryOverride || null,
+      notes: completionNotes || null,
+      quantity_produced: qty,
+      quality_check: qualityCheck,
+      source_location_id: Number(sourceLocationId),
+      destination_location_id: Number(destinationLocationId)
+    });
     setCompleteDialogOpen(false);
   };
 
@@ -114,8 +148,8 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
               {displayJO.quality_check && (
                 <Badge variant="outline" className={cn(
                   "flex items-center gap-1",
-                  displayJO.quality_check === 'pass' ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
-                    displayJO.quality_check === 'fail' ? "bg-red-100 text-red-700 border-red-200" :
+                  (displayJO.quality_check === 'pass' || displayJO.quality_check === 'passed') ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                    (displayJO.quality_check === 'fail' || displayJO.quality_check === 'failed') ? "bg-red-100 text-red-700 border-red-200" :
                       "bg-amber-100 text-amber-700 border-amber-200"
                 )}>
                   <Activity className="w-3 h-3" />
@@ -349,13 +383,13 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pass">
+                  <SelectItem value="passed">
                     <div className="flex items-center gap-2">
                       <ThumbsUp className="w-4 h-4 text-emerald-500" />
                       Pass (Good Quality)
                     </div>
                   </SelectItem>
-                  <SelectItem value="fail">
+                  <SelectItem value="failed">
                     <div className="flex items-center gap-2">
                       <ThumbsDown className="w-4 h-4 text-red-500" />
                       Fail (Rejected/Scrap)
@@ -363,6 +397,44 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ingredient Source Location</Label>
+              <Select value={sourceLocationId} onValueChange={setSourceLocationId} disabled={locationsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={locationsLoading ? 'Loading locations...' : 'Select source location'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeLocations.map((location) => (
+                    <SelectItem key={`src-${location.location_id}`} value={String(location.location_id)}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Output Destination Location</Label>
+              <Select value={destinationLocationId} onValueChange={setDestinationLocationId} disabled={locationsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={locationsLoading ? 'Loading locations...' : 'Select destination location'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeLocations.map((location) => (
+                    <SelectItem key={`dst-${location.location_id}`} value={String(location.location_id)}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId && (
+                <p className="text-xs text-red-600">Source and destination must be different.</p>
+              )}
+              {activeLocations.length < 2 && (
+                <p className="text-xs text-red-600">At least two active locations are required for JO completion.</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -405,7 +477,17 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleConfirmComplete} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button
+              onClick={handleConfirmComplete}
+              disabled={
+                locationsLoading
+                || !sourceLocationId
+                || !destinationLocationId
+                || sourceLocationId === destinationLocationId
+                || activeLocations.length < 2
+              }
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
               Confirm Completion
             </Button>
           </DialogFooter>

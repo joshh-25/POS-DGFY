@@ -225,6 +225,11 @@ const createComplianceHarness = () => {
         complianceRepository: repository,
         logger
       }),
+      listFinalReviewDocumentsUseCase: noopUseCase,
+      upsertFinalReviewDocumentUseCase: noopUseCase,
+      uploadFinalReviewDocumentUseCase: noopUseCase,
+      reviewFinalReviewDocumentUseCase: noopUseCase,
+      upsertFinalReviewSignoffUseCase: noopUseCase,
       listCompliancePeripheralsUseCase: buildListCompliancePeripheralsUseCase({
         complianceRepository: repository
       }),

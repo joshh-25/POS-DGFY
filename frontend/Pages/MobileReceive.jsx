@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import { validateReceiveToken, receiveViaToken } from '../src/services/receiveTo
 import { cn } from "../src/lib/utils.js";
 import { format, addDays } from 'date-fns';
 import { normalizeApiError } from '../src/utils/errorHandler.js';
+import { useLocations } from '../src/hooks/useLocations.js';
 
 export default function MobileReceive() {
     const { token } = useParams();
@@ -48,7 +49,15 @@ export default function MobileReceive() {
     // State for JO production quantity
     const [productionQuantity, setProductionQuantity] = useState(0);
     // State for JO quality check
-    const [qualityCheck, setQualityCheck] = useState('pass');
+    const [qualityCheck, setQualityCheck] = useState('passed');
+    const [poLocationId, setPoLocationId] = useState('');
+    const [sourceLocationId, setSourceLocationId] = useState('');
+    const [destinationLocationId, setDestinationLocationId] = useState('');
+    const { locations, loading: loadingLocations } = useLocations();
+    const activeLocations = useMemo(
+        () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+        [locations]
+    );
 
     useEffect(() => {
         validateToken();
@@ -88,15 +97,27 @@ export default function MobileReceive() {
                     initialQuantities[item.line_item_id] = isNaN(remaining) ? 0 : remaining;
                 });
                 setReceivedQuantities(initialQuantities);
+                if (activeLocations.length >= 1) {
+                    setPoLocationId(String(activeLocations[0].location_id));
+                } else {
+                    setPoLocationId('');
+                }
             } else if (orderData.order_type === 'JO') {
                 // JO Logic
                 const currentProduced = parseFloat(orderData.quantity_produced || 0);
                 const total = parseFloat(orderData.quantity_to_produce || 0);
                 const remaining = total - currentProduced;
                 setProductionQuantity(isNaN(remaining) ? 0 : Math.max(0, remaining));
+                if (activeLocations.length >= 2) {
+                    setSourceLocationId(String(activeLocations[0].location_id));
+                    setDestinationLocationId(String(activeLocations[1].location_id));
+                } else {
+                    setSourceLocationId('');
+                    setDestinationLocationId('');
+                }
             }
         }
-    }, [orderData]);
+    }, [orderData, activeLocations]);
 
     const validateToken = async () => {
         try {
@@ -195,7 +216,14 @@ export default function MobileReceive() {
                     return;
                 }
 
+                if (!poLocationId) {
+                    toast.error('Please select a receive location.');
+                    setSubmitting(false);
+                    return;
+                }
+
                 receiptData = {
+                    location_id: Number(poLocationId),
                     line_items: (orderData.items || [])
                         .filter(item => (receivedQuantities[item.line_item_id] || 0) > 0)
                         .map(item => ({
@@ -213,14 +241,26 @@ export default function MobileReceive() {
                     return;
                 }
 
+                if (!sourceLocationId || !destinationLocationId) {
+                    toast.error('Please select source and destination locations.');
+                    setSubmitting(false);
+                    return;
+                }
+                if (sourceLocationId === destinationLocationId) {
+                    toast.error('Source and destination locations must be different.');
+                    setSubmitting(false);
+                    return;
+                }
+
                 receiptData = {
                     quantity_produced: productionQuantity,
                     notes,
-                    quality_check: qualityCheck
+                    quality_check: qualityCheck,
+                    source_location_id: Number(sourceLocationId),
+                    destination_location_id: Number(destinationLocationId)
                 };
             }
 
-            // Use the token itself as authorization — no user JWT needed
             await receiveViaToken(token, receiptData);
 
             setSuccess(true);
@@ -516,13 +556,13 @@ export default function MobileReceive() {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="pass">
+                                            <SelectItem value="passed">
                                                 <div className="flex items-center gap-2">
                                                     <ThumbsUp className="w-4 h-4 text-emerald-500" />
                                                     Pass (Good Quality)
                                                 </div>
                                             </SelectItem>
-                                            <SelectItem value="fail">
+                                            <SelectItem value="failed">
                                                 <div className="flex items-center gap-2">
                                                     <ThumbsDown className="w-4 h-4 text-red-500" />
                                                     Fail (Rejected/Scrap)
@@ -534,6 +574,62 @@ export default function MobileReceive() {
                             </div>
                         )}
                     </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
+                    {isPO ? (
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-slate-700">Receive Location</label>
+                            <Select value={poLocationId} onValueChange={setPoLocationId} disabled={loadingLocations}>
+                                <SelectTrigger className="h-12">
+                                    <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {activeLocations.map((location) => (
+                                        <SelectItem key={`po-${location.location_id}`} value={String(location.location_id)}>
+                                            {location.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-slate-700">Ingredient Source Location</label>
+                                <Select value={sourceLocationId} onValueChange={setSourceLocationId} disabled={loadingLocations}>
+                                    <SelectTrigger className="h-12">
+                                        <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Select source location'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {activeLocations.map((location) => (
+                                            <SelectItem key={`src-${location.location_id}`} value={String(location.location_id)}>
+                                                {location.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-slate-700">Output Destination Location</label>
+                                <Select value={destinationLocationId} onValueChange={setDestinationLocationId} disabled={loadingLocations}>
+                                    <SelectTrigger className="h-12">
+                                        <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Select destination location'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {activeLocations.map((location) => (
+                                            <SelectItem key={`dst-${location.location_id}`} value={String(location.location_id)}>
+                                                {location.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId && (
+                                    <p className="text-xs text-red-600">Source and destination locations must be different.</p>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Summary */}
@@ -611,7 +707,12 @@ export default function MobileReceive() {
             <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg">
                 <Button
                     onClick={handleReceive}
-                    disabled={submitting || (totalReceiving === 0) || (!isPO && !orderData?.all_ingredients_sufficient && false)}
+                    disabled={
+                        submitting
+                        || (totalReceiving === 0)
+                        || (isPO && !poLocationId)
+                        || (!isPO && (!sourceLocationId || !destinationLocationId || sourceLocationId === destinationLocationId))
+                    }
                     className={cn(
                         "w-full h-14 text-lg font-semibold",
                         isPO ? "bg-teal-600 hover:bg-teal-700" : "bg-blue-600 hover:bg-blue-700"

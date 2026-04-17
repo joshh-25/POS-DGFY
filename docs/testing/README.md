@@ -34,6 +34,7 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 
 - `docs/testing/pos-e2e-uat-checklist.md`
 - Canonical readiness state: `docs/testing/pos-readiness-status.md`
+- Latest execution evidence snapshot: `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 

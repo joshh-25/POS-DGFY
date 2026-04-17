@@ -85,6 +85,10 @@ Notes:
   - [ ] `https://pos.surebizcorp.com`
   - [ ] `https://surebizcorp.com`
   - [ ] `https://surebizcorp.com/tenant-store`
+- [ ] Public upload assets proxy correctly on all surfaces:
+  - [ ] `https://skupervisor.surebizcorp.com/uploads/...` returns `200 image/*`
+  - [ ] `https://pos.surebizcorp.com/uploads/...` returns `200 image/*`
+  - [ ] `https://surebizcorp.com/uploads/...` returns `200 image/*`
 - [ ] Tenant-store asset URLs from `https://surebizcorp.com/tenant-store` resolve correctly:
   - [ ] JS bundle URL returns JavaScript (not HTML fallback)
   - [ ] Manifest URL returns manifest/json (not HTML fallback)

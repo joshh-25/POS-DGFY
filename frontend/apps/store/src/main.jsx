@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import L from 'leaflet';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
+import { normalizeStorefrontErrorMessage } from './storefrontErrorMessages.js';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
@@ -69,8 +70,21 @@ const inferRuntimeApiOrigin = () => {
   return `${protocol}//${hostname}:5000`;
 };
 
-const configuredApiOrigin = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const resolveConfiguredOrigin = (rawValue = '') => {
+  const raw = String(rawValue || '').trim();
+  if (!raw || raw.startsWith('/')) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return parsed.protocol.startsWith('http') ? parsed.origin : '';
+  } catch {
+    return '';
+  }
+};
+
+const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BASE_URL);
 const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
+const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
+const assetOrigin = configuredAssetOrigin || apiOrigin;
 const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
@@ -78,6 +92,12 @@ const withApiOrigin = (url) => {
   if (!url || typeof url !== 'string') return url;
   if (!url.startsWith('/')) return url;
   return apiOrigin ? `${apiOrigin}${url}` : url;
+};
+
+const withAssetOrigin = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.startsWith('/')) return url;
+  return assetOrigin ? `${assetOrigin}${url}` : url;
 };
 
 const requestJson = async (url, { method = 'GET', body, storeSlug } = {}) => {
@@ -131,13 +151,13 @@ const extractStockViolation = (error) => {
 
 const buildStockExceededMessage = (violation = {}) => {
   const itemName = violation.item_name || 'item';
-  const requested = Number.isFinite(Number(violation.requested_qty)) ? Number(violation.requested_qty) : null;
-  const available = Number.isFinite(Number(violation.available_stock)) ? Number(violation.available_stock) : null;
-  const unit = String(violation.unit_of_measure || '').trim();
-  if (requested != null && available != null) {
-    return `${itemName}: requested ${requested}${unit ? ` ${unit}` : ''}, only ${available}${unit ? ` ${unit}` : ''} in stock.`;
-  }
-  return `${itemName} is over current stock.`;
+  return `${itemName} is currently unavailable at the selected location.`;
+};
+
+const isItemAvailable = (item = {}) => {
+  if (item?.is_available === true) return true;
+  if (item?.is_available === false) return false;
+  return String(item?.availability_status || '').toLowerCase() === 'in_stock';
 };
 
 const pinIcon = (selected = false) => L.divIcon({
@@ -314,6 +334,8 @@ function App() {
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
+  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
+  const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
@@ -378,6 +400,7 @@ function App() {
     try {
       const profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`);
       setSelectedStore(profile);
+      let resolvedCatalogLocationId = null;
 
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug });
@@ -406,17 +429,23 @@ function App() {
             ?? locations[0]?.location_id
             ?? null
           );
+          resolvedCatalogLocationId = fallbackLocationId;
           setSelectedLocationId(fallbackLocationId);
         } else {
+          resolvedCatalogLocationId = null;
           setSelectedLocationId(null);
         }
       } catch {
         setStoreLocations([]);
         setPrimaryLocationId(null);
+        resolvedCatalogLocationId = null;
         setSelectedLocationId(null);
       }
 
-      const catalogData = await requestJson('/api/v1/store/catalog?limit=120', { storeSlug: profile.slug });
+      const catalogQuery = resolvedCatalogLocationId == null
+        ? '/api/v1/store/catalog?limit=120'
+        : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`;
+      const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug });
       setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
     } catch (error) {
       setSelectedStore(null);
@@ -436,6 +465,38 @@ function App() {
     if (!routeSlug) return;
     openStoreBySlug(routeSlug);
   }, [routeSlug, openStoreBySlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLocationAwareCatalog = async () => {
+      if (!isStorePage || !selectedStore?.slug) return;
+      setLoadingCatalog(true);
+      setCatalogError('');
+      try {
+        const catalogQuery = selectedLocationId == null
+          ? '/api/v1/store/catalog?limit=120'
+          : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`;
+        const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug });
+        if (cancelled) return;
+        setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
+      } catch (error) {
+        if (cancelled) return;
+        setCatalog([]);
+        setCatalogError(error.message || 'Failed to load tenant catalog for selected location.');
+      } finally {
+        if (!cancelled) setLoadingCatalog(false);
+      }
+    };
+
+    loadLocationAwareCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, selectedStore?.slug, selectedLocationId]);
+
+  useEffect(() => {
+    setCatalogImageErrors(new Set());
+  }, [catalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -764,10 +825,19 @@ function App() {
 
   const addToCart = (item) => {
     let stockWarning = '';
+    const normalizedItemId = Number(item?.item_id);
+    if (Number.isFinite(normalizedItemId)) {
+      setCartImageErrors((prev) => {
+        if (!prev.has(normalizedItemId)) return prev;
+        const next = new Set(prev);
+        next.delete(normalizedItemId);
+        return next;
+      });
+    }
     setCart((prev) => {
       const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
-      const price = Number(item.default_sale_price ?? item.cost_per_unit ?? 0);
-      const maxStock = Number.isFinite(Number(item.current_stock)) ? Number(item.current_stock) : 0;
+      const price = Number(item.default_sale_price ?? 0);
+      const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       if (found) {
         const requestedQty = Number(found.quantity) + 1;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
@@ -788,7 +858,7 @@ function App() {
         name: item.name,
         quantity: maxStock > 0 ? 1 : 0,
         price,
-        image_url: withApiOrigin(item.image_url) || null,
+        image_url: withAssetOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
         max_stock: maxStock
       }];
@@ -886,9 +956,7 @@ function App() {
         toast.error(message);
         return;
       }
-      const message = error?.isNetworkError
-        ? 'Quote request failed before reaching API. Check store API proxy/CORS.'
-        : (error.message || 'Unable to compute quote.');
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to compute quote.');
       setQuoteError(message);
       toast.error(message);
     }
@@ -944,9 +1012,7 @@ function App() {
         toast.error(message);
         return;
       }
-      const message = error?.isNetworkError
-        ? 'Checkout request failed before reaching API. Check store API proxy/CORS.'
-        : (error.message || 'Unable to complete checkout.');
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
     } finally {
@@ -963,7 +1029,7 @@ function App() {
       const data = await requestJson(`/api/v1/store/track/${encodeURIComponent(pin)}`, { storeSlug: selectedStore.slug });
       setTrackingResult(data);
     } catch (error) {
-      setTrackingError(error.message || 'Tracking failed');
+      setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
     }
   };
 
@@ -1216,16 +1282,81 @@ function App() {
               {!loadingCatalog && catalogError && <p style={{ color: '#b91c1c' }}>{catalogError}</p>}
               {!loadingCatalog && !catalogError && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginTop: 10 }}>
-                  {catalog.map((item) => (
-                    <div key={item.item_id} style={{ border: '1px solid #d6e2e8', borderRadius: 12, padding: 12 }}>
-                      <div style={{ fontWeight: 800, fontSize: 18 }}>{item.name}</div>
-                      <div style={{ marginTop: 8, color: '#0f766e', fontWeight: 700 }}>{money(item.default_sale_price ?? item.cost_per_unit ?? 0)}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: Number(item.current_stock) > 0 ? '#0f766e' : '#b91c1c', fontWeight: 700 }}>
-                        IMS Stock: {Number.isFinite(Number(item.current_stock)) ? Number(item.current_stock).toFixed(2) : '0.00'} {item.unit_of_measure || ''} {Number(item.current_stock) > 0 ? '(In stock)' : '(Out of stock)'}
+                  {catalog.map((item) => {
+                    const itemId = Number(item.item_id);
+                    const imageUrl = withAssetOrigin(item.image_url);
+                    const imageBlocked = Number.isFinite(itemId) && catalogImageErrors.has(itemId);
+                    const available = isItemAvailable(item);
+                    return (
+                      <div
+                        key={item.item_id}
+                        style={{
+                          border: '1px solid #d6e2e8',
+                          borderRadius: 16,
+                          background: '#fff',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          minHeight: 320
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '100%',
+                            aspectRatio: '16 / 10',
+                            borderBottom: '1px solid #e2e8f0',
+                            background: 'linear-gradient(135deg,#f8fafc,#eef2f7)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {imageUrl && !imageBlocked ? (
+                            <img
+                              src={imageUrl}
+                              alt={`${item.name} menu`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                if (!Number.isFinite(itemId)) return;
+                                setCatalogImageErrors((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(itemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              fontSize: 18,
+                              lineHeight: 1.2,
+                              minHeight: 44,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word'
+                            }}
+                            title={item.name}
+                          >
+                            {item.name}
+                          </div>
+                          <div style={{ color: '#0f766e', fontWeight: 700 }}>{money(item.default_sale_price ?? 0)}</div>
+                          <div style={{ fontSize: 12, color: available ? '#0f766e' : '#b91c1c', fontWeight: 700 }}>
+                            Availability: {available ? 'In stock' : 'Out of stock'}
+                          </div>
+                          <button type="button" onClick={() => addToCart(item)} disabled={!available} style={{ marginTop: 'auto', width: '100%', borderRadius: 10, border: '1px solid #7f1d1d', background: available ? '#7f1d1d' : '#cbd5e1', color: '#fff', padding: '8px 10px', fontWeight: 700, cursor: available ? 'pointer' : 'not-allowed' }}>Add to Cart</button>
+                        </div>
                       </div>
-                      <button type="button" onClick={() => addToCart(item)} disabled={Number(item.current_stock) <= 0} style={{ marginTop: 10, width: '100%', borderRadius: 10, border: '1px solid #7f1d1d', background: Number(item.current_stock) > 0 ? '#7f1d1d' : '#cbd5e1', color: '#fff', padding: '8px 10px', fontWeight: 700, cursor: Number(item.current_stock) > 0 ? 'pointer' : 'not-allowed' }}>Add to Cart</button>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {catalog.length === 0 && <p style={{ color: '#64748b' }}>No storefront-visible items configured for this tenant yet.</p>}
                 </div>
               )}
@@ -1430,11 +1561,20 @@ function App() {
                           {cart.map((line) => (
                             <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
                               <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {line.image_url ? (
+                                {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
                                   <img
-                                    src={withApiOrigin(line.image_url)}
+                                    src={withAssetOrigin(line.image_url)}
                                     alt={line.name}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={() => {
+                                      const normalizedLineItemId = Number(line.item_id);
+                                      if (!Number.isFinite(normalizedLineItemId)) return;
+                                      setCartImageErrors((prev) => {
+                                        const next = new Set(prev);
+                                        next.add(normalizedLineItemId);
+                                        return next;
+                                      });
+                                    }}
                                   />
                                 ) : (
                                   <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'center', padding: 6 }}>No Image</span>
@@ -1445,8 +1585,8 @@ function App() {
                                 <div style={{ fontSize: 11, color: '#64748b' }}>
                                   Unit: {money(line.price)} {line.unit_of_measure ? `• ${line.unit_of_measure}` : ''}
                                 </div>
-                                <div style={{ fontSize: 11, color: Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY) ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
-                                  Stock: {Number.isFinite(Number(line.max_stock)) ? Number(line.max_stock).toFixed(2) : 'n/a'} {line.unit_of_measure || ''}
+                                <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
+                                  Availability checked on quote/checkout
                                 </div>
                                 <button
                                   type="button"
@@ -1557,8 +1697,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <Toaster richColors position="top-right" />
   </React.StrictMode>
 );
-
-
-
-
-

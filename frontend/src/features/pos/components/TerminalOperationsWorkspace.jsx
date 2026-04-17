@@ -12,6 +12,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  FULFILLMENT_STATUS_LABELS,
+  ORDER_METHOD_LABELS,
+  PAYMENT_TYPE_LABELS,
+  getNextStatusActions
+} from './orderFulfillmentUi.js';
 
 const MODE_META = {
   incoming_queue: {
@@ -48,51 +54,6 @@ const MODE_META = {
     icon: CheckCircle2,
     title: 'Terminal Setup Context',
     subtitle: 'Inspect setup and compliance context used by the active POS terminal.'
-  }
-};
-
-const ORDER_METHOD_LABELS = {
-  dine_in: 'Dine In',
-  takeout: 'Takeout',
-  pickup: 'Pickup',
-  delivery: 'Delivery',
-  online: 'Online'
-};
-
-const PAYMENT_TYPE_LABELS = {
-  cash: 'Cash',
-  gcash: 'GCash',
-  maya: 'Maya',
-  card: 'Card',
-  bank_transfer: 'Bank Transfer'
-};
-
-const FULFILLMENT_STATUS_LABELS = {
-  placed: 'Placed',
-  confirmed: 'Confirmed',
-  preparing: 'Preparing',
-  ready_for_pickup: 'Ready',
-  out_for_delivery: 'Out for Delivery',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-  rejected: 'Rejected'
-};
-
-const getNextStatusActions = (order = {}) => {
-  const current = String(order.fulfillment_status || '').trim();
-  const method = String(order.order_method || '').trim();
-  switch (current) {
-  case 'placed':
-    return ['confirmed', 'rejected'];
-  case 'confirmed':
-    return ['preparing'];
-  case 'preparing':
-    return method === 'delivery' ? ['out_for_delivery'] : ['ready_for_pickup'];
-  case 'ready_for_pickup':
-  case 'out_for_delivery':
-    return ['completed'];
-  default:
-    return [];
   }
 };
 

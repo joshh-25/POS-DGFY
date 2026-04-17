@@ -1,3 +1,8 @@
+const parsePositiveInt = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 export const buildJobOrderToolRegistry = ({ jobOrderService, itemService, logger }) => {
   const handlers = {
     get_job_orders: async ({ args }) => {
@@ -93,31 +98,66 @@ export const buildJobOrderToolRegistry = ({ jobOrderService, itemService, logger
     },
 
     complete_job_order: async ({ args, user }) => {
-      const { jo_id, quantity_produced, expiry_date } = args;
+      const {
+        jo_id,
+        quantity_produced,
+        expiry_date,
+        source_location_id,
+        destination_location_id
+      } = args;
+      const normalizedJoId = parsePositiveInt(jo_id);
+      const normalizedSourceLocationId = parsePositiveInt(source_location_id);
+      const normalizedDestinationLocationId = parsePositiveInt(destination_location_id);
+      const normalizedQuantityProduced = Number(quantity_produced);
+      if (!normalizedJoId) {
+        const error = new Error('jo_id is required and must be a positive integer');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (!(Number.isFinite(normalizedQuantityProduced) && normalizedQuantityProduced > 0)) {
+        const error = new Error('quantity_produced is required and must be a positive number');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (!normalizedSourceLocationId || !normalizedDestinationLocationId) {
+        const error = new Error('source_location_id and destination_location_id are required and must be positive integers');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (normalizedSourceLocationId === normalizedDestinationLocationId) {
+        const error = new Error('source_location_id and destination_location_id must be different');
+        error.statusCode = 422;
+        throw error;
+      }
 
       const result = await jobOrderService.completeJobOrder(
-        jo_id,
+        normalizedJoId,
         user.user_id,
         expiry_date,
         null,
-        quantity_produced
+        normalizedQuantityProduced,
+        null,
+        normalizedSourceLocationId,
+        normalizedDestinationLocationId
       );
 
       return {
         success: true,
         message: 'Job Order completed successfully',
         details: {
-          'Produced Quantity': String(quantity_produced),
+          'Produced Quantity': String(normalizedQuantityProduced),
+          'Source Location': String(normalizedSourceLocationId),
+          'Destination Location': String(normalizedDestinationLocationId),
           'Expiry Date': expiry_date ? new Date(expiry_date).toLocaleDateString() : 'Auto-calculated',
           'Ingredients Consumed': String(result.ingredientsConsumed || 0)
         },
         related_entity: {
           type: 'job_order',
-          id: jo_id,
-          label: `JO #${jo_id}`
+          id: normalizedJoId,
+          label: `JO #${normalizedJoId}`
         },
-        jo_id,
-        quantity_produced,
+        jo_id: normalizedJoId,
+        quantity_produced: normalizedQuantityProduced,
         batch_created: result.batchId,
         ingredients_consumed: result.ingredientsConsumed
       };

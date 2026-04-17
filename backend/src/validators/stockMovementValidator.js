@@ -42,6 +42,21 @@ export const createStockMovementSchema = Joi.object({
   reference_type: Joi.string().valid(...REFERENCE_TYPES).allow(null).messages({
     'any.only': `Reference type must be one of: ${REFERENCE_TYPES.join(', ')}`
   }),
+  location_id: Joi.number().integer().positive().allow(null).messages({
+    'number.base': 'Location ID must be a number',
+    'number.integer': 'Location ID must be an integer',
+    'number.positive': 'Location ID must be positive'
+  }),
+  source_location_id: Joi.number().integer().positive().allow(null).messages({
+    'number.base': 'Source location ID must be a number',
+    'number.integer': 'Source location ID must be an integer',
+    'number.positive': 'Source location ID must be positive'
+  }),
+  destination_location_id: Joi.number().integer().positive().allow(null).messages({
+    'number.base': 'Destination location ID must be a number',
+    'number.integer': 'Destination location ID must be an integer',
+    'number.positive': 'Destination location ID must be positive'
+  }),
   from_location: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'From location must not exceed 100 characters'
   }),
@@ -60,6 +75,26 @@ export const createStockMovementSchema = Joi.object({
   }).messages({
     'any.only': `Loss reason must be one of: ${LOSS_REASONS.join(', ')}`
   })
+}).custom((value, helpers) => {
+  if (value?.movement_type !== 'transfer') {
+    return value;
+  }
+
+  if (!value?.source_location_id || !value?.destination_location_id) {
+    return helpers.error('any.invalid', {
+      message: 'source_location_id and destination_location_id are required for transfer movements'
+    });
+  }
+
+  if (Number(value.source_location_id) === Number(value.destination_location_id)) {
+    return helpers.error('any.invalid', {
+      message: 'source_location_id and destination_location_id must be different for transfer movements'
+    });
+  }
+
+  return value;
+}, 'transfer location validation').messages({
+  'any.invalid': '{{#message}}'
 });
 
 export const voidMovementSchema = Joi.object({

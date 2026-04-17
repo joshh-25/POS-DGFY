@@ -2,6 +2,7 @@ import { Op, QueryTypes } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { resolveMovementLocation } from './locationInventoryService.js';
 
 // CSV formula injection prevention (matches csvExportService.js pattern)
 const escapeCSVCell = (value) => {
@@ -409,11 +410,13 @@ export const confirmDispatchOrder = async (doId, userId) => {
  * @param {number} doId
  * @param {Array}  lineDispatches - [{ line_id, qty_to_dispatch, batch_id? }]
  * @param {number} userId
+ * @param {number|null} locationId
  */
-export const dispatchLines = async (doId, lineDispatches, userId) => {
+export const dispatchLines = async (doId, lineDispatches, userId, locationId = null) => {
     const DispatchOrder = dbStore.get('DispatchOrder');
     const DispatchOrderLine = dbStore.get('DispatchOrderLine');
     const Item = dbStore.get('Item');
+    const ItemLocationStock = dbStore.get('ItemLocationStock');
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
     const dispatchOrder = await DispatchOrder.findByPk(doId);
@@ -430,6 +433,15 @@ export const dispatchLines = async (doId, lineDispatches, userId) => {
 
     const transaction = await sequelize.transaction();
     try {
+        const resolvedLocation = await resolveMovementLocation({
+            requestedLocationId: locationId,
+            userId,
+            transaction,
+            lock: true,
+            operationLabel: 'dispatch execution'
+        });
+        const resolvedLocationId = resolvedLocation?.location_id || null;
+
         for (const { line_id, qty_to_dispatch, batch_id } of lineDispatches) {
             if (!qty_to_dispatch || qty_to_dispatch <= 0) continue;
 
@@ -454,7 +466,26 @@ export const dispatchLines = async (doId, lineDispatches, userId) => {
                 throw error;
             }
 
-            if (parseFloat(item.current_stock) < qty_to_dispatch) {
+            if (resolvedLocationId) {
+                const locationStock = await ItemLocationStock.findOne({
+                    where: {
+                        item_id: item.item_id,
+                        location_id: resolvedLocationId
+                    },
+                    attributes: ['quantity_on_hand'],
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                const availableAtLocation = Number.parseFloat(locationStock?.quantity_on_hand || 0);
+                if (availableAtLocation + 0.000001 < qty_to_dispatch) {
+                    const error = new Error(
+                        `Insufficient stock for "${item.name}" at location ${resolvedLocationId}. `
+                        + `Available: ${availableAtLocation} ${item.unit_of_measure}, requested: ${qty_to_dispatch}`
+                    );
+                    error.statusCode = 400;
+                    throw error;
+                }
+            } else if (parseFloat(item.current_stock) < qty_to_dispatch) {
                 const error = new Error(`Insufficient stock for "${item.name}". Available: ${item.current_stock} ${item.unit_of_measure}, requested: ${qty_to_dispatch}`);
                 error.statusCode = 400;
                 throw error;
@@ -470,7 +501,8 @@ export const dispatchLines = async (doId, lineDispatches, userId) => {
                 reference_id: String(line.line_id),
                 reference_type: 'DO',
                 notes: `Dispatch to ${dispatchOrder.recipient_name} (${dispatchOrder.do_number})`,
-                cost_per_unit: parseFloat(line.cost_per_unit) || item.cost_per_unit
+                cost_per_unit: parseFloat(line.cost_per_unit) || item.cost_per_unit,
+                location_id: resolvedLocationId || undefined
             };
 
             // If a specific batch is requested, pass it. Otherwise let FIFO/FEFO kick in.

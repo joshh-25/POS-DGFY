@@ -39,15 +39,53 @@ describe('receive token use-cases application result contract', () => {
     });
 
     const payload = { line_items: [{ line_item_id: 3, quantity_received: 5 }] };
-    const result = await useCase({ token: 'token-123', payload });
+    const result = await useCase({ token: 'token-123', payload, userId: 11 });
 
-    expect(receiveViaToken).toHaveBeenCalledWith('token-123', payload);
+    expect(receiveViaToken).toHaveBeenCalledWith('token-123', payload, 11);
     expect(result).toEqual({
       success: true,
       data: { po_id: 45, status: 'received' },
       error: null,
       message: null
     });
+  });
+
+  it('receiveViaToken maps missing location field errors to VALIDATION_FAILED (422)', async () => {
+    const validationError = new Error('location_id is required to receive PO via QR');
+    validationError.statusCode = 422;
+    const useCase = buildReceiveViaTokenUseCase({
+      receiveTokenService: { receiveViaToken: jest.fn().mockRejectedValue(validationError) }
+    });
+
+    const result = await useCase({
+      token: 'token-123',
+      payload: { line_items: [{ line_item_id: 3, quantity_received: 5 }] },
+      userId: 11
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('location_id is required to receive PO via QR');
+  });
+
+  it('receiveViaToken maps location permission errors to AUTHORIZATION_FAILED (403)', async () => {
+    const authorizationError = new Error('You do not have location access to perform QR receive at location 2.');
+    authorizationError.statusCode = 403;
+    const useCase = buildReceiveViaTokenUseCase({
+      receiveTokenService: { receiveViaToken: jest.fn().mockRejectedValue(authorizationError) }
+    });
+
+    const result = await useCase({
+      token: 'token-123',
+      payload: { source_location_id: 2, destination_location_id: 3, quantity_produced: 5 },
+      userId: 11
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(result.error.message).toBe('You do not have location access to perform QR receive at location 2.');
   });
 
   it('markTokenUsed validates tokenId and normalizes userId', async () => {

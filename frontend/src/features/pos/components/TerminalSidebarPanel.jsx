@@ -3,33 +3,12 @@ import { Banknote, ChevronLeft, ChevronRight, Clock3, LogIn, LogOut, UserCircle2
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-const ORDER_METHOD_LABELS = {
-  dine_in: 'Dine In',
-  takeout: 'Takeout',
-  pickup: 'Pickup',
-  delivery: 'Delivery',
-  online: 'Online'
-};
-
-const PAYMENT_TYPE_LABELS = {
-  cash: 'Cash',
-  gcash: 'GCash',
-  maya: 'Maya',
-  card: 'Card',
-  bank_transfer: 'Bank Transfer'
-};
-
-const FULFILLMENT_STATUS_LABELS = {
-  placed: 'Placed',
-  confirmed: 'Confirmed',
-  preparing: 'Preparing',
-  ready_for_pickup: 'Ready',
-  out_for_delivery: 'Out for Delivery',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-  rejected: 'Rejected'
-};
+import {
+  FULFILLMENT_STATUS_LABELS,
+  ORDER_METHOD_LABELS,
+  PAYMENT_TYPE_LABELS,
+  getNextStatusActions
+} from './orderFulfillmentUi.js';
 
 const WORKSPACE_VIEW_CONFIG = {
   incoming_queue: {
@@ -59,24 +38,6 @@ const WORKSPACE_VIEW_CONFIG = {
   terminal_setup: {
     title: 'Terminal Setup Context',
     description: 'View compliance, petty cash, and active setup baseline for this terminal.'
-  }
-};
-
-const getNextStatusActions = (order = {}) => {
-  const current = String(order.fulfillment_status || '').trim();
-  const method = String(order.order_method || '').trim();
-  switch (current) {
-  case 'placed':
-    return ['confirmed', 'rejected'];
-  case 'confirmed':
-    return ['preparing'];
-  case 'preparing':
-    return method === 'delivery' ? ['out_for_delivery'] : ['ready_for_pickup'];
-  case 'ready_for_pickup':
-  case 'out_for_delivery':
-    return ['completed'];
-  default:
-    return [];
   }
 };
 

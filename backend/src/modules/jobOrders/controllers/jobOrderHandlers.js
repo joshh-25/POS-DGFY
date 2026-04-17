@@ -154,10 +154,23 @@ export const finalizeJobOrder = async (req, res, next) => {
 
 export const completeJobOrder = async (req, res, next) => {
   try {
+    const completionData = req.validatedData || req.body || {};
+    const normalizedQualityCheck = typeof completionData.quality_check === 'string'
+      ? completionData.quality_check.trim().toLowerCase()
+      : completionData.quality_check;
+    const canonicalQualityCheck = normalizedQualityCheck === 'pass'
+      ? 'passed'
+      : normalizedQualityCheck === 'fail'
+        ? 'failed'
+        : normalizedQualityCheck;
+
     const result = await completeJobOrderUseCase({
       jobOrderId: req.params.jo_id,
       userId: req.user.user_id,
-      completionData: req.body
+      completionData: {
+        ...completionData,
+        quality_check: canonicalQualityCheck
+      }
     });
     await trackProductUsageFromResult({
       req,

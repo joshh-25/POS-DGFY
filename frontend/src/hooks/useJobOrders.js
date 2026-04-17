@@ -81,11 +81,11 @@ export const useCompleteJobOrder = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const completeJobOrder = useCallback(async (joId, expiryDate = null, notes = null, quantityProduced = null, qualityCheck = null) => {
+  const completeJobOrder = useCallback(async (joId, completionPayload = {}) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await jobOrderService.completeJobOrder(joId, expiryDate, notes, quantityProduced, qualityCheck);
+      const response = await jobOrderService.completeJobOrder(joId, completionPayload);
       return response;
     } catch (err) {
       setError(err.message || 'Failed to complete job order');

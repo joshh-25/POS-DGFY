@@ -156,7 +156,7 @@ export const receivePurchaseOrder = async (req, res, next) => {
   try {
     const result = await receivePurchaseOrderUseCase({
       poId: req.params.po_id,
-      receiptData: req.body,
+      receiptData: req.validatedData || req.body,
       userId: req.user.user_id
     });
     await trackProductUsageFromResult({

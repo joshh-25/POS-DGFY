@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import fs from 'fs/promises';
 import { QueryTypes } from 'sequelize';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,9 +18,16 @@ const parsePositiveNumber = (value, fallback) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseJsonOutputArg = () => {
+    const idx = process.argv.indexOf('--json-output');
+    if (idx === -1) return null;
+    return process.argv[idx + 1] || null;
+};
+
 const tolerance = parsePositiveNumber(process.env.FIFO_DRIFT_TOLERANCE, 0.0001);
 const maxPrintedRows = Math.max(1, Math.floor(parsePositiveNumber(process.env.FIFO_DRIFT_MAX_PRINT, 20)));
 const shouldRepairPositiveDrift = process.argv.includes('--repair-positive-drift');
+const jsonOutputPath = parseJsonOutputArg();
 
 const DRIFT_SQL = `
   SELECT *
@@ -208,6 +216,13 @@ const printTenantResult = (result) => {
     }
 };
 
+const writeJsonArtifact = async (payload) => {
+    if (!jsonOutputPath) return;
+    const serialized = JSON.stringify(payload, null, 2);
+    await fs.writeFile(jsonOutputPath, serialized, 'utf8');
+    console.log(`[FifoDriftAudit] wrote json artifact: ${jsonOutputPath}`);
+};
+
 const run = async () => {
     try {
         const tenants = await loadTargetTenants();
@@ -244,9 +259,23 @@ const run = async () => {
         const totalOverConsumedRows = results.reduce((sum, result) => sum + result.overConsumedRows.length, 0);
         const maxAbsDrift = results.reduce((max, result) => Math.max(max, result.maxDriftAbs || 0), 0);
 
-        console.log(`[FifoDriftAudit] summary status=${degraded.length === 0 ? 'healthy' : 'degraded'} degraded_tenants=${degraded.length} total_drift_rows=${totalDriftRows} total_over_consumed_rows=${totalOverConsumedRows} max_abs_drift=${maxAbsDrift.toFixed(6)}`);
+        const summary = {
+            generated_at: new Date().toISOString(),
+            tolerance,
+            repair_positive_drift: shouldRepairPositiveDrift,
+            tenant_count: results.length,
+            degraded_tenants: degraded.length,
+            total_drift_rows: totalDriftRows,
+            total_over_consumed_rows: totalOverConsumedRows,
+            max_abs_drift: maxAbsDrift,
+            status: degraded.length === 0 ? 'healthy' : 'degraded',
+            results
+        };
 
-        process.exit(degraded.length === 0 ? 0 : 1);
+        console.log(`[FifoDriftAudit] summary status=${summary.status} degraded_tenants=${summary.degraded_tenants} total_drift_rows=${summary.total_drift_rows} total_over_consumed_rows=${summary.total_over_consumed_rows} max_abs_drift=${summary.max_abs_drift.toFixed(6)}`);
+        await writeJsonArtifact(summary);
+
+        process.exit(summary.status === 'healthy' ? 0 : 1);
     } catch (error) {
         console.error('[FifoDriftAudit] failed:', error.message);
         process.exit(1);

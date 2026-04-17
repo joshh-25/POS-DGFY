@@ -570,6 +570,33 @@ const buildOrderHistoryResponse = (result = {}) => ({
     }
 });
 
+const normalizeAvailabilityStatus = (item = {}) => {
+    const rawStatus = String(item?.availability_status || '').trim().toLowerCase();
+    if (rawStatus === 'in_stock' || rawStatus === 'out_of_stock') {
+        return rawStatus;
+    }
+    if (item?.is_available === true) return 'in_stock';
+    if (item?.is_available === false) return 'out_of_stock';
+    return 'out_of_stock';
+};
+
+const serializeStoreCatalogItem = (item = {}) => {
+    const availabilityStatus = normalizeAvailabilityStatus(item);
+    const isAvailable = availabilityStatus === 'in_stock';
+    return {
+        item_id: item.item_id,
+        name: item.name,
+        category: item.category,
+        product_type: item.product_type || null,
+        unit_of_measure: item.unit_of_measure || null,
+        default_sale_price: item.default_sale_price,
+        vat_type: item.vat_type || 'vatable',
+        image_url: item.image_url || null,
+        is_available: isAvailable,
+        availability_status: availabilityStatus
+    };
+};
+
 const generateUniqueTrackingPin = async (storeRepository, options = {}) => {
     for (let attempt = 0; attempt < MAX_TRACKING_PIN_ATTEMPTS; attempt += 1) {
         const candidate = generateTrackingPinCandidate();
@@ -631,8 +658,7 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
         );
     }
 
-    const [items, requestedLocation, fallbackLocation, settingsRows] = await Promise.all([
-        storeRepository.findSellableItemsByIds(itemIds, options),
+    const [requestedLocation, fallbackLocation, settingsRows] = await Promise.all([
         normalized.location_id ? storeRepository.findLocationById(normalized.location_id, options) : Promise.resolve(null),
         normalized.location_id
             ? Promise.resolve(null)
@@ -662,6 +688,11 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
     });
 
     normalized.location_id = location.location_id;
+
+    const items = await storeRepository.findSellableItemsByIds(itemIds, {
+        ...options,
+        locationId: normalized.location_id
+    });
     const estimatedWaitMinutes = resolveEstimatedWaitMinutes({
         settings,
         location
@@ -789,18 +820,33 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
         }
 
         try {
+            const requestedLocationId = query.location_id == null
+                ? null
+                : Number.parseInt(query.location_id, 10);
+            if (query.location_id != null && (!Number.isInteger(requestedLocationId) || requestedLocationId <= 0)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'location_id must be a positive integer when provided',
+                    { statusCode: 422 }
+                );
+            }
+
             const items = await storeRepository.listStoreCatalog({
                 search: query.search,
-                limit: query.limit
+                limit: query.limit,
+                location_id: requestedLocationId
             });
+            const serializedItems = (Array.isArray(items) ? items : []).map((item) => (
+                serializeStoreCatalogItem(item)
+            ));
 
             return ok({
-                items,
+                items: serializedItems,
                 pagination: {
                     limit: Number.isFinite(Number(query.limit))
                         ? Math.max(1, Math.min(200, Number(query.limit)))
                         : 60,
-                    count: Array.isArray(items) ? items.length : 0
+                    count: serializedItems.length
                 }
             });
         } catch (error) {

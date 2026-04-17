@@ -143,6 +143,7 @@ export const createItemSchema = Joi.object({
     haccp_plan: Joi.boolean().allow(null)
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
+  location_id: Joi.number().integer().positive().allow(null),
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft', 'active', 'inactive').default('active')
 });
@@ -252,6 +253,7 @@ export const createItemDraftSchema = Joi.object({
     haccp_plan: Joi.boolean().allow(null)
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
+  location_id: Joi.number().integer().positive().allow(null, ''),
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft').default('draft')
 });
@@ -359,6 +361,7 @@ export const updateItemSchema = Joi.object({
     haccp_plan: Joi.boolean().allow(null)
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
+  location_id: Joi.number().integer().positive().allow(null),
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft', 'active', 'inactive')
 }).unknown(true); // Allow unknown properties (e.g., from getItemById associations)

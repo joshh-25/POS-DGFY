@@ -1,0 +1,72 @@
+{
+  "metadata": {
+    "wave_id": "wave-local-2026-04-16",
+    "stage": "local",
+    "generated_at": "2026-04-17T04:36:52.774Z",
+    "owner": "engineering",
+    "handoff_packet_path": "docs/features/multi-location-inventory/ROLLOUT_HANDOFF_PACKET_WAVE-LOCAL-2026-04-16.md"
+  },
+  "evidence": {
+    "backup": {
+      "status": "waived_local",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/backup-restore-drill.md",
+      "sha256": "",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "ops-managed backup and restore drill runbook",
+      "waiver_reason": "Operational production gate; not executable from local engineering workspace."
+    },
+    "restore_drill": {
+      "status": "waived_local",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/backup-restore-drill.md",
+      "sha256": "",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "ops-managed backup and restore drill runbook",
+      "waiver_reason": "Operational production gate; not executable from local engineering workspace."
+    },
+    "backfill_parity": {
+      "status": "passed",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/location-stock-parity.json",
+      "sha256": "da0b490079b124b73f52d1f64efc47bf6aa40ce0a87774b3bc3032465304c8ca",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "node backend/scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables --json-output ../docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/location-stock-parity.json"
+    },
+    "fifo_integrity": {
+      "status": "passed",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/fifo-drift.json",
+      "sha256": "50270aea2164b9cd438e3b8da69c5ac0e1e0b70bc0fc57c866976e04dd9784d5",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "node backend/scripts/audit-fifo-drift.js --repair-positive-drift --json-output ../docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/fifo-drift.json"
+    },
+    "drift_monitor_soak": {
+      "status": "waived_local",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/drift-soak-report.md",
+      "sha256": "",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "ops-managed drift soak monitoring report",
+      "waiver_reason": "Soak-window monitoring requires deployed telemetry and ops ownership."
+    },
+    "location_stock_parity": {
+      "status": "passed",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/location-stock-parity.json",
+      "sha256": "da0b490079b124b73f52d1f64efc47bf6aa40ce0a87774b3bc3032465304c8ca",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "node backend/scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables --json-output ../docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/location-stock-parity.json"
+    },
+    "rollback_rehearsal": {
+      "status": "waived_local",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/rollback-rehearsal.md",
+      "sha256": "",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "ops-managed rollback rehearsal runbook",
+      "waiver_reason": "Rollback rehearsal requires deployment environment and wave controls."
+    },
+    "pilot_uat": {
+      "status": "waived_local",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-local-2026-04-16/pilot-uat.md",
+      "sha256": "",
+      "generated_at": "2026-04-17T04:36:52.774Z",
+      "command": "manual readiness/UAT runbook",
+      "waiver_reason": "Pilot tenant UAT requires cross-team production-wave execution."
+    }
+  }
+}

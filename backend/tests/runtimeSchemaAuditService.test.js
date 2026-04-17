@@ -23,7 +23,9 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260406000001-add-tenant-compliance-program.cjs' },
         { name: '20260407000002-compliance-hardening-phase1-2.cjs' },
         { name: '20260408000004-add-pos-operation-replays.cjs' },
-        { name: '20260408000005-add-security-signal-audit-enum.cjs' }
+        { name: '20260408000005-add-security-signal-audit-enum.cjs' },
+        { name: '20260416000007-add-multi-location-inventory-ledger.cjs' },
+        { name: '20260416000008-backfill-user-location-grants.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -83,6 +85,34 @@ const buildHealthySequelizeMock = () => ({
                     store_customer_id: {},
                     accepted_by: {},
                     accepted_at: {}
+                },
+                stock_movements: {
+                    movement_id: {},
+                    item_id: {},
+                    movement_type: {},
+                    quantity: {},
+                    location_id: {},
+                    source_location_id: {},
+                    destination_location_id: {}
+                },
+                fifo_batches: {
+                    batch_id: {},
+                    item_id: {},
+                    location_id: {},
+                    quantity: {},
+                    quantity_consumed: {}
+                },
+                item_location_stocks: {
+                    item_location_stock_id: {},
+                    item_id: {},
+                    location_id: {},
+                    quantity_on_hand: {}
+                },
+                user_location_grants: {
+                    user_location_grant_id: {},
+                    user_id: {},
+                    location_id: {},
+                    created_by: {}
                 },
                 tenant_compliance_artifacts: {
                     tenant_compliance_artifact_id: {},
@@ -196,6 +226,10 @@ describe('runtimeSchemaAuditService', () => {
                 if (tableName === 'tenants') return { id: {}, name: {}, company_token: {}, db_name: {}, status: {}, plan: {} };
                 if (tableName === 'pos_catalog_overrides') return { pos_catalog_override_id: {}, item_id: {} };
                 if (tableName === 'pos_transactions') return { pos_transaction_id: {} };
+                if (tableName === 'stock_movements') return { movement_id: {} };
+                if (tableName === 'fifo_batches') return { batch_id: {} };
+                if (tableName === 'item_location_stocks') return { item_location_stock_id: {} };
+                if (tableName === 'user_location_grants') return { user_location_grant_id: {} };
                 if (tableName === 'pos_transaction_lines') return { line_id: {} };
                 if (tableName === 'pos_terminal_shifts') return { pos_terminal_shift_id: {} };
                 if (tableName === 'pos_cash_drawer_events') return { pos_cash_drawer_event_id: {} };

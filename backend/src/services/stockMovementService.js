@@ -1,6 +1,13 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import {
+  resolveMovementLocation,
+  resolveTransferLocations
+} from './locationInventoryService.js';
+
+const INBOUND_MOVEMENT_TYPES = new Set(['purchase_receipt', 'return', 'production_output', 'adjustment']);
+const OUTBOUND_MOVEMENT_TYPES = new Set(['production_consumption', 'calculated_loss', 'goods_issue']);
 
 const findVisibleItemById = async (Item, itemId, options = {}) => {
   return Item.findOne({
@@ -12,17 +19,85 @@ const findVisibleItemById = async (Item, itemId, options = {}) => {
   });
 };
 
+const parsePositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  if (!Number.isInteger(normalized) || normalized <= 0) return null;
+  return normalized;
+};
+
+const toQuantity = (value) => {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    const error = new Error('quantity must be a positive number');
+    error.statusCode = 422;
+    throw error;
+  }
+  return parsed;
+};
+
+const getMovementSign = (movementType) => {
+  if (OUTBOUND_MOVEMENT_TYPES.has(movementType)) return -1;
+  if (INBOUND_MOVEMENT_TYPES.has(movementType)) return 1;
+  if (movementType === 'transfer') return 0;
+  const error = new Error(`Unsupported movement_type: ${movementType}`);
+  error.statusCode = 422;
+  throw error;
+};
+
+const getOrCreateItemLocationStock = async ({
+  ItemLocationStock,
+  itemId,
+  locationId,
+  userId = null,
+  options = {}
+} = {}) => {
+  if (!locationId) return null;
+
+  const existing = await ItemLocationStock.findOne({
+    where: {
+      item_id: itemId,
+      location_id: locationId
+    },
+    ...options
+  });
+
+  if (existing) return existing;
+
+  return ItemLocationStock.create({
+    item_id: itemId,
+    location_id: locationId,
+    quantity_on_hand: 0,
+    updated_by: userId || null
+  }, options);
+};
+
+const updateItemAggregateStock = async ({ item, ItemLocationStock, options = {} } = {}) => {
+  const rows = await ItemLocationStock.findAll({
+    where: { item_id: item.item_id },
+    attributes: ['quantity_on_hand'],
+    transaction: options.transaction
+  });
+
+  const total = rows.reduce((sum, row) => sum + Number.parseFloat(row.quantity_on_hand || 0), 0);
+  await item.update({ current_stock: total }, options);
+  return total;
+};
+
 export const getStockMovements = async (queryParams) => {
   const StockMovement = dbStore.get('StockMovement');
   const Item = dbStore.get('Item');
   const User = dbStore.get('User');
   const FIFOBatch = dbStore.get('FIFOBatch');
+  const TenantLocation = dbStore.get('TenantLocation');
 
   const {
     page = 1,
     limit = 20,
     item_id,
     movement_type,
+    location_id,
+    source_location_id,
+    destination_location_id,
     startDate,
     endDate
   } = queryParams;
@@ -32,6 +107,9 @@ export const getStockMovements = async (queryParams) => {
 
   if (item_id) where.item_id = item_id;
   if (movement_type) where.movement_type = movement_type;
+  if (location_id) where.location_id = location_id;
+  if (source_location_id) where.source_location_id = source_location_id;
+  if (destination_location_id) where.destination_location_id = destination_location_id;
   if (startDate || endDate) {
     where.timestamp = {};
     if (startDate) where.timestamp[Op.gte] = new Date(startDate);
@@ -43,7 +121,10 @@ export const getStockMovements = async (queryParams) => {
     include: [
       { model: Item, as: 'item', attributes: ['name', 'sku_code', 'unit_of_measure'] },
       { model: User, as: 'userResponsible', attributes: ['username'] },
-      { model: FIFOBatch, as: 'batch', attributes: ['batch_id', 'expiry_date', 'received_date'] }
+      { model: FIFOBatch, as: 'batch', attributes: ['batch_id', 'expiry_date', 'received_date'] },
+      { model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false },
+      { model: TenantLocation, as: 'sourceLocation', attributes: ['location_id', 'name'], required: false },
+      { model: TenantLocation, as: 'destinationLocation', attributes: ['location_id', 'name'], required: false }
     ],
     limit: parseInt(limit),
     offset: parseInt(offset),
@@ -138,9 +219,22 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   const FIFOBatch = dbStore.get('FIFOBatch');
   const StockMovement = dbStore.get('StockMovement');
   const BatchTransaction = dbStore.get('BatchTransaction');
+  const ItemLocationStock = dbStore.get('ItemLocationStock');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-  const { item_id, quantity, movement_type, batch_id, expiry_date } = movementData;
+  const {
+    item_id,
+    quantity,
+    movement_type,
+    batch_id,
+    expiry_date,
+    location_id,
+    source_location_id,
+    destination_location_id
+  } = movementData;
+
+  const movementQuantity = toQuantity(quantity);
+  const movementSign = getMovementSign(movement_type);
 
   const options = {
     transaction,
@@ -154,21 +248,157 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
     throw error;
   }
 
-  const currentStock = parseFloat(item.current_stock);
-  let newStock = currentStock;
   let createdBatchId = null;
   let movementExpiryDate = expiry_date || null;
   let batchTransactionsData = [];
+  let resolvedLocationId = null;
+  let resolvedSourceLocationId = null;
+  let resolvedDestinationLocationId = null;
 
-  // Handle stock additions (purchase_receipt, return, production_output, adjustment)
-  if (['purchase_receipt', 'return', 'production_output', 'adjustment'].includes(movement_type)) {
-    newStock = currentStock + parseFloat(quantity);
+  if (movement_type === 'transfer') {
+    const { sourceLocation, destinationLocation } = await resolveTransferLocations({
+      sourceLocationId: source_location_id,
+      destinationLocationId: destination_location_id,
+      userId,
+      transaction,
+      lock: true,
+      operationLabel: 'stock transfer'
+    });
+    resolvedSourceLocationId = sourceLocation.location_id;
+    resolvedDestinationLocationId = destinationLocation.location_id;
+  } else {
+    const resolvedLocation = await resolveMovementLocation({
+      requestedLocationId: location_id,
+      userId,
+      transaction,
+      lock: true,
+      operationLabel: 'stock movement'
+    });
+    resolvedLocationId = resolvedLocation?.location_id || null;
+  }
 
-    // Create FIFO batch for additions if item is FIFO-enabled
+  if (movement_type === 'transfer') {
+    const sourceStock = await getOrCreateItemLocationStock({
+      ItemLocationStock,
+      itemId: item.item_id,
+      locationId: resolvedSourceLocationId,
+      userId,
+      options
+    });
+    const destinationStock = await getOrCreateItemLocationStock({
+      ItemLocationStock,
+      itemId: item.item_id,
+      locationId: resolvedDestinationLocationId,
+      userId,
+      options
+    });
+
+    const sourceOnHand = Number.parseFloat(sourceStock.quantity_on_hand || 0);
+    if (sourceOnHand + 0.000001 < movementQuantity) {
+      const error = new Error(`Insufficient stock at source location ${resolvedSourceLocationId}. Available: ${sourceOnHand}, requested: ${movementQuantity}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await sourceStock.update({
+      quantity_on_hand: sourceOnHand - movementQuantity,
+      updated_by: userId || null
+    }, options);
+
+    await destinationStock.update({
+      quantity_on_hand: Number.parseFloat(destinationStock.quantity_on_hand || 0) + movementQuantity,
+      updated_by: userId || null
+    }, options);
+
     if (item.fifo_enabled) {
-      const receivedDate = new Date();
+      let remaining = movementQuantity;
+      const batchOrder = movementData.use_fefo === true
+        ? [['expiry_date', 'ASC'], ['received_date', 'ASC']]
+        : [['received_date', 'ASC']];
 
-      // Calculate expiry if not provided
+      const sourceBatchWhere = {
+        item_id: item.item_id,
+        location_id: resolvedSourceLocationId,
+        [Op.and]: [
+          sequelize.where(sequelize.col('quantity'), Op.gt, sequelize.col('quantity_consumed'))
+        ]
+      };
+
+      const batches = await FIFOBatch.findAll({
+        where: sourceBatchWhere,
+        order: batchOrder,
+        ...options
+      });
+
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const available = Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0);
+        if (available <= 0) continue;
+        const consume = Math.min(remaining, available);
+
+        await batch.update({
+          quantity_consumed: Number.parseFloat(batch.quantity_consumed || 0) + consume
+        }, options);
+
+        await FIFOBatch.create({
+          item_id: item.item_id,
+          location_id: resolvedDestinationLocationId,
+          quantity: consume,
+          cost_per_unit: batch.cost_per_unit || item.cost_per_unit || 0,
+          received_date: new Date(),
+          expiry_date: batch.expiry_date || null,
+          po_number: movementData.reference_id || `TRANSFER-${Date.now()}`,
+          notes: `Transfer from location ${resolvedSourceLocationId}`
+        }, options);
+
+        if (createdBatchId === null) {
+          createdBatchId = batch.batch_id;
+          movementExpiryDate = batch.expiry_date || null;
+        }
+
+        batchTransactionsData.push({
+          batch_id: batch.batch_id,
+          quantity_consumed: consume,
+          remaining_after: available - consume,
+          cost_per_unit: batch.cost_per_unit
+        });
+
+        remaining -= consume;
+      }
+
+      if (remaining > 0.000001) {
+        const error = new Error(`Unable to transfer full quantity from FIFO batches for "${item.name}". Shortfall: ${remaining.toFixed(4)} ${item.unit_of_measure}`);
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    await updateItemAggregateStock({ item, ItemLocationStock, options });
+  } else {
+    const locationStock = resolvedLocationId
+      ? await getOrCreateItemLocationStock({
+        ItemLocationStock,
+        itemId: item.item_id,
+        locationId: resolvedLocationId,
+        userId,
+        options
+      })
+      : null;
+
+    const currentLocationStock = locationStock
+      ? Number.parseFloat(locationStock.quantity_on_hand || 0)
+      : Number.parseFloat(item.current_stock || 0);
+    const locationDelta = movementSign * movementQuantity;
+    const nextLocationStock = currentLocationStock + locationDelta;
+
+    if (nextLocationStock < -0.000001) {
+      const error = new Error(`Insufficient stock${resolvedLocationId ? ` at location ${resolvedLocationId}` : ''}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (INBOUND_MOVEMENT_TYPES.has(movement_type) && item.fifo_enabled) {
+      const receivedDate = new Date();
       if (!movementExpiryDate && item.shelf_life_days) {
         const expiryDateObj = new Date(receivedDate);
         expiryDateObj.setDate(expiryDateObj.getDate() + item.shelf_life_days);
@@ -177,101 +407,92 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
 
       const batch = await FIFOBatch.create({
         item_id: item.item_id,
-        quantity: parseFloat(quantity),
+        location_id: resolvedLocationId,
+        quantity: movementQuantity,
         cost_per_unit: movementData.cost_per_unit || item.cost_per_unit,
         received_date: receivedDate,
         expiry_date: movementExpiryDate,
-        po_number: movementData.po_number || `MANUAL-${Date.now()}` // Manual adjustment reference or PO Number
+        po_number: movementData.po_number || `MANUAL-${Date.now()}`
       }, options);
       createdBatchId = batch.batch_id;
     }
-  }
-  // Handle stock deductions (production_consumption, calculated_loss, goods_issue)
-  else if (movement_type === 'production_consumption' || movement_type === 'calculated_loss' || movement_type === 'goods_issue') {
-    newStock = currentStock - parseFloat(quantity);
-    if (newStock < 0) {
-      const error = new Error('Insufficient stock');
-      error.statusCode = 400;
-      throw error;
-    }
 
-    // Process FIFO consumption if enabled
-    if (item.fifo_enabled) {
-      let remaining = parseFloat(quantity);
+    if (OUTBOUND_MOVEMENT_TYPES.has(movement_type) && item.fifo_enabled) {
+      let remaining = movementQuantity;
 
-      // If specific batch_id provided, deduct from that batch only
       if (batch_id) {
         const targetBatch = await FIFOBatch.findByPk(batch_id, options);
-        if (!targetBatch) {
+        if (!targetBatch || Number(targetBatch.item_id) !== Number(item.item_id)) {
           const error = new Error('Specified batch not found');
           error.statusCode = 404;
           throw error;
         }
+        if (resolvedLocationId && Number(targetBatch.location_id) !== Number(resolvedLocationId)) {
+          const error = new Error(`Batch ${batch_id} does not belong to location ${resolvedLocationId}`);
+          error.statusCode = 400;
+          throw error;
+        }
 
-        const available = parseFloat(targetBatch.quantity) - parseFloat(targetBatch.quantity_consumed);
-        if (available < remaining) {
+        const available = Number.parseFloat(targetBatch.quantity || 0) - Number.parseFloat(targetBatch.quantity_consumed || 0);
+        if (available + 0.000001 < remaining) {
           const error = new Error(`Insufficient quantity in batch ${batch_id}. Available: ${available}`);
           error.statusCode = 400;
           throw error;
         }
 
         await targetBatch.update({
-          quantity_consumed: parseFloat(targetBatch.quantity_consumed) + remaining
+          quantity_consumed: Number.parseFloat(targetBatch.quantity_consumed || 0) + remaining
         }, options);
+
         createdBatchId = batch_id;
         movementExpiryDate = targetBatch.expiry_date;
-
         batchTransactionsData.push({
-          batch_id: batch_id,
+          batch_id,
           quantity_consumed: remaining,
           remaining_after: available - remaining,
           cost_per_unit: targetBatch.cost_per_unit
         });
-      }
-      // Default FIFO (or FEFO for perishable items): consume from oldest/nearest-expiry first
-      else {
-        // FEFO: sort by expiry_date ASC for items with shelf_life_days (perishables)
-        // FIFO: sort by received_date ASC for non-perishables
+      } else {
         const useFefo = movementData.use_fefo === true;
         const batchOrder = useFefo
           ? [['expiry_date', 'ASC'], ['received_date', 'ASC']]
           : [['received_date', 'ASC']];
 
+        const batchWhere = {
+          item_id: item.item_id,
+          [Op.and]: [
+            sequelize.where(sequelize.col('quantity'), Op.gt, sequelize.col('quantity_consumed'))
+          ]
+        };
+        if (resolvedLocationId) {
+          batchWhere.location_id = resolvedLocationId;
+        }
+
         const batches = await FIFOBatch.findAll({
-          where: {
-            item_id: item.item_id,
-            [Op.and]: [
-              sequelize.where(
-                sequelize.col('quantity'),
-                Op.gt,
-                sequelize.col('quantity_consumed')
-              )
-            ]
-          },
+          where: batchWhere,
           order: batchOrder,
           ...options
         });
 
         const totalAvailableFromBatches = batches.reduce((sum, batch) => {
-          const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
+          const available = Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0);
           return sum + Math.max(0, available);
         }, 0);
 
-
-
         for (const batch of batches) {
           if (remaining <= 0) break;
-          const available = parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed);
-          const consume = Math.min(remaining, available);
 
-          // Track first batch for movement record
+          const available = Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0);
+          const consume = Math.min(remaining, available);
+          if (consume <= 0) continue;
+
           if (createdBatchId === null) {
             createdBatchId = batch.batch_id;
             movementExpiryDate = batch.expiry_date;
           }
 
           await batch.update({
-            quantity_consumed: parseFloat(batch.quantity_consumed) + consume
+            quantity_consumed: Number.parseFloat(batch.quantity_consumed || 0) + consume
           }, options);
 
           batchTransactionsData.push({
@@ -285,26 +506,22 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
         }
 
         if (remaining > 0) {
-          // Auto-heal legacy drift where current_stock is higher than open FIFO batches.
-          const stockDrift = Math.max(0, currentStock - totalAvailableFromBatches);
+          const stockDrift = Math.max(0, currentLocationStock - totalAvailableFromBatches);
           const hasLegacyDrift = stockDrift > 0.0001;
           if (hasLegacyDrift) {
-            console.warn(`[StockMovement] Repairing FIFO stock drift for item ${item.name} (ID: ${item.item_id}). current_stock=${currentStock}, batch_available=${totalAvailableFromBatches}, drift=${stockDrift}`);
             const legacyBatch = await FIFOBatch.create({
               item_id: item.item_id,
+              location_id: resolvedLocationId,
               quantity: stockDrift,
               cost_per_unit: item.cost_per_unit || 0,
               received_date: new Date(),
               expiry_date: null,
               po_number: 'LEGACY-STOCK-DRIFT',
-              notes: 'Auto-created from current_stock/FIFO drift reconciliation'
+              notes: 'Auto-created from stock/FIFO drift reconciliation'
             }, options);
 
-            // Now consume from the legacy batch
             const consume = Math.min(remaining, stockDrift);
-            await legacyBatch.update({
-              quantity_consumed: consume
-            }, options);
+            await legacyBatch.update({ quantity_consumed: consume }, options);
 
             if (createdBatchId === null) {
               createdBatchId = legacyBatch.batch_id;
@@ -316,37 +533,46 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
               remaining_after: stockDrift - consume,
               cost_per_unit: legacyBatch.cost_per_unit
             });
-
             remaining -= consume;
           }
 
-          if (remaining > 0) {
-            const error = new Error(`Unable to fulfill quantity from FIFO batches for "${item.name}". Required: ${parseFloat(quantity)}, Shortfall: ${remaining.toFixed(2)} ${item.unit_of_measure}. Please ensure sufficient stock batches exist.`);
+          if (remaining > 0.000001) {
+            const error = new Error(`Unable to fulfill quantity from FIFO batches for "${item.name}". Required: ${movementQuantity}, Shortfall: ${remaining.toFixed(4)} ${item.unit_of_measure}.`);
             error.statusCode = 400;
             throw error;
           }
         }
       }
     }
-  }
 
-  // Update item stock
-  await item.update({ current_stock: newStock }, options);
+    if (locationStock) {
+      await locationStock.update({
+        quantity_on_hand: nextLocationStock,
+        updated_by: userId || null
+      }, options);
+      await updateItemAggregateStock({ item, ItemLocationStock, options });
+    } else {
+      await item.update({ current_stock: nextLocationStock }, options);
+    }
+  }
 
   // Create stock movement record
   const movement = await StockMovement.create({
     item_id: item.item_id,
     movement_type,
-    quantity: ['production_consumption', 'calculated_loss', 'goods_issue'].includes(movement_type)
-      ? -Math.abs(parseFloat(quantity))
-      : Math.abs(parseFloat(quantity)),
+    quantity: movementSign < 0
+      ? -Math.abs(movementQuantity)
+      : Math.abs(movementQuantity),
     reference_id: movementData.reference_id || null,
     reference_type: movementData.reference_type || 'MANUAL',
     user_responsible: userId,
     notes: movementData.notes || null,
     loss_reason: movementData.loss_reason || null,
     batch_id: createdBatchId,
-    expiry_date: movementExpiryDate
+    expiry_date: movementExpiryDate,
+    location_id: resolvedLocationId,
+    source_location_id: resolvedSourceLocationId,
+    destination_location_id: resolvedDestinationLocationId
   }, options);
 
   // Create Batch Transactions if any
@@ -366,24 +592,32 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
  * Get available FIFO batches for an item
  * Used by frontend for batch selection in manual adjustments
  */
-export const getItemBatches = async (itemId) => {
+export const getItemBatches = async (itemId, locationId = null) => {
   const FIFOBatch = dbStore.get('FIFOBatch');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const normalizedLocationId = parsePositiveInt(locationId);
+
+  const where = {
+    item_id: itemId,
+    [Op.and]: [
+      sequelize.where(
+        sequelize.col('quantity'),
+        Op.gt,
+        sequelize.col('quantity_consumed')
+      )
+    ]
+  };
+
+  if (normalizedLocationId) {
+    where.location_id = normalizedLocationId;
+  }
 
   const batches = await FIFOBatch.findAll({
-    where: {
-      item_id: itemId,
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('quantity'),
-          Op.gt,
-          sequelize.col('quantity_consumed')
-        )
-      ]
-    },
+    where,
     order: [['received_date', 'ASC']],
     attributes: [
       'batch_id',
+      'location_id',
       'quantity',
       'quantity_consumed',
       'cost_per_unit',
@@ -405,12 +639,16 @@ export const getMovementById = async (movementId) => {
   const Item = dbStore.get('Item');
   const User = dbStore.get('User');
   const FIFOBatch = dbStore.get('FIFOBatch');
+  const TenantLocation = dbStore.get('TenantLocation');
 
   const movement = await StockMovement.findByPk(movementId, {
     include: [
       { model: Item, as: 'item', attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'category', 'current_stock'] },
       { model: User, as: 'userResponsible', attributes: ['user_id', 'username', 'full_name'] },
-      { model: FIFOBatch, as: 'batch', attributes: ['batch_id', 'expiry_date', 'received_date', 'quantity', 'quantity_consumed', 'cost_per_unit'] }
+      { model: FIFOBatch, as: 'batch', attributes: ['batch_id', 'location_id', 'expiry_date', 'received_date', 'quantity', 'quantity_consumed', 'cost_per_unit'] },
+      { model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false },
+      { model: TenantLocation, as: 'sourceLocation', attributes: ['location_id', 'name'], required: false },
+      { model: TenantLocation, as: 'destinationLocation', attributes: ['location_id', 'name'], required: false }
     ]
   });
 
@@ -473,9 +711,9 @@ export const getMovementStats = async (params = {}) => {
 
     byType[stat.movement_type] = { count, quantity };
 
-    if (stat.movement_type === 'purchase_receipt' || stat.movement_type === 'return') {
+    if (INBOUND_MOVEMENT_TYPES.has(stat.movement_type)) {
       totalIn += quantity;
-    } else {
+    } else if (OUTBOUND_MOVEMENT_TYPES.has(stat.movement_type)) {
       totalOut += quantity;
     }
   });
@@ -532,6 +770,7 @@ export const voidMovement = async (movementId, userId, reason) => {
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
   const BatchTransaction = dbStore.get('BatchTransaction');
+  const ItemLocationStock = dbStore.get('ItemLocationStock');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
 
@@ -593,22 +832,88 @@ export const voidMovement = async (movementId, userId, reason) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Update item stock
+    // Update item stock / location stock
     const item = await findVisibleItemById(Item, item_id, { transaction });
     if (!item) {
       const error = new Error('Item not found');
       error.statusCode = 404;
       throw error;
     }
-    const newStock = parseFloat(item.current_stock) + reverseQuantity;
 
-    if (newStock < 0) {
-      const error = new Error('Cannot void: would result in negative stock');
-      error.statusCode = 400;
-      throw error;
+    const options = { transaction, lock: transaction.LOCK.UPDATE };
+    if (movement_type === 'transfer') {
+      const sourceLocationId = parsePositiveInt(originalMovement.source_location_id);
+      const destinationLocationId = parsePositiveInt(originalMovement.destination_location_id);
+      if (!sourceLocationId || !destinationLocationId) {
+        const error = new Error('Cannot void transfer movement: source/destination locations are missing');
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const sourceStock = await getOrCreateItemLocationStock({
+        ItemLocationStock,
+        itemId: item.item_id,
+        locationId: sourceLocationId,
+        userId,
+        options
+      });
+      const destinationStock = await getOrCreateItemLocationStock({
+        ItemLocationStock,
+        itemId: item.item_id,
+        locationId: destinationLocationId,
+        userId,
+        options
+      });
+
+      const transferQty = Math.abs(parseFloat(quantity));
+      const destinationOnHand = parseFloat(destinationStock.quantity_on_hand || 0);
+      if (destinationOnHand + 0.000001 < transferQty) {
+        const error = new Error('Cannot void transfer: destination location does not have enough stock to reverse');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      await destinationStock.update({
+        quantity_on_hand: destinationOnHand - transferQty,
+        updated_by: userId || null
+      }, { transaction });
+      await sourceStock.update({
+        quantity_on_hand: parseFloat(sourceStock.quantity_on_hand || 0) + transferQty,
+        updated_by: userId || null
+      }, { transaction });
+
+      await updateItemAggregateStock({ item, ItemLocationStock, options });
+    } else if (originalMovement.location_id) {
+      const locationStock = await getOrCreateItemLocationStock({
+        ItemLocationStock,
+        itemId: item.item_id,
+        locationId: originalMovement.location_id,
+        userId,
+        options
+      });
+
+      const currentLocationStock = parseFloat(locationStock.quantity_on_hand || 0);
+      const nextLocationStock = currentLocationStock + reverseQuantity;
+      if (nextLocationStock < -0.000001) {
+        const error = new Error('Cannot void: would result in negative stock at location');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      await locationStock.update({
+        quantity_on_hand: nextLocationStock,
+        updated_by: userId || null
+      }, { transaction });
+      await updateItemAggregateStock({ item, ItemLocationStock, options });
+    } else {
+      const newStock = parseFloat(item.current_stock) + reverseQuantity;
+      if (newStock < 0) {
+        const error = new Error('Cannot void: would result in negative stock');
+        error.statusCode = 400;
+        throw error;
+      }
+      await item.update({ current_stock: newStock }, { transaction });
     }
-
-    await item.update({ current_stock: newStock }, { transaction });
 
     // Handle FIFO batch reversal for consumption movements
     // Check if this was a consumption (negative quantity) that needs batch restoration
@@ -689,6 +994,9 @@ export const voidMovement = async (movementId, userId, reason) => {
       user_responsible: userId,
       notes: `Void of movement #${movementId}: ${reason}`,
       batch_id: batch_id, // Link to primary batch for reference
+      location_id: originalMovement.location_id || null,
+      source_location_id: movement_type === 'transfer' ? originalMovement.destination_location_id : null,
+      destination_location_id: movement_type === 'transfer' ? originalMovement.source_location_id : null,
       timestamp: new Date()
     }, { transaction });
 
@@ -717,7 +1025,7 @@ export const createBulkMovements = async (movements, userId) => {
 
   try {
     for (const movementData of movements) {
-      const result = await createStockMovement(movementData, userId);
+      const result = await createStockMovement(movementData, userId, transaction);
       results.push(result);
     }
 

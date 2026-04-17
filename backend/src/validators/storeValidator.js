@@ -81,7 +81,8 @@ const storeOrderHistoryQuerySchema = Joi.object({
 
 const storeCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
-    limit: Joi.number().integer().min(1).max(200).default(60)
+    limit: Joi.number().integer().min(1).max(200).default(60),
+    location_id: Joi.number().integer().positive().optional()
 });
 
 const buildValidationErrorResponse = (error) => ({

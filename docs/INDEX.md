@@ -35,6 +35,7 @@ Canonical planning entry:
 ## Current Focus Areas
 - Storefront and tenant-location rollout docs are primarily under `docs/api`, `docs/testing`, and `docs/reference`.
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
+- POS/storefront source separation contract is maintained in `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md` with validation evidence in `docs/testing/pos-readiness-status.md`.
 - MSME workflow-mode and simplification behavior are governed by ADR 0008 and current feature/testing docs.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.

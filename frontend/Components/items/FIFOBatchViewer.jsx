@@ -41,7 +41,7 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
     new Date(a.received_date) - new Date(b.received_date)
   );
 
-  // Find the first non-expired batch — that's the real "Next to use"
+  // Find the first non-expired batch; this is the actual "Next to use".
   const nextToUseIdx = sortedBatches.findIndex(b => !isExpired(b.expiry_date));
 
   const totalQuantity = sortedBatches.reduce((sum, b) =>
@@ -124,9 +124,12 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
                         <p className="text-xs text-slate-500 mt-1">
                           PO: {batch.po_number || 'N/A'}
                         </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Location: {batch.location?.name || batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')}
+                        </p>
                         {batch.notes && (
                           <p className="text-xs text-slate-600 mt-1 italic">
-                            📝 {batch.notes}
+                            Note: {batch.notes}
                           </p>
                         )}
                       </div>
@@ -171,7 +174,7 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
                         )}
                       </div>
                       <span className="font-semibold text-slate-900">
-                        ₱{formatNumber(batch.cost_per_unit, 2)}/unit
+                        PHP {formatNumber(batch.cost_per_unit, 2)}/unit
                       </span>
                     </div>
                   </div>
@@ -189,7 +192,7 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-blue-700">Weighted Avg Cost:</span>
                 <span className="font-semibold text-blue-900">
-                  ₱{formatNumber(weightedAvgCost, 2)}/unit
+                  PHP {formatNumber(weightedAvgCost, 2)}/unit
                 </span>
               </div>
             </div>
@@ -197,7 +200,7 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
         </AccordionItem>
       </Accordion>
 
-      {/* Write-off dialog — rendered outside accordion to avoid z-index issues */}
+      {/* Write-off dialog rendered outside accordion to avoid z-index issues. */}
       <WriteOffBatchDialog
         open={!!writeOffTarget}
         onClose={() => setWriteOffTarget(null)}
@@ -211,3 +214,4 @@ export default function FIFOBatchViewer({ item, onRefresh }) {
     </>
   );
 }
+

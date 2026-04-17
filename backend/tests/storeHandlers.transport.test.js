@@ -35,12 +35,14 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
 }));
 
 let registerStoreCustomer;
+let listStoreCatalog;
 let listStoreLocations;
 let trackOrder;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/store/controllers/storeHandlers.js');
     registerStoreCustomer = mod.registerStoreCustomer;
+    listStoreCatalog = mod.listStoreCatalog;
     listStoreLocations = mod.listStoreLocations;
     trackOrder = mod.trackOrder;
 });
@@ -122,6 +124,43 @@ describe('storeHandlers transport contracts', () => {
             data: {
                 primary_location_id: 2,
                 locations: [{ location_id: 2, name: 'Main', is_primary_storefront: true }]
+            },
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('listStoreCatalog preserves availability-only payload contract', async () => {
+        mockListStoreCatalogUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                items: [{
+                    item_id: 2,
+                    name: 'Demo Item',
+                    is_available: true,
+                    availability_status: 'in_stock'
+                }],
+                pagination: { limit: 60, count: 1 }
+            }
+        });
+
+        const req = { requestId: 'req-store-catalog', query: {} };
+        const res = createRes();
+        const next = jest.fn();
+
+        await listStoreCatalog(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: {
+                items: [{
+                    item_id: 2,
+                    name: 'Demo Item',
+                    is_available: true,
+                    availability_status: 'in_stock'
+                }],
+                pagination: { limit: 60, count: 1 }
             },
             timestamp: expect.any(String)
         });

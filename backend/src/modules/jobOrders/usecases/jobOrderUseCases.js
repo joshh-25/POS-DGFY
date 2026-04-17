@@ -144,7 +144,9 @@ export const buildCompleteJobOrderUseCase = ({ jobOrderService }) => {
         completionData?.expiry_date,
         completionData?.notes,
         completionData?.quantity_produced,
-        completionData?.quality_check
+        completionData?.quality_check,
+        completionData?.source_location_id,
+        completionData?.destination_location_id
       ),
       'Failed to complete job order'
     );

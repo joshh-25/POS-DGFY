@@ -25,6 +25,14 @@ const hashToken = (token) => {
     return crypto.createHash('sha256').update(token).digest('hex');
 };
 
+const normalizeQualityCheck = (value) => {
+  if (value === null || value === undefined || value === '') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'pass') return 'passed';
+  if (normalized === 'fail') return 'failed';
+  return normalized;
+};
+
 /**
  * Generate a receive token for an order
  * @param {string} orderType - 'PO' or 'JO'
@@ -288,15 +296,15 @@ export const getJobOrderDetails = async (token) => {
 
 /**
  * Perform the receive operation (PO or JO) via a QR token.
- * The token acts as the authorization credential — no user JWT required.
+ * The token identifies the order while authenticated user identity is still required.
  * Marks the token as used upon success.
  *
  * @param {string} rawToken - The raw token from the QR code URL
- * @param {object} receiptData - For PO: { line_items, notes, delivery_rating }
- *                               For JO: { quantity_produced, notes, quality_check }
+ * @param {object} receiptData - For PO: { line_items, location_id, notes, delivery_rating }
+ *                               For JO: { quantity_produced, source_location_id, destination_location_id, notes, quality_check }
  */
-export const receiveViaToken = async (rawToken, receiptData) => {
-    const ReceiveToken = dbStore.get('ReceiveToken');
+export const receiveViaToken = async (rawToken, receiptData, userId) => {
+  const ReceiveToken = dbStore.get('ReceiveToken');
 
     const tokenHash = hashToken(rawToken);
     const receiveToken = await ReceiveToken.findOne({
@@ -307,21 +315,45 @@ export const receiveViaToken = async (rawToken, receiptData) => {
         }
     });
 
-    if (!receiveToken) {
-        const error = new Error('Invalid or expired token');
-        error.statusCode = 401;
-        throw error;
+  if (!receiveToken) {
+    const error = new Error('Invalid or expired token');
+    error.statusCode = 401;
+    throw error;
+  }
+  if (!userId) {
+    const error = new Error('Authenticated user is required for QR receive');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const orderId = receiveToken.order_id;
+  let result;
+
+  if (receiveToken.token_type === 'PO') {
+    if (!receiptData?.location_id) {
+      const error = new Error('location_id is required to receive PO via QR');
+      error.statusCode = 422;
+      throw error;
     }
-
-    const orderId = receiveToken.order_id;
-    let result;
-
-    if (receiveToken.token_type === 'PO') {
-        result = await purchaseOrderService.receivePurchaseOrder(orderId, receiptData, null);
-    } else if (receiveToken.token_type === 'JO') {
-        const { quantity_produced, notes, quality_check } = receiptData;
-        result = await jobOrderService.completeJobOrder(orderId, null, null, notes, quantity_produced, quality_check);
-    } else {
+    result = await purchaseOrderService.receivePurchaseOrder(orderId, receiptData, userId);
+  } else if (receiveToken.token_type === 'JO') {
+    const { quantity_produced, notes, quality_check, source_location_id, destination_location_id } = receiptData;
+    if (!source_location_id || !destination_location_id) {
+      const error = new Error('source_location_id and destination_location_id are required to receive JO via QR');
+      error.statusCode = 422;
+      throw error;
+    }
+    result = await jobOrderService.completeJobOrder(
+      orderId,
+      userId,
+      null,
+      notes,
+      quantity_produced,
+      normalizeQualityCheck(quality_check),
+      source_location_id,
+      destination_location_id
+    );
+  } else {
         const error = new Error('Unknown token type');
         error.statusCode = 400;
         throw error;
@@ -332,7 +364,7 @@ export const receiveViaToken = async (rawToken, receiptData) => {
                         (receiveToken.token_type === 'JO' && result.status === 'completed');
 
     if (isCompleted) {
-        await receiveToken.update({ used_at: new Date(), used_by: null });
+    await receiveToken.update({ used_at: new Date(), used_by: userId || null });
         console.log(`[ReceiveToken] Token ${rawToken.substring(0, 8)}... marked as used (Order ${receiveToken.token_type} #${orderId} is ${result.status})`);
     } else {
         console.log(`[ReceiveToken] Token ${rawToken.substring(0, 8)}... kept ACTIVE (Order ${receiveToken.token_type} #${orderId} is ${result.status})`);

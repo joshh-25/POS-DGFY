@@ -11,6 +11,7 @@ import {
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
 import dbStore from '../../../utils/dbStore.js';
+import { resolveMovementLocation } from '../../../services/locationInventoryService.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -624,6 +625,7 @@ const buildOnlineOrderStockMovements = (order = {}) => {
             item_id: itemId,
             quantity,
             movement_type: 'goods_issue',
+            location_id: order.location_id || null,
             reference_type: 'POS',
             reference_id: `ONLINE:${orderId}:${lineReference}`,
             notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
@@ -934,10 +936,21 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 { statusCode: 422 }
             ));
         }
+        const requestedLocationId = payload.location_id == null
+            ? null
+            : parsePositiveInt(payload.location_id);
+        if (payload.location_id != null && !requestedLocationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id must be a positive integer when provided',
+                { statusCode: 422 }
+            ));
+        }
 
         const requestedTerminalId = sanitizeTerminalId(payload.terminal_id);
         const normalizedRequestPayload = {
             terminal_id: requestedTerminalId || null,
+            location_id: requestedLocationId,
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
             service_fee_amount: payload.service_fee_amount == null ? null : round4(payload.service_fee_amount),
@@ -970,6 +983,14 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
 
         try {
             const settings = await getPosSettings();
+            const resolvedCheckoutLocation = await resolveMovementLocation({
+                requestedLocationId: requestedLocationId,
+                userId: normalizedUserId,
+                transaction,
+                lock: true,
+                operationLabel: 'POS checkout'
+            });
+            const resolvedCheckoutLocationId = resolvedCheckoutLocation?.location_id || null;
             const terminalPolicySettings = await resolveTerminalIdentityPolicySettings({
                 posRepository,
                 settings,
@@ -983,7 +1004,8 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const normalizedTerminalId = terminalPolicyContext.terminal_id;
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
-                terminal_id: normalizedTerminalId || null
+                terminal_id: normalizedTerminalId || null,
+                location_id: resolvedCheckoutLocationId
             });
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
@@ -1065,7 +1087,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             }
 
             const itemIds = [...new Set(lines.map((line) => Number.parseInt(line.item_id, 10)))];
-            const items = await posRepository.findSellableItemsByIds(itemIds, { transaction, lock: true });
+            const items = await posRepository.findSellableItemsByIds(itemIds, {
+                transaction,
+                lock: true,
+                locationId: resolvedCheckoutLocationId
+            });
             const itemMap = new Map(items.map((item) => [item.item_id, item]));
 
             const normalizedShiftId = parsePositiveInt(payload.shift_id);
@@ -1274,6 +1300,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     order_source: 'in_store',
                     order_method: normalizedOrderMethod,
                     fulfillment_status: 'completed',
+                    location_id: resolvedCheckoutLocationId,
                     customer_name: String(payload.customer_name || '').trim() || null,
                     customer_email: String(payload.customer_email || '').trim().toLowerCase() || null,
                     customer_phone: String(payload.customer_phone || '').trim() || null,
@@ -1303,6 +1330,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     item_id: line.item_id,
                     quantity: Number(line.quantity),
                     movement_type: 'goods_issue',
+                    location_id: resolvedCheckoutLocationId,
                     reference_type: 'POS',
                     reference_id: String(posTransactionId),
                     notes: `POS checkout ${invoiceNumber}`
@@ -1638,7 +1666,8 @@ export const buildListPosCatalogUseCase = ({ posRepository }) => {
             const data = await posRepository.listCatalog({
                 search: query?.search || '',
                 limit: query?.limit || 100,
-                folder_id: query?.folder_id
+                folder_id: query?.folder_id,
+                location_id: query?.location_id
             });
             const filtered = (Array.isArray(data) ? data : []).filter((item) => (
                 item?.pos_visible !== false

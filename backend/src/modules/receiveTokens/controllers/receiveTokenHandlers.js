@@ -87,7 +87,11 @@ export const validateToken = async (req, res, next) => {
 export const receiveViaToken = async (req, res, next) => {
   try {
     const { token } = req.params;
-    const result = await receiveViaTokenUseCase({ token, payload: req.body });
+    const result = await receiveViaTokenUseCase({
+      token,
+      payload: req.body,
+      userId: req.user?.user_id
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,36 +10,87 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, PackageCheck, AlertTriangle } from 'lucide-react';
+import { Loader2, PackageCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { listTenantLocations } from '../../src/services/tenantLocationService.js';
 
 /**
- * DODispatchModal — execute dispatch (stock deduction) for one or more lines.
+ * DODispatchModal - execute dispatch (stock deduction) for one or more lines.
  *
  * Props:
  *   open        {boolean}
  *   onClose     {function}
- *   onDispatch  {function(lines[])} — receives array of {line_id, qty_to_dispatch}; must return a promise
- *   do_         {Object} — the Dispatch Order with .lines array
+ *   onDispatch  {function({ lines, locationId })} - must return a promise
+ *   do_         {Object} - the Dispatch Order with .lines array
  */
 export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder }) {
   const [quantities, setQuantities] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [locations, setLocations] = useState([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState('');
 
-  if (!doOrder) return null;
+  useEffect(() => {
+    if (!open) return;
 
-  // Dispatchable lines — those that still have remaining qty
-  const dispatchableLines = (doOrder.lines || []).filter(l => {
-    const remaining = parseFloat(l.qty_ordered) - parseFloat(l.qty_dispatched || 0);
+    let cancelled = false;
+    const loadLocations = async () => {
+      setLoadingLocations(true);
+      try {
+        const rows = await listTenantLocations({ include_inactive: false });
+        if (cancelled) return;
+
+        const activeLocations = (Array.isArray(rows) ? rows : []).filter(
+          (location) => location?.is_active !== false
+        );
+        setLocations(activeLocations);
+
+        if (activeLocations.length === 1) {
+          setSelectedLocationId(String(activeLocations[0].location_id));
+          return;
+        }
+
+        setSelectedLocationId((previous) => {
+          if (
+            previous
+            && activeLocations.some((location) => Number(location.location_id) === Number(previous))
+          ) {
+            return previous;
+          }
+          return '';
+        });
+      } catch (_error) {
+        if (!cancelled) {
+          setLocations([]);
+          setSelectedLocationId('');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingLocations(false);
+        }
+      }
+    };
+
+    loadLocations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const requiresLocationSelection = useMemo(() => locations.length > 1, [locations]);
+
+  // Dispatchable lines are those with remaining quantity > 0.
+  const dispatchableLines = (doOrder?.lines || []).filter((line) => {
+    const remaining = parseFloat(line.qty_ordered) - parseFloat(line.qty_dispatched || 0);
     return remaining > 0;
   });
 
   const getQty = (lineId) => quantities[lineId] ?? '';
 
   const setQty = (lineId, value) => {
-    setQuantities(prev => ({ ...prev, [lineId]: value }));
+    setQuantities((prev) => ({ ...prev, [lineId]: value }));
   };
 
   const getRemaining = (line) => {
@@ -51,43 +102,58 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
   };
 
   const validate = () => {
-    const entries = dispatchableLines.filter(l => {
-      const q = parseFloat(getQty(l.line_id));
-      return !isNaN(q) && q > 0;
+    if (requiresLocationSelection && !selectedLocationId) {
+      toast.error('Select a location before dispatching.');
+      return false;
+    }
+
+    const entries = dispatchableLines.filter((line) => {
+      const qty = parseFloat(getQty(line.line_id));
+      return !Number.isNaN(qty) && qty > 0;
     });
+
     if (entries.length === 0) {
       toast.error('Enter a quantity to dispatch for at least one line');
       return false;
     }
-    for (const l of entries) {
-      const q = parseFloat(getQty(l.line_id));
-      const remaining = getRemaining(l);
-      if (q > remaining) {
-        toast.error(`Line for "${l.item?.name}" exceeds remaining qty (${formatNumber(remaining)})`);
+
+    for (const line of entries) {
+      const qty = parseFloat(getQty(line.line_id));
+      const remaining = getRemaining(line);
+      if (qty > remaining) {
+        toast.error(`Line for "${line.item?.name}" exceeds remaining qty (${formatNumber(remaining)})`);
         return false;
       }
     }
+
     return true;
   };
 
   const handleSubmit = async () => {
+    if (!doOrder) return;
     if (!validate()) return;
+
     setSubmitting(true);
     try {
       const lines = dispatchableLines
-        .filter(l => {
-          const q = parseFloat(getQty(l.line_id));
-          return !isNaN(q) && q > 0;
+        .filter((line) => {
+          const qty = parseFloat(getQty(line.line_id));
+          return !Number.isNaN(qty) && qty > 0;
         })
-        .map(l => ({
-          line_id: l.line_id,
-          qty_to_dispatch: parseFloat(getQty(l.line_id))
+        .map((line) => ({
+          line_id: line.line_id,
+          qty_to_dispatch: parseFloat(getQty(line.line_id))
         }));
-      await onDispatch(lines);
+
+      await onDispatch({
+        lines,
+        locationId: selectedLocationId ? Number.parseInt(selectedLocationId, 10) : null
+      });
+
       setQuantities({});
       onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'Dispatch failed');
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Dispatch failed');
     } finally {
       setSubmitting(false);
     }
@@ -96,8 +162,13 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
   const handleClose = () => {
     if (submitting) return;
     setQuantities({});
+    if (locations.length !== 1) {
+      setSelectedLocationId('');
+    }
     onClose();
   };
+
+  if (!doOrder) return null;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -105,7 +176,7 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PackageCheck className="w-5 h-5 text-teal-600" />
-            Execute Dispatch — {doOrder.do_number}
+            Execute Dispatch - {doOrder.do_number}
           </DialogTitle>
           <DialogDescription>
             Enter quantities to dispatch for this run. Partial dispatch is supported.
@@ -117,19 +188,41 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
             <span className="font-medium">Recipient:</span> {doOrder.recipient_name}
           </div>
 
+          <div className="space-y-1">
+            <Label className="text-xs">Stock Location</Label>
+            {loadingLocations ? (
+              <div className="text-xs text-slate-500">Loading locations...</div>
+            ) : requiresLocationSelection ? (
+              <select
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                value={selectedLocationId}
+                onChange={(event) => setSelectedLocationId(event.target.value)}
+                disabled={submitting}
+              >
+                <option value="">Select location</option>
+                {locations.map((location) => (
+                  <option key={`do-dispatch-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-xs text-slate-600 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                {locations[0]?.name || 'Default location'}
+              </div>
+            )}
+          </div>
+
           {dispatchableLines.length === 0 ? (
             <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
               All lines have been fully dispatched.
             </p>
           ) : (
             <div className="space-y-3">
-              {dispatchableLines.map(line => {
+              {dispatchableLines.map((line) => {
                 const remaining = getRemaining(line);
                 const itemName = line.item?.name || `Item #${line.item_id}`;
-                const currentStock = parseFloat(line.item?.current_stock || 0);
                 const qtyInput = getQty(line.line_id);
-                const qtyNum = parseFloat(qtyInput);
-                const insufficientStock = !isNaN(qtyNum) && qtyNum > currentStock;
 
                 return (
                   <div key={line.line_id} className="border border-slate-200 rounded-lg p-4 space-y-3">
@@ -145,13 +238,6 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
                       </div>
                     </div>
 
-                    {insufficientStock && (
-                      <div className="flex items-center gap-2 text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-xs">
-                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                        Current stock ({formatNumber(currentStock)}) may be insufficient
-                      </div>
-                    )}
-
                     <div className="flex items-center gap-2">
                       <div className="flex-1 space-y-1">
                         <Label className="text-xs">Qty to dispatch now</Label>
@@ -162,7 +248,7 @@ export default function DODispatchModal({ open, onClose, onDispatch, do: doOrder
                           step="any"
                           placeholder={`Max: ${formatNumber(remaining)}`}
                           value={qtyInput}
-                          onChange={e => setQty(line.line_id, e.target.value)}
+                          onChange={(event) => setQty(line.line_id, event.target.value)}
                         />
                       </div>
                       <Button

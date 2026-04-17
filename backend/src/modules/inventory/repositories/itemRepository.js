@@ -707,19 +707,22 @@ export const itemRepository = {
 
             const dataToCreate = { ...dbFields };
             const initialStock = parseFloat(dbFields.current_stock || 0);
-            if (dbFields.fifo_enabled && initialStock > 0) {
+            const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
+            if (initialStock > 0) {
                 dataToCreate.current_stock = 0;
             }
+            delete dataToCreate.location_id;
 
             const item = await Item.create(dataToCreate, { transaction });
 
-            if (dbFields.fifo_enabled && initialStock > 0) {
+            if (initialStock > 0) {
                 await inventoryRepositoryDependencies.createStockMovement({
                     item_id: item.item_id,
                     quantity: initialStock,
                     movement_type: 'adjustment',
                     notes: 'Initial stock entry from item creation',
-                    reference_type: 'MANUAL'
+                    reference_type: 'MANUAL',
+                    location_id: movementLocationId
                 }, userId, transaction);
             }
 
@@ -848,8 +851,10 @@ export const itemRepository = {
                 ? parseFloat(dbFields.current_stock || 0)
                 : null;
             const oldStockValue = parseFloat(item.current_stock || 0);
+            const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
+            delete dbFields.location_id;
 
-            if (newStockValue !== null && newStockValue !== oldStockValue && item.fifo_enabled) {
+            if (newStockValue !== null && newStockValue !== oldStockValue) {
                 const delta = newStockValue - oldStockValue;
                 delete dbFields.current_stock;
 
@@ -859,7 +864,8 @@ export const itemRepository = {
                     quantity: Math.abs(delta),
                     movement_type: delta > 0 ? 'adjustment' : 'calculated_loss',
                     notes: `Manual stock adjustment from item update form (Old: ${oldStockValue}, New: ${newStockValue})`,
-                    reference_type: 'MANUAL'
+                    reference_type: 'MANUAL',
+                    location_id: movementLocationId
                 }, userId, transaction);
             } else {
                 await item.update(dbFields, { transaction });

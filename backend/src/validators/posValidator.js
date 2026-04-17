@@ -2,6 +2,7 @@ import Joi from 'joi';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
+const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
@@ -35,6 +36,7 @@ const checkoutPosSchema = Joi.object({
     }),
     terminal_id: Joi.string().trim().max(100).allow(null, ''),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
     document_context: Joi.string().valid(...DOCUMENT_CONTEXTS).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
@@ -83,13 +85,15 @@ const listTransactionsQuerySchema = Joi.object({
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
-    order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional()
+    order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
+    order_source: Joi.string().valid(...ORDER_SOURCES).optional()
 });
 
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
-    folder_id: Joi.number().integer().positive().optional()
+    folder_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional()
 });
 
 const posCatalogOverridesQuerySchema = Joi.object({

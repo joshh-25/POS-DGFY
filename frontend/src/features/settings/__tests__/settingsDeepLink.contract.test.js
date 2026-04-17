@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeSettingsHash,
+  resolveSettingsHashTab,
   resolveSettingsDeepLink,
   resolveSettingsTab,
   SETTINGS_HASH_TO_TAB,
@@ -73,7 +74,7 @@ describe('settings deep-link contract', () => {
 
       if (parsed.hash) {
         const normalizedHash = normalizeSettingsHash(parsed.hash);
-        expect(SETTINGS_HASH_TO_TAB[normalizedHash]).toBeDefined();
+        expect(resolveSettingsHashTab(normalizedHash)).toBeDefined();
       }
     }
   });
@@ -86,6 +87,17 @@ describe('settings deep-link contract', () => {
     });
     expect(resolved.tab).toBe('compliance');
     expect(resolved.normalizedHash).toBe('#section-final-review');
+    expect(resolved.hashStatus).toBe('known');
+  });
+
+  it('resolves dynamic final-review doc hashes to compliance tab', () => {
+    expect(resolveSettingsHashTab('#final-review-doc-bir-certificate')).toBe('compliance');
+    const resolved = resolveSettingsDeepLink({
+      search: '?tab=pos',
+      hash: '#final-review-doc-bir-certificate',
+      subscriptionEnabled: true
+    });
+    expect(resolved.tab).toBe('compliance');
     expect(resolved.hashStatus).toBe('known');
   });
 

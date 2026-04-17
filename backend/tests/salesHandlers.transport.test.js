@@ -179,6 +179,7 @@ describe('salesHandlers transport contracts', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalled();
+    expect(res.send.mock.calls[0][0]).toContain('pos_order_source');
     expect(res.json).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
@@ -204,6 +205,34 @@ describe('salesHandlers transport contracts', () => {
 
     expect(mockListSalesTransactionsUseCase).toHaveBeenCalledWith({
       query: { source: 'POS', source_id: '99' },
+      userPermissions: ['reports:view']
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('prefers validated query payload when present', async () => {
+    mockListSalesTransactionsUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        transactions: [{ source: 'POS', source_id: 12, reference_no: 'INV-000012' }],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        summary: { gross_sales: 100, cogs: 60, gross_profit: 40 }
+      }
+    });
+
+    const req = {
+      user: { permissions: ['reports:view'], is_master_admin: false },
+      query: { source: 'POS', pos_order_source: 'invalid-value' },
+      validatedQuery: { source: 'POS', pos_order_source: 'online_store' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await listSalesTransactions(req, res, next);
+
+    expect(mockListSalesTransactionsUseCase).toHaveBeenCalledWith({
+      query: { source: 'POS', pos_order_source: 'online_store' },
       userPermissions: ['reports:view']
     });
     expect(res.status).toHaveBeenCalledWith(200);

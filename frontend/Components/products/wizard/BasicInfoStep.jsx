@@ -5,7 +5,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UomSelect } from '@/components/ui/UomSelect';
 
-export default function BasicInfoStep({ data, updateData }) {
+export default function BasicInfoStep({ data, updateData, locations = [], loadingLocations = false }) {
+  const activeLocations = Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : [];
+  const shouldRequireLocation = activeLocations.length > 1 && Number(data.current_stock || 0) > 0;
+
   return (
     <div className="space-y-6">
       <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
@@ -114,6 +117,29 @@ export default function BasicInfoStep({ data, updateData }) {
               onChange={(e) => updateData({ current_stock: parseFloat(e.target.value) || 0 })}
             />
             <p className="text-xs text-slate-500">Initial stock on hand</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Stock Location</Label>
+            <Select
+              value={data.location_id || ''}
+              onValueChange={(value) => updateData({ location_id: value })}
+              disabled={loadingLocations || activeLocations.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
+              </SelectTrigger>
+              <SelectContent>
+                {activeLocations.map((location) => (
+                  <SelectItem key={`product-location-${location.location_id}`} value={String(location.location_id)}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {shouldRequireLocation && !data.location_id && (
+              <p className="text-xs text-red-600">Required when setting stock in a multi-location tenant.</p>
+            )}
           </div>
 
           {/* Auto-calculated threshold display */}

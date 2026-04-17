@@ -64,5 +64,5 @@ describe('purchaseOrder use-cases application result contract', () => {
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.statusCode).toBe(400);
   });
-});
 
+});

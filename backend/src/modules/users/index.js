@@ -7,6 +7,8 @@ import {
   buildUpdateUserRoleUseCase,
   buildUpdateUserStatusUseCase,
   buildUpdateUserPermissionsUseCase,
+  buildGetUserLocationGrantsUseCase,
+  buildUpdateUserLocationGrantsUseCase,
   buildInviteUserUseCase,
   buildRemoveUserFromCompanyUseCase
 } from './usecases/userUseCases.js';
@@ -18,5 +20,7 @@ export const getAllUsersUseCase = buildGetAllUsersUseCase({ userService });
 export const updateUserRoleUseCase = buildUpdateUserRoleUseCase({ userService });
 export const updateUserStatusUseCase = buildUpdateUserStatusUseCase({ userService });
 export const updateUserPermissionsUseCase = buildUpdateUserPermissionsUseCase({ userService });
+export const getUserLocationGrantsUseCase = buildGetUserLocationGrantsUseCase({ userService });
+export const updateUserLocationGrantsUseCase = buildUpdateUserLocationGrantsUseCase({ userService });
 export const inviteUserUseCase = buildInviteUserUseCase({ userService });
 export const removeUserFromCompanyUseCase = buildRemoveUserFromCompanyUseCase({ userService });

@@ -57,6 +57,27 @@ describe('jobOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 
+  it('completeJobOrder maps location validation errors from service to deterministic 422', async () => {
+    const validationError = new Error('source_location_id and destination_location_id are required for JO completion');
+    validationError.statusCode = 422;
+    const useCase = buildCompleteJobOrderUseCase({
+      jobOrderService: { completeJobOrder: jest.fn().mockRejectedValue(validationError) }
+    });
+
+    const result = await useCase({
+      jobOrderId: 9,
+      userId: 4,
+      completionData: {
+        quantity_produced: 2
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('source_location_id and destination_location_id are required for JO completion');
+  });
+
   it('archiveJobOrder maps not-found errors from service', async () => {
     const notFoundError = new Error('Job Order not found');
     notFoundError.statusCode = 404;
@@ -72,4 +93,3 @@ describe('jobOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(404);
   });
 });
-

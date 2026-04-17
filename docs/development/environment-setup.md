@@ -172,6 +172,10 @@ VITE_PROXY_TARGET=http://127.0.0.1:5000
 # Useful when serving store via vite preview/PM2 on :5175
 # If omitted, store app auto-falls back to http://<host>:5000 when running on :5175.
 VITE_API_BASE_URL=http://127.0.0.1:5000
+# Optional explicit asset origin for backend-served files (e.g., /uploads).
+# Use this when app host differs from backend host.
+# This takes precedence over VITE_API_BASE_URL/VITE_API_URL for image assets.
+# VITE_ASSET_BASE_URL=https://api.surebizcorp.com
 # Subscription/payment UI toggles (default-off; must stay aligned with backend PAYMENTS_ENABLED)
 VITE_PAYMENTS_ENABLED=false
 VITE_SUBSCRIPTIONS_ENABLED=false
@@ -199,6 +203,11 @@ All frontend surfaces share the same backend API, while storefront tenant resolu
   - `/api` -> backend
   - `/uploads` -> backend
 - If `/uploads` is not proxied, POS images upload successfully but render as broken images in the UI.
+- When frontend runtime/API origins differ, resolve backend-relative image paths (`/uploads/...`) against asset origin in this precedence:
+  1. `VITE_ASSET_BASE_URL`
+  2. `VITE_API_BASE_URL`
+  3. `VITE_API_URL` (absolute URL only)
+- POS image upload endpoint enforces image-only payloads; unsupported file types are rejected with `422`.
 
 After any frontend proxy/config change:
 1. Restart frontend process (`npm run dev` or `pm2 restart` frontend app).
@@ -392,4 +401,3 @@ After setting up the environment:
 4. Review [Database Schema](../database/schema.md) for data structure
 5. See root-level `PREREQUISITES.md` for local vs hosting setup reference
 6. See root-level `TROUBLESHOOTING.md` for common errors reference
-

@@ -12,6 +12,7 @@ import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
+import { useLocations } from '@/src/hooks/useLocations.js';
 import { toast } from 'sonner';
 
 // Import step components
@@ -66,6 +67,7 @@ const defaultProductData = {
   shelf_life: {},
   packaging_info: {},
   current_stock: 0,
+  location_id: '',
   max_capacity: 1000,
   min_threshold: 0,
   purchase_allowance: 0,
@@ -94,6 +96,11 @@ export default function ProductCreateWizard({
   const [initialProductData, setInitialProductData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
 
   const isEditingDraft = product?.status === 'draft';
 
@@ -135,6 +142,7 @@ export default function ProductCreateWizard({
         yield_percentage: parseNumberField(product.yield_percentage, 100),
         processing_loss: parseNumberField(product.processing_loss, 0),
         current_stock: parseNumberField(product.current_stock, 0),
+        location_id: product.location_id ? String(product.location_id) : '',
         max_capacity: parseNumberField(product.max_capacity, 1000),
         min_threshold: parseNumberField(product.min_threshold, 0),
         purchase_allowance: parseNumberField(product.purchase_allowance, 0),
@@ -178,13 +186,17 @@ export default function ProductCreateWizard({
       setIsDirty(false);
     } else if (!product && open) {
       // Reset for new product
-      setProductData({ ...defaultProductData });
-      setInitialProductData({ ...defaultProductData });
+      const nextDefaultData = {
+        ...defaultProductData,
+        location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : ''
+      };
+      setProductData(nextDefaultData);
+      setInitialProductData(nextDefaultData);
       setStep(1);
       setInitialStep(1);
       setIsDirty(false);
     }
-  }, [product, open]);
+  }, [product, open, activeLocations]);
 
   // Track dirty state - check if any meaningful data has been entered
   useEffect(() => {
@@ -280,8 +292,17 @@ export default function ProductCreateWizard({
       toast.error('VAT type is required to finalize finished goods.');
       return;
     }
+    const hasStockAdjustment = product
+      ? (Number(productData.current_stock) || 0) !== (Number(product.current_stock) || 0)
+      : (Number(productData.current_stock) || 0) > 0;
+    if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
+      toast.error('Please select a location when setting current stock.');
+      return;
+    }
+    const parsedLocationId = Number.parseInt(productData.location_id, 10);
     const finalData = {
       ...productData,
+      location_id: hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0 ? parsedLocationId : null,
       status: 'active',
       wizard_metadata: null
     };
@@ -294,6 +315,13 @@ export default function ProductCreateWizard({
   const handleSubmit = async () => {
     if (productData.product_type === 'finished_goods' && !productData.vat_type) {
       toast.error('VAT type is required for finished goods.');
+      return;
+    }
+    const hasStockAdjustment = product
+      ? (Number(productData.current_stock) || 0) !== (Number(product.current_stock) || 0)
+      : (Number(productData.current_stock) || 0) > 0;
+    if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
+      toast.error('Please select a location when setting current stock.');
       return;
     }
     // Common cleanup function to ensure data validity before submission
@@ -342,6 +370,11 @@ export default function ProductCreateWizard({
       if (!sanitized.packaging_info || typeof sanitized.packaging_info !== 'object') {
         sanitized.packaging_info = {};
       }
+
+      const parsedLocationId = Number.parseInt(sanitized.location_id, 10);
+      sanitized.location_id = hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0
+        ? parsedLocationId
+        : null;
 
       return sanitized;
     };
@@ -426,6 +459,8 @@ export default function ProductCreateWizard({
               data={productData}
               updateData={updateProductData}
               items={items}
+              locations={activeLocations}
+              loadingLocations={loadingLocations}
               productItem={product}
               posConfig={posConfig}
               onTogglePosVisibility={onTogglePosVisibility}

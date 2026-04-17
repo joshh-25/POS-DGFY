@@ -131,7 +131,7 @@ describe('dispatchOrderToolRegistry', () => {
       88
     );
     expect(dispatchOrderService.confirmDispatchOrder).toHaveBeenCalledWith(3, 88);
-    expect(dispatchOrderService.dispatchLines).toHaveBeenCalledWith(3, [{ line_id: 1, qty: 5 }], 88);
+    expect(dispatchOrderService.dispatchLines).toHaveBeenCalledWith(3, [{ line_id: 1, qty: 5 }], 88, null);
     expect(dispatchOrderService.cancelDispatchOrder).toHaveBeenCalledWith(3, 88, 'rejected');
 
     expect(created.status).toBe('draft');

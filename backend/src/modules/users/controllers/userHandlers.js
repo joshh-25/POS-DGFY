@@ -6,6 +6,8 @@ import {
   updateUserRoleUseCase,
   updateUserStatusUseCase,
   updateUserPermissionsUseCase,
+  getUserLocationGrantsUseCase,
+  updateUserLocationGrantsUseCase,
   inviteUserUseCase,
   removeUserFromCompanyUseCase
 } from '../index.js';
@@ -239,6 +241,58 @@ export const updateUserPermissions = async (req, res, next) => {
   }
 };
 
+export const getUserLocationGrants = async (req, res, next) => {
+  try {
+    const includeInactive = req.query?.include_inactive === 'true';
+    const result = await getUserLocationGrantsUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id,
+      includeInactive
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'User location grants retrieved successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserLocationGrants = async (req, res, next) => {
+  try {
+    const result = await updateUserLocationGrantsUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id,
+      locationIds: req.validatedData.location_ids
+    });
+
+    invalidateUserAuthCache({
+      companyToken: req.headers['x-company-token'] || null,
+      userId: Number.parseInt(req.params.user_id, 10) || null
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'User location grants updated successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const inviteUser = async (req, res, next) => {
   try {
     const { email, role } = req.validatedData;
@@ -305,6 +359,8 @@ export default {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  getUserLocationGrants,
+  updateUserLocationGrants,
   inviteUser,
   removeUserFromCompany
 };

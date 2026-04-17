@@ -1,15 +1,17 @@
-const parseConfiguredAssetOrigin = () => {
+export const resolveAssetOrigin = (env = {}, windowOrigin = '') => {
   const candidates = [
-    import.meta.env.VITE_API_URL,
-    import.meta.env.VITE_API_BASE_URL
+    env.VITE_ASSET_BASE_URL,
+    env.VITE_API_BASE_URL,
+    env.VITE_API_URL,
   ];
 
   for (const candidate of candidates) {
     const raw = String(candidate || '').trim();
     if (!raw) continue;
+    if (raw.startsWith('/')) continue;
 
     try {
-      const parsed = new URL(raw, window.location.origin);
+      const parsed = new URL(raw, windowOrigin || 'http://localhost');
       if (!parsed.protocol.startsWith('http')) continue;
       return parsed.origin;
     } catch {
@@ -20,11 +22,16 @@ const parseConfiguredAssetOrigin = () => {
   return '';
 };
 
-const ASSET_ORIGIN = typeof window === 'undefined' ? '' : parseConfiguredAssetOrigin();
+const ASSET_ORIGIN = typeof window === 'undefined'
+  ? ''
+  : resolveAssetOrigin(import.meta.env, window.location.origin);
 
-export const resolveAssetUrl = (value) => {
+export const resolveAssetUrl = (value, options = {}) => {
   const raw = String(value || '').trim();
   if (!raw) return '';
+  const assetOrigin = typeof options.assetOrigin === 'string'
+    ? options.assetOrigin
+    : ASSET_ORIGIN;
 
   if (/^(data|blob):/i.test(raw)) return raw;
 
@@ -32,7 +39,7 @@ export const resolveAssetUrl = (value) => {
     return new URL(raw).toString();
   } catch {
     if (!raw.startsWith('/')) return raw;
-    return ASSET_ORIGIN ? `${ASSET_ORIGIN}${raw}` : raw;
+    return assetOrigin ? `${assetOrigin}${raw}` : raw;
   }
 };
 

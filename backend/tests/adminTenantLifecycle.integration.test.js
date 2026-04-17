@@ -270,7 +270,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(refreshed.plan).toBe('standard');
     });
 
-    it('rejects tenant plan upgrade requests when payments are disabled', async () => {
+    it('updates tenant plan through admin tenant update route', async () => {
         const tenant = await createAdminTestTenant({ status: 'active', plan: 'standard' });
 
         const response = await request(app)
@@ -278,13 +278,13 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             .set('Authorization', `Bearer ${adminApiToken}`)
             .send({ plan: 'premium' });
 
-        expect(response.status).toBe(503);
-        expect(response.body.success).toBe(false);
-        expect(response.body.code).toBe('PAYMENTS_DISABLED');
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.message).toBe('Tenant updated successfully');
         expect(mockProvisionTenant).not.toHaveBeenCalled();
 
         const refreshed = await Tenant.findByPk(tenant.id);
-        expect(refreshed.plan).toBe('standard');
+        expect(refreshed.plan).toBe('premium');
     });
 
     it('deletes tenant and calls DB drop helper', async () => {

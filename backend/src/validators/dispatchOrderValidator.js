@@ -78,6 +78,11 @@ export const updateDispatchOrderSchema = Joi.object({
 }).min(1);
 
 export const dispatchLinesSchema = Joi.object({
+    location_id: Joi.number().integer().positive().allow(null).optional().messages({
+        'number.base': 'location_id must be a number',
+        'number.integer': 'location_id must be an integer',
+        'number.positive': 'location_id must be positive'
+    }),
     lines: Joi.array().items(dispatchExecuteLineSchema).min(1).required().messages({
         'array.min': 'At least one line dispatch entry is required',
         'any.required': 'Lines array is required'

@@ -26,6 +26,7 @@ export default function SalesPage() {
   const [status, setStatus] = useState('all');
   const [paymentType, setPaymentType] = useState('all');
   const [orderMethod, setOrderMethod] = useState('all');
+  const [posOrderSource, setPosOrderSource] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('occurred_at');
@@ -52,6 +53,7 @@ export default function SalesPage() {
     setStatus(params.get('status') || 'all');
     setPaymentType(params.get('payment_type') || 'all');
     setOrderMethod(params.get('order_method') || 'all');
+    setPosOrderSource(params.get('pos_order_source') || 'all');
     setDateFrom(params.get('date_from') || '');
     setDateTo(params.get('date_to') || '');
     setSourceId(params.get('source_id') || '');
@@ -72,6 +74,7 @@ export default function SalesPage() {
     if (status !== 'all') params.set('status', status);
     if (paymentType !== 'all') params.set('payment_type', paymentType);
     if (orderMethod !== 'all') params.set('order_method', orderMethod);
+    if (posOrderSource !== 'all') params.set('pos_order_source', posOrderSource);
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
     if (sortBy && sortBy !== 'occurred_at') params.set('sort_by', sortBy);
@@ -96,7 +99,8 @@ export default function SalesPage() {
     source,
     sourceContext,
     sourceId,
-    status
+    status,
+    posOrderSource
   ]);
 
   const loadSales = useCallback(async (page = 1) => {
@@ -111,6 +115,7 @@ export default function SalesPage() {
         status: status === 'all' ? undefined : status,
         payment_type: paymentType === 'all' ? undefined : paymentType,
         order_method: orderMethod === 'all' ? undefined : orderMethod,
+        pos_order_source: posOrderSource === 'all' ? undefined : posOrderSource,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         sort_by: sortBy,
@@ -131,7 +136,7 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, orderMethod, paymentType, search, sortBy, sortOrder, source, sourceId, status]);
+  }, [dateFrom, dateTo, orderMethod, paymentType, search, sortBy, sortOrder, source, sourceId, status, posOrderSource]);
 
   useEffect(() => {
     const timer = setTimeout(() => loadSales(1), 250);
@@ -162,11 +167,12 @@ export default function SalesPage() {
     if (status !== 'all') parts.push(`status=${status}`);
     if (paymentType !== 'all') parts.push(`payment=${paymentType}`);
     if (orderMethod !== 'all') parts.push(`order_method=${orderMethod}`);
+    if (posOrderSource !== 'all') parts.push(`pos_order_source=${posOrderSource}`);
     if (dateFrom) parts.push(`date_from=${dateFrom}`);
     if (dateTo) parts.push(`date_to=${dateTo}`);
     if (search) parts.push(`search="${search}"`);
     return parts.join(', ');
-  }, [dateFrom, dateTo, orderMethod, paymentType, search, source, sourceId, status]);
+  }, [dateFrom, dateTo, orderMethod, paymentType, search, source, sourceId, status, posOrderSource]);
 
   const msmeDailySnapshot = useMemo(() => {
     if (!isMsmeMode) return null;
@@ -192,6 +198,7 @@ export default function SalesPage() {
         status: status === 'all' ? undefined : status,
         payment_type: paymentType === 'all' ? undefined : paymentType,
         order_method: orderMethod === 'all' ? undefined : orderMethod,
+        pos_order_source: posOrderSource === 'all' ? undefined : posOrderSource,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         sort_by: sortBy,
@@ -322,7 +329,15 @@ export default function SalesPage() {
                   <option value="takeout">Takeout</option>
                   <option value="pickup">Pickup</option>
                   <option value="delivery">Delivery</option>
-                  <option value="online">Online (Legacy)</option>
+                </select>
+                <select
+                  value={posOrderSource}
+                  onChange={(event) => setPosOrderSource(event.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm"
+                >
+                  <option value="all">All POS Channels</option>
+                  <option value="in_store">POS In-Store</option>
+                  <option value="online_store">POS Online Store</option>
                 </select>
                 <select
                   value={sortBy}
@@ -373,6 +388,7 @@ export default function SalesPage() {
                 setStatus(isMsmeMode ? 'completed' : 'all');
                 setPaymentType(isMsmeMode ? 'cash' : 'all');
                 setOrderMethod('all');
+                setPosOrderSource('all');
                 if (isMsmeMode) {
                   const today = new Date().toISOString().slice(0, 10);
                   setDateFrom(today);
@@ -450,6 +466,15 @@ export default function SalesPage() {
                       <span className={`text-xs px-2 py-1 rounded-full ${row.source === 'POS' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
                         {row.source}
                       </span>
+                      {row.source === 'POS' && row.pos_order_source && (
+                        <span className={`ml-2 text-[11px] px-2 py-1 rounded-full ${
+                          row.pos_order_source === 'online_store'
+                            ? 'bg-sky-100 text-sky-700'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {row.pos_order_source === 'online_store' ? 'Online Store' : 'In-Store'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 px-2 font-medium text-slate-900">{row.reference_no}</td>
                     <td className="py-2 px-2 text-slate-600">{new Date(row.occurred_at).toLocaleString()}</td>
@@ -488,6 +513,12 @@ export default function SalesPage() {
             ) : (
               <div className="space-y-2 text-sm">
                 <p><span className="text-slate-500">Source:</span> {selected.source}</p>
+                {selected.source === 'POS' && (
+                  <p>
+                    <span className="text-slate-500">POS Channel:</span>{' '}
+                    {selected.pos_order_source === 'online_store' ? 'Online Store' : 'In-Store'}
+                  </p>
+                )}
                 <p><span className="text-slate-500">Reference:</span> {selected.reference_no}</p>
                 <p><span className="text-slate-500">Gross:</span> {money(selected.gross_sales)}</p>
                 <p><span className="text-slate-500">COGS:</span> {money(selected.cogs)}</p>

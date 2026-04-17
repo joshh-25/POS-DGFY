@@ -1,6 +1,10 @@
 import express from 'express';
 import * as jobOrderController from '../controllers/jobOrderController.js';
-import { validateCreateJobOrder, validateCreateJobOrderDraft } from '../validators/jobOrderValidator.js';
+import {
+  validateCreateJobOrder,
+  validateCreateJobOrderDraft,
+  validateCompleteJobOrder
+} from '../validators/jobOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 
@@ -20,7 +24,7 @@ router.post('/', checkPermission(PERMISSIONS.ORDERS.actions.CREATE_JO), (req, re
     validateCreateJobOrder(req, res, next);
   }
 }, jobOrderController.createJobOrder);
-router.post('/:jo_id/complete', checkPermission(PERMISSIONS.ORDERS.actions.COMPLETE_JO), jobOrderController.completeJobOrder);
+router.post('/:jo_id/complete', checkPermission(PERMISSIONS.ORDERS.actions.COMPLETE_JO), validateCompleteJobOrder, jobOrderController.completeJobOrder);
 
 // Finalize draft - managers and admins only
 router.patch('/:jo_id/finalize', checkPermission(PERMISSIONS.ORDERS.actions.APPROVE_JO), jobOrderController.finalizeJobOrder);

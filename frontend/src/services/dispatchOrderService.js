@@ -30,8 +30,11 @@ export const confirmDispatchOrder = async (id) => {
   return response.data;
 };
 
-export const dispatchLines = async (id, lines) => {
-  const response = await api.post(`/dispatch-orders/${id}/dispatch`, { lines });
+export const dispatchLines = async (id, lines, locationId = null) => {
+  const response = await api.post(`/dispatch-orders/${id}/dispatch`, {
+    lines,
+    location_id: locationId || undefined
+  });
   return response.data;
 };
 

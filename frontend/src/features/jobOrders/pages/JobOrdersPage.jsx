@@ -227,14 +227,11 @@ export default function JobOrdersPage() {
     }
   };
 
-  const handleCompleteProduction = async (jo, expiryOverride, notes = null, quantityProduced = null, qualityCheck = null) => {
+  const handleCompleteProduction = async (jo, completionPayload = {}) => {
     try {
       const completedJO = await completeJobOrder(
         jo.jo_id || jo.id,
-        expiryOverride,
-        notes,
-        quantityProduced,
-        qualityCheck,
+        completionPayload
       );
       toast.success('Job order completed successfully');
 

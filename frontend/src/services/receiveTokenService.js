@@ -31,10 +31,10 @@ export const validateReceiveToken = async (token) => {
 
 /**
  * Perform the receive operation (PO or JO) via the QR token.
- * No user authentication required — token is the credential.
+ * Authenticated user session is required; token identifies the target order.
  * @param {string} token - The raw token from the QR URL
- * @param {object} receiptData - For PO: { line_items, notes, delivery_rating }
- *                               For JO: { quantity_produced, notes, quality_check }
+ * @param {object} receiptData - For PO: { location_id, line_items, notes, delivery_rating }
+ *                               For JO: { quantity_produced, source_location_id, destination_location_id, notes, quality_check }
  */
 export const receiveViaToken = async (token, receiptData) => {
     const response = await api.post(`/receive-tokens/${token}/receive`, receiptData);

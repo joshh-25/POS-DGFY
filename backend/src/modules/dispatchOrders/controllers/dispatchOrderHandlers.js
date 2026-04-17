@@ -228,6 +228,7 @@ export const dispatchLines = async (req, res, next) => {
     const result = await dispatchLinesUseCase({
       dispatchOrderId: req.params.id,
       lines: req.validatedData.lines,
+      locationId: req.validatedData?.location_id ?? null,
       userId: req.user.user_id
     });
 

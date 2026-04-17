@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
+import { useLocations } from '@/src/hooks/useLocations.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { toast } from 'sonner';
 
@@ -43,6 +44,7 @@ const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
   'vat_type',
   'max_capacity',
   'current_stock',
+  'location_id',
   'fifo_enabled',
   'shelf_life_days',
   'opened_shelf_life_days',
@@ -188,6 +190,7 @@ export default function ItemFormModal({
     vat_type: 'vatable',
     max_capacity: 0,
     current_stock: 0,
+    location_id: '',
     fifo_enabled: false,
     shelf_life_days: '',
     opened_shelf_life_days: '',
@@ -216,6 +219,11 @@ export default function ItemFormModal({
   });
   const [msmeOriginalCategory, setMsmeOriginalCategory] = useState(null);
   const [msmeCategoryTouched, setMsmeCategoryTouched] = useState(false);
+  const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
 
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -265,6 +273,7 @@ export default function ItemFormModal({
         vat_type: item.vat_type || 'vatable',
         max_capacity: parseNum(item.max_capacity, 0),
         current_stock: parseNum(item.current_stock, 0),
+        location_id: item.location_id ? String(item.location_id) : '',
         min_threshold: parseNum(item.min_threshold, 0),
         purchase_allowance: parseNum(item.purchase_allowance, 0),
         fifo_enabled: item.fifo_enabled || false,
@@ -347,6 +356,7 @@ export default function ItemFormModal({
         vat_type: 'vatable',
         max_capacity: 0,
         current_stock: 0,
+        location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
         min_threshold: 0,
         purchase_allowance: 0,
         fifo_enabled: false,
@@ -392,7 +402,7 @@ export default function ItemFormModal({
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
     }
-  }, [createPreset, item, msmeMode, open]);
+  }, [createPreset, item, msmeMode, open, activeLocations]);
 
   // Track dirty state
   useEffect(() => {
@@ -574,6 +584,16 @@ export default function ItemFormModal({
       return;
     }
 
+    const normalizedCurrentStock = Number(cleanedData.current_stock) || 0;
+    const previousCurrentStock = item ? (Number(item.current_stock) || 0) : 0;
+    const hasStockAdjustment = item
+      ? normalizedCurrentStock !== previousCurrentStock
+      : normalizedCurrentStock > 0;
+    if (hasStockAdjustment && activeLocations.length > 1 && !cleanedData.location_id) {
+      toast.error('Please select a location when setting current stock.');
+      return;
+    }
+
     // Filter out fields that aren't in the backend schema
     // Only send fields that the backend validator expects
     // Note: current_stock is not in the create schema - backend sets it automatically
@@ -609,6 +629,7 @@ export default function ItemFormModal({
       min_threshold: toNumberOrNull(cleanedData.min_threshold),
       purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
       current_stock: toNumberOrNull(cleanedData.current_stock),
+      location_id: hasStockAdjustment ? toNumberOrNull(cleanedData.location_id) : null,
       fifo_enabled: cleanedData.fifo_enabled || false,
       product_folder: cleanedData.product_folder || null,
       batch_size: toNumberOrNull(cleanedData.batch_size),
@@ -926,6 +947,28 @@ export default function ItemFormModal({
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium uppercase text-slate-400">
                       {formData.unit_of_measure}
                     </span>
+                  )}
+                </div>
+                <div className="space-y-2 pt-2">
+                  <Label>Stock Location</Label>
+                  <Select
+                    value={formData.location_id || ''}
+                    onValueChange={(value) => handleChange('location_id', value)}
+                    disabled={loadingLocations || activeLocations.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeLocations.map((location) => (
+                        <SelectItem key={`item-location-${location.location_id}`} value={String(location.location_id)}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {activeLocations.length > 1 && !formData.location_id && Number(formData.current_stock || 0) > 0 && (
+                    <p className="text-xs text-red-600">Required when setting stock in a multi-location tenant.</p>
                   )}
                 </div>
               </div>

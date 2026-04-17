@@ -109,12 +109,14 @@ describe('jobOrderToolRegistry', () => {
       args: {
         jo_id: 12,
         quantity_produced: 5,
-        expiry_date: '2026-04-01'
+        expiry_date: '2026-04-01',
+        source_location_id: 3,
+        destination_location_id: 4
       },
       user: { user_id: 9 }
     });
 
-    expect(completeJobOrder).toHaveBeenCalledWith(12, 9, '2026-04-01', null, 5);
+    expect(completeJobOrder).toHaveBeenCalledWith(12, 9, '2026-04-01', null, 5, null, 3, 4);
     expect(result).toEqual(
       expect.objectContaining({
         success: true,
@@ -124,5 +126,51 @@ describe('jobOrderToolRegistry', () => {
         ingredients_consumed: 3
       })
     );
+  });
+
+  it('complete_job_order rejects missing location fields', async () => {
+    const completeJobOrder = jest.fn();
+    const registry = buildJobOrderToolRegistry({
+      jobOrderService: { completeJobOrder },
+      itemService: {},
+      logger: { info: jest.fn(), warn: jest.fn() }
+    });
+
+    await expect(registry.complete_job_order({
+      args: {
+        jo_id: 12,
+        quantity_produced: 5
+      },
+      user: { user_id: 9 }
+    })).rejects.toMatchObject({
+      message: 'source_location_id and destination_location_id are required and must be positive integers',
+      statusCode: 422
+    });
+
+    expect(completeJobOrder).not.toHaveBeenCalled();
+  });
+
+  it('complete_job_order rejects same source and destination location', async () => {
+    const completeJobOrder = jest.fn();
+    const registry = buildJobOrderToolRegistry({
+      jobOrderService: { completeJobOrder },
+      itemService: {},
+      logger: { info: jest.fn(), warn: jest.fn() }
+    });
+
+    await expect(registry.complete_job_order({
+      args: {
+        jo_id: 12,
+        quantity_produced: 5,
+        source_location_id: 3,
+        destination_location_id: 3
+      },
+      user: { user_id: 9 }
+    })).rejects.toMatchObject({
+      message: 'source_location_id and destination_location_id must be different',
+      statusCode: 422
+    });
+
+    expect(completeJobOrder).not.toHaveBeenCalled();
   });
 });

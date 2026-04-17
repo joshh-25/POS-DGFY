@@ -87,3 +87,27 @@ export const inviteUser = async (email, role) => {
   const response = await api.post('/users/invite', { email, role });
   return response.data.data;
 };
+
+/**
+ * Get location grants for a specific user (admin only)
+ * @param {number} userId - Target user ID
+ * @param {Object} params - Optional query params
+ * @returns {Promise<Object>} Location grant payload
+ */
+export const getUserLocationGrants = async (userId, params = {}) => {
+  const response = await api.get(`/users/${userId}/location-grants`, { params });
+  return response.data.data;
+};
+
+/**
+ * Replace location grants for a specific user (admin only)
+ * @param {number} userId - Target user ID
+ * @param {number[]} locationIds - Location IDs to grant
+ * @returns {Promise<Object>} Updated location grant payload
+ */
+export const updateUserLocationGrants = async (userId, locationIds = []) => {
+  const response = await api.put(`/users/${userId}/location-grants`, {
+    location_ids: locationIds
+  });
+  return response.data.data;
+};

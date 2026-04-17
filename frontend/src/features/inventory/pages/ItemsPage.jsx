@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
@@ -1457,21 +1458,27 @@ export default function Items() {
               {/* Uncategorized Items */}
               {filteredItems
                 .filter(item => isItemUncategorized(item))
-                .map(item => (
-                  <ItemCard
-                    key={item.item_id || item.id}
-                    item={item}
-                    onView={handleView}
-                    onEdit={handleEdit}
-                    onDelete={handleDeleteClick}
-                    onMoveToFolder={openMoveModal}
-                    posReadiness={posReadinessByItemId[item.item_id || item.id]}
-                    onOpenInTerminal={openItemInTerminal}
-                    isMsmeMode={isMsmeMode}
-                    isSelected={selectedIds.has(item.item_id || item.id)}
-                    onSelect={toggleSelection}
-                  />
-                ))}
+                .map(item => {
+                  const posConfigResolved = resolvePosConfig(item);
+                  return (
+                    <ItemCard
+                      key={item.item_id || item.id}
+                      item={item}
+                      onView={handleView}
+                      onEdit={handleEdit}
+                      onDelete={handleDeleteClick}
+                      onMoveToFolder={openMoveModal}
+                      posReadiness={posReadinessByItemId[item.item_id || item.id]}
+                      posVisible={posConfigResolved.pos_visible !== false}
+                      canTogglePosVisibility={canConfigurePosCatalog}
+                      onTogglePosVisibility={handleTogglePosVisibility}
+                      onOpenInTerminal={openItemInTerminal}
+                      isMsmeMode={isMsmeMode}
+                      isSelected={selectedIds.has(item.item_id || item.id)}
+                      onSelect={toggleSelection}
+                    />
+                  );
+                })}
             </div>
           ) : filteredItems.length === 0 ? (
             /* Inside empty folder */
@@ -1483,26 +1490,32 @@ export default function Items() {
           ) : (
             /* Inside folder with items */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredItems.map(item => (
-                <ItemCard
-                  key={item.item_id || item.id}
-                  item={item}
-                  onView={handleView}
-                  onEdit={handleEdit}
-                  onDelete={handleDeleteClick}
-                  onMoveToFolder={openMoveModal}
-                  posReadiness={posReadinessByItemId[item.item_id || item.id]}
-                  onOpenInTerminal={openItemInTerminal}
-                  isMsmeMode={isMsmeMode}
-                  isSelected={selectedIds.has(item.item_id || item.id)}
-                  onSelect={toggleSelection}
-                />
-              ))}
+              {filteredItems.map(item => {
+                const posConfigResolved = resolvePosConfig(item);
+                return (
+                  <ItemCard
+                    key={item.item_id || item.id}
+                    item={item}
+                    onView={handleView}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteClick}
+                    onMoveToFolder={openMoveModal}
+                    posReadiness={posReadinessByItemId[item.item_id || item.id]}
+                    posVisible={posConfigResolved.pos_visible !== false}
+                    canTogglePosVisibility={canConfigurePosCatalog}
+                    onTogglePosVisibility={handleTogglePosVisibility}
+                    onOpenInTerminal={openItemInTerminal}
+                    isMsmeMode={isMsmeMode}
+                    isSelected={selectedIds.has(item.item_id || item.id)}
+                    onSelect={toggleSelection}
+                  />
+                );
+              })}
             </div>
           )
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1240px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="text-left p-4 font-medium text-slate-600">Item</th>
@@ -1511,6 +1524,7 @@ export default function Items() {
                   <th className="text-left p-4 font-medium text-slate-600">Next Expiry</th>
                   <th className="text-left p-4 font-medium text-slate-600">Stock Level</th>
                   <th className="text-left p-4 font-medium text-slate-600">Status</th>
+                  <th className="text-left p-4 font-medium text-slate-600">POS Visible</th>
                   <th className="text-left p-4 font-medium text-slate-600">Unit Cost</th>
                   <th className="text-left p-4 font-medium text-slate-600">Last Updated</th>
                 </tr>
@@ -1528,6 +1542,8 @@ export default function Items() {
                   // Calculate expiry information
                   const nextExpiry = getNextExpiryDate(item);
                   const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
+                  const posConfigResolved = resolvePosConfig(item);
+                  const posVisible = posConfigResolved.pos_visible !== false;
 
                   return (
                     <tr
@@ -1585,6 +1601,21 @@ export default function Items() {
                         <span className={cn("px-2 py-1 rounded-full text-xs font-medium", statusColors[status])}>
                           {status.charAt(0).toUpperCase() + status.slice(1)}
                         </span>
+                      </td>
+                      <td
+                        className="p-4"
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={posVisible}
+                            onCheckedChange={(nextValue) => handleTogglePosVisibility(item, nextValue)}
+                            disabled={!canConfigurePosCatalog}
+                            aria-label={`Toggle POS visibility for ${item.name}`}
+                          />
+                          <span className="text-xs text-slate-500">{posVisible ? 'On' : 'Off'}</span>
+                        </div>
                       </td>
                       <td className="p-4 font-medium text-slate-900">₱{formatNumber(calculateTotalProductCost(item), 2)}</td>
                       <td className="p-4 text-slate-600">{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : (item.last_updated || 'N/A')}</td>
@@ -1781,14 +1812,15 @@ export default function Items() {
                               : `${missingCount} requirement${missingCount === 1 ? '' : 's'}`}
                           </td>
                           <td className="p-3">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleTogglePosVisibility(item, !posVisible)}
-                            >
-                              {posVisible ? 'Enabled' : 'Disabled'}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={posVisible}
+                                onCheckedChange={(nextValue) => handleTogglePosVisibility(item, nextValue)}
+                                disabled={!canConfigurePosCatalog}
+                                aria-label={`Toggle POS visibility for ${item.name}`}
+                              />
+                              <span className="text-xs text-slate-500">{posVisible ? 'On' : 'Off'}</span>
+                            </div>
                           </td>
                           <td className="p-3">
                             <div className="space-y-2">

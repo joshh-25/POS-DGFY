@@ -7,6 +7,7 @@ import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folde
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,9 @@ export default function ItemCard({
   onMoveToFolder,
   posReadiness,
   onOpenInTerminal,
+  posVisible = false,
+  canTogglePosVisibility = false,
+  onTogglePosVisibility,
   isSelected,
   onSelect,
   isMsmeMode = false
@@ -80,6 +84,11 @@ export default function ItemCard({
     }
   };
 
+  const handleTogglePos = (nextValue) => {
+    if (!canTogglePosVisibility || typeof onTogglePosVisibility !== 'function') return;
+    onTogglePosVisibility(item, nextValue);
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -100,8 +109,22 @@ export default function ItemCard({
           <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", category.color)}>
             <Icon className="w-6 h-6" />
           </div>
-          <div className="flex min-h-[3.5rem] flex-col justify-center">
-            <h3 className="font-semibold text-slate-900">{item.name}</h3>
+          <div className="flex min-h-[3.5rem] min-w-0 flex-col justify-center">
+            <h3
+              className="font-semibold text-slate-900"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word'
+              }}
+              title={item.name}
+            >
+              {item.name}
+            </h3>
             <p className="text-sm text-slate-500">{item.sku_code}</p>
           </div>
         </div>
@@ -156,6 +179,19 @@ export default function ItemCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4">
+        <div
+          className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <span className="text-xs font-semibold text-slate-600">Show in POS</span>
+          <Switch
+            checked={Boolean(posVisible)}
+            onCheckedChange={handleTogglePos}
+            disabled={!canTogglePosVisibility}
+            aria-label={`Toggle POS visibility for ${item.name}`}
+          />
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
             {isDraft && statusStyle.icon && <statusStyle.icon className="w-3 h-3 mr-1" />}

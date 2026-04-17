@@ -141,6 +141,80 @@ describe('receiveTokenHandlers transport contracts', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('receiveViaToken returns deterministic 422 payload for missing location fields', async () => {
+    mockReceiveViaTokenUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'location_id is required to receive PO via QR',
+        details: null,
+        statusCode: 422
+      }
+    });
+
+    const req = {
+      params: { token: 'good-token' },
+      body: { line_items: [{ line_item_id: 1, quantity_received: 3 }] },
+      user: { user_id: 9 },
+      requestId: 'req-token-receive-422'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await receiveViaToken(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'location_id is required to receive PO via QR',
+      error_code: 'VALIDATION_FAILED',
+      errors: null,
+      request_id: 'req-token-receive-422',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('receiveViaToken returns deterministic 403 payload for location access denial', async () => {
+    mockReceiveViaTokenUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'AUTHORIZATION_FAILED',
+        message: 'You do not have location access to perform QR receive at location 2.',
+        details: null,
+        statusCode: 403
+      }
+    });
+
+    const req = {
+      params: { token: 'good-token' },
+      body: {
+        source_location_id: 2,
+        destination_location_id: 3,
+        quantity_produced: 5
+      },
+      user: { user_id: 9 },
+      requestId: 'req-token-receive-403'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await receiveViaToken(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'You do not have location access to perform QR receive at location 2.',
+      error_code: 'AUTHORIZATION_FAILED',
+      errors: null,
+      request_id: 'req-token-receive-403',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('markTokenUsed preserves success message for optional-auth route', async () => {
     mockMarkTokenUsedUseCase.mockResolvedValue({
       success: true,

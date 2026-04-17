@@ -53,6 +53,7 @@ const mapPosRows = (rows) => rows.map((row) => {
     customer_or_recipient: null,
     payment_type: row.payment_type,
     order_method: row.order_method,
+    pos_order_source: row.order_source || null,
     gross_sales: totalAmount,
     service_fee_amount: round4(row.service_fee_amount),
     service_fee_label_snapshot: row.service_fee_label_snapshot || null,
@@ -111,6 +112,7 @@ const mapDispatchRows = (rows) => rows.map((row) => {
     customer_or_recipient: row.recipient_name,
     payment_type: null,
     order_method: null,
+    pos_order_source: null,
     gross_sales: revenue,
     service_fee_amount: null,
     cogs,
@@ -153,6 +155,7 @@ export const salesRepository = {
     const status = filters.status ? String(filters.status).trim() : null;
     const paymentType = filters.payment_type ? String(filters.payment_type).trim() : null;
     const orderMethod = filters.order_method ? String(filters.order_method).trim() : null;
+    const posOrderSource = filters.pos_order_source ? String(filters.pos_order_source).trim() : null;
     const sortBy = String(filters.sort_by || 'occurred_at');
     const sortOrder = String(filters.sort_order || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
     const dateRange = buildDateRange(filters.date_from, filters.date_to);
@@ -170,6 +173,7 @@ export const salesRepository = {
       if (status) posWhere.status = status;
       if (paymentType) posWhere.payment_type = paymentType;
       if (orderMethod) posWhere.order_method = orderMethod;
+      if (posOrderSource) posWhere.order_source = posOrderSource;
       if (dateRange) posWhere.created_at = dateRange;
       if (search) {
         posWhere.invoice_number = { [Op.like]: `%${search}%` };

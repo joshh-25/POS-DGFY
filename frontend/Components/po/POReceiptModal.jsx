@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,15 @@ import { Star, CheckCircle, XCircle, Calendar } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatQty } from '../../src/lib/numberUtils.js';
 import { format, addDays } from 'date-fns';
+import { useLocations } from '../../src/hooks/useLocations.js';
 
 export default function POReceiptModal({ po, open, onClose, onConfirm }) {
+  const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
+  const [selectedLocationId, setSelectedLocationId] = useState('');
   const [items, setItems] = useState(
     po.items.map(item => {
       // Auto-calculate expiry date if item has shelf_life_days
@@ -41,6 +48,15 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
   );
   const [deliveryRating, setDeliveryRating] = useState(5);
   const [notes, setNotes] = useState(po.notes || '');
+  const requiresLocationSelection = activeLocations.length > 1;
+
+  useEffect(() => {
+    if (activeLocations.length === 1) {
+      setSelectedLocationId(String(activeLocations[0].location_id));
+      return;
+    }
+    setSelectedLocationId('');
+  }, [activeLocations, po?.po_id, po?.id]);
 
   const updateItem = (index, field, value) => {
     setItems(prev => {
@@ -62,6 +78,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
 
     onConfirm({
       items: cleanedItems,
+      location_id: selectedLocationId ? Number(selectedLocationId) : null,
       status: allReceived ? 'received' : (anyReceived ? 'partial' : 'pending'),
       delivery_rating: deliveryRating,
       notes
@@ -169,6 +186,30 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
 
           {/* Delivery Rating */}
           <div className="space-y-2">
+            <Label>Receive Location</Label>
+            <Select
+              value={selectedLocationId}
+              onValueChange={setSelectedLocationId}
+              disabled={loadingLocations || activeLocations.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
+              </SelectTrigger>
+              <SelectContent>
+                {activeLocations.map((location) => (
+                  <SelectItem key={location.location_id} value={String(location.location_id)}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {requiresLocationSelection && !selectedLocationId && (
+              <p className="text-xs text-red-600">Location is required when multiple active locations exist.</p>
+            )}
+          </div>
+
+          {/* Delivery Rating */}
+          <div className="space-y-2">
             <Label>Delivery Rating</Label>
             <div className="flex items-center gap-2">
               {[1, 2, 3, 4, 5].map(star => (
@@ -203,7 +244,11 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
 
         <DialogFooter className="pt-8">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleConfirm} className="bg-teal-600 hover:bg-teal-700">
+          <Button
+            onClick={handleConfirm}
+            disabled={!selectedLocationId || loadingLocations}
+            className="bg-teal-600 hover:bg-teal-700"
+          >
             Confirm Receipt
           </Button>
         </DialogFooter>

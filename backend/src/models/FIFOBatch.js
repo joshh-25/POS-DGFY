@@ -11,6 +11,10 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   quantity: {
     type: DataTypes.DECIMAL(24, 12),
     allowNull: false
@@ -44,6 +48,11 @@ const FIFOBatch = sequelize.define('FIFOBatch', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['item_id'] },
+    { fields: ['location_id'] },
+    { fields: ['item_id', 'location_id'] }
+  ],
   hooks: {
     beforeSave: (batch) => {
       // Validate expiry_date - reject dates before year 2000 (catches Excel epoch dates)

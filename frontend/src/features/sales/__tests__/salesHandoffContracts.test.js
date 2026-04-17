@@ -16,8 +16,11 @@ describe('sales handoff and export UX contracts', () => {
 
   it('hydrates and persists filters from query params including source_id handoff', () => {
     expect(salesPageContent).toContain('setSourceId(params.get(\'source_id\') || \'\');');
+    expect(salesPageContent).toContain('setPosOrderSource(params.get(\'pos_order_source\') || \'all\');');
     expect(salesPageContent).toContain('if (sourceId) params.set(\'source_id\', sourceId);');
+    expect(salesPageContent).toContain('if (posOrderSource !== \'all\') params.set(\'pos_order_source\', posOrderSource);');
     expect(salesPageContent).toContain('source_id: sourceId || undefined');
+    expect(salesPageContent).toContain('pos_order_source: posOrderSource === \'all\' ? undefined : posOrderSource');
   });
 
   it('includes export precheck dialog and post-export confirmation metadata', () => {

@@ -4,6 +4,7 @@ const mockGetDispatchOrdersUseCase = jest.fn();
 const mockCreateDispatchOrderUseCase = jest.fn();
 const mockExportDispatchOrdersUseCase = jest.fn();
 const mockArchiveDispatchOrderUseCase = jest.fn();
+const mockDispatchLinesUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/dispatchOrders/index.js', () => ({
@@ -14,7 +15,7 @@ jest.unstable_mockModule('../src/modules/dispatchOrders/index.js', () => ({
   createDispatchOrderUseCase: mockCreateDispatchOrderUseCase,
   updateDispatchOrderUseCase: jest.fn(),
   confirmDispatchOrderUseCase: jest.fn(),
-  dispatchLinesUseCase: jest.fn(),
+  dispatchLinesUseCase: mockDispatchLinesUseCase,
   cancelDispatchOrderUseCase: jest.fn(),
   archiveDispatchOrderUseCase: mockArchiveDispatchOrderUseCase,
   getEarningsReportUseCase: jest.fn(),
@@ -29,6 +30,7 @@ let getDispatchOrders;
 let createDispatchOrder;
 let exportDispatchOrders;
 let archiveDispatchOrder;
+let dispatchLines;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/dispatchOrders/controllers/dispatchOrderHandlers.js');
@@ -36,6 +38,7 @@ beforeAll(async () => {
   createDispatchOrder = mod.createDispatchOrder;
   exportDispatchOrders = mod.exportDispatchOrders;
   archiveDispatchOrder = mod.archiveDispatchOrder;
+  dispatchLines = mod.dispatchLines;
 });
 
 const createRes = () => {
@@ -181,6 +184,39 @@ describe('dispatchOrderHandlers transport contracts', () => {
       surface: 'dispatch_orders',
       action: 'archive_dispatch_order'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('dispatchLines passes validated location id to use-case', async () => {
+    mockDispatchLinesUseCase.mockResolvedValue({
+      success: true,
+      data: { do_id: 10, do_number: 'DO-2026-000010', status: 'partial' }
+    });
+
+    const req = {
+      params: { id: '10' },
+      validatedData: { lines: [{ line_id: 1, qty_to_dispatch: 2 }], location_id: 7 },
+      user: { user_id: 3 },
+      requestId: 'req-do-dispatch'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await dispatchLines(req, res, next);
+
+    expect(mockDispatchLinesUseCase).toHaveBeenCalledWith({
+      dispatchOrderId: '10',
+      lines: [{ line_id: 1, qty_to_dispatch: 2 }],
+      locationId: 7,
+      userId: 3
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { do_id: 10, do_number: 'DO-2026-000010', status: 'partial' },
+      message: 'Dispatch executed for DO-2026-000010',
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 });

@@ -12,7 +12,7 @@ import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js
 import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
 
 describe('store use-cases application result contract', () => {
-    it('listStoreCatalog returns out-of-stock rows when repository marks item as visible', async () => {
+    it('listStoreCatalog returns availability-only fields without exposing current_stock', async () => {
         const useCase = buildListStoreCatalogUseCase({
             storeRepository: {
                 listStoreCatalog: jest.fn().mockResolvedValue([
@@ -32,13 +32,42 @@ describe('store use-cases application result contract', () => {
         expect(result.data.items).toEqual([
             expect.objectContaining({
                 item_id: 501,
-                current_stock: 0
+                is_available: false,
+                availability_status: 'out_of_stock'
             })
         ]);
+        expect(result.data.items[0]).not.toHaveProperty('current_stock');
+        expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
         expect(result.data.pagination).toEqual({
             limit: 20,
             count: 1
         });
+    });
+
+    it('listStoreCatalog derives is_available from availability_status when needed', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                listStoreCatalog: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 502,
+                        name: 'Calamansi In Stock',
+                        availability_status: 'in_stock',
+                        default_sale_price: 25
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.items[0]).toEqual(expect.objectContaining({
+            item_id: 502,
+            is_available: true,
+            availability_status: 'in_stock'
+        }));
+        expect(result.data.items[0]).not.toHaveProperty('current_stock');
+        expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
     });
 
     it('listStoreLocations returns active locations with primary pointer', async () => {

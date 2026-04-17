@@ -184,6 +184,25 @@ Evidence:
 - Screenshot of detail panel
 - Exported CSV sample row
 
+### 5.3 POS Channel Source-Separation Validation
+1. In POS History, filter by `Source = In-Store`; confirm only in-store rows are listed.
+2. In POS History, filter by `Source = Online Store`; confirm only online-store rows are listed.
+3. Open Sales page and set `Source=POS` + `POS Channel=In-Store`; verify rows align with POS history in-store subset.
+4. Repeat with `POS Channel=Online Store`; verify rows align with POS history online-store subset.
+5. Export CSV for each channel filter and confirm `pos_order_source` column exists with expected values.
+
+Expected:
+1. No cross-source leakage in POS History source filter.
+2. Sales channel filter matches POS history source truth.
+3. CSV reconciliation remains auditable via `pos_order_source`.
+
+Evidence:
+- Screenshot of POS History (`In-Store` filtered)
+- Screenshot of POS History (`Online Store` filtered)
+- Screenshot of Sales (`POS In-Store` filtered)
+- Screenshot of Sales (`POS Online Store` filtered)
+- CSV sample rows showing `pos_order_source`
+
 ## 6) Fail Conditions (Automatic UAT Rejection)
 
 1. Checkout succeeds for `compliant_pending`/`compliant_active` while required compliance setup fields remain blank.

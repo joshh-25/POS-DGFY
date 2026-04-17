@@ -96,7 +96,7 @@ export const getMovementStats = async (req, res, next) => {
 export const createStockMovement = async (req, res, next) => {
   try {
     const result = await createStockMovementUseCase({
-      movementData: req.body,
+      movementData: req.validatedData || req.body,
       userId: req.user.user_id
     });
     await trackProductUsageFromResult({
@@ -108,7 +108,7 @@ export const createStockMovement = async (req, res, next) => {
       result,
       successMetadataResolver: (data) => ({
         movement_id: data?.movement_id ?? null,
-        movement_type: data?.movement_type ?? req.body?.movement_type ?? null
+        movement_type: data?.movement_type ?? req.validatedData?.movement_type ?? req.body?.movement_type ?? null
       })
     });
 
@@ -212,7 +212,7 @@ export const exportMovements = async (req, res, next) => {
 export const createBulkMovements = async (req, res, next) => {
   try {
     const result = await createBulkMovementsUseCase({
-      movements: req.body.movements,
+      movements: req.validatedData?.movements || req.body.movements,
       userId: req.user.user_id
     });
     await trackProductUsageFromResult({

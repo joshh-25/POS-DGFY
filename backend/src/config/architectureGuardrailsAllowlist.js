@@ -25,7 +25,11 @@ export const ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST = Object.freeze([
     // linked_task_id: SKU-ARCH-ALLOWLIST-007
     // planned_removal_phase: Phase 2 inventory service modularization
     // planned_removal_date: 2026-06-30
-    'src/modules/purchaseOrders/usecases/receivePurchaseOrderUseCase.js'
+    'src/modules/purchaseOrders/usecases/receivePurchaseOrderUseCase.js',
+    // linked_task_id: SKU-ARCH-ALLOWLIST-008
+    // planned_removal_phase: Phase 2 POS module service extraction
+    // planned_removal_date: 2026-06-30
+    'src/modules/pos/usecases/posUseCases.js'
 ]);
 
 export default Object.freeze({

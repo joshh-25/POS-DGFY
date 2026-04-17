@@ -74,7 +74,7 @@ export const buildValidateTokenUseCase = ({ receiveTokenService }) => {
 };
 
 export const buildReceiveViaTokenUseCase = ({ receiveTokenService }) => {
-  return async ({ token, payload }) => {
+  return async ({ token, payload, userId }) => {
     if (!token || typeof token !== 'string') {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -91,8 +91,17 @@ export const buildReceiveViaTokenUseCase = ({ receiveTokenService }) => {
       ));
     }
 
+    const normalizedUserId = parsePositiveInt(userId);
+    if (!normalizedUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.AUTHENTICATION_FAILED,
+        'Authenticated user is required for QR receive',
+        { statusCode: 401 }
+      ));
+    }
+
     try {
-      const data = await receiveTokenService.receiveViaToken(token, payload);
+      const data = await receiveTokenService.receiveViaToken(token, payload, normalizedUserId);
       return ok(data);
     } catch (error) {
       return fail(mapReceiveTokenUseCaseError(error, 'Failed to receive via token'));

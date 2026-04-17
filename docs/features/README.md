@@ -9,11 +9,13 @@ When to use:
 
 1. `docs/features/IMS_POS_SALES_UX_JOURNEY.md`
 - Canonical role-based journey for IMS item setup -> POS checkout -> POS history -> Sales export, including workflow-mode and POS readiness gate behavior.
-2. `docs/features/INVENTORY_FOLDERS.md`
+2. `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md`
+- Canonical source-separation contract for POS in-store vs storefront online transactions across write paths, POS history, and unified sales read model.
+3. `docs/features/INVENTORY_FOLDERS.md`
 - Folder behavior and visibility semantics across item browsing surfaces.
-3. `docs/features/NESTED_PRODUCTS.md`
+4. `docs/features/NESTED_PRODUCTS.md`
 - Nested product composition behavior and constraints.
-4. `docs/features/TENANT_MANAGEMENT.md`
+5. `docs/features/TENANT_MANAGEMENT.md`
 - Tenant lifecycle and management constraints, including isolation and provisioning rules.
 
 ## Usage Notes

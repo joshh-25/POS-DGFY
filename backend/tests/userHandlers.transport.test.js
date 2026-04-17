@@ -3,6 +3,8 @@ import { jest } from '@jest/globals';
 const mockGetCurrentUserUseCase = jest.fn();
 const mockInviteUserUseCase = jest.fn();
 const mockChangePasswordUseCase = jest.fn();
+const mockGetUserLocationGrantsUseCase = jest.fn();
+const mockUpdateUserLocationGrantsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/users/index.js', () => ({
@@ -13,6 +15,8 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   updateUserRoleUseCase: jest.fn(),
   updateUserStatusUseCase: jest.fn(),
   updateUserPermissionsUseCase: jest.fn(),
+  getUserLocationGrantsUseCase: mockGetUserLocationGrantsUseCase,
+  updateUserLocationGrantsUseCase: mockUpdateUserLocationGrantsUseCase,
   inviteUserUseCase: mockInviteUserUseCase,
   removeUserFromCompanyUseCase: jest.fn()
 }));
@@ -24,12 +28,16 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 let getCurrentUser;
 let inviteUser;
 let changePassword;
+let getUserLocationGrants;
+let updateUserLocationGrants;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/users/controllers/userHandlers.js');
   getCurrentUser = mod.getCurrentUser;
   inviteUser = mod.inviteUser;
   changePassword = mod.changePassword;
+  getUserLocationGrants = mod.getUserLocationGrants;
+  updateUserLocationGrants = mod.updateUserLocationGrants;
 });
 
 const createRes = () => {
@@ -166,6 +174,95 @@ describe('userHandlers transport contracts', () => {
       surface: 'users',
       action: 'change_password'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('getUserLocationGrants returns stable success payload', async () => {
+    mockGetUserLocationGrantsUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        user_id: 15,
+        username: 'target-user',
+        granted_location_ids: [1, 2],
+        locations: [
+          { location_id: 1, name: 'Main', granted: true },
+          { location_id: 2, name: 'Warehouse', granted: true }
+        ]
+      }
+    });
+
+    const req = {
+      user: { user_id: 9 },
+      params: { user_id: '15' },
+      query: {},
+      requestId: 'req-user-location-1'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await getUserLocationGrants(req, res, next);
+
+    expect(mockGetUserLocationGrantsUseCase).toHaveBeenCalledWith({
+      adminUserId: 9,
+      targetUserId: '15',
+      includeInactive: false
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        user_id: 15,
+        username: 'target-user',
+        granted_location_ids: [1, 2],
+        locations: [
+          { location_id: 1, name: 'Main', granted: true },
+          { location_id: 2, name: 'Warehouse', granted: true }
+        ]
+      },
+      message: 'User location grants retrieved successfully',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('updateUserLocationGrants returns standardized error payload', async () => {
+    mockUpdateUserLocationGrantsUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'AUTHORIZATION_FAILED',
+        message: 'Missing users:manage permission',
+        details: null,
+        statusCode: 403
+      }
+    });
+
+    const req = {
+      user: { user_id: 9 },
+      params: { user_id: '15' },
+      validatedData: { location_ids: [2] },
+      headers: { 'x-company-token': 'token-1' },
+      requestId: 'req-user-location-2'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateUserLocationGrants(req, res, next);
+
+    expect(mockUpdateUserLocationGrantsUseCase).toHaveBeenCalledWith({
+      adminUserId: 9,
+      targetUserId: '15',
+      locationIds: [2]
+    });
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'Missing users:manage permission',
+      error_code: 'AUTHORIZATION_FAILED',
+      errors: null,
+      request_id: 'req-user-location-2',
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 });

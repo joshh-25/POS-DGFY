@@ -10,6 +10,8 @@ export {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  getUserLocationGrants,
+  updateUserLocationGrants,
   inviteUser,
   removeUserFromCompany
 } from '../modules/users/controllers/userHandlers.js';
@@ -22,6 +24,8 @@ import {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  getUserLocationGrants,
+  updateUserLocationGrants,
   inviteUser,
   removeUserFromCompany
 } from '../modules/users/controllers/userHandlers.js';
@@ -34,6 +38,8 @@ export default {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  getUserLocationGrants,
+  updateUserLocationGrants,
   inviteUser,
   removeUserFromCompany
 };

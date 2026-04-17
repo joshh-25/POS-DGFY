@@ -788,6 +788,10 @@ export const AI_TOOLS = [
             type: "integer",
             description: "The ID of the purchase order"
           },
+          location_id: {
+            type: "integer",
+            description: "Location receiving the stock"
+          },
           received_items: {
             type: "array",
             description: "Items received with quantities",
@@ -812,7 +816,7 @@ export const AI_TOOLS = [
             }
           }
         },
-        required: ["po_id"]
+        required: ["po_id", "location_id", "received_items"]
       }
     },
     category: TOOL_CATEGORIES.WRITE,
@@ -1162,13 +1166,21 @@ export const AI_TOOLS = [
             type: "number",
             description: "Actual total quantity produced in the base unit of measure (e.g., grams, ml). NOT in number of batches."
           },
+          source_location_id: {
+            type: "integer",
+            description: "Location where ingredients are deducted"
+          },
+          destination_location_id: {
+            type: "integer",
+            description: "Location where finished goods are added"
+          },
           expiry_date: {
             type: "string",
             format: "date",
             description: "Expiry date for the finished goods batch"
           }
         },
-        required: ["jo_id", "quantity_produced"]
+        required: ["jo_id", "quantity_produced", "source_location_id", "destination_location_id"]
       }
     },
     category: TOOL_CATEGORIES.WRITE,

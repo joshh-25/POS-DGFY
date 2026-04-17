@@ -47,7 +47,15 @@ export const buildReceivePurchaseOrderUseCase = ({ purchaseOrderRepository }) =>
     try {
       const po = await purchaseOrderRepository.getPurchaseOrderById(normalizedPoId, { transaction });
       
-      const { line_items } = receiptData;
+      const { line_items, location_id } = receiptData;
+      const normalizedLocationId = parsePositiveInt(location_id);
+      if (!normalizedLocationId) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          'location_id is required and must be a positive integer for PO receiving',
+          { statusCode: 422 }
+        );
+      }
 
       if (Array.isArray(line_items)) {
         for (const receiptItem of line_items) {
@@ -79,6 +87,7 @@ export const buildReceivePurchaseOrderUseCase = ({ purchaseOrderRepository }) =>
             item_id: lineItem.item.item_id,
             quantity: receivingQty,
             movement_type: 'purchase_receipt',
+            location_id: normalizedLocationId,
             reference_id: po.po_number,
             reference_type: 'PO',
             notes: receiptData.notes || po.notes || null,

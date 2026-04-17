@@ -47,6 +47,49 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
     return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
 };
+
+const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+        return new Map();
+    }
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return new Map();
+    }
+
+    const ItemLocationStock = dbStore.get('ItemLocationStock');
+    if (!ItemLocationStock) {
+        return new Map();
+    }
+
+    const rows = await ItemLocationStock.findAll({
+        where: {
+            location_id: normalizedLocationId,
+            item_id: { [Op.in]: itemIds }
+        },
+        attributes: ['item_id', 'quantity_on_hand'],
+        transaction: options.transaction
+    });
+
+    return new Map(rows.map((row) => {
+        const payload = toPlain(row);
+        return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
+    }));
+};
+
+const applyLocationStock = (rows = [], stockMap = new Map()) => (
+    (Array.isArray(rows) ? rows : []).map((row) => {
+        const payload = toPlain(row);
+        const stock = stockMap.get(Number(payload.item_id));
+        const currentStock = Number.isFinite(stock) ? Math.max(0, stock) : 0;
+        return {
+            ...payload,
+            current_stock: currentStock,
+            is_available: currentStock > 0,
+            availability_status: currentStock > 0 ? 'in_stock' : 'out_of_stock'
+        };
+    })
+);
 export const storeRepository = {
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -156,6 +199,7 @@ export const storeRepository = {
     async findSellableItemsByIds(itemIds, options = {}) {
         const Item = dbStore.get('Item');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
         const baseQuery = {
             where: buildVisibleWhere(
                 {
@@ -191,23 +235,40 @@ export const storeRepository = {
                 ...baseQuery,
                 include: includeOverride
             });
-            return rows
+            const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row));
+            const stockMap = await loadLocationStockMap(
+                catalogRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStock(catalogRows, stockMap)
+                : catalogRows;
         } catch (error) {
             if (!isMissingPosCatalogOverrideTableError(error)) {
                 throw error;
             }
             const rows = await Item.findAll(baseQuery);
-            return rows
+            const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row));
+            const stockMap = await loadLocationStockMap(
+                catalogRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStock(catalogRows, stockMap)
+                : catalogRows;
         }
     },
 
-    async listStoreCatalog({ search = '', limit = 60 } = {}, options = {}) {
+    async listStoreCatalog({ search = '', limit = 60, location_id = null } = {}, options = {}) {
         const Item = dbStore.get('Item');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+        const normalizedLocationId = Number.parseInt(location_id, 10);
         const normalizedLimit = Number.isFinite(Number(limit))
             ? Math.max(1, Math.min(200, Number(limit)))
             : 60;
@@ -271,14 +332,60 @@ export const storeRepository = {
                 ...baseQuery,
                 include: includeOverride
             });
-            return mapCatalogRows(rows);
+            const catalogRows = mapCatalogRows(rows);
+            const stockMap = await loadLocationStockMap(
+                catalogRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStock(catalogRows, stockMap)
+                : catalogRows.map((row) => ({
+                    ...row,
+                    is_available: Number(row.current_stock || 0) > 0,
+                    availability_status: Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock'
+                }));
         } catch (error) {
             if (!isMissingPosCatalogOverrideTableError(error)) {
                 throw error;
             }
             const rows = await Item.findAll(baseQuery);
-            return mapCatalogRows(rows);
+            const catalogRows = mapCatalogRows(rows);
+            const stockMap = await loadLocationStockMap(
+                catalogRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
+                ? applyLocationStock(catalogRows, stockMap)
+                : catalogRows.map((row) => ({
+                    ...row,
+                    is_available: Number(row.current_stock || 0) > 0,
+                    availability_status: Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock'
+                }));
         }
+    },
+
+    async getLocationStocksByItemIds(itemIds = [], locationId = null, options = {}) {
+        const normalizedLocationId = Number.parseInt(locationId, 10);
+        if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+            return [];
+        }
+        if (!Array.isArray(itemIds) || itemIds.length === 0) {
+            return [];
+        }
+
+        const ItemLocationStock = dbStore.get('ItemLocationStock');
+        const rows = await ItemLocationStock.findAll({
+            where: {
+                location_id: normalizedLocationId,
+                item_id: { [Op.in]: itemIds }
+            },
+            attributes: ['item_id', 'location_id', 'quantity_on_hand'],
+            transaction: options.transaction
+        });
+
+        return rows.map(toPlain);
     },
 
     async listActiveLocations(options = {}) {

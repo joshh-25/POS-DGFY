@@ -36,6 +36,14 @@ export const normalizeSettingsHash = (hash) => {
   return SETTINGS_HASH_ALIASES[normalized] || normalized;
 };
 
+export const resolveSettingsHashTab = (hash) => {
+  const normalizedHash = normalizeSettingsHash(hash);
+  if (!normalizedHash) return null;
+  if (SETTINGS_HASH_TO_TAB[normalizedHash]) return SETTINGS_HASH_TO_TAB[normalizedHash];
+  if (normalizedHash.startsWith('#final-review-doc-')) return 'compliance';
+  return null;
+};
+
 export const resolveSettingsTab = (requestedTab, { subscriptionEnabled = true } = {}) => {
   const normalized = String(requestedTab || '').trim();
   if (!TAB_SET.has(normalized)) return SETTINGS_DEFAULT_TAB;
@@ -51,7 +59,7 @@ export const resolveSettingsDeepLink = ({
   const params = new URLSearchParams(search || '');
   const requestedTab = params.get('tab');
   const normalizedHash = normalizeSettingsHash(hash);
-  const hashTargetTab = normalizedHash ? SETTINGS_HASH_TO_TAB[normalizedHash] || null : null;
+  const hashTargetTab = resolveSettingsHashTab(normalizedHash);
   const requestedResolvedTab = resolveSettingsTab(requestedTab, { subscriptionEnabled });
 
   let resolvedTab = requestedResolvedTab;

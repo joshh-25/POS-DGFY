@@ -55,6 +55,19 @@ describe('dispatchOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 
+  it('dispatchLines forwards optional location id to service', async () => {
+    const dispatchLines = jest.fn().mockResolvedValue({ do_id: 3, status: 'partial' });
+    const useCase = buildDispatchLinesUseCase({
+      dispatchOrderService: { dispatchLines }
+    });
+
+    const lines = [{ line_id: 11, qty_to_dispatch: 2 }];
+    const result = await useCase({ dispatchOrderId: '3', lines, userId: '7', locationId: '5' });
+
+    expect(result.success).toBe(true);
+    expect(dispatchLines).toHaveBeenCalledWith(3, lines, 7, 5);
+  });
+
   it('cancelDispatchOrder maps not found service errors', async () => {
     const notFoundError = new Error('Dispatch Order not found');
     notFoundError.statusCode = 404;
@@ -69,4 +82,3 @@ describe('dispatchOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(404);
   });
 });
-

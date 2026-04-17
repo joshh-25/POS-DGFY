@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "../src/lib/utils.js";
 import { toast } from 'sonner';
-import { formatNumber } from '../src/lib/numberUtils.js';
 import { usePermission } from '../src/hooks/usePermission';
 import { useItems } from '@/hooks/useItems.js';
 import { useDispatchOrders } from '@/hooks/useDispatchOrders.js';
@@ -104,8 +103,8 @@ export default function DispatchOrders() {
     setEditingDO(null);
   };
 
-  const handleDispatch = async (lines) => {
-    await dispatchOrderService.dispatchLines(selectedDO.do_id, lines);
+  const handleDispatch = async ({ lines, locationId }) => {
+    await dispatchOrderService.dispatchLines(selectedDO.do_id, lines, locationId);
     toast.success('Dispatch executed successfully');
     setShowDispatchModal(false);
     setShowDetailsModal(false);

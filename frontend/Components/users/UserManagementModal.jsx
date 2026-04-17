@@ -19,7 +19,8 @@ import {
   UserX,
   Settings2,
   UserMinus,
-  UserPlus
+  UserPlus,
+  MapPin
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -78,13 +79,18 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPermissionMatrix, setShowPermissionMatrix] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
+  const [showLocationGrantsModal, setShowLocationGrantsModal] = useState(false);
+  const [locationGrantUser, setLocationGrantUser] = useState(null);
+  const [locationGrantRows, setLocationGrantRows] = useState([]);
+  const [selectedLocationGrantIds, setSelectedLocationGrantIds] = useState([]);
+  const [loadingLocationGrants, setLoadingLocationGrants] = useState(false);
+  const [savingLocationGrants, setSavingLocationGrants] = useState(false);
 
   // New features state
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
-  const [bulkAction, setBulkAction] = useState(null); // 'template' | 'grant' | 'revoke'
   const [showPermissionPicker, setShowPermissionPicker] = useState(false);
   const [permissionPickerMode, setPermissionPickerMode] = useState('grant');
 
@@ -261,6 +267,62 @@ export default function UserManagementModal({ open, onOpenChange }) {
       toast.error(error.response?.data?.message || 'Failed to update permissions');
     } finally {
       setSavingPermissions(false);
+    }
+  };
+
+  const openLocationGrantEditor = async (user) => {
+    setLocationGrantUser(user);
+    setShowLocationGrantsModal(true);
+    setLoadingLocationGrants(true);
+    try {
+      const data = await userService.getUserLocationGrants(user.user_id);
+      const rows = Array.isArray(data?.locations) ? data.locations : [];
+      const grantedIds = Array.isArray(data?.granted_location_ids)
+        ? data.granted_location_ids.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+      setLocationGrantRows(rows);
+      setSelectedLocationGrantIds(grantedIds);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to load location grants');
+      setShowLocationGrantsModal(false);
+      setLocationGrantUser(null);
+      setLocationGrantRows([]);
+      setSelectedLocationGrantIds([]);
+    } finally {
+      setLoadingLocationGrants(false);
+    }
+  };
+
+  const toggleLocationGrant = (locationId) => {
+    setSelectedLocationGrantIds((previous) => (
+      previous.includes(locationId)
+        ? previous.filter((id) => id !== locationId)
+        : [...previous, locationId]
+    ));
+  };
+
+  const toggleAllLocationGrants = () => {
+    const allLocationIds = locationGrantRows.map((row) => Number(row.location_id)).filter((id) => Number.isInteger(id) && id > 0);
+    const allSelected = allLocationIds.length > 0
+      && allLocationIds.every((id) => selectedLocationGrantIds.includes(id));
+    setSelectedLocationGrantIds(allSelected ? [] : allLocationIds);
+  };
+
+  const handleSaveLocationGrants = async () => {
+    if (!locationGrantUser) return;
+    setSavingLocationGrants(true);
+    try {
+      await userService.updateUserLocationGrants(locationGrantUser.user_id, selectedLocationGrantIds);
+      toast.success('Location grants updated successfully');
+      setShowLocationGrantsModal(false);
+      setLocationGrantUser(null);
+      setLocationGrantRows([]);
+      setSelectedLocationGrantIds([]);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update location grants');
+    } finally {
+      setSavingLocationGrants(false);
     }
   };
 
@@ -518,6 +580,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                   <span className="flex-1">Select All ({filteredUsers.length})</span>
                   <span className="w-24">Role</span>
                   <span className="w-24">Access</span>
+                  <span className="w-28">Locations</span>
                   <span className="w-20 text-center">Status</span>
                   <span className="w-10"></span>
                 </div>
@@ -590,6 +653,22 @@ export default function UserManagementModal({ open, onOpenChange }) {
                       >
                         <Shield className="w-3 h-3" />
                         <span className="text-xs">Edit</span>
+                      </Button>
+                    </div>
+
+                    {/* Location Grants Button */}
+                    <div className="w-28">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openLocationGrantEditor(user);
+                        }}
+                        className="w-full flex items-center justify-center gap-1"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        <span className="text-xs">Scope</span>
                       </Button>
                     </div>
 
@@ -692,6 +771,100 @@ export default function UserManagementModal({ open, onOpenChange }) {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Location Grant Dialog */}
+      <Dialog
+        open={showLocationGrantsModal}
+        onOpenChange={(isOpen) => {
+          if (savingLocationGrants) return;
+          setShowLocationGrantsModal(isOpen);
+          if (!isOpen) {
+            setLocationGrantUser(null);
+            setLocationGrantRows([]);
+            setSelectedLocationGrantIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-teal-600" />
+              Location Scope: {locationGrantUser?.username || 'User'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingLocationGrants ? (
+            <div className="py-10 text-center text-slate-500 text-sm">Loading location grants...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs text-slate-600">
+                  Location grants define where this user can execute stock-affecting actions when multi-location inventory is enabled.
+                </div>
+                <Button variant="outline" size="sm" onClick={toggleAllLocationGrants}>
+                  {locationGrantRows.length > 0 && locationGrantRows.every((row) => selectedLocationGrantIds.includes(Number(row.location_id)))
+                    ? 'Clear All'
+                    : 'Grant All'}
+                </Button>
+              </div>
+
+              {locationGrantRows.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  No active locations available.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {locationGrantRows.map((row) => {
+                    const locationId = Number(row.location_id);
+                    const checked = selectedLocationGrantIds.includes(locationId);
+                    return (
+                      <label
+                        key={`location-grant-${locationId}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer hover:border-slate-300"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{row.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {row.is_primary_storefront ? 'Primary storefront' : 'Secondary location'} {row.is_open ? '• Open' : '• Closed'}
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLocationGrant(locationId)}
+                          className="w-4 h-4 rounded border-slate-300 text-teal-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLocationGrantsModal(false);
+                setLocationGrantUser(null);
+                setLocationGrantRows([]);
+                setSelectedLocationGrantIds([]);
+              }}
+              disabled={savingLocationGrants}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveLocationGrants}
+              disabled={savingLocationGrants || loadingLocationGrants}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {savingLocationGrants ? 'Saving...' : 'Save Location Scope'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Permission Picker Modal for Bulk Operations */}
       <PermissionPickerModal

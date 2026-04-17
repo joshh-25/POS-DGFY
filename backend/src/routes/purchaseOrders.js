@@ -1,6 +1,10 @@
 import express from 'express';
 import * as purchaseOrderController from '../controllers/purchaseOrderController.js';
-import { validateCreatePurchaseOrder, validateCreatePurchaseOrderDraft } from '../validators/purchaseOrderValidator.js';
+import {
+  validateCreatePurchaseOrder,
+  validateCreatePurchaseOrderDraft,
+  validateReceivePurchaseOrder
+} from '../validators/purchaseOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 
@@ -20,7 +24,7 @@ router.post('/', checkPermission(PERMISSIONS.ORDERS.actions.CREATE_PO), (req, re
     validateCreatePurchaseOrder(req, res, next);
   }
 }, purchaseOrderController.createPurchaseOrder);
-router.post('/:po_id/receive', checkPermission(PERMISSIONS.ORDERS.actions.RECEIVE_PO), purchaseOrderController.receivePurchaseOrder);
+router.post('/:po_id/receive', checkPermission(PERMISSIONS.ORDERS.actions.RECEIVE_PO), validateReceivePurchaseOrder, purchaseOrderController.receivePurchaseOrder);
 
 // Finalize draft - managers and admins only
 router.patch('/:po_id/finalize', checkPermission(PERMISSIONS.ORDERS.actions.APPROVE_PO), purchaseOrderController.finalizePurchaseOrder);

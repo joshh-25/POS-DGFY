@@ -23,7 +23,9 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260406000001-add-tenant-compliance-program.cjs',
     '20260407000002-compliance-hardening-phase1-2.cjs',
     '20260408000004-add-pos-operation-replays.cjs',
-    '20260408000005-add-security-signal-audit-enum.cjs'
+    '20260408000005-add-security-signal-audit-enum.cjs',
+    '20260416000007-add-multi-location-inventory-ledger.cjs',
+    '20260416000008-backfill-user-location-grants.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -61,6 +63,10 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'accepted_by',
         'accepted_at'
     ],
+    stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
+    fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
+    item_location_stocks: ['item_location_stock_id', 'item_id', 'location_id', 'quantity_on_hand'],
+    user_location_grants: ['user_location_grant_id', 'user_id', 'location_id', 'created_by'],
     tenant_compliance_artifacts: [
         'tenant_compliance_artifact_id',
         'tenant_id',

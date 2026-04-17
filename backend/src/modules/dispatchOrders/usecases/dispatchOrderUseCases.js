@@ -8,6 +8,11 @@ const parsePositiveInt = (value) => {
   return normalized;
 };
 
+const parseOptionalPositiveInt = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  return parsePositiveInt(value);
+};
+
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const withServiceExecution = async (fn, fallbackMessage) => {
@@ -167,9 +172,10 @@ export const buildConfirmDispatchOrderUseCase = ({ dispatchOrderService }) => {
 };
 
 export const buildDispatchLinesUseCase = ({ dispatchOrderService }) => {
-  return async ({ dispatchOrderId, lines, userId }) => {
+  return async ({ dispatchOrderId, lines, userId, locationId = null }) => {
     const normalizedDispatchOrderId = parsePositiveInt(dispatchOrderId);
     const normalizedUserId = parsePositiveInt(userId);
+    const normalizedLocationId = parseOptionalPositiveInt(locationId);
 
     if (!normalizedDispatchOrderId || !normalizedUserId) {
       return fail(new DomainError(
@@ -187,8 +193,21 @@ export const buildDispatchLinesUseCase = ({ dispatchOrderService }) => {
       ));
     }
 
+    if (locationId !== undefined && locationId !== null && locationId !== '' && !normalizedLocationId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'locationId must be a positive integer when provided',
+        { statusCode: 400 }
+      ));
+    }
+
     return withServiceExecution(
-      () => dispatchOrderService.dispatchLines(normalizedDispatchOrderId, lines, normalizedUserId),
+      () => dispatchOrderService.dispatchLines(
+        normalizedDispatchOrderId,
+        lines,
+        normalizedUserId,
+        normalizedLocationId
+      ),
       'Failed to execute dispatch lines'
     );
   };

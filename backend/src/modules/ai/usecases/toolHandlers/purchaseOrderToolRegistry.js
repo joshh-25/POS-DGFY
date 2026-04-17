@@ -1,3 +1,8 @@
+const parsePositiveInt = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 export const buildPurchaseOrderToolRegistry = ({ purchaseOrderService }) => {
   const handlers = {
     get_purchase_orders: async ({ args }) => {
@@ -70,10 +75,42 @@ export const buildPurchaseOrderToolRegistry = ({ purchaseOrderService }) => {
     },
 
     receive_purchase_order: async ({ args, user }) => {
-      const { po_id, received_items } = args;
+      const { po_id, location_id, received_items } = args;
+      const normalizedPoId = parsePositiveInt(po_id);
+      const normalizedLocationId = parsePositiveInt(location_id);
+      if (!normalizedPoId) {
+        const error = new Error('po_id is required and must be a positive integer');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (!normalizedLocationId) {
+        const error = new Error('location_id is required and must be a positive integer');
+        error.statusCode = 422;
+        throw error;
+      }
+      if (!Array.isArray(received_items) || received_items.length === 0) {
+        const error = new Error('received_items must contain at least one line');
+        error.statusCode = 422;
+        throw error;
+      }
+      const receiptData = {
+        location_id: normalizedLocationId,
+        line_items: received_items.map((item) => ({
+          line_item_id: parsePositiveInt(item.line_item_id),
+          quantity_received: Number(item.received_quantity || 0),
+          quality_check_status: 'passed',
+          expiry_date: item.expiry_date || null
+        }))
+      };
+      const invalidLine = receiptData.line_items.find((item) => !item.line_item_id || !(Number.isFinite(item.quantity_received) && item.quantity_received > 0));
+      if (invalidLine) {
+        const error = new Error('received_items entries require positive line_item_id and received_quantity');
+        error.statusCode = 422;
+        throw error;
+      }
       const result = await purchaseOrderService.receivePurchaseOrder(
-        po_id,
-        received_items,
+        normalizedPoId,
+        receiptData,
         user.user_id
       );
 
@@ -81,22 +118,20 @@ export const buildPurchaseOrderToolRegistry = ({ purchaseOrderService }) => {
         success: true,
         message: 'Purchase Order received successfully',
         details: {
-          'Items Received': String(result.itemsReceived || 0),
-          'Batches Created': String(result.batchesCreated || 0),
-          Status: 'Completed'
+          'Items Received': String(receiptData.line_items.length),
+          Location: String(location_id),
+          Status: result.status || 'Completed'
         },
         stats: {
-          items_received: result.itemsReceived || 0,
-          batches_created: result.batchesCreated || 0
+          items_received: receiptData.line_items.length
         },
         related_entity: {
           type: 'purchase_order',
-          id: po_id,
-          label: `PO #${po_id}`
+          id: normalizedPoId,
+          label: `PO #${normalizedPoId}`
         },
-        po_id,
-        batches_created: result.batchesCreated,
-        items_received: result.itemsReceived
+        po_id: normalizedPoId,
+        items_received: receiptData.line_items.length
       };
     }
   };

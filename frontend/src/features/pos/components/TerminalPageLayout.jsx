@@ -362,6 +362,7 @@ export default function TerminalPageLayout({
                                 isMsmeMode={isMsmeMode}
                                 layoutContext="embedded"
                                 canViewHistory={canViewPos}
+                                selectedLocationId={selectedLocationId}
                                 activeShiftId={activeShiftId}
                                 terminalId={activeTerminalId}
                                 checkoutBlockedReason={checkoutBlockedReason}

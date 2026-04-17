@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "wave_id": "wave-prod-2026-04-17",
+    "stage": "production",
+    "generated_at": "2026-04-17T00:00:00.000Z",
+    "owner": "engineering",
+    "handoff_packet_path": "docs/features/multi-location-inventory/ROLLOUT_HANDOFF_PACKET_WAVE-PROD-2026-04-17.md"
+  },
+  "evidence": {
+    "backup": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/backup-restore-drill.md",
+      "sha256": "",
+      "generated_at": "",
+      "command": "ops-managed backup and restore drill runbook",
+      "waiver_reason": ""
+    },
+    "restore_drill": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/backup-restore-drill.md",
+      "sha256": "",
+      "generated_at": "",
+      "command": "ops-managed backup and restore drill runbook",
+      "waiver_reason": ""
+    },
+    "backfill_parity": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/location-stock-parity.json",
+      "sha256": "",
+      "generated_at": "",
+      "command": "node backend/scripts/audit-location-stock-parity.js --repair-current-stock --json-output ../docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/location-stock-parity.json",
+      "waiver_reason": ""
+    },
+    "fifo_integrity": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/fifo-drift.json",
+      "sha256": "",
+      "generated_at": "",
+      "command": "node backend/scripts/audit-fifo-drift.js --repair-positive-drift --json-output ../docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/fifo-drift.json",
+      "waiver_reason": ""
+    },
+    "drift_monitor_soak": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/drift-soak-report.md",
+      "sha256": "",
+      "generated_at": "",
+      "command": "ops-managed drift soak monitoring report",
+      "waiver_reason": ""
+    },
+    "location_stock_parity": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/location-stock-parity.json",
+      "sha256": "",
+      "generated_at": "",
+      "command": "node backend/scripts/audit-location-stock-parity.js --repair-current-stock --json-output ../docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/location-stock-parity.json",
+      "waiver_reason": ""
+    },
+    "rollback_rehearsal": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/rollback-rehearsal.md",
+      "sha256": "",
+      "generated_at": "",
+      "command": "ops-managed rollback rehearsal runbook",
+      "waiver_reason": ""
+    },
+    "pilot_uat": {
+      "status": "pending",
+      "artifact_path": "docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/pilot-uat.md",
+      "sha256": "",
+      "generated_at": "",
+      "command": "manual readiness/UAT runbook",
+      "waiver_reason": ""
+    }
+  }
+}
