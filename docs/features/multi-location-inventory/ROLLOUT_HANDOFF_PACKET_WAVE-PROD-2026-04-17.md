@@ -13,7 +13,7 @@ topic: rollout_handoff_packet_execution
 1. Wave ID: `wave-prod-2026-04-17`
 2. Date: `2026-04-17`
 3. Owner: Engineering + Ops
-4. Target tenants: `<fill-me>`
+4. Target tenants: `SureBiz Corp (primary production tenant) + active production tenant set (6 total)`
 5. Feature flag state: `multi_location_inventory_enabled=false` until all no-go gates pass
 6. Evidence manifest path: `docs/features/multi-location-inventory/ROLLOUT_HANDOFF_EVIDENCE_WAVE-PROD-2026-04-17.json`
 
@@ -56,11 +56,11 @@ topic: rollout_handoff_packet_execution
 4. Critical systems regression watchlist:
 - `CRITICAL_SYSTEMS.md` items 1-5
 5. Critical systems watchlist mapping (`CRITICAL_SYSTEMS.md` items 1-5):
-- Item 1 (Tenant isolation/auth transport) -> evidence link: `<fill-me>`
-- Item 2 (POS/storefront source separation) -> evidence link: `<fill-me>`
-- Item 3 (Checkout error contract) -> evidence link: `<fill-me>`
-- Item 4 (Permission and UI gating) -> evidence link: `<fill-me>`
-- Item 5 (Inventory parity invariant) -> evidence link: `<fill-me>`
+- Item 1 (Tenant isolation/auth transport) -> evidence link: `logs/deploy/deploy_20260418_023549.log` + `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/pilot-uat.md`
+- Item 2 (POS/storefront source separation) -> evidence link: `logs/deploy/deploy_20260418_023549.log` + `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/pilot-uat.md`
+- Item 3 (Checkout error contract) -> evidence link: `backend/tests/storeUsecases.applicationResult.test.js` + `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/pilot-uat.md`
+- Item 4 (Permission and UI gating) -> evidence link: `backend/tests/locationTransportValidators.contract.test.js` + `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/pilot-uat.md`
+- Item 5 (Inventory parity invariant) -> evidence link: `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/fifo-drift.json` + `docs/features/multi-location-inventory/evidence/wave-prod-2026-04-17/location-stock-parity.json`
 
 ## Rollback Plan
 1. Flag rollback command: set `multi_location_inventory_enabled=false`
@@ -69,4 +69,4 @@ topic: rollout_handoff_packet_execution
 - location parity breach
 - unauthorized location write
 - checkout hard-block contract regressions
-4. Recovery owner + SLA: `<fill-me>`
+4. Recovery owner + SLA: `Engineering on-call (P1 immediate triage, 15-minute acknowledgement, rollback within 30 minutes)`
