@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-04-16
+last_reviewed: 2026-04-18
 applies_to: multi_location_inventory_rollout
 topic: rollout_handoff_packet
 ---
@@ -21,7 +21,8 @@ topic: rollout_handoff_packet
 1. ADR reference:
 2. Decision ledger commit hash:
 3. Requirement matrix commit hash:
-4. Any approved scope deltas:
+4. Operation contract matrix commit hash:
+5. Any approved scope deltas:
 
 ## Contract Diffs
 1. Backend API changes:

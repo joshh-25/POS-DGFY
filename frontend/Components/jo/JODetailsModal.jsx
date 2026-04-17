@@ -187,7 +187,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   </div>
                   <p className="text-xs text-slate-500">Created</p>
                   <p className="text-sm font-medium">
-                    {displayJO.created_date || (displayJO.created_at ? format(new Date(displayJO.created_at), 'MMM d') : '—')}
+                    {displayJO.created_date || (displayJO.created_at ? format(new Date(displayJO.created_at), 'MMM d') : 'N/A')}
                   </p>
                 </div>
                 <ArrowRight className="w-5 h-5 text-slate-300" />
@@ -199,7 +199,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                     <Play className={cn("w-5 h-5", displayJO.status !== 'draft' ? "text-blue-600" : "text-slate-400")} />
                   </div>
                   <p className="text-xs text-slate-500">Started</p>
-                  <p className="text-sm font-medium">{displayJO.status !== 'draft' ? 'In Progress' : '—'}</p>
+                  <p className="text-sm font-medium">{displayJO.status !== 'draft' ? 'In Progress' : 'N/A'}</p>
                 </div>
                 <ArrowRight className="w-5 h-5 text-slate-300" />
                 <div className="text-center">
@@ -213,7 +213,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                   <p className="text-sm font-medium">
                     {displayJO.completion_date
                       ? format(new Date(displayJO.completion_date), 'MMM d, h:mm a')
-                      : '—'
+                      : 'N/A'
                     }
                   </p>
                 </div>
@@ -281,7 +281,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                                 </div>
                               ) : (
                                 <span className="text-slate-400 text-xs italic">
-                                  {displayJO.status === 'completed' ? 'FIFO Auto' : '—'}
+                                  {displayJO.status === 'completed' ? 'FIFO Auto' : 'N/A'}
                                 </span>
                               )}
                             </td>
@@ -291,7 +291,7 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
                             )}>
                               {ing.stock_after !== undefined
                                 ? `${formatNumber(ing.stock_after, 2)} ${uom}`
-                                : '—'
+                                : 'N/A'
                               }
                             </td>
                           </tr>

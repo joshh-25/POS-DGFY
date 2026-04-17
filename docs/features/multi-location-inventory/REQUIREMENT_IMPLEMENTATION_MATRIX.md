@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-04-17
+last_reviewed: 2026-04-18
 applies_to: multi_location_inventory_rollout
 topic: requirement_traceability
 ---
@@ -13,6 +13,7 @@ topic: requirement_traceability
 1. Each requirement must map to backend, frontend, migration/invariant, and tests.
 2. Mark completion only when implementation and verification are both complete.
 3. Keep test case IDs aligned with automated/manual suites.
+4. Cross-check every requirement against [OPERATION_CONTRACT_MATRIX.md](/C:/xampp/htdocs/SKU-Inventory-Manager/docs/features/multi-location-inventory/OPERATION_CONTRACT_MATRIX.md) before wave sign-off.
 
 | Req ID | Requirement | Backend Endpoint/Use Case | Frontend Surface | Migration/Invariant | Test Case ID | Status |
 |---|---|---|---|---|---|---|

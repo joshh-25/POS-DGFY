@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-04-17T04:35:56.180Z",
+  "generated_at": "2026-04-17T18:26:40.236Z",
   "tolerance": 0.0001,
-  "repair_positive_drift": true,
+  "repair_positive_drift": false,
   "tenant_count": 1,
   "degraded_tenants": 0,
   "total_drift_rows": 0,

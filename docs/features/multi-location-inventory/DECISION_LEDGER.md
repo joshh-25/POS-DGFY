@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-17
+last_reviewed: 2026-04-18
 applies_to: multi_location_inventory_rollout
 topic: decision_lock_contract
 ---
@@ -82,3 +82,9 @@ Any scope change must update this ledger, the ADR, and the requirement matrix in
 - Change: Added local-wave evidence waiver contract (`waived_local`) for operational gates in the closure script, generated checksum-backed local evidence artifacts, and promoted matrix rows `ML-01/02/03/05/06/09/12` to `Completed` for local closure.
 - Reason: Remove local hard blockers without falsifying production readiness; preserve strict production requirement while allowing deterministic engineering closure for non-production verification waves.
 - Impacts: `check:multi-location-rollout` now accepts `waived_local` only for local waves with mandatory waiver reason; parity/FIFO artifacts are hash-verified; production rollout remains policy-blocked until ops-run gates are executed in deployment environments.
+
+8. Date: 2026-04-18
+- Owner: Engineering
+- Change: Added full frontend/backend operation contract matrix for inventory + commerce flows and resolved multi-location UI readiness defects (location-required copy/selector parity checks plus ASCII-safe fallback labels in JO details states).
+- Reason: Close remaining parity-audit gaps by documenting every stock-affecting operation with explicit mismatch tags and verification evidence while removing user-facing ambiguity in edge UI states.
+- Impacts: New operation-level traceability artifact is now required for wave closure; requirement matrix usage updated to mandate cross-check; JO details modal now renders deterministic fallback labels (`N/A`) in timeline and FIFO batch visibility states.
