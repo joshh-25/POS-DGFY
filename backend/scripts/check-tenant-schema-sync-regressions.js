@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url';
 function parseArgs(argv = process.argv.slice(2)) {
     const options = {
         reportFile: '',
-        baselineFile: ''
+        baselineFile: '',
+        requireZero: false
     };
 
     for (let i = 0; i < argv.length; i += 1) {
@@ -17,6 +18,10 @@ function parseArgs(argv = process.argv.slice(2)) {
         if (arg === '--baseline-file') {
             options.baselineFile = argv[i + 1] || '';
             i += 1;
+            continue;
+        }
+        if (arg === '--require-zero') {
+            options.requireZero = true;
         }
     }
     return options;
@@ -100,7 +105,7 @@ async function readJson(path) {
     return JSON.parse(content);
 }
 
-export async function runTenantSyncRegressionGate({ reportFile, baselineFile }) {
+export async function runTenantSyncRegressionGate({ reportFile, baselineFile, requireZero = false }) {
     if (!reportFile) {
         throw new Error('Missing required --report-file');
     }
@@ -132,7 +137,13 @@ export async function runTenantSyncRegressionGate({ reportFile, baselineFile }) 
     }
 
     const hasRegressions = comparison.new_failures.length > 0 || comparison.mutated_failures.length > 0;
+    const hasUnresolvedFailures = requireZero && comparison.summary.current_failure_count > 0;
+
     if (hasRegressions) {
+        process.exitCode = 1;
+    }
+    if (hasUnresolvedFailures) {
+        console.error('[TenantSchemaSyncGate] unresolved failures are not allowed in --require-zero mode.');
         process.exitCode = 1;
     }
 

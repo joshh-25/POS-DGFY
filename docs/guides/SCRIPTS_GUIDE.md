@@ -28,8 +28,9 @@ What it does:
 11. Repairs required indexes (`npm run repair:indexes`)
 12. Runs strict index audit (`npm run audit:indexes`)
 13. Runs billing telemetry checks only when billing checks are enabled (`PAYMENTS_ENABLED` + `DEPLOY_RUN_BILLING_VERIFY`)
-14. Runs tenant schema sync and writes report artifact
+14. Runs tenant schema sync in `report` mode and writes report artifact
 15. Applies tenant schema sync regression gate against baseline
+16. Runs tenant index headroom audit (warning by default, strict optional)
 16. Reloads PM2 and runs health checks
 
 Billing verification mode override:
@@ -132,12 +133,14 @@ Notes:
 Legacy script for subscription-billing telemetry integrity. Do not include this as a required deploy gate while `PAYMENTS_ENABLED=false`.
 
 ## 5a. `backend/scripts/sync-tenant-schemas.js`
-Tenant schema sync script with machine-readable reporting.
+Tenant schema sync audit script with machine-readable reporting.
 
 Usage:
 ```bash
 cd backend
 node scripts/sync-tenant-schemas.js --report-file ../logs/deploy/tenant_schema_sync.json
+node scripts/sync-tenant-schemas.js --mode report --report-file ../logs/deploy/tenant_schema_sync.json
+node scripts/sync-tenant-schemas.js --mode alter --report-file ../logs/deploy/tenant_schema_sync.json
 ```
 
 Report includes:
@@ -147,6 +150,10 @@ Report includes:
 - stable fingerprint
 - summary counts
 
+Notes:
+- Default mode is `report` (connectivity + model load only, no `sync({ alter: true })`).
+- `--mode alter` is legacy emergency mode and should be used only in controlled recovery windows.
+
 ## 5b. `backend/scripts/check-tenant-schema-sync-regressions.js`
 Regression gate for tenant schema sync failures.
 
@@ -154,21 +161,61 @@ Usage:
 ```bash
 cd backend
 node scripts/check-tenant-schema-sync-regressions.js --report-file ../logs/deploy/tenant_schema_sync.json --baseline-file config/deploy/tenant-schema-sync-failure-baseline.json
+node scripts/check-tenant-schema-sync-regressions.js --report-file ../logs/deploy/tenant_schema_sync.json --baseline-file config/deploy/tenant-schema-sync-failure-baseline.json --require-zero
 ```
 
 Gate behavior:
 - passes when failures are only known baseline signatures
 - fails when new or mutated failure signatures appear
 - logs resolved baseline signatures as informational output
+- `--require-zero` additionally fails when any failure remains unresolved (use after debt cleanup)
+
+## 5c. `backend/scripts/audit-tenant-index-headroom.js`
+Per-tenant index headroom and redundant-index root-cause audit.
+
+Usage:
+```bash
+cd backend
+node scripts/audit-tenant-index-headroom.js --report-file ../logs/deploy/tenant_index_headroom.json
+node scripts/audit-tenant-index-headroom.js --strict --report-file ../logs/deploy/tenant_index_headroom.json
+```
+
+Behavior:
+- Enumerates landlord + active tenant databases.
+- Audits per-table index counts against warning/critical thresholds.
+- Detects redundant index groups with identical definitions.
+- Emits machine-readable report for operational triage.
+
+## 5d. `backend/scripts/remediate-tenant-redundant-indexes.js`
+Safe redundant-index remediation planner/executor.
+
+Usage:
+```bash
+cd backend
+node scripts/remediate-tenant-redundant-indexes.js --report-file ../logs/deploy/tenant_index_remediation.json --sql-file ../logs/deploy/tenant_index_remediation.sql
+node scripts/remediate-tenant-redundant-indexes.js --apply --yes --tenant-db sku_inventory_manager
+```
+
+Behavior:
+- Dry-run by default (no DDL execution).
+- Builds forward and rollback SQL statements for redundant index drops.
+- `--apply` requires `--yes` for explicit confirmation.
+- Supports tenant scoping with `--tenant-db`.
 
 ## 6. `backend/scripts/cleanup-duplicate-indexes.js`
-Removes duplicate indexes (e.g., `email_2`, `sku_code_3`) that accumulate from repeated Sequelize syncs and hit the MySQL 64-key limit.
+Compatibility wrapper that now delegates to `remediate-tenant-redundant-indexes.js`.
 
 Usage:
 ```bash
 cd backend
 node scripts/cleanup-duplicate-indexes.js
+node scripts/cleanup-duplicate-indexes.js --apply --yes
 ```
+
+Notes:
+- Dry-run by default.
+- Use `--apply --yes` for actual DDL execution.
+- Prefer `remediate-tenant-redundant-indexes.js` directly for report/SQL artifact options.
 
 ## 7. `backend/scripts/seed_qa_data.js`
 Resets the "Premium Corp" QA tenant with a 100% verified dataset for AI and business logic verification.

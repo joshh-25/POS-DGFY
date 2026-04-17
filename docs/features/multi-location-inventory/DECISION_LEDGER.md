@@ -88,3 +88,9 @@ Any scope change must update this ledger, the ADR, and the requirement matrix in
 - Change: Added full frontend/backend operation contract matrix for inventory + commerce flows and resolved multi-location UI readiness defects (location-required copy/selector parity checks plus ASCII-safe fallback labels in JO details states).
 - Reason: Close remaining parity-audit gaps by documenting every stock-affecting operation with explicit mismatch tags and verification evidence while removing user-facing ambiguity in edge UI states.
 - Impacts: New operation-level traceability artifact is now required for wave closure; requirement matrix usage updated to mandate cross-check; JO details modal now renders deterministic fallback labels (`N/A`) in timeline and FIFO batch visibility states.
+
+9. Date: 2026-04-18
+- Owner: Engineering
+- Change: Contained tenant schema-sync residual risk by switching deploy default to `sync-tenant-schemas --mode report`, adding tenant index headroom audit telemetry, and introducing strict toggles for `require-zero` regression gating after cleanup.
+- Reason: Eliminate unsafe production reliance on `sequelize.sync({ alter: true })` in the deploy path while creating deterministic evidence for MySQL key-limit debt closure.
+- Impacts: Deploy now emits both tenant sync and tenant index headroom reports; cleanup can be executed via dedicated remediation tooling with dry-run defaults and explicit apply confirmation.

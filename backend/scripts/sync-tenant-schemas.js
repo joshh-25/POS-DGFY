@@ -70,7 +70,8 @@ export function createSyncFailureRecord(tenant, error) {
 function parseArgs(argv = process.argv.slice(2)) {
     const options = {
         reportFile: '',
-        failOnError: false
+        failOnError: false,
+        mode: process.env.TENANT_SCHEMA_SYNC_MODE || 'report'
     };
 
     for (let i = 0; i < argv.length; i += 1) {
@@ -82,6 +83,11 @@ function parseArgs(argv = process.argv.slice(2)) {
         }
         if (arg === '--fail-on-error') {
             options.failOnError = true;
+            continue;
+        }
+        if (arg === '--mode') {
+            options.mode = argv[i + 1] || options.mode;
+            i += 1;
         }
     }
     return options;
@@ -95,12 +101,18 @@ async function writeReport(reportFile, payload) {
     await fs.writeFile(reportFile, JSON.stringify(payload, null, 2), 'utf8');
 }
 
-export async function runTenantSchemaSync({ reportFile = '', failOnError = false } = {}) {
-    console.log('[TenantSchemaSync] starting');
+export async function runTenantSchemaSync({ reportFile = '', failOnError = false, mode = 'report' } = {}) {
+    const normalizedMode = String(mode || 'report').trim().toLowerCase();
+    if (!['report', 'alter'].includes(normalizedMode)) {
+        throw new Error(`Invalid tenant schema sync mode: ${mode}`);
+    }
+
+    console.log(`[TenantSchemaSync] starting mode=${normalizedMode}`);
     const report = {
         generated_at: new Date().toISOString(),
         landlord_db: MAIN_DB,
         host: DB_HOST,
+        mode: normalizedMode,
         summary: {
             tenants_total: 0,
             succeeded: 0,
@@ -134,13 +146,18 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
 
             try {
                 getTenantModels(tenantSequelize);
-                await tenantSequelize.sync({ alter: true });
+                if (normalizedMode === 'alter') {
+                    await tenantSequelize.sync({ alter: true });
+                } else {
+                    await tenantSequelize.authenticate();
+                }
                 report.summary.succeeded += 1;
                 report.results.push({
                     tenant_id: tenant.id,
                     tenant_name: tenant.name,
                     tenant_db: tenant.db_name,
-                    status: 'ok'
+                    status: 'ok',
+                    mode: normalizedMode
                 });
                 console.log(`[TenantSchemaSync] ok tenant=${tenant.db_name}`);
             } catch (error) {

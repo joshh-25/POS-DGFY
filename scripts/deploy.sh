@@ -87,6 +87,9 @@ while [[ $# -gt 0 ]]; do
             echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
+            echo "  DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter (default report)"
+            echo "  DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1 (default 0)"
+            echo "  DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1 (default 0)"
             exit 0
             ;;
         *)
@@ -863,15 +866,32 @@ fi
 log "Running tenant schema sync..."
 TENANT_SYNC_REPORT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.tenant_schema_sync.json"
 TENANT_SYNC_BASELINE_FILE="$BACKEND_DIR/config/deploy/tenant-schema-sync-failure-baseline.json"
+TENANT_SYNC_MODE="${DEPLOY_TENANT_SCHEMA_SYNC_MODE:-report}"
+TENANT_SYNC_REQUIRE_ZERO="${DEPLOY_TENANT_SYNC_REQUIRE_ZERO:-0}"
+TENANT_INDEX_HEADROOM_REPORT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.tenant_index_headroom.json"
+TENANT_INDEX_HEADROOM_STRICT="${DEPLOY_TENANT_INDEX_HEADROOM_STRICT:-0}"
 if [[ -f "$BACKEND_DIR/scripts/sync-tenant-schemas.js" ]]; then
-    (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js --report-file "$TENANT_SYNC_REPORT_FILE")
+    (cd "$BACKEND_DIR" && node scripts/sync-tenant-schemas.js --mode "$TENANT_SYNC_MODE" --report-file "$TENANT_SYNC_REPORT_FILE")
     if [[ -f "$TENANT_SYNC_BASELINE_FILE" ]]; then
-        run_step "Running tenant schema sync regression gate..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/check-tenant-schema-sync-regressions.js --report-file \"$TENANT_SYNC_REPORT_FILE\" --baseline-file \"$TENANT_SYNC_BASELINE_FILE\""
+        tenant_sync_gate_cmd="cd \"$BACKEND_DIR\" && node scripts/check-tenant-schema-sync-regressions.js --report-file \"$TENANT_SYNC_REPORT_FILE\" --baseline-file \"$TENANT_SYNC_BASELINE_FILE\""
+        if [[ "$TENANT_SYNC_REQUIRE_ZERO" == "1" ]]; then
+            tenant_sync_gate_cmd="$tenant_sync_gate_cmd --require-zero"
+        fi
+        run_step "Running tenant schema sync regression gate..." bash -lc "$tenant_sync_gate_cmd"
     else
         warn "Tenant schema sync baseline not found: $TENANT_SYNC_BASELINE_FILE (regression gate skipped)."
     fi
 else
     warn "sync-tenant-schemas.js not found; skipped."
+fi
+if [[ -f "$BACKEND_DIR/scripts/audit-tenant-index-headroom.js" ]]; then
+    tenant_index_headroom_cmd="cd \"$BACKEND_DIR\" && node scripts/audit-tenant-index-headroom.js --report-file \"$TENANT_INDEX_HEADROOM_REPORT_FILE\""
+    if [[ "$TENANT_INDEX_HEADROOM_STRICT" == "1" ]]; then
+        tenant_index_headroom_cmd="$tenant_index_headroom_cmd --strict"
+    fi
+    run_step "Running tenant index headroom audit..." bash -lc "$tenant_index_headroom_cmd"
+else
+    warn "audit-tenant-index-headroom.js not found; skipped."
 fi
 run_step "Backfilling legacy role permissions across tenant databases..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/backfill-role-permissions.js"
 
@@ -1051,6 +1071,10 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "tenant_store_public_url=${TENANT_STORE_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "tenant_schema_sync_report_file=${TENANT_SYNC_REPORT_FILE:-none}"
     echo "tenant_schema_sync_baseline_file=${TENANT_SYNC_BASELINE_FILE:-none}"
+    echo "tenant_schema_sync_mode=${TENANT_SYNC_MODE:-report}"
+    echo "tenant_schema_sync_require_zero=${TENANT_SYNC_REQUIRE_ZERO:-0}"
+    echo "tenant_index_headroom_report_file=${TENANT_INDEX_HEADROOM_REPORT_FILE:-none}"
+    echo "tenant_index_headroom_strict=${TENANT_INDEX_HEADROOM_STRICT:-0}"
     echo "elapsed_seconds=$ELAPSED"
 } > "$SUMMARY_FILE"
 

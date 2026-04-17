@@ -87,6 +87,11 @@ Deployment evidence files:
 Tenant sync baseline file (repo-tracked):
 - `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
 
+Tenant schema/index risk controls:
+- `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
+- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `0`; set `1` after cleanup to block unresolved failures)
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `0`; set `1` to fail deploy on warning/degraded index headroom status)
+
 ## Legacy Hook Mode (Recovery Only)
 Legacy hooks are intentionally disabled by default.
 
