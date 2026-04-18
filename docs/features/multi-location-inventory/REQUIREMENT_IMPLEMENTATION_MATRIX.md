@@ -33,3 +33,12 @@ topic: requirement_traceability
 ## No-Omission Gate
 Rollout phase cannot close while any in-scope row remains `Planned` or `In Progress`.
 In-scope rows also cannot return to `Completed` unless mapped automated tests pass and a wave handoff packet includes linked evidence for parity, drift, rollback rehearsal, and UAT.
+
+## Production Closure Evidence (Wave `wave-prod-2026-04-18`)
+1. Deployed commit: `07c1eb20e5dc0de8519d7dac89f4c70f37662db1` (`master`).
+2. Deploy summary: `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.summary.txt`.
+3. Tenant schema sync (strict zero-failure gate): `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_schema_sync.json` (`tenants_total=6`, `succeeded=6`, `failed=0`).
+4. Tenant index headroom strict audit: `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_index_headroom.json` (`status=healthy`, `redundant_groups_total=0`).
+5. Redundant-index remediation evidence: `/var/www/skupervisor/logs/deploy/tenant-index-remediation-after-strict-gate.json` (`dropped_count=203`).
+6. Post-remediation strict audit confirmation: `/var/www/skupervisor/logs/deploy/tenant-index-headroom-after-strict-remediation.json`.
+7. Full wave packet: [ROLLOUT_HANDOFF_PACKET_WAVE_PROD_2026-04-18.md](/C:/xampp/htdocs/SKU-Inventory-Manager/docs/features/multi-location-inventory/ROLLOUT_HANDOFF_PACKET_WAVE_PROD_2026-04-18.md).

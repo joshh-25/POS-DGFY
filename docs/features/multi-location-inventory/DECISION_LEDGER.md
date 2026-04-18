@@ -94,3 +94,9 @@ Any scope change must update this ledger, the ADR, and the requirement matrix in
 - Change: Contained tenant schema-sync residual risk by switching deploy default to `sync-tenant-schemas --mode report`, adding tenant index headroom audit telemetry, and introducing strict toggles for `require-zero` regression gating after cleanup.
 - Reason: Eliminate unsafe production reliance on `sequelize.sync({ alter: true })` in the deploy path while creating deterministic evidence for MySQL key-limit debt closure.
 - Impacts: Deploy now emits both tenant sync and tenant index headroom reports; cleanup can be executed via dedicated remediation tooling with dry-run defaults and explicit apply confirmation.
+
+10. Date: 2026-04-18
+- Owner: Engineering
+- Change: Finalized strict production closure by clearing baseline failures, enabling strict deploy defaults (`DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1`, `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1`), remediating redundant tenant indexes, and redeploying commit `07c1eb20e5dc0de8519d7dac89f4c70f37662db1` with all rollout gates green.
+- Reason: Complete remediation waves and remove residual deploy-time ambiguity so production rollout state matches matrix/ops truth.
+- Impacts: Tenant schema sync now enforces zero unresolved failures in deploy pipeline; tenant index headroom strict audit blocks release on drift; operational evidence captured in wave handoff packet and deploy artifacts.

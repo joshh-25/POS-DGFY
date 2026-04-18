@@ -1,6 +1,6 @@
 # Critical Systems Documentation
 
-Last reviewed: 2026-04-17
+Last reviewed: 2026-04-18
 
 This document tracks high-risk systems where regressions can break tenant isolation, checkout integrity, or operational readiness across IMS, POS terminal, storefront, and unified sales.
 
@@ -110,3 +110,14 @@ For multi-location inventory rollout waves, treat these as hard regression check
 3. Checkout error contract remains deterministic and actionable (especially location stock violations).
 4. Permission gating remains enforced, including location-scoped write-path controls.
 5. Inventory parity invariant holds: aggregated location stock matches compatibility total.
+
+## Latest Production Evidence (2026-04-18)
+1. Deploy commit: `07c1eb20e5dc0de8519d7dac89f4c70f37662db1`.
+2. Deploy summary: `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.summary.txt`.
+3. Strict schema gate: `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_schema_sync.json` (`failed=0`).
+4. Strict index headroom gate: `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_index_headroom.json` (`status=healthy`, `redundant_groups_total=0`).
+5. Public runtime checks passed:
+- `https://skupervisor.surebizcorp.com`
+- `https://pos.surebizcorp.com`
+- `https://surebizcorp.com`
+- `https://surebizcorp.com/tenant-store/`

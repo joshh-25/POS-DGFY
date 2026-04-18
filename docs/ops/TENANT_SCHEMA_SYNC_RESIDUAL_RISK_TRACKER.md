@@ -14,20 +14,28 @@ topic: tenant_schema_sync_residual_risk
 2. Title: Eliminate `mysql_too_many_keys` residual failures and move tenant schema sync gate to zero-failure mode.
 3. Owner: Engineering + Ops
 4. Priority: P1-techdebt
-5. Status: In Progress
+5. Status: Closed (2026-04-18)
 
 ## Current Risk
-1. Known baseline signatures exist in `backend/config/deploy/tenant-schema-sync-failure-baseline.json`.
-2. Deploy regression gate blocks new/mutated signatures but does not yet enforce zero unresolved failures.
-3. Root cause area: index bloat/redundant indexes pushing tables toward MySQL 64-key limit.
+1. Baseline signatures were fully cleared in `backend/config/deploy/tenant-schema-sync-failure-baseline.json` (`failures=[]`).
+2. Deploy now enforces strict closure defaults:
+- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1`
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1`
+3. Residual risk is now operational monitoring only; no accepted unresolved schema-sync debt remains.
 
-## Latest Audit Snapshot (Local Validation 2026-04-18)
-1. Command: `npm run audit:tenant-index-headroom`
-2. Result: `status=degraded` with warning/critical tables and redundant-index groups detected.
-3. Primary high-risk local tables observed:
-- `tenants` reached critical index count (64)
-- `users` warning-level headroom (60 indexes)
-- multiple repeated unique/index suffix families (`*_2 ... *_18`)
+## Latest Audit Snapshot (Production Closure 2026-04-18)
+1. Initial strict-gate deploy audit (blocked release):
+- `/var/www/skupervisor/logs/deploy/deploy_20260418_032545.tenant_index_headroom.json`
+- Result: `status=warning`, `redundant_groups=133`.
+2. Remediation execution:
+- `/var/www/skupervisor/logs/deploy/tenant-index-remediation-after-strict-gate.json`
+- Result: `dropped_count=203`.
+3. Post-remediation strict audit:
+- `/var/www/skupervisor/logs/deploy/tenant-index-headroom-after-strict-remediation.json`
+- Result: `status=healthy`, `redundant_groups_total=0`.
+4. Final strict deploy evidence:
+- `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_schema_sync.json` (`failed=0`)
+- `/var/www/skupervisor/logs/deploy/deploy_20260418_032723.tenant_index_headroom.json` (`status=healthy`).
 
 ## Execution Checklist
 1. Run root-cause audit:
@@ -40,10 +48,10 @@ topic: tenant_schema_sync_residual_risk
 - `node backend/scripts/sync-tenant-schemas.js --mode alter --report-file <path>`
 - `node backend/scripts/check-tenant-schema-sync-regressions.js --report-file <path> --baseline-file backend/config/deploy/tenant-schema-sync-failure-baseline.json`
 5. Close debt:
-- remove resolved entries from baseline
-- set deploy gate strict mode for zero unresolved failures (`DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1`)
+- keep baseline empty unless a new approved exception is explicitly documented
+- keep strict deploy defaults enabled and fail-closed on new schema/index drift
 
 ## Exit Criteria
-1. Baseline failure list is empty.
-2. Tenant schema sync regression gate passes with `--require-zero`.
-3. Deploy runs with `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report`, no unresolved tenant schema failures, and clean headroom audit.
+1. Baseline failure list is empty. (Completed)
+2. Tenant schema sync regression gate passes with `--require-zero`. (Completed)
+3. Deploy runs with `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report`, no unresolved tenant schema failures, and clean headroom audit. (Completed)
