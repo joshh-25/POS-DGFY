@@ -9,10 +9,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
-import { cn } from "../../src/lib/utils.js";
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 import { useLocations } from '@/src/hooks/useLocations.js';
+import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { toast } from 'sonner';
 
 // Import step components
@@ -74,7 +74,7 @@ const defaultProductData = {
   quality_control: {},
   regulatory_compliance: {},
   production_notes: '',
-  fifo_enabled: false
+  fifo_enabled: true
 };
 
 export default function ProductCreateWizard({
@@ -96,11 +96,29 @@ export default function ProductCreateWizard({
   const [initialProductData, setInitialProductData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
+  const [lastSuggestedSku, setLastSuggestedSku] = useState('');
+  const [stockBaseline, setStockBaseline] = useState(0);
   const { locations, loading: loadingLocations } = useLocations();
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
     [locations]
   );
+  const productLocationStockMap = useMemo(() => {
+    const rows = Array.isArray(product?.item_location_stocks) ? product.item_location_stocks : [];
+    const map = new Map();
+    rows.forEach((row) => {
+      const locationId = Number.parseInt(row?.location_id, 10);
+      if (!Number.isInteger(locationId) || locationId <= 0) return;
+      map.set(String(locationId), Number(row?.quantity_on_hand) || 0);
+    });
+    return map;
+  }, [product]);
+  const resolveLocationStock = (locationId) => {
+    if (!locationId) return null;
+    const normalized = String(locationId);
+    return productLocationStockMap.has(normalized) ? (productLocationStockMap.get(normalized) || 0) : null;
+  };
 
   const isEditingDraft = product?.status === 'draft';
 
@@ -134,6 +152,23 @@ export default function ProductCreateWizard({
   // Initialize from product (for editing/resuming drafts)
   useEffect(() => {
     if (product && open) {
+      const locationStocks = Array.isArray(product.item_location_stocks) ? product.item_location_stocks : [];
+      const stockByLocation = new Map();
+      locationStocks.forEach((stockRow) => {
+        const locationId = Number.parseInt(stockRow?.location_id, 10);
+        if (!Number.isInteger(locationId) || locationId <= 0) return;
+        stockByLocation.set(String(locationId), parseNumberField(stockRow?.quantity_on_hand, 0));
+      });
+      const initialLocationId = product.location_id
+        ? String(product.location_id)
+        : activeLocations.length === 1
+          ? String(activeLocations[0].location_id)
+          : locationStocks.length === 1
+            ? String(locationStocks[0].location_id)
+            : '';
+      const initialLocationStock = initialLocationId && stockByLocation.has(initialLocationId)
+        ? stockByLocation.get(initialLocationId)
+        : (activeLocations.length > 1 ? 0 : parseNumberField(product.current_stock, 0));
       const loadedData = {
         ...defaultProductData,
         ...product,
@@ -141,8 +176,8 @@ export default function ProductCreateWizard({
         batch_size: parseNumberFieldOrNull(product.batch_size),
         yield_percentage: parseNumberField(product.yield_percentage, 100),
         processing_loss: parseNumberField(product.processing_loss, 0),
-        current_stock: parseNumberField(product.current_stock, 0),
-        location_id: product.location_id ? String(product.location_id) : '',
+        current_stock: initialLocationStock,
+        location_id: initialLocationId,
         max_capacity: parseNumberField(product.max_capacity, 1000),
         min_threshold: parseNumberField(product.min_threshold, 0),
         purchase_allowance: parseNumberField(product.purchase_allowance, 0),
@@ -172,6 +207,9 @@ export default function ProductCreateWizard({
 
       setProductData(loadedData);
       setInitialProductData(loadedData);
+      setStockBaseline(Number(initialLocationStock) || 0);
+      setSkuManuallyEdited(Boolean(String(loadedData.sku_code || '').trim()));
+      setLastSuggestedSku('');
 
       // Resume from last completed step if draft
       if (product.status === 'draft' && product.wizard_metadata?.last_completed_step) {
@@ -192,11 +230,42 @@ export default function ProductCreateWizard({
       };
       setProductData(nextDefaultData);
       setInitialProductData(nextDefaultData);
+      setStockBaseline(Number(nextDefaultData.current_stock) || 0);
       setStep(1);
       setInitialStep(1);
       setIsDirty(false);
+      setSkuManuallyEdited(false);
+      setLastSuggestedSku('');
     }
   }, [product, open, activeLocations]);
+
+  useEffect(() => {
+    if (!open || skuManuallyEdited) return;
+
+    const suggestedSku = suggestNextSku({
+      name: productData.name,
+      category: 'product',
+      existingItems: items,
+      currentItemId: product?.item_id || product?.id || null
+    });
+    setLastSuggestedSku(suggestedSku);
+    if (!suggestedSku) return;
+
+    if (productData.sku_code !== suggestedSku) {
+      setProductData((previous) => ({
+        ...previous,
+        sku_code: suggestedSku
+      }));
+    }
+  }, [
+    items,
+    open,
+    product?.id,
+    product?.item_id,
+    productData.name,
+    productData.sku_code,
+    skuManuallyEdited
+  ]);
 
   // Track dirty state - check if any meaningful data has been entered
   useEffect(() => {
@@ -218,7 +287,36 @@ export default function ProductCreateWizard({
   }, [productData, product, initialProductData]);
 
   const updateProductData = (updates) => {
-    setProductData(prev => ({ ...prev, ...updates }));
+    setProductData((prev) => {
+      const next = { ...prev, ...updates };
+      if (product && Object.prototype.hasOwnProperty.call(updates, 'location_id')) {
+        const locationStock = resolveLocationStock(updates.location_id);
+        if (locationStock !== null) {
+          next.current_stock = locationStock;
+          setStockBaseline(locationStock);
+        } else if (!updates.location_id && activeLocations.length > 1) {
+          next.current_stock = 0;
+          setStockBaseline(0);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleSkuChange = (value) => {
+    const nextValue = String(value || '');
+    setProductData((prev) => ({
+      ...prev,
+      sku_code: nextValue
+    }));
+
+    const trimmedValue = nextValue.trim();
+    if (!trimmedValue) {
+      setSkuManuallyEdited(false);
+      return;
+    }
+
+    setSkuManuallyEdited(trimmedValue.toUpperCase() !== String(lastSuggestedSku || '').trim().toUpperCase());
   };
 
   const resetWizard = () => {
@@ -226,7 +324,10 @@ export default function ProductCreateWizard({
     setInitialStep(1);
     setProductData({ ...defaultProductData });
     setInitialProductData(null);
+    setStockBaseline(0);
     setIsDirty(false);
+    setSkuManuallyEdited(false);
+    setLastSuggestedSku('');
   };
 
   const handleNext = () => {
@@ -293,7 +394,7 @@ export default function ProductCreateWizard({
       return;
     }
     const hasStockAdjustment = product
-      ? (Number(productData.current_stock) || 0) !== (Number(product.current_stock) || 0)
+      ? (Number(productData.current_stock) || 0) !== (Number(stockBaseline) || 0)
       : (Number(productData.current_stock) || 0) > 0;
     if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
       toast.error('Please select a location when setting current stock.');
@@ -318,7 +419,7 @@ export default function ProductCreateWizard({
       return;
     }
     const hasStockAdjustment = product
-      ? (Number(productData.current_stock) || 0) !== (Number(product.current_stock) || 0)
+      ? (Number(productData.current_stock) || 0) !== (Number(stockBaseline) || 0)
       : (Number(productData.current_stock) || 0) > 0;
     if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
       toast.error('Please select a location when setting current stock.');
@@ -418,9 +519,9 @@ export default function ProductCreateWizard({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="wizard-title flex items-center gap-2">
               <Package className="w-5 h-5 text-teal-600" />
               {product ? 'Edit Product' : 'Create New Product'}
               {isEditingDraft && (
@@ -458,6 +559,7 @@ export default function ProductCreateWizard({
             <CurrentStepComponent
               data={productData}
               updateData={updateProductData}
+              onSkuChange={handleSkuChange}
               items={items}
               locations={activeLocations}
               loadingLocations={loadingLocations}
@@ -471,7 +573,7 @@ export default function ProductCreateWizard({
           </div>
 
           {/* Navigation */}
-          <DialogFooter className="flex justify-between border-t border-slate-200 pt-4">
+          <DialogFooter className="wizard-footer flex justify-between border-t border-slate-200 pt-4">
             <div>
               {step > 1 && (
                 <Button variant="outline" onClick={handleBack}>

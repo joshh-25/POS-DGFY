@@ -86,6 +86,45 @@ const normalizeOptionalNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
+const normalizeSkuKey = (value) => {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized || null;
+};
+
+const isActiveSkuUniqueConstraintError = (error) => {
+    if (!error) return false;
+    if (error?.statusCode === 409) return true;
+
+    const isSequelizeUniqueError = error?.name === 'SequelizeUniqueConstraintError';
+    if (!isSequelizeUniqueError) return false;
+
+    const constraint = String(
+        error?.parent?.constraint
+        || error?.original?.constraint
+        || error?.constraint
+        || ''
+    );
+    if (constraint === 'uq_items_active_sku_code') return true;
+
+    const fields = Object.keys(error?.fields || {});
+    if (fields.includes('active_sku_code')) return true;
+
+    return (Array.isArray(error?.errors) ? error.errors : []).some((entry) => (
+        String(entry?.path || '').toLowerCase() === 'active_sku_code'
+    ));
+};
+
+const normalizeSkuConflictError = (error) => {
+    if (!isActiveSkuUniqueConstraintError(error)) return error;
+    if (error?.statusCode === 409 && error?.message === 'Item with this SKU code already exists') {
+        return error;
+    }
+
+    const conflictError = new Error('Item with this SKU code already exists');
+    conflictError.statusCode = 409;
+    return conflictError;
+};
+
 const getCurrentWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
@@ -499,6 +538,8 @@ export const itemRepository = {
         const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
         const ProductComposition = dbStore.get('ProductComposition');
         const FIFOBatch = dbStore.get('FIFOBatch');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const ItemLocationStock = dbStore.get('ItemLocationStock');
         const SupplierItem = dbStore.get('SupplierItem');
         const Supplier = dbStore.get('Supplier');
         const ItemFolder = dbStore.get('ItemFolder');
@@ -519,7 +560,18 @@ export const itemRepository = {
                     required: false,
                     include: [{ model: Item, as: 'ingredient', required: false }]
                 },
-                { model: FIFOBatch, as: 'fifoBatches', required: false },
+                {
+                    model: FIFOBatch,
+                    as: 'fifoBatches',
+                    required: false,
+                    include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }]
+                },
+                ...(ItemLocationStock?.findAll ? [{
+                    model: ItemLocationStock,
+                    as: 'locationStocks',
+                    required: false,
+                    include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }]
+                }] : []),
                 {
                     model: SupplierItem,
                     as: 'supplierItems',
@@ -631,6 +683,19 @@ export const itemRepository = {
             delete formattedItem.fifoBatches;
         }
 
+        if (Array.isArray(formattedItem.locationStocks)) {
+            formattedItem.item_location_stocks = formattedItem.locationStocks.map((stockRow) => ({
+                item_location_stock_id: stockRow.item_location_stock_id,
+                item_id: stockRow.item_id,
+                location_id: stockRow.location_id,
+                quantity_on_hand: Number.parseFloat(stockRow.quantity_on_hand || 0),
+                location_name: stockRow.location?.name || null
+            }));
+            delete formattedItem.locationStocks;
+        } else {
+            formattedItem.item_location_stocks = [];
+        }
+
         return formattedItem;
     },
     async createItem(itemData, userId = null) {
@@ -640,6 +705,10 @@ export const itemRepository = {
 
         try {
             const workflowMode = await getCurrentWorkflowMode();
+            if (itemData?.sku_code !== undefined) {
+                itemData.sku_code = String(itemData.sku_code || '').trim();
+            }
+            const normalizedSku = normalizeSkuKey(itemData?.sku_code);
             assertMsmePricingRequirements({
                 workflowMode,
                 status: itemData?.status,
@@ -647,7 +716,7 @@ export const itemRepository = {
                 defaultSalePrice: itemData?.default_sale_price
             });
 
-            if (itemData.status !== 'draft' && itemData.sku_code) {
+            if (itemData.status !== 'draft' && normalizedSku) {
                 const existingItem = await Item.findOne({
                     where: {
                         sku_code: itemData.sku_code,
@@ -757,16 +826,20 @@ export const itemRepository = {
             if (!transaction.finished) {
                 await transaction.rollback();
             }
-            throw error;
+            throw normalizeSkuConflictError(error);
         }
     },
     async updateItem(itemId, itemData, userId = null) {
         const Item = dbStore.get('Item');
+        const ItemLocationStock = dbStore.get('ItemLocationStock');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const transaction = await sequelize.transaction();
 
         try {
             const workflowMode = await getCurrentWorkflowMode();
+            if (Object.prototype.hasOwnProperty.call(itemData || {}, 'sku_code')) {
+                itemData.sku_code = String(itemData.sku_code || '').trim();
+            }
             const item = await findVisibleItemById(Item, itemId, {
                 transaction,
                 lock: transaction.LOCK.UPDATE
@@ -850,8 +923,19 @@ export const itemRepository = {
             const newStockValue = dbFields.current_stock !== undefined
                 ? parseFloat(dbFields.current_stock || 0)
                 : null;
-            const oldStockValue = parseFloat(item.current_stock || 0);
             const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
+            let oldStockValue = parseFloat(item.current_stock || 0);
+            if (movementLocationId && ItemLocationStock?.findOne) {
+                const locationStock = await ItemLocationStock.findOne({
+                    where: {
+                        item_id: item.item_id,
+                        location_id: movementLocationId
+                    },
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                oldStockValue = parseFloat(locationStock?.quantity_on_hand || 0);
+            }
             delete dbFields.location_id;
 
             if (newStockValue !== null && newStockValue !== oldStockValue) {
@@ -863,7 +947,7 @@ export const itemRepository = {
                     item_id: itemId,
                     quantity: Math.abs(delta),
                     movement_type: delta > 0 ? 'adjustment' : 'calculated_loss',
-                    notes: `Manual stock adjustment from item update form (Old: ${oldStockValue}, New: ${newStockValue})`,
+                    notes: `Manual stock adjustment from item update form${movementLocationId ? ` @ location ${movementLocationId}` : ''} (Old: ${oldStockValue}, New: ${newStockValue})`,
                     reference_type: 'MANUAL',
                     location_id: movementLocationId
                 }, userId, transaction);
@@ -897,7 +981,7 @@ export const itemRepository = {
             if (!transaction.finished) {
                 await transaction.rollback();
             }
-            throw error;
+            throw normalizeSkuConflictError(error);
         }
     },
     async finalizeItem(itemId, itemData = {}, userId = null) {
@@ -940,6 +1024,9 @@ export const itemRepository = {
                 production_notes: item.production_notes,
                 ...itemData
             };
+            if (Object.prototype.hasOwnProperty.call(mergedData, 'sku_code')) {
+                mergedData.sku_code = String(mergedData.sku_code || '').trim();
+            }
 
             if (!mergedData.sku_code) {
                 const error = new Error('SKU code is required to finalize item');
@@ -1027,6 +1114,7 @@ export const itemRepository = {
             const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
             const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
             const FIFOBatch = dbStore.get('FIFOBatch');
+            const TenantLocation = dbStore.get('TenantLocation');
             const ProductComposition = dbStore.get('ProductComposition');
 
             return findVisibleItemById(Item, itemId, {
@@ -1043,7 +1131,10 @@ export const itemRepository = {
                         model: FIFOBatch,
                         as: 'fifoBatches',
                         required: false,
-                        include: [{ model: Item, as: 'item', attributes: ['unit_of_measure'] }]
+                        include: [
+                            { model: Item, as: 'item', attributes: ['unit_of_measure'] },
+                            { model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }
+                        ]
                     },
                     {
                         model: ProductComposition,
@@ -1197,27 +1288,36 @@ export const itemRepository = {
             };
         });
     },
-    async getItemBatches(itemId) {
+    async getItemBatches(itemId, locationId = null) {
         const Item = dbStore.get('Item');
         const FIFOBatch = dbStore.get('FIFOBatch');
+        const TenantLocation = dbStore.get('TenantLocation');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const parsedLocationId = Number.parseInt(locationId, 10);
+        const hasLocationFilter = Number.isInteger(parsedLocationId) && parsedLocationId > 0;
 
         const item = await findVisibleItemById(Item, itemId);
         if (!item) {
             throw notFoundError('Item not found');
         }
 
+        const where = {
+            item_id: itemId,
+            [Op.and]: [
+                sequelize.where(
+                    sequelize.col('quantity'),
+                    Op.gt,
+                    sequelize.col('quantity_consumed')
+                )
+            ]
+        };
+        if (hasLocationFilter) {
+            where.location_id = parsedLocationId;
+        }
+
         return FIFOBatch.findAll({
-            where: {
-                item_id: itemId,
-                [Op.and]: [
-                    sequelize.where(
-                        sequelize.col('quantity'),
-                        Op.gt,
-                        sequelize.col('quantity_consumed')
-                    )
-                ]
-            },
+            where,
+            include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }],
             order: [['received_date', 'ASC']]
         });
     },
@@ -1442,7 +1542,7 @@ export const itemRepository = {
             if (!transaction.finished) {
                 await transaction.rollback();
             }
-            throw error;
+            throw normalizeSkuConflictError(error);
         }
     },
     async listFolders() {

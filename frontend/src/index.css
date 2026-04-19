@@ -53,3 +53,49 @@ body {
   scrollbar-gutter: stable;
 }
 
+.wizard-core-typography {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.wizard-core-typography .wizard-title {
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+.wizard-core-typography .wizard-step-content :is(h3, h4) {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wizard-core-typography .wizard-step-content label {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.wizard-core-typography .wizard-step-content :is(input, textarea, select, button) {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.wizard-core-typography .wizard-step-content .text-sm {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.wizard-core-typography .wizard-step-content .text-xs {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.wizard-core-typography .wizard-footer button {
+  font-size: 1rem;
+  font-weight: 600;
+}
+

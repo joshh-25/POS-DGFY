@@ -71,6 +71,7 @@ const POS_READINESS_INCOMPLETE = 'POS_READINESS_INCOMPLETE';
 export default function Items() {
   const navigate = useNavigate();
   const { items, loading, error, refetch } = useInventoryItems({ limit: 1000 });
+  const { items: skuSeedItems = [] } = useInventoryItems({ fields: 'dropdown', limit: 10000 });
   const { createItem } = useInventoryCreateItem();
   const { updateItem } = useInventoryUpdateItem();
   const { deleteItem, loading: deleting } = useInventoryDeleteItem();
@@ -87,6 +88,14 @@ export default function Items() {
   } = usePermission();
   const { workflowMode } = useWorkflowMode();
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
+  const skuSuggestionItems = useMemo(() => {
+    const mergedById = new Map();
+    [...items, ...skuSeedItems].forEach((item) => {
+      const key = item?.item_id ?? item?.id ?? `sku-${item?.sku_code ?? ''}-${item?.name ?? ''}`;
+      mergedById.set(key, item);
+    });
+    return Array.from(mergedById.values());
+  }, [items, skuSeedItems]);
 
   const { finalizeItem } = useInventoryFinalizeItem();
   const {
@@ -766,14 +775,21 @@ export default function Items() {
     if (!isMsmeMode && isManufactured(item)) {
       try {
         // Fetch complete item data with all associations
-        const fullItemData = await getInventoryItemById(item.item_id);
+        const fullItemData = await getInventoryItemById(item.item_id || item.id);
         handleCreateProduct(fullItemData);
       } catch (error) {
         console.error('Failed to load product data:', error);
         toast.error('Failed to load product data for editing');
       }
     } else {
-      setEditingItem(item);
+      try {
+        const fullItemData = await getInventoryItemById(item.item_id || item.id);
+        setEditingItem(fullItemData);
+      } catch (error) {
+        console.error('Failed to load item data for editing:', error);
+        toast.error('Failed to load complete item data');
+        setEditingItem(item);
+      }
       setShowFormModal(true);
     }
   };
@@ -1923,6 +1939,7 @@ export default function Items() {
           onSave={handleSave}
           onSaveDraft={handleSaveDraft}
           folders={folders}
+          existingItems={skuSuggestionItems}
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
@@ -1956,7 +1973,7 @@ export default function Items() {
             onSubmit={handleProductSubmit}
             onSaveDraft={handleProductSaveDraft}
             product={editingProduct}
-            items={items}
+            items={skuSuggestionItems}
             folders={productFolders}
             posConfig={editingProduct ? resolvePosConfig(editingProduct) : null}
             onTogglePosVisibility={handleTogglePosVisibility}

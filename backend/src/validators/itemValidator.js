@@ -63,7 +63,7 @@ export const createItemSchema = Joi.object({
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
-  fifo_enabled: Joi.boolean().default(false),
+  fifo_enabled: Joi.boolean().default(true),
   batch_size: Joi.number().positive().allow(null).messages({
     'number.positive': 'Batch size must be a positive number'
   }),
@@ -181,7 +181,7 @@ export const createItemDraftSchema = Joi.object({
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
-  fifo_enabled: Joi.boolean().default(false),
+  fifo_enabled: Joi.boolean().default(true),
   batch_size: Joi.number().positive().allow(null, ''),
   yield_percentage: Joi.number().min(0).max(100).allow(null, ''),
   processing_loss: Joi.number().min(0).max(100).allow(null, ''),

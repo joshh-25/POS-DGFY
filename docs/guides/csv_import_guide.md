@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: inventory
-last_reviewed: 2026-04-14
+last_reviewed: 2026-04-18
 applies_to: items_csv_import_export
 topic: workflow_mode_csv_templates
 ---
@@ -76,8 +76,19 @@ Endpoints:
 
 Upsert behavior:
 
-1. New `sku_code` -> create item
-2. Existing `sku_code` -> update item
+1. New normalized `sku_code` key -> create item
+2. Existing normalized `sku_code` key -> update item
+
+Normalization rules:
+1. Lookup key is `UPPER(TRIM(sku_code))`.
+2. `rm-0001`, `RM-0001`, and ` RM-0001 ` are treated as the same SKU key.
+
+## Strict SKU Normalization and Duplicate Detection
+
+Validation now applies in both preview and confirm phases:
+1. Existing SKU matching is case-insensitive and whitespace-normalized.
+2. Duplicate SKU rows in the same uploaded file are rejected even if case/spacing differs.
+3. Duplicate errors include the first row number where the SKU key was seen.
 
 ## Strict Workflow-Mode Validation
 
@@ -101,6 +112,7 @@ Mismatch response includes:
 |-------|---------|--------|
 | `WORKFLOW_MODE_TEMPLATE_MISMATCH` | CSV template mode does not match tenant mode | Download the matching mode template and retry |
 | `TEMPLATE_SIGNATURE_INVALID` | Signed template markers are missing or invalid | Download a fresh template and retry |
+| `Duplicate SKU code in import file` | A normalized SKU key appears more than once in the uploaded CSV | Keep one row per SKU key and retry |
 | `Category 'product' is not valid for Items template` | Category does not match detected template columns | Use the correct row/category schema |
 | `product_type is required when category is "product"` | Product row missing `product_type` | Set `work_in_progress` or `finished_goods` |
 | `default_sale_price is required for MSME items` | MSME non-draft row missing sale price | Provide `default_sale_price` |

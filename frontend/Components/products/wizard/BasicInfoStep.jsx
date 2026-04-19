@@ -5,14 +5,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UomSelect } from '@/components/ui/UomSelect';
 
-export default function BasicInfoStep({ data, updateData, locations = [], loadingLocations = false }) {
+export default function BasicInfoStep({
+  data,
+  updateData,
+  onSkuChange,
+  locations = [],
+  loadingLocations = false
+}) {
   const activeLocations = Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : [];
   const shouldRequireLocation = activeLocations.length > 1 && Number(data.current_stock || 0) > 0;
 
   return (
     <div className="space-y-6">
       <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
-        <h3 className="font-semibold text-teal-900 mb-1">Product Basic Information</h3>
+        <h3 className="wizard-section-title font-semibold text-teal-900 mb-1">Product Basic Information</h3>
         <p className="text-sm text-teal-700">Start by defining the core details of your product.</p>
       </div>
 
@@ -29,9 +35,15 @@ export default function BasicInfoStep({ data, updateData, locations = [], loadin
         <div className="space-y-2">
           <Label>SKU Code *</Label>
           <Input
-            placeholder="e.g., PRD-GTM-001"
+            placeholder="Auto-generated from product name"
             value={data.sku_code}
-            onChange={(e) => updateData({ sku_code: e.target.value })}
+            onChange={(e) => {
+              if (typeof onSkuChange === 'function') {
+                onSkuChange(e.target.value);
+                return;
+              }
+              updateData({ sku_code: e.target.value });
+            }}
           />
         </div>
 
@@ -95,7 +107,7 @@ export default function BasicInfoStep({ data, updateData, locations = [], loadin
       </div>
 
       <div className="border-t border-slate-200 pt-4 mt-4">
-        <h4 className="font-medium text-slate-900 mb-4">Inventory Settings</h4>
+        <h4 className="wizard-section-title font-medium text-slate-900 mb-4">Inventory Settings</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Max Capacity *</Label>
@@ -147,7 +159,7 @@ export default function BasicInfoStep({ data, updateData, locations = [], loadin
             <div className="col-span-2 bg-slate-50 rounded-lg p-4 border border-slate-200">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-sm font-medium text-slate-700">
-                  ⚙️ Auto-calculated from System Settings
+                  Auto-calculated from System Settings
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -171,3 +183,4 @@ export default function BasicInfoStep({ data, updateData, locations = [], loadin
     </div>
   );
 }
+
