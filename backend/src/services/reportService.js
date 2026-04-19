@@ -16,7 +16,10 @@ import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 export const getExpiryReport = async (filters = {}) => {
   const FIFOBatch = dbStore.get('FIFOBatch');
   const Item = dbStore.get('Item');
+  const TenantLocation = dbStore.get('TenantLocation');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const locationId = Number.parseInt(filters.location_id, 10);
+  const hasLocationFilter = Number.isInteger(locationId) && locationId > 0;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -49,6 +52,7 @@ export const getExpiryReport = async (filters = {}) => {
     where: {
       expiry_date: { [Op.ne]: null },
       ...(Object.keys(receivedDateFilter).length > 0 && { received_date: receivedDateFilter }),
+      ...(hasLocationFilter && { location_id: locationId }),
       [Op.and]: [
         sequelize.where(
           sequelize.col('quantity'),
@@ -57,12 +61,20 @@ export const getExpiryReport = async (filters = {}) => {
         )
       ]
     },
-    include: [{
-      model: Item,
-      as: 'item',
-      where: buildVisibleWhere({ status: 'active' }),
-      attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
-    }],
+    include: [
+      {
+        model: Item,
+        as: 'item',
+        where: buildVisibleWhere({ status: 'active' }),
+        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
+      },
+      {
+        model: TenantLocation,
+        as: 'location',
+        required: false,
+        attributes: ['location_id', 'name']
+      }
+    ],
     order: [['expiry_date', 'ASC']]
   });
 
@@ -101,7 +113,9 @@ export const getExpiryReport = async (filters = {}) => {
       cost_per_unit: costPerUnit,
       value_at_risk: valueAtRisk,
       received_date: batch.received_date,
-      po_number: batch.po_number
+      po_number: batch.po_number,
+      location_id: batch.location_id || null,
+      location_name: batch.location?.name || null
     };
 
     if (daysUntilExpiry < 0) {
@@ -149,7 +163,10 @@ export const getExpiryReport = async (filters = {}) => {
 export const getEnhancedStockAgingReport = async (filters = {}) => {
   const FIFOBatch = dbStore.get('FIFOBatch');
   const Item = dbStore.get('Item');
+  const TenantLocation = dbStore.get('TenantLocation');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const locationId = Number.parseInt(filters.location_id, 10);
+  const hasLocationFilter = Number.isInteger(locationId) && locationId > 0;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -166,6 +183,7 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
   const batches = await FIFOBatch.findAll({
     where: {
       ...(Object.keys(dateFilter).length > 0 && { received_date: dateFilter }),
+      ...(hasLocationFilter && { location_id: locationId }),
       [Op.and]: [
         sequelize.where(
           sequelize.col('quantity'),
@@ -174,12 +192,20 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
         )
       ]
     },
-    include: [{
-      model: Item,
-      as: 'item',
-      where: buildVisibleWhere({ status: 'active' }),
-      attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
-    }],
+    include: [
+      {
+        model: Item,
+        as: 'item',
+        where: buildVisibleWhere({ status: 'active' }),
+        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
+      },
+      {
+        model: TenantLocation,
+        as: 'location',
+        required: false,
+        attributes: ['location_id', 'name']
+      }
+    ],
     order: [['received_date', 'ASC']]
   });
 
@@ -225,7 +251,9 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
       turnover_rate: turnoverRate,
       cost_per_unit: costPerUnit,
       value_at_risk: valueAtRisk,
-      po_number: batch.po_number
+      po_number: batch.po_number,
+      location_id: batch.location_id || null,
+      location_name: batch.location?.name || null
     };
 
     batchDetails.push(batchData);

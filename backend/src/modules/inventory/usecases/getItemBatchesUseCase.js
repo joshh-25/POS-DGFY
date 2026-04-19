@@ -1,4 +1,3 @@
 export const buildGetItemBatchesUseCase = ({ itemRepository }) => {
-    return async ({ itemId }) => itemRepository.getItemBatches(itemId);
+    return async ({ itemId, locationId = null }) => itemRepository.getItemBatches(itemId, locationId);
 };
-

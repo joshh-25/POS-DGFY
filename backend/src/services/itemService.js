@@ -24,7 +24,7 @@ export const finalizeItem = async (itemId, itemData = {}, userId = null) => item
 
 export const getItemStockHistory = async (itemId, queryParams = {}) => itemQueryUseCases.getItemStockHistory(itemId, queryParams);
 
-export const getItemBatches = async (itemId) => itemQueryUseCases.getItemBatches(itemId);
+export const getItemBatches = async (itemId, queryParams = {}) => itemQueryUseCases.getItemBatches(itemId, queryParams);
 
 export const getItemMovements = async (itemId) => itemQueryUseCases.getItemMovements(itemId);
 

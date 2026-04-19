@@ -489,6 +489,7 @@ export default function StockMovements() {
                 <th className="text-left p-4 font-medium text-slate-600">Date & Time</th>
                 <th className="text-left p-4 font-medium text-slate-600">Item</th>
                 <th className="text-left p-4 font-medium text-slate-600">Type</th>
+                <th className="text-left p-4 font-medium text-slate-600">Location</th>
                 <th className="text-left p-4 font-medium text-slate-600">Quantity</th>
                 <th className="text-left p-4 font-medium text-slate-600">Batch</th>
                 <th className="text-left p-4 font-medium text-slate-600">Reference</th>
@@ -499,7 +500,7 @@ export default function StockMovements() {
             <tbody className="divide-y divide-slate-100">
               {filteredMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     No movements found matching your criteria.
                   </td>
                 </tr>
@@ -508,7 +509,10 @@ export default function StockMovements() {
                   const config = getMovementConfig(mov.movement_type);
                   const Icon = config.icon;
                   const isPositive = isPositiveMovement(mov.movement_type);
-                  const userName = mov.userResponsible?.username || mov.user_name || '—';
+                  const userName = mov.userResponsible?.username || mov.user_name || '-';
+                  const movementLocationLabel = mov.movement_type === 'transfer'
+                    ? `${mov.sourceLocation?.name || (mov.source_location_id ? `#${mov.source_location_id}` : 'N/A')} -> ${mov.destinationLocation?.name || (mov.destination_location_id ? `#${mov.destination_location_id}` : 'N/A')}`
+                    : (mov.location?.name || (mov.location_id ? `#${mov.location_id}` : '-'));
 
                   return (
                     <tr
@@ -543,6 +547,9 @@ export default function StockMovements() {
                           {config.label}
                         </Badge>
                       </td>
+                      <td className="p-4 text-sm text-slate-600">
+                        {movementLocationLabel}
+                      </td>
                       <td className="p-4">
                         <span className={cn(
                           "font-semibold",
@@ -560,7 +567,7 @@ export default function StockMovements() {
                             #{mov.batch_id || mov.batch?.batch_id}
                           </Badge>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-slate-400">-</span>
                         )}
                       </td>
                       <td className="p-4">
@@ -569,7 +576,7 @@ export default function StockMovements() {
                             {mov.reference_id}
                           </Badge>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-slate-400">-</span>
                         )}
                       </td>
                       <td className="p-4 text-sm text-slate-600">

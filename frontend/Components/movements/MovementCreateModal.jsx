@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -33,7 +33,6 @@ import {
 import {
   ChevronsUpDown,
   Check,
-  AlertTriangle,
   Activity
 } from 'lucide-react';
 import { Badge } from "../ui/badge";
@@ -41,23 +40,63 @@ import { cn } from "../../src/lib/utils.js";
 import { useLocations } from '../../src/hooks/useLocations.js';
 import * as itemService from '../../src/services/itemService.js';
 import { format } from 'date-fns';
-import { getMovementTypes, lossReasons, isPositiveMovement } from '../utils/movementConfig.js';
+import { getMovementConfig, isPositiveMovement, lossReasons } from '../utils/movementConfig.js';
 import { formatNumber } from '../../src/lib/numberUtils.js';
+import { toast } from 'sonner';
+
+const STOCK_IN_TYPES = Object.freeze([
+  { value: 'purchase_receipt', label: 'Purchase Receipt' },
+  { value: 'return', label: 'Return to Stock' },
+  { value: 'adjustment', label: 'Manual Adjustment' },
+  { value: 'production_output', label: 'Production Output' }
+]);
+
+const STOCK_OUT_TYPES = Object.freeze([
+  { value: 'production_consumption', label: 'Production Consumption' },
+  { value: 'calculated_loss', label: 'Loss / Waste' },
+  { value: 'goods_issue', label: 'Goods Issue' }
+]);
+
+const MOVEMENT_DIRECTION_OPTIONS = Object.freeze([
+  { value: 'stock_in', label: 'Stock In' },
+  { value: 'stock_out', label: 'Stock Out' },
+  { value: 'transfer', label: 'Transfer' }
+]);
+
+const DEFAULT_MOVEMENT_TYPE_BY_DIRECTION = Object.freeze({
+  stock_in: 'purchase_receipt',
+  stock_out: 'production_consumption',
+  transfer: 'transfer'
+});
+
+const STOCK_OUT_MOVEMENT_TYPES = new Set(['production_consumption', 'calculated_loss', 'goods_issue']);
+
+const findItemByFormId = (items = [], itemIdValue = '') => {
+  const normalized = Number.parseInt(itemIdValue, 10);
+  if (!Number.isInteger(normalized) || normalized <= 0) return null;
+  return items.find((item) => Number(item?.item_id || item?.id) === normalized) || null;
+};
 
 export default function MovementCreateModal({ open, onClose, onSubmit, items, preselectedItem }) {
   const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
 
   const [formData, setFormData] = useState({
     item_id: '',
     item_name: '',
-    movement_type: 'purchase_receipt',
+    movement_direction: 'stock_in',
+    movement_type: DEFAULT_MOVEMENT_TYPE_BY_DIRECTION.stock_in,
     quantity: 1,
-    from_location: '',
-    to_location: '',
+    location_id: '',
+    source_location_id: '',
+    destination_location_id: '',
     reference_id: '',
     notes: '',
     loss_reason: '',
-    batch_id: '',
+    batch_id: 'oldest',
     expiry_date: ''
   });
 
@@ -65,64 +104,211 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
   const [batches, setBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
 
-  // Fetch batches when item changes if FIFO is enabled
+  const selectedItem = useMemo(
+    () => findItemByFormId(items, formData.item_id),
+    [items, formData.item_id]
+  );
+
+  const selectedLocationIdForBatches = useMemo(() => {
+    if (formData.movement_type === 'transfer') {
+      return formData.source_location_id || '';
+    }
+    return formData.location_id || '';
+  }, [formData.location_id, formData.movement_type, formData.source_location_id]);
+
+  const movementTypeOptions = useMemo(() => {
+    if (formData.movement_direction === 'stock_out') return STOCK_OUT_TYPES;
+    if (formData.movement_direction === 'transfer') return [{ value: 'transfer', label: 'Transfer' }];
+    return STOCK_IN_TYPES;
+  }, [formData.movement_direction]);
+  const canTransferAcrossLocations = activeLocations.length > 1;
+
+  const showLossReason = formData.movement_type === 'calculated_loss';
+  const showTransferLocations = formData.movement_type === 'transfer';
+  const showBatchSelector = STOCK_OUT_MOVEMENT_TYPES.has(formData.movement_type);
+  const requiresSingleLocation = !showTransferLocations && activeLocations.length > 0;
+  const locationIsRequiredHint = !showTransferLocations && activeLocations.length > 1;
+
   useEffect(() => {
-    const fetchBatches = async () => {
-      if (!formData.item_id) {
-        setBatches([]);
-        return;
-      }
+    if (!open) return;
+    if (activeLocations.length === 0) return;
 
-      const selectedItem = items.find(i => (i.item_id || i.id) === formData.item_id);
-      if (selectedItem?.fifo_enabled) {
-        setLoadingBatches(true);
-        try {
-          const itemDetails = await itemService.getItemById(formData.item_id);
-          setBatches(itemDetails.fifo_batches || []);
-        } catch (error) {
-          console.error("Failed to fetch batches:", error);
-          setBatches([]);
-        } finally {
-          setLoadingBatches(false);
-        }
-      } else {
-        setBatches([]);
+    setFormData((previous) => {
+      const next = { ...previous };
+      if (!next.location_id && !showTransferLocations) {
+        next.location_id = String(activeLocations[0].location_id);
       }
-    };
+      if (showTransferLocations && !next.source_location_id) {
+        next.source_location_id = String(activeLocations[0].location_id);
+      }
+      if (showTransferLocations && !next.destination_location_id) {
+        const fallbackDestination = activeLocations.find(
+          (location) => Number(location.location_id) !== Number(next.source_location_id)
+        ) || activeLocations[0];
+        next.destination_location_id = String(fallbackDestination.location_id);
+      }
+      return next;
+    });
+  }, [activeLocations, open, showTransferLocations]);
 
-    fetchBatches();
-  }, [formData.item_id, items]);
+  useEffect(() => {
+    if (!open) return;
+    if (canTransferAcrossLocations) return;
+    if (formData.movement_direction !== 'transfer') return;
+    setFormData((previous) => ({
+      ...previous,
+      movement_direction: 'stock_in',
+      movement_type: DEFAULT_MOVEMENT_TYPE_BY_DIRECTION.stock_in,
+      source_location_id: '',
+      destination_location_id: ''
+    }));
+  }, [canTransferAcrossLocations, formData.movement_direction, open]);
 
   useEffect(() => {
     if (preselectedItem) {
-      setFormData(prev => ({
-        ...prev,
-        item_id: preselectedItem.id,
-        item_name: preselectedItem.name
+      setFormData((previous) => ({
+        ...previous,
+        item_id: String(preselectedItem.item_id || preselectedItem.id || ''),
+        item_name: preselectedItem.name || ''
       }));
     }
   }, [preselectedItem]);
 
-  const handleChange = (field, value) => {
-    setFormData(prev => {
-      const updated = { ...prev, [field]: value };
-      if (field === 'item_id') {
-        const item = items.find(i => (i.item_id || i.id) === value);
-        if (item) {
-          updated.item_name = item.name;
-        }
+  useEffect(() => {
+    const fetchBatches = async () => {
+      if (!formData.item_id || !showBatchSelector) {
+        setBatches([]);
+        return;
       }
-      return updated;
+      if (!selectedItem?.fifo_enabled) {
+        setBatches([]);
+        return;
+      }
+      if (activeLocations.length > 1 && !selectedLocationIdForBatches) {
+        setBatches([]);
+        return;
+      }
+
+      const parsedItemId = Number.parseInt(formData.item_id, 10);
+      if (!Number.isInteger(parsedItemId) || parsedItemId <= 0) {
+        setBatches([]);
+        return;
+      }
+
+      setLoadingBatches(true);
+      try {
+        const fetchedBatches = await itemService.getItemBatches(parsedItemId, {
+          location_id: selectedLocationIdForBatches || undefined
+        });
+        setBatches(Array.isArray(fetchedBatches) ? fetchedBatches : []);
+      } catch (error) {
+        console.error("Failed to fetch batches:", error);
+        setBatches([]);
+      } finally {
+        setLoadingBatches(false);
+      }
+    };
+
+    fetchBatches();
+  }, [
+    activeLocations.length,
+    formData.item_id,
+    selectedItem?.fifo_enabled,
+    selectedLocationIdForBatches,
+    showBatchSelector
+  ]);
+
+  const handleChange = (field, value) => {
+    setFormData((previous) => {
+      const next = { ...previous, [field]: value };
+      if (field === 'item_id') {
+        const item = findItemByFormId(items, value);
+        next.item_name = item?.name || '';
+        next.batch_id = 'oldest';
+      }
+      return next;
     });
   };
 
-  const handleSubmit = () => {
-    onSubmit(formData);
+  const handleDirectionChange = (direction) => {
+    if (direction === 'transfer' && !canTransferAcrossLocations) {
+      toast.error('Transfer requires at least two active locations.');
+      return;
+    }
+    const defaultType = DEFAULT_MOVEMENT_TYPE_BY_DIRECTION[direction] || 'purchase_receipt';
+    setFormData((previous) => ({
+      ...previous,
+      movement_direction: direction,
+      movement_type: defaultType,
+      batch_id: 'oldest',
+      loss_reason: '',
+      expiry_date: '',
+      source_location_id: direction === 'transfer' ? previous.source_location_id : '',
+      destination_location_id: direction === 'transfer' ? previous.destination_location_id : ''
+    }));
   };
 
-  const showLossReason = formData.movement_type === 'calculated_loss';
-  const showTransferLocations = formData.movement_type === 'transfer';
-  const showSingleLocation = ['purchase_receipt', 'return'].includes(formData.movement_type);
+  const handleSubmit = () => {
+    const parsedItemId = Number.parseInt(formData.item_id, 10);
+    if (!Number.isInteger(parsedItemId) || parsedItemId <= 0) {
+      toast.error('Select an item first.');
+      return;
+    }
+
+    const quantity = Number.parseFloat(formData.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast.error('Quantity must be greater than 0.');
+      return;
+    }
+
+    const payload = {
+      item_id: parsedItemId,
+      quantity,
+      movement_type: formData.movement_type,
+      reference_id: String(formData.reference_id || '').trim() || null,
+      notes: String(formData.notes || '').trim() || null,
+      batch_id: formData.batch_id && formData.batch_id !== 'oldest'
+        ? Number.parseInt(formData.batch_id, 10)
+        : null,
+      expiry_date: formData.movement_type === 'purchase_receipt'
+        ? (String(formData.expiry_date || '').trim() || null)
+        : null,
+      loss_reason: formData.movement_type === 'calculated_loss'
+        ? (String(formData.loss_reason || '').trim() || null)
+        : null
+    };
+
+    if (showTransferLocations) {
+      const sourceLocationId = Number.parseInt(formData.source_location_id, 10);
+      const destinationLocationId = Number.parseInt(formData.destination_location_id, 10);
+
+      if (!Number.isInteger(sourceLocationId) || !Number.isInteger(destinationLocationId)) {
+        toast.error('Select source and destination locations.');
+        return;
+      }
+      if (sourceLocationId === destinationLocationId) {
+        toast.error('Source and destination locations must be different.');
+        return;
+      }
+
+      payload.source_location_id = sourceLocationId;
+      payload.destination_location_id = destinationLocationId;
+    } else {
+      const locationId = Number.parseInt(formData.location_id, 10);
+      if (requiresSingleLocation && !Number.isInteger(locationId)) {
+        toast.error('Select a stock location.');
+        return;
+      }
+      payload.location_id = Number.isInteger(locationId) ? locationId : null;
+    }
+
+    if (showLossReason && !payload.loss_reason) {
+      toast.error('Select a loss reason.');
+      return;
+    }
+
+    onSubmit(payload);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -132,30 +318,56 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Movement Type */}
           <div className="space-y-2">
-            <Label>Movement Type</Label>
-            <Select value={formData.movement_type} onValueChange={(v) => handleChange('movement_type', v)}>
+            <Label>Movement Direction</Label>
+            <Select value={formData.movement_direction} onValueChange={handleDirectionChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {getMovementTypes().map(type => {
-                  const Icon = type.icon;
-                  return (
-                    <SelectItem key={type.value} value={type.value}>
-                      <div className="flex items-center gap-2">
-                        <Icon className={cn("w-4 h-4", type.color)} />
-                        {type.label}
-                      </div>
-                    </SelectItem>
-                  );
-                })}
+                {MOVEMENT_DIRECTION_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.value === 'transfer' && !canTransferAcrossLocations}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {!canTransferAcrossLocations && (
+              <p className="text-xs text-slate-500">
+                Enable at least two active locations to use transfer movements.
+              </p>
+            )}
           </div>
 
-          {/* Item Selection */}
+          {formData.movement_direction !== 'transfer' && (
+            <div className="space-y-2">
+              <Label>Stock {formData.movement_direction === 'stock_in' ? 'In' : 'Out'} Type</Label>
+              <Select value={formData.movement_type} onValueChange={(value) => handleChange('movement_type', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {movementTypeOptions.map((type) => {
+                    const config = getMovementConfig(type.value);
+                    const Icon = config.icon;
+                    return (
+                      <SelectItem key={type.value} value={type.value}>
+                        <div className="flex items-center gap-2">
+                          <Icon className={cn("w-4 h-4", config.color)} />
+                          {type.label}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Item</Label>
             <Popover>
@@ -168,9 +380,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                     !formData.item_id && "text-slate-500"
                   )}
                 >
-                  {formData.item_id
-                    ? items.find((item) => (item.item_id || item.id) === formData.item_id)?.name
-                    : "Search items..."}
+                  {selectedItem?.name || "Search items..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
@@ -185,11 +395,9 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                     <CommandEmpty>No items found.</CommandEmpty>
                     <CommandGroup>
                       {items
-                        .filter((item) =>
-                          item.name.toLowerCase().includes(searchQuery.toLowerCase())
-                        )
+                        .filter((item) => String(item?.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
                         .map((item) => {
-                          const itemId = item.item_id || item.id;
+                          const itemId = String(item.item_id || item.id || '');
                           return (
                             <CommandItem
                               key={itemId}
@@ -215,7 +423,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                                   )}
                                 </div>
                                 <span className="text-xs text-slate-500">
-                                  {formatNumber(item.current_stock, 2)} {item.unit_of_measure} in stock
+                                  {formatNumber(item.current_stock, 2)} {item.unit_of_measure} total stock
                                 </span>
                               </div>
                             </CommandItem>
@@ -228,18 +436,70 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             </Popover>
           </div>
 
-          {/* Quantity */}
           <div className="space-y-2">
             <Label>Quantity</Label>
             <Input
               type="number"
               min={0}
               value={formData.quantity}
-              onChange={(e) => handleChange('quantity', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+              onChange={(e) => handleChange('quantity', e.target.value === '' ? '' : Number.parseFloat(e.target.value) || 0)}
             />
           </div>
 
-          {/* Expiry Date (For Purchase Receipts / Additions) */}
+          {showTransferLocations ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Source Location</Label>
+                <Select value={formData.source_location_id} onValueChange={(value) => handleChange('source_location_id', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select source"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((location) => (
+                      <SelectItem key={`source-${location.location_id}`} value={String(location.location_id)}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Destination Location</Label>
+                <Select value={formData.destination_location_id} onValueChange={(value) => handleChange('destination_location_id', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select destination"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((location) => (
+                      <SelectItem key={`destination-${location.location_id}`} value={String(location.location_id)}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <Select value={formData.location_id} onValueChange={(value) => handleChange('location_id', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeLocations.map((location) => (
+                    <SelectItem key={`location-${location.location_id}`} value={String(location.location_id)}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {locationIsRequiredHint && !formData.location_id && (
+                <p className="text-xs text-red-600">Required when multiple active locations exist.</p>
+              )}
+            </div>
+          )}
+
           {formData.movement_type === 'purchase_receipt' && (
             <div className="space-y-2">
               <Label>Expiry Date (Optional)</Label>
@@ -254,88 +514,40 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             </div>
           )}
 
-          {/* Batch Selection (For Deductions) */}
-          {['calculated_loss', 'production_consumption', 'return'].includes(formData.movement_type) && batches.length > 0 && (
+          {showBatchSelector && selectedItem?.fifo_enabled && (
             <div className="space-y-2">
-              <Label>Deduct from specific Batch (Optional)</Label>
-              <Select value={formData.batch_id} onValueChange={(v) => handleChange('batch_id', v)}>
+              <Label>FIFO Batch (Optional)</Label>
+              <Select value={formData.batch_id} onValueChange={(value) => handleChange('batch_id', value)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select batch (Default: Oldest)" />
+                  <SelectValue placeholder={loadingBatches ? "Loading batches..." : "Auto-select oldest batch"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="oldest">Auto-select Oldest</SelectItem>
-                  {batches.map(batch => (
-                    <SelectItem key={batch.batch_id} value={batch.batch_id.toString()}>
-                      #{batch.batch_id} - Qty: {parseFloat(batch.quantity) - parseFloat(batch.quantity_consumed)} - Exp: {batch.expiry_date ? format(new Date(batch.expiry_date), 'MMM d, yyyy') : 'N/A'}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="oldest">Auto-select oldest batch</SelectItem>
+                  {batches.map((batch) => {
+                    const available = Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0);
+                    return (
+                      <SelectItem key={batch.batch_id} value={String(batch.batch_id)}>
+                        #{batch.batch_id} - Qty: {formatNumber(available, 2)} - Exp: {batch.expiry_date ? format(new Date(batch.expiry_date), 'MMM d, yyyy') : 'N/A'}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {!loadingBatches && batches.length === 0 && (
+                <p className="text-xs text-slate-500">No available batches for the selected location.</p>
+              )}
             </div>
           )}
 
-          {/* Transfer Locations */}
-          {showTransferLocations && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>From Location</Label>
-                <Select value={formData.from_location} onValueChange={(v) => handleChange('from_location', v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map(loc => (
-                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>To Location</Label>
-                <Select value={formData.to_location} onValueChange={(v) => handleChange('to_location', v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map(loc => (
-                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {/* Single Location */}
-          {showSingleLocation && (
-            <div className="space-y-2">
-              <Label>{formData.movement_type === 'purchase_receipt' ? 'To Location' : 'From Location'}</Label>
-              <Select
-                value={formData.movement_type === 'purchase_receipt' ? formData.to_location : formData.from_location}
-                onValueChange={(v) => handleChange(formData.movement_type === 'purchase_receipt' ? 'to_location' : 'from_location', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map(loc => (
-                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Loss Reason */}
           {showLossReason && (
             <div className="space-y-2">
               <Label>Loss Reason</Label>
-              <Select value={formData.loss_reason} onValueChange={(v) => handleChange('loss_reason', v)}>
+              <Select value={formData.loss_reason} onValueChange={(value) => handleChange('loss_reason', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select reason" />
                 </SelectTrigger>
                 <SelectContent>
-                  {lossReasons.map(reason => (
+                  {lossReasons.map((reason) => (
                     <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -343,7 +555,6 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             </div>
           )}
 
-          {/* Reference ID */}
           <div className="space-y-2">
             <Label>Reference ID (Optional)</Label>
             <Input
@@ -353,7 +564,6 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             />
           </div>
 
-          {/* Notes */}
           <div className="space-y-2">
             <Label>Notes</Label>
             <Textarea
@@ -364,8 +574,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             />
           </div>
 
-          {/* C9. Stock Impact Preview */}
-          {formData.item_id && formData.quantity > 0 && (
+          {selectedItem && Number(formData.quantity) > 0 && (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm">
               <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-slate-500" />
@@ -375,29 +584,28 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                 <div>
                   <p className="text-slate-500 text-xs uppercase tracking-wide">Current</p>
                   <p className="font-medium text-slate-900 mt-0.5">
-                    {formatNumber(items.find(i => (i.item_id || i.id) === formData.item_id)?.current_stock || 0, 2)}
+                    {formatNumber(selectedItem.current_stock || 0, 2)}
                   </p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs uppercase tracking-wide">Change</p>
-                  <p className={cn("font-medium mt-0.5",
-                    formData.movement_type === 'transfer' ? 'text-blue-600' :
+                  <p className={cn(
+                    "font-medium mt-0.5",
+                    formData.movement_type === 'transfer' ? 'text-blue-600' : (
                       isPositiveMovement(formData.movement_type) ? "text-emerald-600" : "text-red-500"
+                    )
                   )}>
-                    {formData.movement_type === 'transfer' ? 'No Change' : (
-                      <>
-                        {isPositiveMovement(formData.movement_type) ? '+' : '-'}
-                        {formatNumber(formData.quantity, 2)}
-                      </>
-                    )}
+                    {formData.movement_type === 'transfer'
+                      ? 'No net change'
+                      : `${isPositiveMovement(formData.movement_type) ? '+' : '-'}${formatNumber(formData.quantity, 2)}`}
                   </p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs uppercase tracking-wide">Projected</p>
                   <p className="font-bold text-slate-900 mt-0.5">
                     {(() => {
-                      const current = parseFloat(items.find(i => (i.item_id || i.id) === formData.item_id)?.current_stock || 0);
-                      const change = parseFloat(formData.quantity || 0);
+                      const current = Number.parseFloat(selectedItem.current_stock || 0);
+                      const change = Number.parseFloat(formData.quantity || 0);
                       if (formData.movement_type === 'transfer') return formatNumber(current, 2);
                       const projected = isPositiveMovement(formData.movement_type)
                         ? current + change
@@ -415,7 +623,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleSubmit}
-            disabled={!formData.item_id || formData.quantity <= 0}
+            disabled={!formData.item_id || Number(formData.quantity) <= 0}
             className="bg-teal-600 hover:bg-teal-700"
           >
             Record Movement

@@ -20,6 +20,7 @@ export const useReports = () => {
         const params = new URLSearchParams();
         if (filters.startDate) params.append('startDate', filters.startDate);
         if (filters.endDate) params.append('endDate', filters.endDate);
+        if (filters.location_id) params.append('location_id', String(filters.location_id));
         return params.toString();
     };
 

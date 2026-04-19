@@ -137,6 +137,7 @@ Every tenant database follows the **Master Schema** defined below. When a new co
 ## Entity-Relationship Diagram
 
 > **Reference Diagram**: See [Data Model Diagram](./images/data-model-diagram.png) for a visual representation of the complete database schema and entity relationships.
+> **Implementation Note (2026-04-18)**: The diagram is conceptual and may omit newer generated/location-scoped columns (for example `items.active_sku_code`, location-scoped FIFO, and location-ledger tables). Treat SQL table definitions below as canonical.
 
 ```
 ┌─────────────────┐
@@ -453,6 +454,17 @@ CREATE TABLE item_folders (
 CREATE TABLE items (
     item_id INT PRIMARY KEY AUTO_INCREMENT,
     sku_code VARCHAR(50) NULL,
+    active_sku_code VARCHAR(50)
+      GENERATED ALWAYS AS (
+        CASE
+          WHEN deleted_at IS NULL
+            AND status NOT IN ('draft', 'inactive')
+            AND sku_code IS NOT NULL
+            AND TRIM(sku_code) <> ''
+          THEN UPPER(TRIM(sku_code))
+          ELSE NULL
+        END
+      ) STORED,
     name VARCHAR(255) NOT NULL,
     category ENUM('raw_material', 'packaging', 'product', 'supplies') NOT NULL,
     product_type ENUM('work_in_progress', 'finished_goods') NULL,
@@ -465,7 +477,7 @@ CREATE TABLE items (
     purchase_allowance DECIMAL(12, 2),
     unit_of_measure VARCHAR(50) NULL,  -- See UOM Standards below
     cost_per_unit DECIMAL(10, 4),
-    fifo_enabled BOOLEAN DEFAULT FALSE,
+    fifo_enabled BOOLEAN DEFAULT TRUE,
     shelf_life_days INT NULL,
     opened_shelf_life_days INT NULL,
     batch_size DECIMAL(12, 2),
@@ -484,6 +496,7 @@ CREATE TABLE items (
     INDEX idx_folder_id (folder_id),
     INDEX idx_deleted_at (deleted_at),
     INDEX idx_status (status),
+    UNIQUE KEY uq_items_active_sku_code (active_sku_code),
     CONSTRAINT fk_items_folder FOREIGN KEY (folder_id) REFERENCES item_folders(folder_id),
     CONSTRAINT fk_items_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(user_id)
 );
@@ -492,6 +505,11 @@ CREATE TABLE items (
 **Current Implementation Note (2026-04):**
 - `items.vat_type` is implemented as `ENUM('vatable','vat_exempt','zero_rated')` with default `vatable`.
 - POS uses this as the default tax classification source, then snapshots it at transaction-line level.
+
+**SKU Uniqueness Contract (2026-04-18):**
+- Runtime and DB both enforce case/whitespace-normalized uniqueness for active SKUs.
+- `active_sku_code` is generated from `UPPER(TRIM(sku_code))` only for non-deleted and non-`draft`/`inactive` rows.
+- The unique key `uq_items_active_sku_code` allows draft/inactive/archive flows without blocking active catalog uniqueness.
 
 **Soft Delete Notes (Items):**
 - Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
@@ -536,6 +554,7 @@ The `unit_of_measure` field uses standardized abbreviations organized into three
 CREATE TABLE fifo_batches (
     batch_id INT PRIMARY KEY AUTO_INCREMENT,
     item_id INT NOT NULL,
+    location_id INT NULL,
     quantity DECIMAL(12, 2) NOT NULL,
     cost_per_unit DECIMAL(10, 4),
     received_date DATE NOT NULL,
@@ -547,7 +566,10 @@ CREATE TABLE fifo_batches (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE,
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id) ON DELETE SET NULL,
     INDEX idx_item_id (item_id),
+    INDEX idx_location_id (location_id),
+    INDEX idx_item_location (item_id, location_id),
     INDEX idx_expiry_date (expiry_date),
     INDEX idx_received_date (received_date)
 );
@@ -555,6 +577,63 @@ CREATE TABLE fifo_batches (
 
 **Special Values:**
 - `po_number = 'LEGACY-STOCK'`: Auto-created batch for legacy items that had `current_stock` but no FIFO batches. Created during JO completion when consumption is attempted on items without batches.
+
+**Location Scope Note (2026-04-18):**
+- FIFO batches are location-scoped when `location_id` is present.
+- Batch reads for inventory operations can be filtered by `location_id` to preserve per-location FIFO depletion.
+
+### Multi-Location Ledger Tables (2026-04-18)
+
+```sql
+CREATE TABLE tenant_locations (
+    location_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    address_line TEXT NOT NULL,
+    latitude DECIMAL(10, 8) NOT NULL,
+    longitude DECIMAL(11, 8) NOT NULL,
+    delivery_radius_km DECIMAL(5, 2) NOT NULL DEFAULT 5,
+    is_open BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_primary_storefront BOOLEAN NOT NULL DEFAULT FALSE,
+    operating_hours JSON NULL,
+    current_wait_time_minutes INT NOT NULL DEFAULT 15,
+    allow_out_of_stock_sales BOOLEAN NOT NULL DEFAULT FALSE,
+    supports_delivery BOOLEAN NOT NULL DEFAULT TRUE,
+    supports_pickup BOOLEAN NOT NULL DEFAULT TRUE,
+    supports_dine_in BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_name (name),
+    INDEX idx_is_active (is_active),
+    INDEX idx_is_open (is_open),
+    INDEX idx_primary_active (is_primary_storefront, is_active),
+    INDEX idx_lat_lng (latitude, longitude)
+);
+
+CREATE TABLE item_location_stocks (
+    item_location_stock_id INT PRIMARY KEY AUTO_INCREMENT,
+    item_id INT NOT NULL,
+    location_id INT NOT NULL,
+    quantity_on_hand DECIMAL(24, 12) NOT NULL DEFAULT 0,
+    updated_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_item_location_stock (item_id, location_id),
+    INDEX idx_item_id (item_id),
+    INDEX idx_location_id (location_id)
+);
+
+CREATE TABLE user_location_grants (
+    user_location_grant_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    location_id INT NOT NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_location_grant (user_id, location_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_location_id (location_id)
+);
+```
 
 ### 5. Item Nutrition Table
 
@@ -810,31 +889,45 @@ CREATE TABLE jo_ingredients (
 CREATE TABLE stock_movements (
     movement_id INT PRIMARY KEY AUTO_INCREMENT,
     item_id INT NOT NULL,
-    movement_type ENUM('production_consumption', 'purchase_receipt', 'return', 'transfer', 'calculated_loss') NOT NULL,
-    quantity DECIMAL(12, 2) NOT NULL,
+    location_id INT NULL,
+    source_location_id INT NULL,
+    destination_location_id INT NULL,
+    movement_type ENUM('production_consumption', 'purchase_receipt', 'return', 'transfer', 'calculated_loss', 'adjustment', 'production_output', 'goods_issue') NOT NULL,
+    quantity DECIMAL(24, 12) NOT NULL,
     from_location VARCHAR(100),
     to_location VARCHAR(100),
     reference_id VARCHAR(50),
-    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN') DEFAULT 'MANUAL',
+    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS') DEFAULT 'MANUAL',
     user_responsible INT,
     notes TEXT,
     loss_reason ENUM('waste', 'spoilage', 'damage', 'pilferage', NULL) NULL,
     weighted_average_cost DECIMAL(10, 4),
+    batch_id INT NULL,
+    expiry_date DATE NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (item_id) REFERENCES items(item_id),
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id) ON DELETE SET NULL,
+    FOREIGN KEY (source_location_id) REFERENCES tenant_locations(location_id) ON DELETE SET NULL,
+    FOREIGN KEY (destination_location_id) REFERENCES tenant_locations(location_id) ON DELETE SET NULL,
     FOREIGN KEY (user_responsible) REFERENCES users(user_id),
     INDEX idx_item_id (item_id),
+    INDEX idx_location_id (location_id),
+    INDEX idx_source_location_id (source_location_id),
+    INDEX idx_destination_location_id (destination_location_id),
     INDEX idx_movement_type (movement_type),
     INDEX idx_timestamp (timestamp),
-    INDEX idx_reference_id (reference_id)
+    INDEX idx_reference_id (reference_id),
+    INDEX idx_item_type_timestamp (item_id, movement_type, timestamp)
 );
 ```
 
-**Current Implementation Note (2026-03):**
+**Current Implementation Note (2026-04-18):**
 - Runtime movement usage includes `goods_issue` for outbound sales/dispatch.
-- `reference_type` includes `POS` in addition to dispatch and legacy reference types.
+- `reference_type` includes `POS` and `DO` in addition to legacy reference types.
+- Transfer movements require `source_location_id` and `destination_location_id` with different values.
+- Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
 
 ### 15. Batch Transactions Table
 
