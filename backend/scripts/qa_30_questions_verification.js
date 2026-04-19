@@ -1,7 +1,6 @@
 import * as aiToolExecutor from '../src/services/aiToolExecutor.js';
 import db from '../src/models/index.js';
 import dbStore from '../src/utils/dbStore.js';
-import logger from '../src/config/logger.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -14,19 +13,61 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 
-const { Item: LandlordItem, Tenant } = db;
+const { Tenant } = db;
+const DEFAULT_VERIFY_TENANT_NAME = process.env.VERIFY_TENANT_NAME || 'Premium Corp';
+const DEFAULT_SKIP_IF_MISSING = process.env.VERIFY_SKIP_IF_MISSING === '1';
+
+function parseArgs(argv) {
+    const parsed = {
+        tenantName: DEFAULT_VERIFY_TENANT_NAME,
+        tenantToken: process.env.VERIFY_TENANT_TOKEN || '',
+        skipIfMissing: DEFAULT_SKIP_IF_MISSING,
+    };
+
+    for (let idx = 0; idx < argv.length; idx += 1) {
+        const token = argv[idx];
+        if (token === '--tenant-name') {
+            parsed.tenantName = argv[idx + 1] || parsed.tenantName;
+            idx += 1;
+            continue;
+        }
+        if (token === '--tenant-token') {
+            parsed.tenantToken = argv[idx + 1] || parsed.tenantToken;
+            idx += 1;
+            continue;
+        }
+        if (token === '--skip-if-missing') {
+            parsed.skipIfMissing = true;
+            continue;
+        }
+    }
+
+    return parsed;
+}
+
+async function resolveVerificationTenant(config) {
+    if (config.tenantToken) {
+        return Tenant.findOne({ where: { company_token: config.tenantToken } });
+    }
+    return Tenant.findOne({ where: { name: config.tenantName } });
+}
 
 async function runTest() {
-    console.log('--- DEBUG: Tenant rawAttributes ---');
-    console.log(Object.keys(db.Tenant.rawAttributes));
-    console.log('--- END DEBUG ---');
-
-    console.log('🚀 Starting SKUpervisor AI Verification (30 Questions)...');
+    const verifyConfig = parseArgs(process.argv.slice(2));
+    console.log('Starting SKUpervisor AI Verification (30 Questions)...');
 
     // Get a tenant to run in context
-    const tenant = await db.Tenant.findOne({ where: { name: 'Premium Corp' } });
+    const tenant = await resolveVerificationTenant(verifyConfig);
     if (!tenant) {
-        console.error('❌ Tenant "Premium Corp" not found. Run seed_qa_data.js first.');
+        const tenantSelector = verifyConfig.tenantToken
+            ? `token=${verifyConfig.tenantToken}`
+            : `name=${verifyConfig.tenantName}`;
+        const missingMessage = `Verification tenant not found (${tenantSelector}).`;
+        if (verifyConfig.skipIfMissing) {
+            console.warn(`${missingMessage} Skipping deep verification by policy.`);
+            process.exit(0);
+        }
+        console.error(`${missingMessage} Run seed_qa_data.js first or pass a valid --tenant-name/--tenant-token.`);
         process.exit(1);
     }
 
@@ -64,7 +105,7 @@ async function runTest() {
         const product = await Item.findOne({ where: { name: 'QA Test Product 2026-02-18' } });
         
         if (!sugar || !product) {
-            console.error('❌ Required test data not found. Please run seed_qa_data.js first.');
+            console.error('Required test data not found. Please run seed_qa_data.js first.');
             process.exit(1);
         }
 
@@ -238,20 +279,20 @@ async function runTest() {
             }
         }
         
-        console.log('\n✅ Verification Script Completed.');
+        console.log('\nVerification script completed.');
         
         // Final Output for Walkthrough
         console.log('\n--- FINAL SCORES ---');
         const total = results.reduce((acc, curr) => acc + curr.score, 0);
         console.log(`GRAND TOTAL: ${total}/60`);
 
-        if (total >= 55) console.log('STATUS: ⭐ Production-ready AI');
-        else if (total >= 45) console.log('STATUS: 🔵 Beta quality');
-        else if (total >= 30) console.log('STATUS: 🟠 Needs major fixes');
-        else console.log('STATUS: 🔴 Structural issues in AI/data layer');
+        if (total >= 55) console.log('STATUS: Production-ready AI');
+        else if (total >= 45) console.log('STATUS: Beta quality');
+        else if (total >= 30) console.log('STATUS: Needs major fixes');
+        else console.log('STATUS: Structural issues in AI/data layer');
 
     } catch (error) {
-        console.error('❌ Test failed with error:', error);
+        console.error('Test failed with error:', error);
     } finally {
         // Cleanup if needed
     }
@@ -259,6 +300,6 @@ async function runTest() {
 }
 
 runTest().catch(err => {
-    console.error('❌ Fatal error during test execution:', err);
+    console.error('Fatal error during test execution:', err);
     process.exit(1);
 });

@@ -18,7 +18,7 @@ What it does:
 1. Validates required env vars in `backend/.env`
 2. Pulls from git (fast-forward only)
 3. Re-executes script after pull to use latest logic
-4. Runs deterministic installs (`npm ci`)
+4. Runs deterministic installs (`npm ci`) with bounded retry/backoff for transient lock failures
 5. Runs docs lint and architecture checks
 6. Builds frontend
 7. Runs DB migrations
@@ -30,8 +30,16 @@ What it does:
 13. Runs billing telemetry checks only when billing checks are enabled (`PAYMENTS_ENABLED` + `DEPLOY_RUN_BILLING_VERIFY`)
 14. Runs tenant schema sync in `report` mode and writes report artifact
 15. Applies tenant schema sync regression gate against baseline
-16. Runs tenant index headroom audit (warning by default, strict optional)
-16. Reloads PM2 and runs health checks
+16. Runs tenant index headroom audit in strict mode by default
+17. Reloads PM2 and runs runtime/public health checks
+
+Important strict defaults:
+- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1` by default (set `0` only for controlled exception windows)
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` by default (set `0` only for controlled exception windows)
+
+Deterministic install retry controls:
+- `DEPLOY_NPM_CI_RETRIES` (default `3`)
+- `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS` (default `5`)
 
 Billing verification mode override:
 ```bash
@@ -47,6 +55,15 @@ bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --r
 ```
 
 Use `--run-legacy-hooks` only for targeted recovery.
+
+Deep verification controls (`--verify` mode):
+- `DEPLOY_VERIFY_TENANT_NAME` (default `Premium Corp`)
+- `DEPLOY_VERIFY_TENANT_TOKEN` (optional explicit tenant selector)
+- `DEPLOY_VERIFY_SKIP_IF_MISSING=1` by default; deep verify skips cleanly when the target tenant is absent
+
+Recommended by environment:
+- QA: run `--verify` with seeded QA tenant data
+- Staging/Production: run `--verify` only when a known verification tenant/dataset is available
 
 ## 2. `scripts/deploy-remote.sh`
 Local convenience script that pushes to GitHub and triggers remote deploy over SSH.

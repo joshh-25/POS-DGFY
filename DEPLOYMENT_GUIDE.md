@@ -60,7 +60,7 @@ bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 What `deploy.sh` does:
 1. Validates env requirements
 2. Pulls fast-forward only
-3. Installs deterministic dependencies (`npm ci`)
+3. Installs deterministic dependencies (`npm ci`) with bounded retry/backoff
 4. Runs docs lint and architecture gates
 5. Builds frontend surfaces (`skupervisor`, `pos`, `store`)
 6. Runs DB migrations
@@ -89,8 +89,17 @@ Tenant sync baseline file (repo-tracked):
 
 Tenant schema/index risk controls:
 - `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
-- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `0`; set `1` after cleanup to block unresolved failures)
-- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `0`; set `1` to fail deploy on warning/degraded index headroom status)
+- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `1`; set `0` only for controlled exception windows)
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `1`; set `0` only for controlled exception windows)
+
+Deterministic install retry controls:
+- `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
+- `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n>` (default: `5`)
+
+Deep verification controls (`--verify`):
+- `DEPLOY_VERIFY_TENANT_NAME=<tenant name>` (default: `Premium Corp`)
+- `DEPLOY_VERIFY_TENANT_TOKEN=<company token>` (optional explicit selector)
+- `DEPLOY_VERIFY_SKIP_IF_MISSING=0|1` (default: `1`, skip deep verify if tenant is absent)
 
 ## Legacy Hook Mode (Recovery Only)
 Legacy hooks are intentionally disabled by default.
@@ -121,6 +130,15 @@ git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
+
+## If `npm ci` Fails with `EPERM` or File Lock
+Common cause:
+- Transient file lock on dependency binaries (for example `esbuild.exe`) in Windows or shared runners.
+
+Recovery:
+1. Re-run deploy; script retries `npm ci` automatically.
+2. If still failing, stop processes that hold `node_modules` binaries, then re-run.
+3. Keep deterministic installs enabled; do not switch to `npm install` during production deploy.
 
 ## If Deploy Stops on `Working tree is not clean on server`
 Snapshot and stash server drift before re-running deploy:

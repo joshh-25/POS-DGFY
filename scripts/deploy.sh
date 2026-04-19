@@ -88,8 +88,13 @@ while [[ $# -gt 0 ]]; do
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
             echo "  DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter (default report)"
-            echo "  DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1 (default 0)"
-            echo "  DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1 (default 0)"
+            echo "  DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1 (default 1)"
+            echo "  DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1 (default 1)"
+            echo "  DEPLOY_NPM_CI_RETRIES=<n> (default 3)"
+            echo "  DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n> (default 5)"
+            echo "  DEPLOY_VERIFY_TENANT_NAME=<tenant name> (default Premium Corp)"
+            echo "  DEPLOY_VERIFY_TENANT_TOKEN=<company token>"
+            echo "  DEPLOY_VERIFY_SKIP_IF_MISSING=0|1 (default 1)"
             exit 0
             ;;
         *)
@@ -157,10 +162,42 @@ run_ci_if_lockfile_exists() {
     local dir="$1"
     local lock_file="$dir/package-lock.json"
     if [[ -f "$lock_file" ]]; then
-        (cd "$dir" && npm ci --no-audit --no-fund)
+        run_npm_ci_with_retry "$dir"
     else
         warn "No package-lock.json in $dir, skipping npm ci there."
     fi
+}
+
+run_npm_ci_with_retry() {
+    local dir="$1"
+    local attempts="${DEPLOY_NPM_CI_RETRIES:-3}"
+    local delay_seconds="${DEPLOY_NPM_CI_RETRY_DELAY_SECONDS:-5}"
+
+    if ! [[ "$attempts" =~ ^[0-9]+$ ]] || [[ "$attempts" -lt 1 ]]; then
+        warn "Invalid DEPLOY_NPM_CI_RETRIES='$attempts'. Falling back to 3."
+        attempts=3
+    fi
+    if ! [[ "$delay_seconds" =~ ^[0-9]+$ ]] || [[ "$delay_seconds" -lt 1 ]]; then
+        warn "Invalid DEPLOY_NPM_CI_RETRY_DELAY_SECONDS='$delay_seconds'. Falling back to 5."
+        delay_seconds=5
+    fi
+
+    local attempt
+    for ((attempt=1; attempt<=attempts; attempt++)); do
+        if (cd "$dir" && npm ci --no-audit --no-fund); then
+            if [[ "$attempt" -gt 1 ]]; then
+                log "npm ci succeeded on retry $attempt/$attempts in $dir."
+            fi
+            return 0
+        fi
+
+        if [[ "$attempt" -lt "$attempts" ]]; then
+            warn "npm ci attempt $attempt/$attempts failed in $dir. Retrying after ${delay_seconds}s (common cause: transient file lock/EPERM)."
+            sleep "$delay_seconds"
+        fi
+    done
+
+    fatal "npm ci failed after $attempts attempt(s) in $dir."
 }
 
 run_optional_node_script() {
@@ -437,15 +474,32 @@ rollback_to_commit() {
 # ---------------------------------------------------------------------------
 rotate_deploy_logs() {
     local keep="${1:-30}"
+    rotate_deploy_log_group "deploy_*.log" "$keep"
+    rotate_deploy_log_group "deploy_*.changed_files.txt" "$keep"
+    rotate_deploy_log_group "deploy_*.summary.txt" "$keep"
+}
 
-    # Rotate main log files
-    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.log 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+rotate_deploy_log_group() {
+    local pattern="$1"
+    local keep="$2"
+    local -a files=()
 
-    # Rotate changed-files manifests
-    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.changed_files.txt 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+    while IFS= read -r file_path; do
+        files+=("$file_path")
+    done < <(
+        find "$DEPLOY_LOG_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' 2>/dev/null \
+            | sort -rn \
+            | awk '{ $1=""; sub(/^ /, ""); print }'
+    )
 
-    # Rotate summary files
-    ls -1t "$DEPLOY_LOG_DIR"/deploy_*.summary.txt 2>/dev/null | tail -n +"$((keep + 1))" | xargs -r rm -f
+    if [[ "${#files[@]}" -le "$keep" ]]; then
+        return 0
+    fi
+
+    local idx
+    for ((idx=keep; idx<${#files[@]}; idx++)); do
+        rm -f -- "${files[$idx]}"
+    done
 }
 
 trap 'cleanup_temp_files; fatal "Deployment failed at line $LINENO. See $LOG_FILE"' ERR
@@ -1023,7 +1077,15 @@ fi
 # Deep AI Verification (Optional Gate)
 # ===========================================================================
 if [[ "$DEEP_VERIFY" == "1" ]]; then
-    run_step "Running Deep AI Verification (30-Questions Gate)..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/qa_30_questions_verification.js"
+    VERIFY_TENANT_NAME="${DEPLOY_VERIFY_TENANT_NAME:-Premium Corp}"
+    VERIFY_TENANT_TOKEN="${DEPLOY_VERIFY_TENANT_TOKEN:-}"
+    VERIFY_SKIP_IF_MISSING="${DEPLOY_VERIFY_SKIP_IF_MISSING:-1}"
+
+    verify_cmd="cd \"$BACKEND_DIR\" && VERIFY_SKIP_IF_MISSING=\"$VERIFY_SKIP_IF_MISSING\" node scripts/qa_30_questions_verification.js --tenant-name \"$VERIFY_TENANT_NAME\""
+    if [[ -n "$VERIFY_TENANT_TOKEN" ]]; then
+        verify_cmd="$verify_cmd --tenant-token \"$VERIFY_TENANT_TOKEN\""
+    fi
+    run_step "Running Deep AI Verification (30-Questions Gate)..." bash -lc "$verify_cmd"
 fi
 
 # ===========================================================================

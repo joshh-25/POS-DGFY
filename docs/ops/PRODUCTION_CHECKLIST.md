@@ -50,6 +50,9 @@ git stash push -u -m "predeploy-$STAMP"
   ```
 
 Notes:
+- Strict tenant gates are on by default:
+  - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1`
+  - `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1`
 - **Key Limit Fix**: If schema sync fails with "Too many keys", run:
   ```bash
   node backend/scripts/cleanup-duplicate-indexes.js
@@ -64,6 +67,11 @@ Notes:
   - `build:skupervisor`
   - `build:pos`
   - `build:store` (with `/tenant-store/` base path)
+
+Optional deep verification gate:
+```bash
+DEPLOY_VERIFY_TENANT_NAME="Premium Corp" DEPLOY_VERIFY_SKIP_IF_MISSING=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --verify
+```
 
 ## 4. If Lock Error Appears
 - [ ] Check active deploy process:
@@ -96,10 +104,16 @@ Notes:
 - [ ] Latest deploy summary exists under `logs/deploy/`
 - [ ] Summary commit matches target commit:
   ```bash
-  tail -n 30 logs/deploy/deploy_*.summary.txt
+  ls -1t logs/deploy/deploy_*.summary.txt | head -1 | xargs -I{} tail -n 30 {}
   ```
 
-## 6. Rollback (If Needed)
+## 6. If `npm ci` Fails with `EPERM`/File Lock
+- [ ] Treat as transient lock unless repeated after retries.
+- [ ] Re-run deploy (script now retries automatically with backoff).
+- [ ] If lock persists on Windows/local runners, close processes holding `node_modules` binaries (commonly `esbuild.exe`) and re-run.
+- [ ] Do not bypass `npm ci` unless incident commander approves.
+
+## 7. Rollback (If Needed)
 1. Revert safely with a new commit:
    ```bash
    git revert --no-edit <deployed_commit_sha>
