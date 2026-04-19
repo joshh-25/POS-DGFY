@@ -9,6 +9,7 @@ Primary deployment references:
 - `docs/ops/PRODUCTION_CHECKLIST.md` (step-by-step production execution checklist)
 - `docs/guides/SCRIPTS_GUIDE.md` (canonical behavior for `scripts/deploy.sh` and `scripts/deploy-remote.sh`)
 - `docs/reference/QUICK_REFERENCE.md` (fast command snippets for operators)
+- `docs/reference/DEPLOYMENT_HARDENING_CLOSURE_2026-04-19.md` (latest deploy hardening closure evidence and residual-gap note)
 
 Historical transition notes:
 - `docs/archive/deployment/2026-02-19/transition-guide.md`
