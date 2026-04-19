@@ -324,7 +324,7 @@ export const getItemBatches = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const result = await runInventoryUseCase(
-      () => getItemBatchesUseCase({ itemId: item_id }),
+      () => getItemBatchesUseCase({ itemId: item_id, locationId: req.query?.location_id ?? null }),
       'Failed to retrieve item batches'
     );
 

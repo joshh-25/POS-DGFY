@@ -11,6 +11,8 @@ When to use:
 2. `docs/reference/QUICK_REFERENCE.md`
 3. `docs/reference/CLEANUP_LOG_2026-04-08.md`
 4. `docs/reference/CLEANUP_LOG_2026-04-14.md`
+5. `docs/reference/CLEANUP_LOG_2026-04-18.md`
+6. `docs/reference/WORKTREE_PRE_FLIGHT_AUDIT_2026-04-18.md`
 
 ## Historical Material
 

@@ -100,3 +100,15 @@ Any scope change must update this ledger, the ADR, and the requirement matrix in
 - Change: Finalized strict production closure by clearing baseline failures, enabling strict deploy defaults (`DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1`, `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1`), remediating redundant tenant indexes, and redeploying commit `07c1eb20e5dc0de8519d7dac89f4c70f37662db1` with all rollout gates green.
 - Reason: Complete remediation waves and remove residual deploy-time ambiguity so production rollout state matches matrix/ops truth.
 - Impacts: Tenant schema sync now enforces zero unresolved failures in deploy pipeline; tenant index headroom strict audit blocks release on drift; operational evidence captured in wave handoff packet and deploy artifacts.
+
+11. Date: 2026-04-18
+- Owner: Engineering
+- Change: Closed inventory/reporting parity gaps by adding location-scoped item batch reads (`GET /items/:item_id/batches?location_id=`), location-aware expiry/aging report filters and CSV columns, and movement-export location dimensions (location/source/destination).
+- Reason: Remove remaining multi-location traceability blind spots in stock deduction workflows and reporting/export surfaces.
+- Impacts: Frontend movement/report screens now use explicit location selectors/filters; backend report and movement exports emit location identity fields required for audit trails.
+
+12. Date: 2026-04-18
+- Owner: Engineering
+- Change: Hardened SKU consistency by enabling FIFO default-on behavior, adding `active_sku_code` generated unique-key enforcement, normalizing SKU trim/conflict handling to deterministic `409`, and enforcing CSV SKU normalization/duplicate detection.
+- Reason: Eliminate SKU collision loopholes and reduce operator error in item create/update/import workflows.
+- Impacts: Item and product wizards align with backend defaults; CSV import preview/confirm now reject duplicate normalized SKU rows; repository-level conflict handling is stable across Sequelize DB error variants.

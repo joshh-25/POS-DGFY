@@ -34,22 +34,25 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
     const Icon = config.icon;
     const isPositive = isPositiveMovement(movement.movement_type);
 
-    // Get item info from various possible shapes
     const itemName = movement.item?.name || movement.item_name || 'Unknown Item';
     const itemSku = movement.item?.sku_code || movement.sku_code || '';
     const itemUnit = movement.item?.unit_of_measure || movement.unit_of_measure || '';
     const itemId = movement.item?.item_id || movement.item_id;
 
-    // Get user info
     const userName = movement.userResponsible?.full_name || movement.userResponsible?.username || 'System';
 
-    // Get batch info
     const batchId = movement.batch?.batch_id || movement.batch_id;
     const batchExpiry = movement.batch?.expiry_date || movement.expiry_date;
 
-    // Get loss reason label
+    const movementLocationName = movement.location?.name || movement.location_name || null;
+    const sourceLocationName = movement.sourceLocation?.name || movement.source_location_name || movement.from_location || null;
+    const destinationLocationName = movement.destinationLocation?.name || movement.destination_location_name || movement.to_location || null;
+    const movementLocationId = movement.location_id || movement.location?.location_id || null;
+    const sourceLocationId = movement.source_location_id || movement.sourceLocation?.location_id || null;
+    const destinationLocationId = movement.destination_location_id || movement.destinationLocation?.location_id || null;
+
     const lossReasonLabel = movement.loss_reason
-        ? lossReasons.find(r => r.value === movement.loss_reason)?.label || movement.loss_reason
+        ? lossReasons.find((reason) => reason.value === movement.loss_reason)?.label || movement.loss_reason
         : null;
 
     return (
@@ -70,7 +73,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                    {/* Quantity Badge - Prominent Display */}
                     <div className={cn(
                         "text-center py-6 rounded-xl border-2",
                         isPositive
@@ -86,7 +88,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         <p className="text-slate-500 text-sm mt-1">{itemUnit}</p>
                     </div>
 
-                    {/* Item Information */}
                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -110,9 +111,7 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
 
                     <Separator />
 
-                    {/* Details Grid */}
                     <div className="grid grid-cols-2 gap-4">
-                        {/* Timestamp */}
                         <div className="flex items-start gap-3">
                             <Calendar className="w-4 h-4 text-slate-400 mt-0.5" />
                             <div>
@@ -126,7 +125,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                             </div>
                         </div>
 
-                        {/* User Responsible */}
                         <div className="flex items-start gap-3">
                             <User className="w-4 h-4 text-slate-400 mt-0.5" />
                             <div>
@@ -135,7 +133,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                             </div>
                         </div>
 
-                        {/* Reference */}
                         {movement.reference_id && (
                             <div className="flex items-start gap-3">
                                 <Hash className="w-4 h-4 text-slate-400 mt-0.5" />
@@ -153,7 +150,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                             </div>
                         )}
 
-                        {/* Batch Information */}
                         {batchId && (
                             <div className="flex items-start gap-3">
                                 <Layers className="w-4 h-4 text-slate-400 mt-0.5" />
@@ -169,26 +165,24 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                             </div>
                         )}
 
-                        {/* Location Info */}
-                        {(movement.from_location || movement.to_location) && (
+                        {(movementLocationName || sourceLocationName || destinationLocationName || movementLocationId || sourceLocationId || destinationLocationId) && (
                             <div className="flex items-start gap-3">
                                 <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
                                 <div>
                                     <p className="text-xs text-slate-500 uppercase tracking-wide">Location</p>
-                                    {movement.from_location && movement.to_location ? (
+                                    {movement.movement_type === 'transfer' ? (
                                         <p className="text-sm font-medium text-slate-900">
-                                            {movement.from_location} → {movement.to_location}
+                                            {sourceLocationName || (sourceLocationId ? `#${sourceLocationId}` : 'N/A')} {'->'} {destinationLocationName || (destinationLocationId ? `#${destinationLocationId}` : 'N/A')}
                                         </p>
                                     ) : (
                                         <p className="text-sm font-medium text-slate-900">
-                                            {movement.from_location || movement.to_location}
+                                            {movementLocationName || (movementLocationId ? `#${movementLocationId}` : 'N/A')}
                                         </p>
                                     )}
                                 </div>
                             </div>
                         )}
 
-                        {/* Loss Reason */}
                         {lossReasonLabel && (
                             <div className="flex items-start gap-3">
                                 <Clock className="w-4 h-4 text-red-400 mt-0.5" />
@@ -202,7 +196,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         )}
                     </div>
 
-                    {/* Notes */}
                     {movement.notes && (
                         <>
                             <Separator />
@@ -220,7 +213,6 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                 </div>
 
                 <div className="flex justify-end pt-4 border-t gap-2">
-                    {/* Allow voiding if onVoid provided and not already voided */}
                     {onVoid && movement.reference_type !== 'VOID' && !movement.notes?.includes('Voided by') && (
                         <Button
                             variant="destructive"

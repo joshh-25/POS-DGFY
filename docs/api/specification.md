@@ -442,11 +442,25 @@ Get single item details
     "fifo_batches": [
       {
         "batch_id": 1,
+        "location_id": 3,
+        "location": {
+          "location_id": 3,
+          "name": "Villa Store"
+        },
         "quantity": 100,
         "cost_per_unit": 25.00,
         "received_date": "2024-01-10",
         "expiry_date": "2025-01-10",
         "quantity_consumed": 10
+      }
+    ],
+    "item_location_stocks": [
+      {
+        "item_location_stock_id": 45,
+        "item_id": 1,
+        "location_id": 3,
+        "location_name": "Villa Store",
+        "quantity_on_hand": 140.5
       }
     ],
     "suppliers": [
@@ -461,6 +475,10 @@ Get single item details
 }
 ```
 
+**Notes:**
+- `current_stock` remains compatibility aggregate; authoritative per-location balances are in `item_location_stocks`.
+- FIFO batches include optional location metadata to support location-scoped FIFO consumption.
+
 ### POST /items
 Create new item
 
@@ -471,6 +489,8 @@ Create new item
   "name": "All-Purpose Flour",
   "category": "ingredient",
   "description": "High-quality all-purpose flour",
+  "current_stock": 100,
+  "location_id": 3,
   "max_capacity": 500,
   "min_threshold": 200,
   "purchase_allowance": 100,
@@ -496,6 +516,12 @@ Create new item
   "message": "Item created successfully"
 }
 ```
+
+**Notes:**
+- `fifo_enabled` defaults to `true` when omitted.
+- `sku_code` is trimmed server-side before persistence.
+- Active SKU uniqueness is case/whitespace-insensitive. Conflicts return `409` with `Item with this SKU code already exists`.
+- When `current_stock` is provided with `location_id`, opening/adjustment stock is recorded for that location ledger.
 
 ### PUT /items/:item_id
 Update item
@@ -524,6 +550,10 @@ Update item
 }
 ```
 
+**Notes:**
+- SKU updates are normalized (trimmed) before persistence.
+- In multi-location tenants, stock adjustments with `location_id` use that location's stock baseline (not global aggregate baseline).
+
 ### DELETE /items/:item_id
 Delete item (soft delete)
 
@@ -543,6 +573,19 @@ Delete item (soft delete)
 ### GET /items/:item_id/stock-history
 Get stock movement history for an item
 ...
+
+### GET /items/:item_id/batches
+Get available FIFO batches for an item.
+
+**Query Parameters**
+```
+?location_id=3
+```
+
+**Notes:**
+- Returns only batches with available quantity (`quantity > quantity_consumed`).
+- `location_id` is optional; when supplied, only batches for that location are returned.
+- Response rows include optional location metadata (`location.location_id`, `location.name`).
 
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
@@ -1212,6 +1255,9 @@ Get all stock movements
 &limit=50
 &item_id=1
 &movement_type=production_consumption
+&location_id=3
+&source_location_id=3
+&destination_location_id=5
 &startDate=2024-01-01
 &endDate=2024-01-31
 ```
@@ -1228,6 +1274,15 @@ Get all stock movements
         "item_name": "All-Purpose Flour",
         "movement_type": "production_consumption",
         "quantity": 100,
+        "location_id": 3,
+        "source_location_id": null,
+        "destination_location_id": null,
+        "location": {
+          "location_id": 3,
+          "name": "Villa Store"
+        },
+        "sourceLocation": null,
+        "destinationLocation": null,
         "reference_id": "JO-2024-001",
         "reference_type": "JO",
         "user_responsible": "baker_john",
@@ -1245,6 +1300,10 @@ Get all stock movements
 }
 ```
 
+**Notes:**
+- `location_id`, `source_location_id`, and `destination_location_id` filters are optional and can be combined with date filters.
+- Transfer rows carry source/destination location objects; single-location rows carry `location`.
+
 ### POST /stock-movements
 Record manual stock movement
 
@@ -1254,9 +1313,9 @@ Record manual stock movement
   "item_id": 1,
   "movement_type": "calculated_loss",
   "quantity": 5.5,
+  "location_id": 3,
   "loss_reason": "spoilage",
-  "notes": "Flour damaged due to moisture",
-  "user_responsible": "manager_john"
+  "notes": "Flour damaged due to moisture"
 }
 ```
 
@@ -1273,6 +1332,24 @@ Record manual stock movement
   "message": "Stock movement recorded successfully"
 }
 ```
+
+**Transfer Request Contract**
+```json
+{
+  "item_id": 1,
+  "movement_type": "transfer",
+  "quantity": 10,
+  "source_location_id": 3,
+  "destination_location_id": 5,
+  "notes": "Rebalancing stock"
+}
+```
+
+**Validation Notes:**
+- `quantity` must be `> 0`.
+- For `movement_type=transfer`, both `source_location_id` and `destination_location_id` are required and must be different.
+- For `movement_type=calculated_loss`, `loss_reason` is required.
+- Optional batch targeting uses `batch_id`; if omitted on deduction flows, FIFO oldest batch is used.
 
 ### POST /stock-movements/:id/void
 Void a specific stock movement
@@ -1316,8 +1393,8 @@ Export stock movements as CSV
 Content-Type: text/csv
 Content-Disposition: attachment; filename="stock_movements_2024-01-16.csv"
 ```csv
-Movement ID,Date,Item Name,SKU,Type,Quantity,Current Stock,Reference,Batch ID,User,Notes
-94,"1/16/2026, 3:43:53 PM","Calamansi Label 330ml","PKG-005","transfer","1.00",,"N/A","N/A","admin",""
+Movement ID,Date,Item Name,SKU,Type,Quantity,Location ID,Location,Source Location ID,Source Location,Destination Location ID,Destination Location,Current Stock,Reference,Batch ID,User,Notes
+94,"1/16/2026, 3:43:53 PM","Calamansi Label 330ml","PKG-005","transfer","1.00","","","3","Villa Store","5","Bernwood Tower","","N/A","N/A","admin",""
 ```
 
 ---
@@ -2229,13 +2306,14 @@ POS rows now also expose `pos_order_source` (`in_store`, `online_store`) for cha
 
 ## Reports Endpoints
 
-### GET /reports/stock-aging
-Get stock aging report
+### GET /reports/expiry
+Get expiry-risk report (near-expiry, expired, and healthy buckets).
 
 **Query Parameters**
 ```
-?days=30
-&category=ingredient
+?startDate=2026-04-01
+&endDate=2026-04-18
+&location_id=3
 ```
 
 **Response (200)**
@@ -2243,21 +2321,81 @@ Get stock aging report
 {
   "success": true,
   "data": {
-    "report": [
+    "near_expiry": [
       {
-        "item_id": 1,
+        "batch_id": 22,
         "item_name": "All-Purpose Flour",
         "sku_code": "ING-001",
-        "current_stock": 150,
-        "oldest_batch_date": "2023-12-01",
-        "days_in_stock": 45,
+        "location_id": 3,
+        "location_name": "Villa Store",
+        "remaining_quantity": 40,
         "expiry_date": "2024-12-01",
-        "risk_level": "medium"
+        "days_until_expiry": 5
       }
     ]
   }
 }
 ```
+
+### GET /reports/stock-aging-enhanced
+Get FIFO batch aging analytics with value-at-risk details.
+
+**Query Parameters**
+```
+?startDate=2026-04-01
+&endDate=2026-04-18
+&location_id=3
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "batches": [
+      {
+        "batch_id": 22,
+        "item_name": "All-Purpose Flour",
+        "sku_code": "ING-001",
+        "location_id": 3,
+        "location_name": "Villa Store",
+        "received_date": "2026-03-01",
+        "expiry_date": "2026-05-01",
+        "days_in_stock": 48,
+        "remaining_quantity": 40,
+        "cost_per_unit": 25.5,
+        "value_at_risk": 1020
+      }
+    ]
+  }
+}
+```
+
+### GET /reports/export
+Export report output as CSV.
+
+**Query Parameters**
+```
+?type=expiry
+&startDate=2026-04-01
+&endDate=2026-04-18
+&location_id=3
+```
+
+**Supported `type` values**
+- `expiry`
+- `stockAging`
+- `production`
+- `poAnalysis`
+- `executiveSummary`
+
+**CSV Contract Notes (location-aware):**
+- `type=expiry` CSV includes `Location` column.
+- `type=stockAging` CSV includes `Location` column.
+- Date filters are normalized server-side to a max range of 365 days.
+
+### GET /reports/stock-aging
+Legacy lightweight aging endpoint kept for backward compatibility.
 
 ### GET /reports/surplus-shortage
 Get surplus and shortage report

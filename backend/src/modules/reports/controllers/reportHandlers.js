@@ -117,6 +117,10 @@ const extractDateFilters = (req) => {
 
   filters.startDate = start.toISOString();
   filters.endDate = end.toISOString();
+  const locationId = Number.parseInt(req.query.location_id, 10);
+  if (Number.isInteger(locationId) && locationId > 0) {
+    filters.location_id = locationId;
+  }
 
   return filters;
 };
@@ -498,6 +502,7 @@ const generateExpiryCSV = (data) => {
   const headers = [
     'Status',
     'Batch ID',
+    'Location',
     'Item Name',
     'SKU',
     'Category',
@@ -520,6 +525,7 @@ const generateExpiryCSV = (data) => {
       rows.push([
         status,
         batch.batch_id,
+        escapeCSV(batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')),
         escapeCSV(batch.item_name),
         escapeCSV(batch.sku_code),
         escapeCSV(batch.category),
@@ -546,6 +552,7 @@ const generateExpiryCSV = (data) => {
 const generateAgingCSV = (data) => {
   const headers = [
     'Batch ID',
+    'Location',
     'Item Name',
     'SKU',
     'Category',
@@ -566,6 +573,7 @@ const generateAgingCSV = (data) => {
   data.batches.forEach((batch) => {
     rows.push([
       batch.batch_id,
+      escapeCSV(batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')),
       escapeCSV(batch.item_name),
       escapeCSV(batch.sku_code),
       escapeCSV(batch.category),

@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "../src/lib/utils.js";
 import { useReports } from '@/hooks/useReports.js';
+import { useLocations } from '@/hooks/useLocations.js';
 import { formatNumber } from '../src/lib/numberUtils.js';
 import {
   DropdownMenu,
@@ -37,6 +38,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -48,10 +56,15 @@ import {
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('expiry');
-  const [dateFilters, setDateFilters] = useState({ startDate: '', endDate: '' });
+  const [dateFilters, setDateFilters] = useState({ startDate: '', endDate: '', location_id: '' });
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [snapshotName, setSnapshotName] = useState('');
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
+  const { locations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
 
   const {
     loading,
@@ -77,7 +90,8 @@ export default function Reports() {
   useEffect(() => {
     const filters = {
       startDate: dateFilters.startDate || undefined,
-      endDate: dateFilters.endDate || undefined
+      endDate: dateFilters.endDate || undefined,
+      location_id: dateFilters.location_id || undefined
     };
 
     switch (activeTab) {
@@ -228,6 +242,22 @@ export default function Reports() {
               className="border-0 p-0 h-auto w-32 text-sm"
               placeholder="End"
             />
+            <Select
+              value={dateFilters.location_id || 'all'}
+              onValueChange={(value) => setDateFilters((prev) => ({ ...prev, location_id: value === 'all' ? '' : value }))}
+            >
+              <SelectTrigger className="h-auto w-44 border-0 p-0 text-sm">
+                <SelectValue placeholder="All locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations</SelectItem>
+                {activeLocations.map((location) => (
+                  <SelectItem key={`report-location-${location.location_id}`} value={String(location.location_id)}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Snapshot Actions */}
@@ -357,6 +387,7 @@ export default function Reports() {
                         <tr>
                           <th className="text-left p-3 font-medium text-red-700">Item</th>
                           <th className="text-left p-3 font-medium text-red-700">SKU</th>
+                          <th className="text-left p-3 font-medium text-red-700">Location</th>
                           <th className="text-left p-3 font-medium text-red-700">Batch</th>
                           <th className="text-left p-3 font-medium text-red-700">Expiry Date</th>
                           <th className="text-right p-3 font-medium text-red-700">Days Expired</th>
@@ -369,6 +400,7 @@ export default function Reports() {
                           <tr key={batch.batch_id} className="hover:bg-red-50/30">
                             <td className="p-3 font-medium text-slate-900">{batch.item_name}</td>
                             <td className="p-3 text-slate-600">{batch.sku_code}</td>
+                            <td className="p-3 text-slate-600">{batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')}</td>
                             <td className="p-3 text-slate-600">#{batch.batch_id}</td>
                             <td className="p-3 text-red-600">{batch.expiry_date}</td>
                             <td className="p-3 text-right text-red-700 font-semibold">{batch.days_expired}d ago</td>
@@ -394,6 +426,7 @@ export default function Reports() {
                         <tr>
                           <th className="text-left p-3 font-medium text-slate-600">Item</th>
                           <th className="text-left p-3 font-medium text-slate-600">SKU</th>
+                          <th className="text-left p-3 font-medium text-slate-600">Location</th>
                           <th className="text-left p-3 font-medium text-slate-600">Batch</th>
                           <th className="text-left p-3 font-medium text-slate-600">Expiry Date</th>
                           <th className="text-right p-3 font-medium text-slate-600">Days Left</th>
@@ -406,6 +439,7 @@ export default function Reports() {
                           <tr key={batch.batch_id} className="hover:bg-slate-50">
                             <td className="p-3 font-medium text-slate-900">{batch.item_name}</td>
                             <td className="p-3 text-slate-600">{batch.sku_code}</td>
+                            <td className="p-3 text-slate-600">{batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')}</td>
                             <td className="p-3 text-slate-600">#{batch.batch_id}</td>
                             <td className="p-3 text-slate-600">{batch.expiry_date}</td>
                             <td className="p-3 text-right">
@@ -433,6 +467,7 @@ export default function Reports() {
                         <tr>
                           <th className="text-left p-3 font-medium text-slate-600">Item</th>
                           <th className="text-left p-3 font-medium text-slate-600">SKU</th>
+                          <th className="text-left p-3 font-medium text-slate-600">Location</th>
                           <th className="text-left p-3 font-medium text-slate-600">Batch</th>
                           <th className="text-left p-3 font-medium text-slate-600">Expiry Date</th>
                           <th className="text-right p-3 font-medium text-slate-600">Days Left</th>
@@ -445,6 +480,7 @@ export default function Reports() {
                           <tr key={batch.batch_id} className="hover:bg-slate-50">
                             <td className="p-3 font-medium text-slate-900">{batch.item_name}</td>
                             <td className="p-3 text-slate-600">{batch.sku_code}</td>
+                            <td className="p-3 text-slate-600">{batch.location_name || (batch.location_id ? `#${batch.location_id}` : 'N/A')}</td>
                             <td className="p-3 text-slate-600">#{batch.batch_id}</td>
                             <td className="p-3 text-slate-600">{batch.expiry_date}</td>
                             <td className="p-3 text-right">
