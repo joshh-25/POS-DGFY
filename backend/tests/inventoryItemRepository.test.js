@@ -215,6 +215,7 @@ describe('inventory itemRepository', () => {
     const ItemCostBreakdown = {};
     const ProductComposition = {};
     const FIFOBatch = {};
+    const ItemLocationStock = { findAll: jest.fn() };
     const SupplierItem = {};
     const Supplier = {};
     const ItemFolder = {};
@@ -265,6 +266,15 @@ describe('inventory itemRepository', () => {
           },
           productCompositions: modelCompositions,
           fifoBatches: [{ batch_id: 1 }],
+          locationStocks: [
+            {
+              item_location_stock_id: 900,
+              item_id: 55,
+              location_id: 4,
+              quantity_on_hand: '12.5',
+              location: { name: 'Villa Store' }
+            }
+          ],
           supplierItems: [
             {
               supplier: { supplier_id: 7, name: 'Vendor A' },
@@ -289,6 +299,7 @@ describe('inventory itemRepository', () => {
       if (name === 'ItemCostBreakdown') return ItemCostBreakdown;
       if (name === 'ProductComposition') return ProductComposition;
       if (name === 'FIFOBatch') return FIFOBatch;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
       if (name === 'SupplierItem') return SupplierItem;
       if (name === 'Supplier') return Supplier;
       if (name === 'ItemFolder') return ItemFolder;
@@ -315,9 +326,19 @@ describe('inventory itemRepository', () => {
     expect(result.ingredients).toHaveLength(1);
     expect(result.packaging_items).toHaveLength(1);
     expect(result.fifo_batches).toEqual([{ batch_id: 1 }]);
+    expect(result.item_location_stocks).toEqual([
+      {
+        item_location_stock_id: 900,
+        item_id: 55,
+        location_id: 4,
+        quantity_on_hand: 12.5,
+        location_name: 'Villa Store'
+      }
+    ]);
     expect(result.recipe_cost).toBe(6.5);
     expect(result.costBreakdown).toBeUndefined();
     expect(result.fifoBatches).toBeUndefined();
+    expect(result.locationStocks).toBeUndefined();
   });
 
   it('blocks getItemMovements for soft-deleted items', async () => {
@@ -830,6 +851,46 @@ describe('inventory itemRepository', () => {
     expect(transaction.rollback).toHaveBeenCalled();
   });
 
+  it('maps DB unique-constraint errors to a stable 409 conflict on createItem', async () => {
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockRejectedValue({
+        name: 'SequelizeUniqueConstraintError',
+        fields: { active_sku_code: 'DUP-DB-1' },
+        errors: [{ path: 'active_sku_code' }]
+      })
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-create-db-constraint' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.createItem({
+      status: 'active',
+      category: 'raw_material',
+      sku_code: ' DUP-DB-1 ',
+      name: 'Duplicate DB Constraint'
+    }, 12)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Item with this SKU code already exists'
+    });
+
+    expect(Item.create).toHaveBeenCalled();
+    expect(transaction.commit).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalled();
+  });
+
   it('enforces MSME pricing requirements on create for non-draft items', async () => {
     inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
       ops_workflow_mode: { value: 'msme' }
@@ -1074,6 +1135,69 @@ describe('inventory itemRepository', () => {
     expect(result).toEqual({ item_id: 15, name: 'Flour' });
   });
 
+  it('uses selected location stock as baseline when updating stock with location_id', async () => {
+    const updateSpy = jest.fn().mockResolvedValue(true);
+    const itemRecord = {
+      item_id: 115,
+      sku_code: 'SKU-115',
+      current_stock: 100,
+      fifo_enabled: true,
+      status: 'active',
+      category: 'raw_material',
+      wizard_metadata: null,
+      update: updateSpy
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ItemLocationStock = {
+      findOne: jest.fn().mockResolvedValue({
+        item_id: 115,
+        location_id: 9,
+        quantity_on_hand: 40
+      })
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 115, name: 'Sugar' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 321 });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-update-location-baseline' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.updateItem(115, {
+      current_stock: 55,
+      location_id: 9
+    }, 3);
+
+    expect(ItemLocationStock.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: { item_id: 115, location_id: 9 },
+      transaction
+    }));
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        item_id: 115,
+        quantity: 15,
+        movement_type: 'adjustment',
+        location_id: 9
+      }),
+      3,
+      transaction
+    );
+  });
+
   it('recalculates thresholds when max_capacity changes', async () => {
     const updateSpy = jest.fn().mockResolvedValue(true);
     const itemRecord = {
@@ -1159,6 +1283,50 @@ describe('inventory itemRepository', () => {
     });
 
     await expect(itemRepository.updateItem(17, { sku_code: 'NEW-SKU' }, 9)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Item with this SKU code already exists'
+    });
+
+    expect(transaction.commit).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalled();
+  });
+
+  it('maps DB unique-constraint errors to a stable 409 conflict on updateItem', async () => {
+    const itemRecord = {
+      item_id: 170,
+      sku_code: 'OLD-SKU',
+      current_stock: 1,
+      fifo_enabled: false,
+      status: 'active',
+      category: 'raw_material',
+      wizard_metadata: null,
+      update: jest.fn().mockRejectedValue({
+        name: 'SequelizeUniqueConstraintError',
+        fields: { active_sku_code: 'NEW-SKU' },
+        errors: [{ path: 'active_sku_code' }]
+      })
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-update-db-constraint' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.updateItem(170, { sku_code: 'NEW-SKU' }, 9)).rejects.toMatchObject({
       statusCode: 409,
       message: 'Item with this SKU code already exists'
     });

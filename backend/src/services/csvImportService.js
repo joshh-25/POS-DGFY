@@ -225,6 +225,11 @@ const transformRow = (row) => {
     return item;
 };
 
+const normalizeSkuLookupKey = (value) => {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized || null;
+};
+
 /**
  * Validate a single item and check for existing SKU
  */
@@ -234,9 +239,10 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
     let existingItemId = null;
 
     // Check if SKU already exists
-    if (itemData.sku_code && existingSkus.has(itemData.sku_code)) {
+    const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
+    if (skuLookupKey && existingSkus.has(skuLookupKey)) {
         action = 'UPDATE';
-        existingItemId = existingSkus.get(itemData.sku_code);
+        existingItemId = existingSkus.get(skuLookupKey);
     }
 
     // Choose validator based on action
@@ -506,7 +512,12 @@ export const previewImport = async (csvContent) => {
         attributes: ['item_id', 'sku_code'],
         where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
-    const existingSkus = new Map(existingItems.map(i => [i.sku_code, i.item_id]));
+    const existingSkus = new Map(
+        existingItems
+            .map((item) => [normalizeSkuLookupKey(item.sku_code), item.item_id])
+            .filter(([skuKey]) => Boolean(skuKey))
+    );
+    const seenSkuRows = new Map();
 
     // Transform and validate each row
     const previewRows = [];
@@ -518,6 +529,15 @@ export const previewImport = async (csvContent) => {
         const row = records[i];
         const itemData = transformRow(row);
         const validation = await validateItem(itemData, i + 1, existingSkus);
+        const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
+        if (skuLookupKey) {
+            if (seenSkuRows.has(skuLookupKey)) {
+                validation.valid = false;
+                validation.errors.push(`Duplicate SKU code in import file (first seen on row ${seenSkuRows.get(skuLookupKey)})`);
+            } else {
+                seenSkuRows.set(skuLookupKey, i + 1);
+            }
+        }
 
         // Additional validation: check category matches template type
         if (validation.valid && templateType !== TEMPLATE_TYPES.MASTER) {
@@ -633,7 +653,12 @@ export const confirmImport = async (rows, userId) => {
         attributes: ['item_id', 'sku_code'],
         where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
-    const existingSkus = new Map(existingItems.map(i => [i.sku_code, i.item_id]));
+    const existingSkus = new Map(
+        existingItems
+            .map((item) => [normalizeSkuLookupKey(item.sku_code), item.item_id])
+            .filter(([skuKey]) => Boolean(skuKey))
+    );
+    const seenSkuRows = new Map();
 
     // Re-validate and sanitize all rows on the backend
     const validRows = [];
@@ -641,6 +666,15 @@ export const confirmImport = async (rows, userId) => {
         // Fix 6.1: RE-VALIDATE everything on the backend.
         // Even if client says it is valid, we don't trust it.
         const validation = await validateItem(row.data, row.rowNumber, existingSkus);
+        const skuLookupKey = normalizeSkuLookupKey(row.data?.sku_code);
+        if (skuLookupKey) {
+            if (seenSkuRows.has(skuLookupKey)) {
+                validation.valid = false;
+                validation.errors.push(`Duplicate SKU code in import file (first seen on row ${seenSkuRows.get(skuLookupKey)})`);
+            } else {
+                seenSkuRows.set(skuLookupKey, row.rowNumber);
+            }
+        }
 
         if (!validation.valid) {
             results.failed.push({

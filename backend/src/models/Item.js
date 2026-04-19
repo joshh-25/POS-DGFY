@@ -101,7 +101,7 @@ const Item = sequelize.define('Item', {
   },
   fifo_enabled: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false
+    defaultValue: true
   },
   shelf_life_days: {
     type: DataTypes.INTEGER,

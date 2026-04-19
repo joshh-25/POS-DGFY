@@ -26,6 +26,7 @@ import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -170,6 +171,7 @@ export default function ItemFormModal({
   onSave,
   onSaveDraft,
   folders = [],
+  existingItems = [],
   msmeMode = false,
   createPreset = MSME_ITEM_PRESET.INVENTORY_ONLY,
   posConfig = null,
@@ -191,7 +193,7 @@ export default function ItemFormModal({
     max_capacity: 0,
     current_stock: 0,
     location_id: '',
-    fifo_enabled: false,
+    fifo_enabled: true,
     shelf_life_days: '',
     opened_shelf_life_days: '',
     product_folder: '',
@@ -224,10 +226,28 @@ export default function ItemFormModal({
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
     [locations]
   );
+  const [stockBaseline, setStockBaseline] = useState(0);
+  const itemLocationStockMap = useMemo(() => {
+    const rows = Array.isArray(item?.item_location_stocks) ? item.item_location_stocks : [];
+    const map = new Map();
+    rows.forEach((row) => {
+      const locationId = Number.parseInt(row?.location_id, 10);
+      if (!Number.isInteger(locationId) || locationId <= 0) return;
+      map.set(String(locationId), Number(row?.quantity_on_hand) || 0);
+    });
+    return map;
+  }, [item]);
+  const resolveLocationStock = (locationId) => {
+    if (!locationId) return null;
+    const normalized = String(locationId);
+    return itemLocationStockMap.has(normalized) ? (itemLocationStockMap.get(normalized) || 0) : null;
+  };
 
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
+  const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const isEditingDraft = item?.status === 'draft';
 
   const fetchSuppliers = async () => {
@@ -260,6 +280,23 @@ export default function ItemFormModal({
       const initialCategory = msmeMode
         ? mapCategoryToMsmeSelection(item.category)
         : (item.category || 'raw_material');
+      const locationStocks = Array.isArray(item.item_location_stocks) ? item.item_location_stocks : [];
+      const stockByLocation = new Map();
+      locationStocks.forEach((stockRow) => {
+        const locationId = Number.parseInt(stockRow?.location_id, 10);
+        if (!Number.isInteger(locationId) || locationId <= 0) return;
+        stockByLocation.set(String(locationId), parseNum(stockRow?.quantity_on_hand, 0));
+      });
+      const initialLocationId = item.location_id
+        ? String(item.location_id)
+        : activeLocations.length === 1
+          ? String(activeLocations[0].location_id)
+          : locationStocks.length === 1
+            ? String(locationStocks[0].location_id)
+            : '';
+      const initialLocationStock = initialLocationId && stockByLocation.has(initialLocationId)
+        ? stockByLocation.get(initialLocationId)
+        : (activeLocations.length > 1 ? 0 : parseNum(item.current_stock, 0));
 
       const initialData = {
         sku_code: item.sku_code || '',
@@ -272,8 +309,8 @@ export default function ItemFormModal({
         default_sale_price: parseNum(item.default_sale_price, 0),
         vat_type: item.vat_type || 'vatable',
         max_capacity: parseNum(item.max_capacity, 0),
-        current_stock: parseNum(item.current_stock, 0),
-        location_id: item.location_id ? String(item.location_id) : '',
+        current_stock: initialLocationStock,
+        location_id: initialLocationId,
         min_threshold: parseNum(item.min_threshold, 0),
         purchase_allowance: parseNum(item.purchase_allowance, 0),
         fifo_enabled: item.fifo_enabled || false,
@@ -334,7 +371,10 @@ export default function ItemFormModal({
       };
       setFormData(initialData);
       setInitialFormData(initialData);
+      setStockBaseline(initialLocationStock);
       setIsDirty(false);
+      setSkuManuallyEdited(Boolean(String(item.sku_code || '').trim()));
+      setLastSuggestedSku('');
       setMarginPercent('');
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
@@ -359,7 +399,7 @@ export default function ItemFormModal({
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
         min_threshold: 0,
         purchase_allowance: 0,
-        fifo_enabled: false,
+        fifo_enabled: true,
         shelf_life_days: '',
         opened_shelf_life_days: '',
         product_folder: '',
@@ -383,7 +423,7 @@ export default function ItemFormModal({
             unit_of_measure: 'pcs',
             vat_type: 'vatable',
             max_capacity: 100,
-            fifo_enabled: false
+            fifo_enabled: true
           };
         } else {
           initialData = {
@@ -397,7 +437,10 @@ export default function ItemFormModal({
       }
       setFormData(initialData);
       setInitialFormData(initialData);
+      setStockBaseline(Number(initialData.current_stock) || 0);
       setIsDirty(false);
+      setSkuManuallyEdited(false);
+      setLastSuggestedSku('');
       setMarginPercent('');
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
@@ -411,6 +454,35 @@ export default function ItemFormModal({
       setIsDirty(hasChanged);
     }
   }, [formData, initialFormData, item]);
+
+  useEffect(() => {
+    if (!open || skuManuallyEdited) return;
+
+    const suggestedSku = suggestNextSku({
+      name: formData.name,
+      category: formData.category,
+      existingItems,
+      currentItemId: item?.item_id || item?.id || null
+    });
+    setLastSuggestedSku(suggestedSku);
+    if (!suggestedSku) return;
+
+    if (formData.sku_code !== suggestedSku) {
+      setFormData((previous) => ({
+        ...previous,
+        sku_code: suggestedSku
+      }));
+    }
+  }, [
+    existingItems,
+    formData.category,
+    formData.name,
+    formData.sku_code,
+    item?.id,
+    item?.item_id,
+    open,
+    skuManuallyEdited
+  ]);
 
   const handleChange = (field, value) => {
     setFormData(prev => {
@@ -431,8 +503,35 @@ export default function ItemFormModal({
         }
       }
 
+      if (field === 'location_id' && item) {
+        const locationStock = resolveLocationStock(value);
+        if (locationStock !== null) {
+          updated.current_stock = locationStock;
+          setStockBaseline(locationStock);
+        } else if (!value && activeLocations.length > 1) {
+          updated.current_stock = 0;
+          setStockBaseline(0);
+        }
+      }
+
       return updated;
     });
+  };
+
+  const handleSkuChange = (value) => {
+    const nextValue = String(value || '');
+    setFormData((prev) => ({
+      ...prev,
+      sku_code: nextValue
+    }));
+
+    const trimmedValue = nextValue.trim();
+    if (!trimmedValue) {
+      setSkuManuallyEdited(false);
+      return;
+    }
+
+    setSkuManuallyEdited(trimmedValue.toUpperCase() !== String(lastSuggestedSku || '').trim().toUpperCase());
   };
 
   const addSupplierLink = () => {
@@ -585,7 +684,7 @@ export default function ItemFormModal({
     }
 
     const normalizedCurrentStock = Number(cleanedData.current_stock) || 0;
-    const previousCurrentStock = item ? (Number(item.current_stock) || 0) : 0;
+    const previousCurrentStock = item ? (Number(stockBaseline) || 0) : 0;
     const hasStockAdjustment = item
       ? normalizedCurrentStock !== previousCurrentStock
       : normalizedCurrentStock > 0;
@@ -694,7 +793,10 @@ export default function ItemFormModal({
     const submitPayload = (msmeMode && item)
       ? buildMsmeVisibleUpdatePatch({
         payload: validFields,
-        originalItem: item
+        originalItem: {
+          ...item,
+          current_stock: stockBaseline
+        }
       })
       : validFields;
 
@@ -732,9 +834,9 @@ export default function ItemFormModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact max-h-[90vh] max-w-4xl overflow-y-auto pb-6">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography max-h-[90vh] max-w-4xl overflow-y-auto pb-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="wizard-title flex items-center gap-2">
               {item ? 'Edit Item' : 'Create New Item'}
               {isEditingDraft && (
                 <Badge variant="outline" className="bg-slate-100 text-slate-700">
@@ -753,21 +855,21 @@ export default function ItemFormModal({
             {/* Basic Info */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="sku">SKU Code</Label>
-                <Input
-                  id="sku"
-                  value={formData.sku_code || ''}
-                  onChange={(e) => handleChange('sku_code', e.target.value)}
-                  placeholder="e.g., ING-SUG-001"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="name">Item Name</Label>
                 <Input
                   id="name"
                   value={formData.name || ''}
                   onChange={(e) => handleChange('name', e.target.value)}
                   placeholder="e.g., Sugar"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sku">SKU Code</Label>
+                <Input
+                  id="sku"
+                  value={formData.sku_code || ''}
+                  onChange={(e) => handleSkuChange(e.target.value)}
+                  placeholder="Auto-generated from item name"
                 />
               </div>
             </div>
@@ -1298,7 +1400,7 @@ export default function ItemFormModal({
             )}
           </div>
 
-          <DialogFooter className="pt-8 flex flex-col sm:flex-row gap-2">
+          <DialogFooter className="wizard-footer pt-8 flex flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={handleClose}>Cancel</Button>
             {!item && onSaveDraft && (
               <Button variant="outline" onClick={() => handleSubmit(true)}>

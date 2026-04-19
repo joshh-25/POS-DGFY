@@ -159,6 +159,40 @@ describe('csvImportService workflow-mode template enforcement', () => {
     expect(result.templateWorkflowMode).toBe('msme');
   });
 
+  it('normalizes SKU matching during preview so case/whitespace variants resolve to UPDATE', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('manufacturing'));
+    mockItemModel.findAll.mockResolvedValue([
+      { item_id: 88, sku_code: 'rm-0001' }
+    ]);
+
+    const csv = [
+      'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note',
+      ' RM-0001 ,Flour,raw_material,100,kg,manufacturing,"mode note"'
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(true);
+    expect(result.rows[0].action).toBe('UPDATE');
+    expect(result.rows[0].existingItemId).toBe(88);
+  });
+
+  it('flags duplicate SKU rows in preview even when case differs', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('manufacturing'));
+
+    const csv = [
+      'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note',
+      'SUP-001,Gloves,supplies,50,pcs,manufacturing,"mode note"',
+      ' sup-001 ,Mask,supplies,50,pcs,manufacturing,"mode note"'
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(true);
+    expect(result.rows[1].valid).toBe(false);
+    expect(result.rows[1].errors.join(' ')).toMatch(/duplicate sku code in import file/i);
+  });
+
   it('blocks confirm when row metadata signature is invalid', async () => {
     mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
 
