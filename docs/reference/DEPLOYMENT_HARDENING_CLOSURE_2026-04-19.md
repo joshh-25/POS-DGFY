@@ -3,7 +3,7 @@
 ## Summary
 - Scope: deploy reliability hardening + runbook synchronization + production rollout + merged-branch cleanup.
 - Classification: within-existing-boundary.
-- Deployed commit: `f0e5549a5340c59bba0bf851dd9c4158e013deea` on `master`.
+- Deployed commit: `fc5b4a60b07d45828b07e9182519a77454d34820` on `master`.
 
 ## What Changed
 - `scripts/deploy.sh`
@@ -30,9 +30,9 @@
   - `node --check backend/scripts/qa_30_questions_verification.js` -> pass
 - Production deploy execution:
   - Host: `root@192.53.116.33:64428` (`/var/www/skupervisor`)
-  - Deploy summary: `/var/www/skupervisor/logs/deploy/deploy_20260419_161625.summary.txt`
-  - Tenant schema sync report: `/var/www/skupervisor/logs/deploy/deploy_20260419_161625.tenant_schema_sync.json`
-  - Tenant index headroom report: `/var/www/skupervisor/logs/deploy/deploy_20260419_161625.tenant_index_headroom.json`
+  - Deploy summary: `/var/www/skupervisor/logs/deploy/deploy_20260419_161938.summary.txt`
+  - Tenant schema sync report: `/var/www/skupervisor/logs/deploy/deploy_20260419_161938.tenant_schema_sync.json`
+  - Tenant index headroom report: `/var/www/skupervisor/logs/deploy/deploy_20260419_161938.tenant_index_headroom.json`
   - PM2 reload + backend/runtime/public endpoint checks passed.
 
 ## Branch Consolidation Outcome
