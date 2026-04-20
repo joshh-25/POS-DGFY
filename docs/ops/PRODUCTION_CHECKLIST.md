@@ -14,6 +14,19 @@ Use this checklist for every production rollout.
 - [ ] All intended code/docs changes are committed
 - [ ] Changes are pushed to the remote branch you will deploy
 - [ ] Optional: CI checks are green
+- [ ] No-staging hard gate passes for the exact target SHA:
+  ```bash
+  # Required QA inputs:
+  # export QA_BASE_URL="https://<qa-host>"
+  # export QA_DEPLOY_SUMMARY_FILE=".tmp/release-gates/<sha>/qa_deploy_summary.txt"
+  RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
+  ```
+- [ ] Production multi-location contract smoke gate is green:
+  ```bash
+  # Prefer cached JWT to avoid auth rate limits:
+  # export PROD_AUTH_JWT="<valid_jwt>"
+  npm run gate:release:prod-contracts
+  ```
 
 ## 2. Server Prep
 - [ ] SSH to server
@@ -73,6 +86,12 @@ Optional deep verification gate:
 DEPLOY_VERIFY_TENANT_NAME="Premium Corp" DEPLOY_VERIFY_SKIP_IF_MISSING=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --verify
 ```
 
+If using local one-command remote deploy:
+```bash
+# This command now runs no-staging hard gate after push and before prod SSH deploy.
+bash scripts/deploy-remote.sh
+```
+
 ## 4. If Lock Error Appears
 - [ ] Check active deploy process:
   ```bash
@@ -88,6 +107,11 @@ DEPLOY_VERIFY_TENANT_NAME="Premium Corp" DEPLOY_VERIFY_SKIP_IF_MISSING=1 bash sc
 - [ ] `pm2 list` shows services online
 - [ ] `GET /health` returns healthy status
 - [ ] Login and critical flows work
+- [ ] Re-run production multi-location contract smoke gate:
+  ```bash
+  # Use fresh token or cached JWT from active session
+  npm run gate:release:prod-contracts
+  ```
 - [ ] Public endpoints respond with 2xx/3xx:
   - [ ] `https://skupervisor.surebizcorp.com`
   - [ ] `https://pos.surebizcorp.com`

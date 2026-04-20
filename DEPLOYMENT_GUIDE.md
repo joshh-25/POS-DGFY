@@ -8,6 +8,9 @@ Use this guide for:
 2. Recovery from deploy gate failures
 3. Post-deploy verification
 
+No-staging release policy reference:
+- `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+
 ## Prerequisites
 - SSH access to server (`root@192.53.116.33 -p 64428`)
 - Prefer key-based SSH auth for non-interactive deploys:
@@ -35,6 +38,21 @@ cd /var/www/skupervisor
 npm run deploy:auto
 ```
 
+Required before production (no-staging hard gate):
+```bash
+# Required QA inputs:
+# export QA_BASE_URL="https://<qa-host>"
+# export QA_DEPLOY_SUMMARY_FILE=".tmp/release-gates/<sha>/qa_deploy_summary.txt"
+RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
+```
+
+Production release contract gate (run before and after deploy):
+```bash
+# Optional: avoid auth/login lockouts by reusing an active JWT session
+# export PROD_AUTH_JWT="<valid_jwt>"
+npm run gate:release:prod-contracts
+```
+
 This command will:
 1. Auto-detect your current branch.
 2. Auto-detect the latest commit from origin.
@@ -46,6 +64,17 @@ To run a deep AI verification gate after deployment:
 ```bash
 npm run deploy:verify
 ```
+
+### Remote Deploy Trigger (Local)
+For operator flow via local machine:
+```bash
+bash scripts/deploy-remote.sh
+```
+
+Behavior:
+1. Pushes target commit.
+2. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
+3. Proceeds to production SSH deploy only when gate verdict is pass/bypassed.
 
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
@@ -218,6 +247,21 @@ Do not use `pm2 restart all` as primary deployment strategy.
 - POS: `https://pos.surebizcorp.com`
 - Storefront: `https://surebizcorp.com`
 - Tenant Store: `https://surebizcorp.com/tenant-store`
+
+## Multi-Location Production Smoke Contract
+Script: `scripts/verify-prod-multi-location.ps1`
+
+Supported environment variables:
+1. `PROD_COMPANY_TOKEN` (default `token-original`)
+2. `PROD_EMAIL` (default `admin@test.com`)
+3. `PROD_PASSWORD` (default `Admin123!`)
+4. `PROD_AUTH_JWT` (optional; bypasses login to avoid rate limits)
+5. `PROD_VERIFY_OUTPUT` (optional output JSON path; default `.tmp/prod-multi-location-check.result.json`)
+
+Pass criteria:
+1. Item detail payload includes `item_location_stocks`.
+2. Stock movement CSV headers include `Location` (or `Movement Location`), `Source Location`, and `Destination Location`.
+3. Expiry report CSV headers include `Location`.
 
 ### Nginx Path-Base Requirement (Tenant Store)
 When store is hosted via Vite preview on port `5175` with base path `/tenant-store/`, Nginx must rewrite `/tenant-store/*` before proxying to `5175`.

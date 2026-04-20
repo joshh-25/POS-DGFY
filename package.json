@@ -46,7 +46,16 @@
     "kill:dev": "bash scripts/kill-dev.sh",
     "deploy": "bash scripts/deploy.sh",
     "deploy:auto": "bash scripts/deploy.sh --auto",
-    "deploy:verify": "bash scripts/deploy.sh --auto --verify"
+    "deploy:verify": "bash scripts/deploy.sh --auto --verify",
+    "verify:prod:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-prod-multi-location.ps1",
+    "verify:qa:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-qa-multi-location.ps1",
+    "gate:release:prod-contracts": "npm run verify:prod:multi-location",
+    "gate:release:qa-contracts": "npm run verify:qa:multi-location",
+    "drill:qa:rollback": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-rollback-drill.ps1",
+    "drill:qa:restore": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-restore-drill.ps1",
+    "evidence:qa:deploy-summary": "powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1",
+    "gate:release:no-staging": "node scripts/gate-release-no-staging.js",
+    "verify:release-verdict": "node scripts/verify-release-verdict.js"
   },
   "keywords": [
     "inventory",

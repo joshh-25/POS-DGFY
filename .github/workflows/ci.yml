@@ -20,6 +20,13 @@ jobs:
       - name: Lint governed documentation
         run: npm run lint:docs
 
+  release-verdict-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate release verdict contract when present
+        run: node scripts/verify-release-verdict.js --file .tmp/release-gates/release_verdict.json --sha "${GITHUB_SHA}" --allow-missing true
+
   test-backend:
     runs-on: ubuntu-latest
     defaults:
@@ -240,7 +247,7 @@ jobs:
           retention-days: 14
 
   build:
-    needs: [lint-docs, test-backend, test-frontend, journey-e2e-release-gate]
+    needs: [lint-docs, release-verdict-contract, test-backend, test-frontend, journey-e2e-release-gate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     

@@ -38,6 +38,7 @@ DEPLOY_IMS_HEALTH_URL="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}
 DEPLOY_POS_HEALTH_URL="${DEPLOY_POS_HEALTH_URL:-}"
 DEPLOY_STORE_HEALTH_URL="${DEPLOY_STORE_HEALTH_URL:-}"
 DEPLOY_BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-}"
+DEPLOY_ENFORCE_NO_STAGING_GATE="${DEPLOY_ENFORCE_NO_STAGING_GATE:-1}"
 
 # ------------------------------------------
 # Optional flags parsed from CLI
@@ -181,7 +182,18 @@ echo -e "${GREEN}Push successful.${NC}"
 LOCAL_COMMIT="$(git rev-parse HEAD)"
 
 # ------------------------------------------
-# Step 5: Build remote deploy arguments
+# Step 5: Enforce no-staging release hard gate
+# ------------------------------------------
+if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
+    echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" npm run gate:release:no-staging
+    echo -e "${GREEN}No-staging release gate passed.${NC}"
+else
+    echo -e "${YELLOW}No-staging release gate skipped (DEPLOY_ENFORCE_NO_STAGING_GATE=$DEPLOY_ENFORCE_NO_STAGING_GATE).${NC}"
+fi
+
+# ------------------------------------------
+# Step 6: Build remote deploy arguments
 # ------------------------------------------
 REMOTE_DEPLOY_ARGS="--branch ${TARGET_BRANCH} --expect-commit ${LOCAL_COMMIT}"
 if [ "$SKIP_DB_BACKUP" = "1" ]; then
@@ -205,7 +217,7 @@ REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_TENANT_STORE_URL='${DEPLOY_TENA
 [ -n "$DEPLOY_BACKEND_HEALTH_URL" ] && REMOTE_EXPORTS="${REMOTE_EXPORTS}; export DEPLOY_BACKEND_HEALTH_URL='${DEPLOY_BACKEND_HEALTH_URL}'"
 
 # ------------------------------------------
-# Step 6: SSH and run server deployment
+# Step 7: SSH and run server deployment
 # ------------------------------------------
 echo -e "\n${YELLOW}Connecting to production server...${NC}"
 

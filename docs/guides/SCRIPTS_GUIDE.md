@@ -77,6 +77,7 @@ Notes:
 - Operates on local `master` branch by design.
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
+- Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 
 One-time setup for persistent passwordless deploy access (per machine):
 ```bash
@@ -450,3 +451,80 @@ Safety notes:
 - Run `--dry-run=true` first to preview merged `compliance_profile`.
 - Targeting is by `--company-token`; verify tenant/token mapping before apply.
 - Script respects non-downgrade lifecycle behavior and will not demote `compliant_active`.
+
+## 17. `scripts/verify-multi-location-contract.ps1`
+Profile-based smoke/contract verifier for production or QA.
+
+Usage:
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/verify-multi-location-contract.ps1 -Profile prod
+powershell -ExecutionPolicy Bypass -File scripts/verify-multi-location-contract.ps1 -Profile qa
+```
+
+Wrappers:
+- `scripts/verify-prod-multi-location.ps1`
+- `scripts/verify-qa-multi-location.ps1`
+
+## 18. `scripts/run-qa-rollback-drill.ps1`
+Rollback drill automation for QA with simulation-by-default mode.
+
+Usage:
+```bash
+npm run drill:qa:rollback
+# optional apply mode:
+# QA_ROLLBACK_DRILL_APPLY=1 npm run drill:qa:rollback
+```
+
+Output:
+- `.tmp/release-gates/<sha>/rollback_drill_result.json`
+
+## 19. `scripts/run-qa-restore-drill.ps1`
+Backup restore drill validator for QA with simulation-by-default mode.
+
+Usage:
+```bash
+npm run drill:qa:restore
+# optional apply mode:
+# QA_RESTORE_DRILL_APPLY=1 QA_RESTORE_BACKUP_FILE=/path/to/backup.sql npm run drill:qa:restore
+```
+
+Output:
+- `.tmp/release-gates/<sha>/restore_drill_result.json`
+
+## 20. `scripts/gate-release-no-staging.js`
+Hard-blocking release aggregator for environments without staging.
+
+Usage:
+```bash
+RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging
+```
+
+Contract:
+- fails when QA deploy summary, QA smoke, rollback drill, restore drill, or governance gates fail/mismatch.
+- writes aggregated verdict:
+  - `.tmp/release-gates/<sha>/release_verdict.json`
+
+Emergency bypass (incident-only):
+- `RELEASE_EMERGENCY_BYPASS=1`
+- `RELEASE_EMERGENCY_REASON=...`
+- `RELEASE_EMERGENCY_ACTOR=...`
+
+## 21. `scripts/verify-release-verdict.js`
+Validates release verdict artifact contract and SHA consistency.
+
+Usage:
+```bash
+npm run verify:release-verdict -- --file .tmp/release-gates/<sha>/release_verdict.json --sha <sha>
+```
+
+## 22. `scripts/fetch-qa-deploy-summary.ps1`
+Fetches latest QA deploy summary over SSH into local release evidence.
+
+Usage:
+```bash
+RELEASE_TARGET_SHA=<sha> npm run evidence:qa:deploy-summary
+```
+
+Required environment:
+1. `QA_SSH_HOST`
+2. Optional: `QA_SSH_PORT`, `QA_SSH_USER`, `QA_DEPLOY_SUMMARY_REMOTE`, `QA_DEPLOY_SUMMARY_FILE`

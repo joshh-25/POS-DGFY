@@ -166,6 +166,12 @@ describe('stockMovementHandlers transport contracts', () => {
           'Movement ID': 1,
           Date: '2026-03-01 10:00',
           'Item Name': 'Soy Sauce',
+          'Location ID': 1,
+          Location: 'Villa Store',
+          'Source Location ID': '',
+          'Source Location': '',
+          'Destination Location ID': '',
+          'Destination Location': '',
           Type: 'adjustment',
           Quantity: 5
         }
@@ -180,7 +186,12 @@ describe('stockMovementHandlers transport contracts', () => {
 
     expect(res.header).toHaveBeenCalledWith('Content-Type', 'text/csv');
     expect(res.attachment).toHaveBeenCalledWith(expect.stringMatching(/^stock_movements_/));
-    expect(res.send).toHaveBeenCalledWith(expect.stringContaining('Movement ID'));
+    const csvPayload = res.send.mock.calls[0][0];
+    const [headerLine] = csvPayload.split('\n');
+    expect(headerLine).toContain('Movement ID');
+    expect(headerLine).toContain('Location');
+    expect(headerLine).toContain('Source Location');
+    expect(headerLine).toContain('Destination Location');
     expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'stock_movements_exported',
       surface: 'stock_movements',

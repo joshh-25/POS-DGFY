@@ -108,3 +108,58 @@ Before running manual UAT after backend changes:
    - `POST /api/v1/store/checkout` should return `422` for invalid/out-of-stock payloads, not `500`.
 
 This prevents transient startup-side `500` errors caused by runtime schema `alter` operations.
+
+## Production Multi-Location Contract Smoke
+
+Use this for pre-deploy and post-deploy production validation of multi-location stock/report contracts.
+
+Command:
+1. `npm run gate:release:prod-contracts`
+
+Script:
+1. `scripts/verify-prod-multi-location.ps1`
+
+Environment variables:
+1. `PROD_COMPANY_TOKEN` (default `token-original`)
+2. `PROD_EMAIL` (default `admin@test.com`)
+3. `PROD_PASSWORD` (default `Admin123!`)
+4. `PROD_AUTH_JWT` (optional, recommended during repeated runs to avoid auth rate limits)
+5. `PROD_VERIFY_OUTPUT` (optional output JSON file path)
+
+Required pass checks:
+1. `/items/{id}` detail contains `item_location_stocks`.
+2. `/stock-movements/export?format=csv` header contains location columns (`Location` or `Movement Location`, plus `Source Location`, `Destination Location`).
+3. `/reports/export?type=expiry&location_id=...` header contains `Location`.
+
+## QA Multi-Location Contract Smoke
+
+Command:
+1. `npm run gate:release:qa-contracts`
+
+Required environment:
+1. `QA_BASE_URL` (required)
+2. `QA_COMPANY_TOKEN` (optional default `token-original`)
+3. `QA_EMAIL` / `QA_PASSWORD` (optional defaults)
+4. `QA_AUTH_JWT` (optional)
+5. `QA_VERIFY_OUTPUT` (optional output JSON path)
+
+## QA Drill Outputs
+
+Rollback drill:
+1. `npm run drill:qa:rollback`
+2. Output: `.tmp/release-gates/<sha>/rollback_drill_result.json`
+
+Restore drill:
+1. `npm run drill:qa:restore`
+2. Output: `.tmp/release-gates/<sha>/restore_drill_result.json`
+
+## No-Staging Verdict Contract
+
+Aggregate gate:
+1. `RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
+
+Output:
+1. `.tmp/release-gates/<sha>/release_verdict.json`
+
+Pass condition:
+1. `verdict` equals `pass` (or `bypassed` only with incident metadata).
