@@ -13,6 +13,7 @@ cd /var/www/skupervisor
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
+RELEASE_TARGET_SHA="$EXPECTED_COMMIT" npm run gate:release:no-staging
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
 

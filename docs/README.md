@@ -16,6 +16,7 @@ Start here for all planning and implementation work:
 ## High-Value Sections
 - `docs/architecture`: architecture boundaries, governance, ADRs
 - `docs/api`: API specs and integration guides
+- `docs/ops`: production runbooks, no-staging hard-gate policy, and release checklists
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
   - includes evidence and submission packet docs under `docs/compliance/evidence/` and `docs/compliance/submission/`
@@ -57,6 +58,8 @@ Start here for all planning and implementation work:
 5. PO/JO quantity inputs use a shared external numeric stepper with right-side vertical controls and display-only UOM abbreviations.
 6. POS keyboard quantity/price increment/decrement behavior is standardized to step-by-1; precision sliders in product quality/yield flows remain documented exceptions.
 7. POS and storefront checkout transactions are source-separated (`in_store` vs `online_store`) across POS history, Orders mode, and unified sales reporting contracts.
+8. Weighted average cost valuation is additive and exposed across inventory, purchasing, dashboard, and reporting flows (ADR 0010).
+9. Production release policy is no-staging hard-gated by QA evidence (`docs/ops/NO_STAGING_RELEASE_STANDARD.md`) before deploy.
 
 ## Rules
 1. Use authoritative docs first.

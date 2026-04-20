@@ -26,3 +26,5 @@ When to use:
 - `docs/architecture/adr/0006-skupervisor-expansion-program-boundaries.md`
 - `docs/architecture/adr/0007-dual-mode-pos-compliance-program.md`
 - `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
+- `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
+- `docs/architecture/adr/0010-weighted-average-cost-valuation-and-variance-analytics.md`
