@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,45 +24,101 @@ import { formatQty } from '../../src/lib/numberUtils.js';
 import { format, addDays } from 'date-fns';
 import { useLocations } from '../../src/hooks/useLocations.js';
 
-export default function POReceiptModal({ po, open, onClose, onConfirm }) {
+const getUnitPriceVarianceMeta = ({ unitPrice = 0, baselineCost = 0 }) => {
+  if (!(baselineCost > 0)) return null;
+  const variancePercent = ((unitPrice - baselineCost) / baselineCost) * 100;
+  if (Math.abs(variancePercent) < 0.05) {
+    return {
+      label: 'At average',
+      className: 'bg-slate-100 text-slate-700 border-slate-200'
+    };
+  }
+  return {
+    label: `${variancePercent > 0 ? '+' : ''}${variancePercent.toFixed(1)}% vs avg`,
+    className: variancePercent > 0
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  };
+};
+
+const buildReceiptItems = (poItems = []) => poItems.map((item) => {
+  let calculatedExpiry = null;
+  if (item.fifo_enabled && item.shelf_life_days) {
+    calculatedExpiry = format(addDays(new Date(), item.shelf_life_days), 'yyyy-MM-dd');
+  }
+  return {
+    ...item,
+    quantity_received: item.quantity_received || item.quantity,
+    quality_check: item.quality_check || 'pass',
+    weighted_avg_cost: Number(item.weighted_avg_cost || item?.cost_metrics?.scoped?.weighted_avg_cost || item?.cost_metrics?.global?.weighted_avg_cost || item.cost_per_unit || 0),
+    expiry_date: item.expiry_date || calculatedExpiry || ''
+  };
+});
+
+export default function POReceiptModal({
+  po,
+  open,
+  onClose,
+  onConfirm,
+  onLocationChange = null,
+  locationUpdating = false
+}) {
   const { locations, loading: loadingLocations } = useLocations();
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
     [locations]
   );
-  const [selectedLocationId, setSelectedLocationId] = useState('');
-  const [items, setItems] = useState(
-    po.items.map(item => {
-      // Auto-calculate expiry date if item has shelf_life_days
-      let calculatedExpiry = null;
-      if (item.fifo_enabled && item.shelf_life_days) {
-        calculatedExpiry = format(addDays(new Date(), item.shelf_life_days), 'yyyy-MM-dd');
-      }
-      return {
-        ...item,
-        quantity_received: item.quantity_received || item.quantity,
-        quality_check: item.quality_check || 'pass',
-        expiry_date: item.expiry_date || calculatedExpiry || ''
-      };
-    })
-  );
+  const [manualLocationId, setManualLocationId] = useState('');
+  const [itemDrafts, setItemDrafts] = useState({});
   const [deliveryRating, setDeliveryRating] = useState(5);
   const [notes, setNotes] = useState(po.notes || '');
+  const items = useMemo(() => {
+    const draftMap = itemDrafts || {};
+    return buildReceiptItems(po.items).map((item) => {
+      const draft = draftMap[Number(item.line_item_id)] || {};
+      return {
+        ...item,
+        quantity_received: draft.quantity_received ?? item.quantity_received,
+        quality_check: draft.quality_check ?? item.quality_check,
+        expiry_date: draft.expiry_date ?? item.expiry_date
+      };
+    });
+  }, [po.items, itemDrafts]);
+  const selectedLocationId = useMemo(() => {
+    if (
+      manualLocationId &&
+      activeLocations.some((location) => String(location.location_id) === String(manualLocationId))
+    ) {
+      return String(manualLocationId);
+    }
+    if (activeLocations.length === 1) {
+      return String(activeLocations[0].location_id);
+    }
+    return '';
+  }, [manualLocationId, activeLocations]);
   const requiresLocationSelection = activeLocations.length > 1;
 
-  useEffect(() => {
-    if (activeLocations.length === 1) {
-      setSelectedLocationId(String(activeLocations[0].location_id));
-      return;
+  const handleLocationChange = (value) => {
+    setManualLocationId(value);
+    if (typeof onLocationChange === 'function') {
+      onLocationChange(value);
     }
-    setSelectedLocationId('');
-  }, [activeLocations, po?.po_id, po?.id]);
+  };
 
   const updateItem = (index, field, value) => {
-    setItems(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
+    const targetItem = items[index];
+    if (!targetItem) return;
+    const lineItemId = Number(targetItem.line_item_id);
+    if (!Number.isInteger(lineItemId) || lineItemId <= 0) return;
+    setItemDrafts((prev) => {
+      const currentDraft = prev[lineItemId] || {};
+      return {
+        ...prev,
+        [lineItemId]: {
+          ...currentDraft,
+          [field]: value
+        }
+      };
     });
   };
 
@@ -86,11 +142,19 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
   };
 
   const markAllReceived = () => {
-    setItems(prev => prev.map(item => ({
-      ...item,
-      quantity_received: parseFloat(item.quantity) || 0,
-      quality_check: 'pass'
-    })));
+    setItemDrafts(() => {
+      const nextDrafts = {};
+      items.forEach((item) => {
+        const lineItemId = Number(item.line_item_id);
+        if (!Number.isInteger(lineItemId) || lineItemId <= 0) return;
+        nextDrafts[lineItemId] = {
+          quantity_received: parseFloat(item.quantity) || 0,
+          quality_check: 'pass',
+          expiry_date: item.expiry_date || ''
+        };
+      });
+      return nextDrafts;
+    });
   };
 
   return (
@@ -113,10 +177,23 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
 
           {/* Items */}
           <div className="space-y-3">
-            {items.map((item, idx) => (
+            {items.map((item, idx) => {
+              const varianceMeta = getUnitPriceVarianceMeta({
+                unitPrice: Number(item.unit_price || 0),
+                baselineCost: Number(item.weighted_avg_cost || 0)
+              });
+
+              return (
               <div key={idx} className="bg-slate-50 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-medium text-slate-900">{item.item_name}</span>
+                  <div className="space-y-1">
+                    <span className="font-medium text-slate-900 block">{item.item_name}</span>
+                    {varianceMeta && (
+                      <Badge variant="outline" className={varianceMeta.className}>
+                        {varianceMeta.label}
+                      </Badge>
+                    )}
+                  </div>
                   <Badge variant="outline">Ordered: {formatQty(item.quantity)}</Badge>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -181,7 +258,8 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Delivery Rating */}
@@ -189,7 +267,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
             <Label>Receive Location</Label>
             <Select
               value={selectedLocationId}
-              onValueChange={setSelectedLocationId}
+              onValueChange={handleLocationChange}
               disabled={loadingLocations || activeLocations.length === 0}
             >
               <SelectTrigger>
@@ -205,6 +283,9 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
             </Select>
             {requiresLocationSelection && !selectedLocationId && (
               <p className="text-xs text-red-600">Location is required when multiple active locations exist.</p>
+            )}
+            {locationUpdating && (
+              <p className="text-xs text-slate-500">Refreshing location-based average cost...</p>
             )}
           </div>
 
@@ -246,7 +327,7 @@ export default function POReceiptModal({ po, open, onClose, onConfirm }) {
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleConfirm}
-            disabled={!selectedLocationId || loadingLocations}
+            disabled={!selectedLocationId || loadingLocations || locationUpdating}
             className="bg-teal-600 hover:bg-teal-700"
           >
             Confirm Receipt

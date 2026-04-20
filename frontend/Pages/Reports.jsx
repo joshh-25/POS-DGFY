@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
-  FileText,
   Clock,
   AlertTriangle,
-  TrendingUp,
   DollarSign,
   Download,
   BarChart3,
@@ -29,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "../src/lib/utils.js";
 import { useReports } from '@/hooks/useReports.js';
 import { useLocations } from '@/hooks/useLocations.js';
-import { formatNumber } from '../src/lib/numberUtils.js';
+import { formatNumber, formatPeso } from '../src/lib/numberUtils.js';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -319,7 +317,7 @@ export default function Reports() {
             <BarChart3 className="w-4 h-4" />
             Executive Summary
           </TabsTrigger>
-          <TabsTrigger value="cost" className="flex items-center gap-2 data-[state=active]:bg-Rose-50 data-[state=active]:text-rose-700">
+          <TabsTrigger value="cost" className="flex items-center gap-2 data-[state=active]:bg-rose-50 data-[state=active]:text-rose-700">
             <PieChart className="w-4 h-4" />
             Cost Analysis
           </TabsTrigger>
@@ -339,38 +337,38 @@ export default function Reports() {
                     <span className="text-sm font-medium">Expired</span>
                   </div>
                   <p className="text-2xl font-bold text-red-700 mt-2">{expiryReport.summary.total_expired_batches}</p>
-                  <p className="text-sm text-red-600">₱{formatNumber(expiryReport.summary.total_expired_value, 2)}</p>
+                  <p className="text-sm text-red-600">{formatPeso(expiryReport.summary.total_expired_value, 2)}</p>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-red-600">
                     <AlertCircle className="w-5 h-5" />
-                    <span className="text-sm font-medium">Critical (≤7d)</span>
+                    <span className="text-sm font-medium">Critical (&lt;=7d)</span>
                   </div>
                   <p className="text-2xl font-bold text-red-700 mt-2">{expiryReport.summary.total_critical_batches}</p>
-                  <p className="text-sm text-red-600">₱{formatNumber(expiryReport.summary.total_critical_value, 2)}</p>
+                  <p className="text-sm text-red-600">{formatPeso(expiryReport.summary.total_critical_value, 2)}</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-amber-600">
                     <AlertTriangle className="w-5 h-5" />
-                    <span className="text-sm font-medium">Warning (≤14d)</span>
+                    <span className="text-sm font-medium">Warning (&lt;=14d)</span>
                   </div>
                   <p className="text-2xl font-bold text-amber-700 mt-2">{expiryReport.summary.total_warning_batches}</p>
-                  <p className="text-sm text-amber-600">₱{formatNumber(expiryReport.summary.total_warning_value, 2)}</p>
+                  <p className="text-sm text-amber-600">{formatPeso(expiryReport.summary.total_warning_value, 2)}</p>
                 </div>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-yellow-600">
                     <Hourglass className="w-5 h-5" />
-                    <span className="text-sm font-medium">Upcoming (≤30d)</span>
+                    <span className="text-sm font-medium">Upcoming (&lt;=30d)</span>
                   </div>
                   <p className="text-2xl font-bold text-yellow-700 mt-2">{expiryReport.summary.total_upcoming_batches}</p>
-                  <p className="text-sm text-yellow-600">₱{formatNumber(expiryReport.summary.total_upcoming_value, 2)}</p>
+                  <p className="text-sm text-yellow-600">{formatPeso(expiryReport.summary.total_upcoming_value, 2)}</p>
                 </div>
                 <div className="bg-slate-100 border border-slate-300 rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-slate-600">
                     <DollarSign className="w-5 h-5" />
                     <span className="text-sm font-medium">Total at Risk</span>
                   </div>
-                  <p className="text-2xl font-bold text-slate-800 mt-2">₱{formatNumber(expiryReport.summary.total_value_at_risk, 2)}</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-2">{formatPeso(expiryReport.summary.total_value_at_risk, 2)}</p>
                 </div>
               </div>
 
@@ -378,7 +376,7 @@ export default function Reports() {
               {expiryReport.expired.length > 0 && (
                 <div className="bg-white rounded-2xl border border-red-200 overflow-hidden">
                   <div className="p-4 border-b border-red-100 bg-red-50">
-                    <h3 className="font-semibold text-red-800">⚠️ Expired Batches ({expiryReport.expired.length})</h3>
+                    <h3 className="font-semibold text-red-800">Expired Batches ({expiryReport.expired.length})</h3>
                     <p className="text-sm text-red-600">These items have passed their expiry date</p>
                   </div>
                   <div className="overflow-x-auto">
@@ -405,7 +403,7 @@ export default function Reports() {
                             <td className="p-3 text-red-600">{batch.expiry_date}</td>
                             <td className="p-3 text-right text-red-700 font-semibold">{batch.days_expired}d ago</td>
                             <td className="p-3 text-right">{batch.available_quantity} {batch.unit_of_measure}</td>
-                            <td className="p-3 text-right text-red-700 font-semibold">₱{formatNumber(batch.value_at_risk, 2)}</td>
+                            <td className="p-3 text-right text-red-700 font-semibold">{formatPeso(batch.value_at_risk, 2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -418,7 +416,7 @@ export default function Reports() {
               {expiryReport.critical.length > 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="p-4 border-b border-slate-100">
-                    <h3 className="font-semibold text-slate-900">🔴 Critical - Expiring within 7 days ({expiryReport.critical.length})</h3>
+                    <h3 className="font-semibold text-slate-900">Critical - Expiring within 7 days ({expiryReport.critical.length})</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -446,7 +444,7 @@ export default function Reports() {
                               <Badge variant="outline" className={statusColors.critical}>{batch.days_until_expiry}d</Badge>
                             </td>
                             <td className="p-3 text-right">{batch.available_quantity} {batch.unit_of_measure}</td>
-                            <td className="p-3 text-right font-medium">₱{formatNumber(batch.value_at_risk, 2)}</td>
+                            <td className="p-3 text-right font-medium">{formatPeso(batch.value_at_risk, 2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -459,7 +457,7 @@ export default function Reports() {
               {expiryReport.warning.length > 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="p-4 border-b border-slate-100">
-                    <h3 className="font-semibold text-slate-900">🟡 Warning - Expiring within 14 days ({expiryReport.warning.length})</h3>
+                    <h3 className="font-semibold text-slate-900">Warning - Expiring within 14 days ({expiryReport.warning.length})</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -487,7 +485,7 @@ export default function Reports() {
                               <Badge variant="outline" className={statusColors.warning}>{batch.days_until_expiry}d</Badge>
                             </td>
                             <td className="p-3 text-right">{batch.available_quantity} {batch.unit_of_measure}</td>
-                            <td className="p-3 text-right font-medium">₱{formatNumber(batch.value_at_risk, 2)}</td>
+                            <td className="p-3 text-right font-medium">{formatPeso(batch.value_at_risk, 2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -515,13 +513,13 @@ export default function Reports() {
           ) : stockAgingReport ? (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="bg-white rounded-2xl border border-slate-200 p-4">
                   <p className="text-sm text-slate-500">Total Batches</p>
                   <p className="text-2xl font-bold text-slate-800 mt-1">{stockAgingReport.summary.total_batches}</p>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                  <p className="text-sm text-emerald-600">Fresh (≤14d)</p>
+                  <p className="text-sm text-emerald-600">Fresh (&lt;=14d)</p>
                   <p className="text-2xl font-bold text-emerald-700 mt-1">{stockAgingReport.summary.fresh_batches}</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
@@ -572,7 +570,7 @@ export default function Reports() {
                             </Badge>
                           </td>
                           <td className="p-3 text-right">{formatNumber(item.avg_turnover_rate, 1)}%</td>
-                          <td className="p-3 text-right font-medium">₱{formatNumber(item.total_value, 2)}</td>
+                          <td className="p-3 text-right font-medium">{formatPeso(item.total_value, 2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -590,7 +588,7 @@ export default function Reports() {
           ) : productionReport ? (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="bg-white rounded-2xl border border-slate-200 p-4">
                   <p className="text-sm text-slate-500">Total Job Orders</p>
                   <p className="text-2xl font-bold text-slate-800 mt-1">{productionReport.summary.total_job_orders}</p>
@@ -684,7 +682,7 @@ export default function Reports() {
           ) : poAnalysisReport ? (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="bg-white rounded-2xl border border-slate-200 p-4">
                   <p className="text-sm text-slate-500">Total Orders</p>
                   <p className="text-2xl font-bold text-slate-800 mt-1">{poAnalysisReport.summary.total_orders}</p>
@@ -699,7 +697,23 @@ export default function Reports() {
                 </div>
                 <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4">
                   <p className="text-sm text-purple-600">Total Value</p>
-                  <p className="text-2xl font-bold text-purple-700 mt-1">₱{formatNumber(poAnalysisReport.summary.total_order_value, 2)}</p>
+                  <p className="text-2xl font-bold text-purple-700 mt-1">{formatPeso(poAnalysisReport.summary.total_order_value, 2)}</p>
+                </div>
+                <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-4">
+                  <p className="text-sm text-cyan-700">Vs Avg Cost</p>
+                  <p className={cn(
+                    "text-2xl font-bold mt-1",
+                    (poAnalysisReport?.cost_variance?.summary?.ordered_vs_weighted_variance_value || 0) > 0
+                      ? "text-amber-700"
+                      : "text-emerald-700"
+                  )}>
+                    {formatPeso(poAnalysisReport?.cost_variance?.summary?.ordered_vs_weighted_variance_value || 0, 2)}
+                  </p>
+                  <p className="text-xs text-cyan-700 mt-1">
+                    {poAnalysisReport?.cost_variance?.summary?.ordered_vs_weighted_variance_percent != null
+                      ? `${formatNumber(poAnalysisReport.cost_variance.summary.ordered_vs_weighted_variance_percent, 1)}%`
+                      : 'No weighted baseline'}
+                  </p>
                 </div>
               </div>
 
@@ -736,7 +750,7 @@ export default function Reports() {
                                 {po.status}
                               </Badge>
                             </td>
-                            <td className="p-3 text-right font-medium">₱{formatNumber(po.total_amount, 2)}</td>
+                            <td className="p-3 text-right font-medium">{formatPeso(po.total_amount, 2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -759,6 +773,7 @@ export default function Reports() {
                         <th className="text-right p-3 font-medium text-slate-600">Completed</th>
                         <th className="text-right p-3 font-medium text-slate-600">On-Time Rate</th>
                         <th className="text-right p-3 font-medium text-slate-600">Quality</th>
+                        <th className="text-right p-3 font-medium text-slate-600">Vs Avg</th>
                         <th className="text-right p-3 font-medium text-slate-600">Total Value</th>
                       </tr>
                     </thead>
@@ -778,7 +793,12 @@ export default function Reports() {
                             </Badge>
                           </td>
                           <td className="p-3 text-right">{supplier.quality_rating ? `${supplier.quality_rating}/5` : 'N/A'}</td>
-                          <td className="p-3 text-right font-medium">₱{formatNumber(supplier.total_value, 2)}</td>
+                          <td className="p-3 text-right">
+                            {supplier.ordered_vs_weighted_variance_percent != null
+                              ? `${formatNumber(supplier.ordered_vs_weighted_variance_percent, 1)}%`
+                              : '-'}
+                          </td>
+                          <td className="p-3 text-right font-medium">{formatPeso(supplier.total_value, 2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -799,6 +819,7 @@ export default function Reports() {
                         <th className="text-left p-3 font-medium text-slate-600">SKU</th>
                         <th className="text-right p-3 font-medium text-slate-600">Order Count</th>
                         <th className="text-right p-3 font-medium text-slate-600">Total Qty</th>
+                        <th className="text-right p-3 font-medium text-slate-600">Vs Avg</th>
                         <th className="text-right p-3 font-medium text-slate-600">Total Value</th>
                       </tr>
                     </thead>
@@ -809,7 +830,12 @@ export default function Reports() {
                           <td className="p-3 text-slate-600">{item.sku_code}</td>
                           <td className="p-3 text-right">{item.order_count}</td>
                           <td className="p-3 text-right">{formatNumber(item.total_quantity, 2)}</td>
-                          <td className="p-3 text-right font-medium">₱{formatNumber(item.total_value, 2)}</td>
+                          <td className="p-3 text-right">
+                            {item.ordered_vs_weighted_variance_percent != null
+                              ? `${formatNumber(item.ordered_vs_weighted_variance_percent, 1)}%`
+                              : '-'}
+                          </td>
+                          <td className="p-3 text-right font-medium">{formatPeso(item.total_value, 2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -828,11 +854,19 @@ export default function Reports() {
             <div className="space-y-6">
               {/* Main Value Card */}
               <div className="bg-gradient-to-r from-teal-500 to-teal-600 rounded-2xl p-6 text-white">
-                <p className="text-teal-100">Total Inventory Value</p>
+                <p className="text-teal-100">Weighted Inventory Value (On-hand)</p>
                 <p className="text-4xl font-bold mt-2">
-                  ₱{formatNumber(executiveSummary.inventory_overview.total_inventory_value, 2)}
+                  {formatPeso(
+                    executiveSummary.inventory_overview.weighted_total_inventory_value
+                    ?? executiveSummary.inventory_overview.total_inventory_value,
+                    2
+                  )}
                 </p>
                 <p className="text-teal-100 mt-2">{executiveSummary.inventory_overview.total_items} items tracked</p>
+                <p className="text-teal-100 text-sm">
+                  Legacy value: {formatPeso(executiveSummary.inventory_overview.legacy_total_inventory_value
+                    ?? executiveSummary.inventory_overview.total_inventory_value, 2)}
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -865,11 +899,11 @@ export default function Reports() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Expired Value</span>
-                      <span className="font-semibold text-red-600">₱{formatNumber(executiveSummary.expiry_risk.expired_value, 2)}</span>
+                      <span className="font-semibold text-red-600">{formatPeso(executiveSummary.expiry_risk.expired_value, 2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Total at Risk</span>
-                      <span className="font-semibold text-amber-600">₱{formatNumber(executiveSummary.expiry_risk.total_value_at_risk, 2)}</span>
+                      <span className="font-semibold text-amber-600">{formatPeso(executiveSummary.expiry_risk.total_value_at_risk, 2)}</span>
                     </div>
                   </div>
                 </div>
@@ -937,6 +971,19 @@ export default function Reports() {
                       <span className="text-slate-600">Fulfillment Rate</span>
                       <span className="font-semibold text-emerald-600">{formatNumber(executiveSummary.procurement_overview.fulfillment_rate, 1)}%</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Vs Avg Cost</span>
+                      <span className={cn(
+                        "font-semibold",
+                        (executiveSummary.procurement_overview.ordered_vs_weighted_variance_value || 0) > 0
+                          ? "text-amber-700"
+                          : "text-emerald-700"
+                      )}>
+                        {executiveSummary.procurement_overview.ordered_vs_weighted_variance_percent != null
+                          ? `${formatNumber(executiveSummary.procurement_overview.ordered_vs_weighted_variance_percent, 1)}%`
+                          : '-'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -944,7 +991,7 @@ export default function Reports() {
               {/* Top Movers */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                  <h3 className="font-semibold text-slate-900 mb-4">🔥 Fastest Moving Items</h3>
+                  <h3 className="font-semibold text-slate-900 mb-4">Fastest Moving Items</h3>
                   <div className="space-y-2">
                     {executiveSummary.top_movers.fastest.slice(0, 5).map((item, idx) => (
                       <div key={item.item_id} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
@@ -959,7 +1006,7 @@ export default function Reports() {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                  <h3 className="font-semibold text-slate-900 mb-4">🐢 Slowest Moving Items</h3>
+                  <h3 className="font-semibold text-slate-900 mb-4">Slowest Moving Items</h3>
                   <div className="space-y-2">
                     {executiveSummary.top_movers.slowest.slice(0, 5).map((item, idx) => (
                       <div key={item.item_id} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
@@ -1015,3 +1062,5 @@ export default function Reports() {
     </div>
   );
 }
+
+

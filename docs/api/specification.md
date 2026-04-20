@@ -364,6 +364,7 @@ Get all items with pagination and filtering
 &sortOrder=asc
 &status=active
 &fields=dropdown     # Lightweight projection: returns only item_id, sku_code, name, unit_of_measure, category, current_stock. Skips all JOINs. Use for dropdowns.
+&valuation_location_id=3   # Optional: adds location-scoped weighted metrics in cost_metrics.scoped
 ```
 
 **Response (200)**
@@ -383,6 +384,21 @@ Get all items with pagination and filtering
         "purchase_allowance": 100,
         "unit_of_measure": "kg",
         "cost_per_unit": 25.50,
+        "cost_metrics": {
+          "global": {
+            "available_qty": 150.5,
+            "weighted_avg_cost": 24.9,
+            "inventory_value": 3747.45,
+            "source": "fifo_batches"
+          },
+          "scoped": {
+            "location_id": 3,
+            "available_qty": 120.5,
+            "weighted_avg_cost": 24.6,
+            "inventory_value": 2964.3,
+            "source": "fifo_batches"
+          }
+        },
         "fifo_enabled": true,
         "is_active": true,
         "created_at": "2024-01-01T10:00:00Z"
@@ -401,11 +417,18 @@ Get all items with pagination and filtering
 **Notes:**
 - Default listing excludes soft-deleted rows (`deleted_at IS NULL`).
 - Inactive items are excluded by default unless explicitly queried by status where permitted.
+- `cost_metrics.global` is always returned. `cost_metrics.scoped` is returned only when `valuation_location_id` is provided.
+- `cost_metrics.*.source` indicates valuation origin (`fifo_batches` or `item_cost_fallback`).
 
-> **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint returns a lightweight projection (6 fields, no JOINs) intended for populating dropdowns. The full pagination wrapper is preserved but `total` reflects only the returned count. Do not use `fields=dropdown` when you need `ProductComposition`, `ItemFolder`, or any join data.
+> **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint still uses a lightweight row projection (no join-heavy composition/folder payload), but now includes additive `cost_metrics` valuation data for procurement and planning surfaces. Prefer this mode for dropdowns and quick selectors; avoid it when you need full `ProductComposition`, `ItemFolder`, or deep detail payloads.
 
 ### GET /items/:item_id
 Get single item details
+
+**Query Parameters**
+```
+?valuation_location_id=3   # Optional: sets cost_metrics.scoped to selected location
+```
 
 **Response (200)**
 ```json
@@ -423,6 +446,31 @@ Get single item details
     "purchase_allowance": 100,
     "unit_of_measure": "kg",
     "cost_per_unit": 25.50,
+    "cost_metrics": {
+      "global": {
+        "available_qty": 150.5,
+        "weighted_avg_cost": 24.9,
+        "inventory_value": 3747.45,
+        "source": "fifo_batches"
+      },
+      "scoped": {
+        "location_id": 3,
+        "available_qty": 120.5,
+        "weighted_avg_cost": 24.6,
+        "inventory_value": 2964.3,
+        "source": "fifo_batches"
+      },
+      "by_location": [
+        {
+          "location_id": 3,
+          "location_name": "Villa Store",
+          "available_qty": 120.5,
+          "weighted_avg_cost": 24.6,
+          "inventory_value": 2964.3,
+          "source": "fifo_batches"
+        }
+      ]
+    },
     "fifo_enabled": true,
     "batch_size": 50,
     "yield_percentage": 98.5,
@@ -478,6 +526,7 @@ Get single item details
 **Notes:**
 - `current_stock` remains compatibility aggregate; authoritative per-location balances are in `item_location_stocks`.
 - FIFO batches include optional location metadata to support location-scoped FIFO consumption.
+- `cost_metrics.by_location` is included in detail responses for per-location weighted valuation visibility.
 
 ### POST /items
 Create new item
@@ -994,6 +1043,11 @@ Get all purchase orders
 ### GET /purchase-orders/:po_id
 Get detailed PO with line items
 
+**Query Parameters**
+```
+?valuation_location_id=3
+```
+
 **Response (200)**
 ```json
 {
@@ -1026,6 +1080,12 @@ Get detailed PO with line items
   }
 }
 ```
+
+**Notes**
+- PO detail responses now include weighted valuation context on item payloads used by receipt/review UIs:
+  - `line_items[].item.weighted_avg_cost`
+  - `line_items[].item.cost_metrics`
+- `valuation_location_id` is optional. When provided, `line_items[].item.weighted_avg_cost` and `line_items[].item.cost_metrics.scoped` are computed from the selected location baseline.
 
 ### POST /purchase-orders
 Create new purchase order
@@ -2304,6 +2364,43 @@ POS rows now also expose `pos_order_source` (`in_store`, `online_store`) for cha
 
 ---
 
+## Dashboard Endpoints
+
+### GET /dashboard/stats
+Get operational dashboard counters and inventory valuation totals.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "totalItems": 420,
+    "lowStockCount": 37,
+    "healthyCount": 301,
+    "overStockCount": 82,
+    "totalValue": 120000,
+    "weightedTotalValue": 118700,
+    "weightedAverageCostPerUnit": 24.52,
+    "weightedTotalAvailableQty": 4840,
+    "inventoryValueDelta": -1300,
+    "pending_purchase_orders": 12,
+    "active_job_orders": 4,
+    "pending_dispatch_orders": 9,
+    "dataQuality": {
+      "items_missing_cost": 6,
+      "items_with_zero_stock": 21,
+      "items_with_cost_data": 414
+    }
+  }
+}
+```
+
+**Notes**
+- `totalValue` remains the legacy aggregate (`current_stock * item.cost_per_unit`) for backward compatibility.
+- Weighted fields are derived from on-hand FIFO balances and are additive, not breaking existing consumers.
+
+---
+
 ## Reports Endpoints
 
 ### GET /reports/expiry
@@ -2384,14 +2481,16 @@ Export report output as CSV.
 
 **Supported `type` values**
 - `expiry`
-- `stockAging`
+- `stock_aging`
 - `production`
-- `poAnalysis`
-- `executiveSummary`
+- `po_analysis`
+- `executive_summary`
 
 **CSV Contract Notes (location-aware):**
 - `type=expiry` CSV includes `Location` column.
-- `type=stockAging` CSV includes `Location` column.
+- `type=stock_aging` CSV includes `Location` column.
+- `type=po_analysis` CSV includes weighted cost variance summary plus top supplier/item variance slices.
+- `type=executive_summary` CSV includes weighted inventory fields and procurement weighted-variance fields.
 - Date filters are normalized server-side to a max range of 365 days.
 
 ### GET /reports/stock-aging
@@ -2455,8 +2554,108 @@ Get financial tracking report
     ],
     "summary": {
       "total_inventory_value": 120000,
+      "legacy_total_inventory_value": 120000,
+      "weighted_total_inventory_value": 118700,
+      "weighted_total_available_qty": 4840,
+      "weighted_average_cost_per_unit": 24.52,
+      "inventory_value_delta": -1300,
       "total_cogs": 35000,
       "inventory_turnover_ratio": 2.5
+    }
+  }
+}
+```
+
+### GET /reports/po-analysis
+Get purchase order analytics with weighted-cost variance.
+
+**Query Parameters**
+```
+?startDate=2026-03-01
+&endDate=2026-03-31
+&location_id=3
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total_orders": 12,
+      "total_order_value": 92840,
+      "total_received_value": 74210,
+      "pending_orders": 4,
+      "fulfillment_rate": 66.7
+    },
+    "supplier_performance": [
+      {
+        "supplier_id": 5,
+        "supplier_name": "Prime Flour Supply",
+        "total_orders": 4,
+        "ordered_supplier_value": 22500,
+        "ordered_weighted_baseline_value": 21420,
+        "ordered_vs_weighted_variance_value": 1080,
+        "ordered_vs_weighted_variance_percent": 5.0
+      }
+    ],
+    "most_ordered_items": [
+      {
+        "item_id": 1,
+        "item_name": "All-Purpose Flour",
+        "total_quantity": 850,
+        "total_value": 21250,
+        "weighted_baseline_value": 20570,
+        "ordered_vs_weighted_variance_value": 680,
+        "ordered_vs_weighted_variance_percent": 3.3
+      }
+    ],
+    "cost_variance": {
+      "baseline_scope": "location",
+      "baseline_location_id": 3,
+      "summary": {
+        "ordered_supplier_value": 92840,
+        "ordered_weighted_baseline_value": 90100,
+        "ordered_vs_weighted_variance_value": 2740,
+        "ordered_vs_weighted_variance_percent": 3.0
+      },
+      "by_supplier": [],
+      "by_item": [],
+      "line_samples": []
+    }
+  }
+}
+```
+
+### GET /reports/executive-summary
+Get consolidated KPIs with weighted inventory and procurement variance overlays.
+
+**Query Parameters**
+```
+?startDate=2026-03-01
+&endDate=2026-03-31
+&location_id=3
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "inventory_overview": {
+      "total_inventory_value": 120000,
+      "legacy_total_inventory_value": 120000,
+      "weighted_total_inventory_value": 118700,
+      "weighted_total_available_qty": 4840,
+      "weighted_average_cost_per_unit": 24.52
+    },
+    "procurement_overview": {
+      "total_orders": 12,
+      "pending_orders": 4,
+      "total_order_value": 92840,
+      "fulfillment_rate": 66.7,
+      "ordered_vs_weighted_variance_value": 2740,
+      "ordered_vs_weighted_variance_percent": 3.0
     }
   }
 }

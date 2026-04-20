@@ -86,7 +86,7 @@ describe('inventory itemRepository', () => {
       status: 'active'
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       items: [
         {
           item_id: 1,
@@ -97,7 +97,13 @@ describe('inventory itemRepository', () => {
           product_type: null,
           status: 'active',
           current_stock: 10,
-          id: 1
+          id: 1,
+          cost_metrics: {
+            global: {
+              available_qty: 10,
+              source: 'item_cost_fallback'
+            }
+          }
         },
         {
           item_id: 2,
@@ -108,7 +114,13 @@ describe('inventory itemRepository', () => {
           product_type: null,
           status: 'active',
           current_stock: 8,
-          id: 2
+          id: 2,
+          cost_metrics: {
+            global: {
+              available_qty: 8,
+              source: 'item_cost_fallback'
+            }
+          }
         }
       ],
       pagination: {
@@ -336,6 +348,8 @@ describe('inventory itemRepository', () => {
       }
     ]);
     expect(result.recipe_cost).toBe(6.5);
+    expect(['fifo_batches', 'item_cost_fallback']).toContain(result.cost_metrics?.global?.source);
+    expect(result.cost_metrics?.global?.source).not.toBe('fifo_on_hand');
     expect(result.costBreakdown).toBeUndefined();
     expect(result.fifoBatches).toBeUndefined();
     expect(result.locationStocks).toBeUndefined();

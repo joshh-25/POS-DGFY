@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 
 const mockGetPurchaseOrdersUseCase = jest.fn();
+const mockGetPurchaseOrderByIdUseCase = jest.fn();
 const mockCreatePurchaseOrderUseCase = jest.fn();
 const mockReceivePurchaseOrderUseCase = jest.fn();
 const mockArchivePurchaseOrderUseCase = jest.fn();
@@ -8,7 +9,7 @@ const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/purchaseOrders/index.js', () => ({
   getPurchaseOrdersUseCase: mockGetPurchaseOrdersUseCase,
-  getPurchaseOrderByIdUseCase: jest.fn(),
+  getPurchaseOrderByIdUseCase: mockGetPurchaseOrderByIdUseCase,
   createPurchaseOrderUseCase: mockCreatePurchaseOrderUseCase,
   finalizePurchaseOrderUseCase: jest.fn(),
   receivePurchaseOrderUseCase: mockReceivePurchaseOrderUseCase,
@@ -21,6 +22,7 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 }));
 
 let getPurchaseOrders;
+let getPurchaseOrderById;
 let createPurchaseOrder;
 let receivePurchaseOrder;
 let archivePurchaseOrder;
@@ -28,6 +30,7 @@ let archivePurchaseOrder;
 beforeAll(async () => {
   const mod = await import('../src/modules/purchaseOrders/controllers/purchaseOrderHandlers.js');
   getPurchaseOrders = mod.getPurchaseOrders;
+  getPurchaseOrderById = mod.getPurchaseOrderById;
   createPurchaseOrder = mod.createPurchaseOrder;
   receivePurchaseOrder = mod.receivePurchaseOrder;
   archivePurchaseOrder = mod.archivePurchaseOrder;
@@ -78,6 +81,36 @@ describe('purchaseOrderHandlers transport contracts', () => {
       surface: 'purchase_orders',
       action: 'list_purchase_orders'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('getPurchaseOrderById forwards valuation_location_id query to use-case', async () => {
+    mockGetPurchaseOrderByIdUseCase.mockResolvedValue({
+      success: true,
+      data: { po_id: 22, status: 'pending' }
+    });
+
+    const req = {
+      params: { po_id: '22' },
+      query: { valuation_location_id: '5' },
+      requestId: 'req-po-detail',
+      user: { user_id: 4, tenant_id: 'tenant-1' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await getPurchaseOrderById(req, res, next);
+
+    expect(mockGetPurchaseOrderByIdUseCase).toHaveBeenCalledWith({
+      poId: '22',
+      valuationLocationId: '5'
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { po_id: 22, status: 'pending' },
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 

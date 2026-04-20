@@ -419,6 +419,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       // Calculate ratio for ingredient consumption
       // Avoid division by zero if totalQuantityToProduce is somehow 0 (should correspond to validation in create)
       const consumptionRatio = totalQuantityToProduce > 0 ? (qtyToProcess / totalQuantityToProduce) : 1;
+      let totalConsumedInputCost = 0;
 
       // Process ingredients (FIFO consumption) with UOM conversion support
       for (const ingredient of jo.ingredients) {
@@ -504,6 +505,11 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
           // Ideally JO completion could allow manual batch selection, but for now we default to FIFO.
         }, userId, t);
 
+        const movementUnitCost = Number.parseFloat(
+          movement?.weighted_average_cost ?? item.cost_per_unit ?? 0
+        ) || 0;
+        totalConsumedInputCost += quantityToConsume * movementUnitCost;
+
         // Update stock (re-read from item as service updated it, or calculate)
         const stockAfter = stockBefore - quantityToConsume;
 
@@ -518,6 +524,9 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
       // Add finished product to stock via Service
       const product = jo.product;
+      const computedOutputUnitCost = qtyToProcess > 0
+        ? (totalConsumedInputCost / qtyToProcess)
+        : (Number.parseFloat(product.cost_per_unit || 0) || 0);
 
       console.log(`[JO Completion] Adding Product Stock: ${qtyToProcess} of ${product.name}`);
 
@@ -533,7 +542,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
         reference_type: 'JO',
         notes: notes || null,
         expiry_date: expiryDateOverride || null, // Service handles fallback to shelf life
-        cost_per_unit: product.cost_per_unit, // Product cost (should be calculated from ingredients, but current logic uses static cost)
+        cost_per_unit: computedOutputUnitCost,
         po_number: jo.jo_number // Use JO number as "PO Number" for batch
       }, userId, t);
 

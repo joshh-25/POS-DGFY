@@ -4,11 +4,17 @@ import fs from 'fs/promises';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertPurchaseOrderRepositoryContract } from '../contracts/purchaseOrderRepository.contract.js';
+import { getItemsCostMetrics } from '../../inventory/services/costValuationService.js';
 
 const createHttpError = (message, statusCode) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const parsePositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
 export const purchaseOrderRepository = {
@@ -93,9 +99,14 @@ export const purchaseOrderRepository = {
     const User = dbStore.get('User');
     const POLineItem = dbStore.get('POLineItem');
     const Item = dbStore.get('Item');
+    const {
+      valuationLocationId = null,
+      ...queryOptions
+    } = options || {};
+    const normalizedValuationLocationId = parsePositiveInt(valuationLocationId);
 
     const po = await PurchaseOrder.findByPk(poId, {
-      ...options,
+      ...queryOptions,
       include: [
         { model: Supplier, as: 'supplier' },
         { model: User, as: 'creator', attributes: ['username'] },
@@ -109,6 +120,42 @@ export const purchaseOrderRepository = {
 
     if (!po) {
       throw createHttpError('Purchase order not found', 404);
+    }
+
+    const lineItems = Array.isArray(po.lineItems) ? po.lineItems : [];
+    const itemRows = lineItems
+      .map((lineItem) => {
+        if (!lineItem?.item) return null;
+        return typeof lineItem.item.toJSON === 'function'
+          ? lineItem.item.toJSON()
+          : lineItem.item;
+      })
+      .filter(Boolean);
+
+    if (itemRows.length > 0) {
+      const itemCostMetrics = await getItemsCostMetrics({
+        items: itemRows,
+        locationId: normalizedValuationLocationId
+      });
+      lineItems.forEach((lineItem) => {
+        const item = lineItem?.item;
+        if (!item) return;
+        const itemId = Number(item.item_id);
+        if (!Number.isInteger(itemId) || itemId <= 0) return;
+        const metrics = itemCostMetrics.get(itemId) || null;
+        const weightedAvgCost = metrics?.scoped?.weighted_avg_cost
+          ?? metrics?.global?.weighted_avg_cost
+          ?? null;
+
+        if (typeof item.setDataValue === 'function') {
+          item.setDataValue('cost_metrics', metrics);
+          item.setDataValue('weighted_avg_cost', weightedAvgCost);
+          return;
+        }
+
+        item.cost_metrics = metrics;
+        item.weighted_avg_cost = weightedAvgCost;
+      });
     }
 
     return po;

@@ -5,8 +5,8 @@ export const getPurchaseOrders = async (params = {}) => {
   return response.data.data;
 };
 
-export const getPurchaseOrderById = async (poId) => {
-  const response = await api.get(`/purchase-orders/${poId}`);
+export const getPurchaseOrderById = async (poId, params = {}) => {
+  const response = await api.get(`/purchase-orders/${poId}`, { params });
   return response.data.data;
 };
 

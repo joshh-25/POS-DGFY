@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
-import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
+import { formatPeso, formatQty } from '../../src/lib/numberUtils.js';
 import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiryHelpers.js';
 import { format } from 'date-fns';
 import { getCategoryConfig, getCategoryLabel } from '@/components/utils/categoryHelpers';
@@ -53,6 +53,9 @@ export default function ItemCard({
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
   const percentage = isDraft || !item.max_capacity ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
+  const weightedAvgCost = Number(item?.cost_metrics?.global?.weighted_avg_cost || 0);
+  const hasAverageCost = weightedAvgCost > 0
+    && Math.abs(weightedAvgCost - Number(item?.cost_per_unit || 0)) > 0.0001;
 
   // DnD Hook
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -255,12 +258,18 @@ export default function ItemCard({
         <div className="mt-auto space-y-2 border-t border-slate-100 pt-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">Unit Cost</span>
-            <span className="font-semibold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</span>
+            <span className="font-semibold text-slate-900">{formatPeso(item.cost_per_unit)}</span>
           </div>
+          {hasAverageCost && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Avg Cost (On-hand)</span>
+              <span className="text-sm font-semibold text-teal-700">{formatPeso(weightedAvgCost)}</span>
+            </div>
+          )}
           {item?.default_sale_price != null && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Selling Price</span>
-              <span className="text-sm font-semibold text-slate-900">PHP {formatNumber(item.default_sale_price, 2)}</span>
+              <span className="text-sm font-semibold text-slate-900">{formatPeso(item.default_sale_price)}</span>
             </div>
           )}
           {nextExpiry && !isMsmeMode && (

@@ -5,6 +5,7 @@ import {
   resolveMovementLocation,
   resolveTransferLocations
 } from './locationInventoryService.js';
+import { invalidateItemCostMetricsCache } from '../modules/inventory/services/costValuationService.js';
 
 const INBOUND_MOVEMENT_TYPES = new Set(['purchase_receipt', 'return', 'production_output', 'adjustment']);
 const OUTBOUND_MOVEMENT_TYPES = new Set(['production_consumption', 'calculated_loss', 'goods_issue']);
@@ -81,6 +82,48 @@ const updateItemAggregateStock = async ({ item, ItemLocationStock, options = {} 
   const total = rows.reduce((sum, row) => sum + Number.parseFloat(row.quantity_on_hand || 0), 0);
   await item.update({ current_stock: total }, options);
   return total;
+};
+
+const round4 = (value) => {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * 10000) / 10000;
+};
+
+const resolveMovementWeightedAverageCost = ({
+  movementType,
+  movementData,
+  item,
+  batchTransactionsData = [],
+  movementQuantity = 0
+}) => {
+  if (Array.isArray(batchTransactionsData) && batchTransactionsData.length > 0) {
+    const weightedTotal = batchTransactionsData.reduce((sum, entry) => (
+      sum + (Number.parseFloat(entry.quantity_consumed || 0) * Number.parseFloat(entry.cost_per_unit || 0))
+    ), 0);
+    const totalQty = batchTransactionsData.reduce((sum, entry) => (
+      sum + Number.parseFloat(entry.quantity_consumed || 0)
+    ), 0);
+    if (totalQty > 0.000001) {
+      return round4(weightedTotal / totalQty);
+    }
+  }
+
+  if (movementType === 'transfer') {
+    return round4(movementData.cost_per_unit ?? item?.cost_per_unit ?? 0);
+  }
+
+  if (INBOUND_MOVEMENT_TYPES.has(movementType)) {
+    return round4(movementData.cost_per_unit ?? item?.cost_per_unit ?? 0);
+  }
+
+  if (OUTBOUND_MOVEMENT_TYPES.has(movementType)) {
+    if (movementQuantity > 0.000001) {
+      return round4(movementData.cost_per_unit ?? item?.cost_per_unit ?? 0);
+    }
+  }
+
+  return null;
 };
 
 export const getStockMovements = async (queryParams) => {
@@ -557,6 +600,14 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   }
 
   // Create stock movement record
+  const weightedAverageCost = resolveMovementWeightedAverageCost({
+    movementType: movement_type,
+    movementData,
+    item,
+    batchTransactionsData,
+    movementQuantity
+  });
+
   const movement = await StockMovement.create({
     item_id: item.item_id,
     movement_type,
@@ -570,6 +621,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
     loss_reason: movementData.loss_reason || null,
     batch_id: createdBatchId,
     expiry_date: movementExpiryDate,
+    weighted_average_cost: weightedAverageCost,
     location_id: resolvedLocationId,
     source_location_id: resolvedSourceLocationId,
     destination_location_id: resolvedDestinationLocationId
@@ -584,6 +636,11 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
       }, options)
     ));
   }
+
+  invalidateItemCostMetricsCache({
+    itemIds: [item.item_id],
+    locationIds: [resolvedLocationId, resolvedSourceLocationId, resolvedDestinationLocationId]
+  });
 
   return movement;
 };
@@ -1006,6 +1063,16 @@ export const voidMovement = async (movementId, userId, reason) => {
     }, { transaction });
 
     await transaction.commit();
+
+    invalidateItemCostMetricsCache({
+      itemIds: [item_id],
+      locationIds: [
+        originalMovement.location_id,
+        originalMovement.source_location_id,
+        originalMovement.destination_location_id
+      ]
+    });
+
     return voidMovementRecord;
 
   } catch (error) {

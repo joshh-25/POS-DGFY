@@ -628,8 +628,51 @@ const generateProductionCSV = (data) => {
 const generatePOAnalysisCSV = (data) => {
   const headers = ['PO ID', 'PO Number', 'Supplier', 'Order Date', 'Expected Delivery', 'Status', 'Total Amount'];
   const rows = [headers.join(',')];
+  const varianceSummary = data?.cost_variance?.summary || {};
+  const supplierVarianceRows = Array.isArray(data?.cost_variance?.by_supplier) ? data.cost_variance.by_supplier : [];
+  const itemVarianceRows = Array.isArray(data?.cost_variance?.by_item) ? data.cost_variance.by_item : [];
 
-  rows.push(`"SUMMARY - Total Orders: ${data.summary.total_orders}, Total Value: ${data.summary.total_order_value.toFixed(2)}, Fulfillment Rate: ${data.summary.fulfillment_rate.toFixed(1)}%"`);
+  rows.push(`"SUMMARY - Total Orders: ${data.summary.total_orders}, Total Value: ${Number(data.summary.total_order_value || 0).toFixed(2)}, Fulfillment Rate: ${Number(data.summary.fulfillment_rate || 0).toFixed(1)}%"`);
+  rows.push('');
+
+  rows.push('"--- COST VARIANCE SUMMARY ---"');
+  rows.push(`"Baseline Scope","${escapeCSV(data?.cost_variance?.baseline_scope || 'global')}"`);
+  rows.push(`"Baseline Location ID","${data?.cost_variance?.baseline_location_id ?? ''}"`);
+  rows.push(`"Ordered Supplier Value","${Number(varianceSummary.ordered_supplier_value || 0).toFixed(2)}"`);
+  rows.push(`"Ordered Weighted Baseline Value","${Number(varianceSummary.ordered_weighted_baseline_value || 0).toFixed(2)}"`);
+  rows.push(`"Ordered vs Weighted Variance Value","${Number(varianceSummary.ordered_vs_weighted_variance_value || 0).toFixed(2)}"`);
+  rows.push(`"Ordered vs Weighted Variance Percent","${varianceSummary.ordered_vs_weighted_variance_percent == null ? '' : `${Number(varianceSummary.ordered_vs_weighted_variance_percent).toFixed(2)}%`}"`);
+  rows.push(`"Received Supplier Value","${Number(varianceSummary.received_supplier_value || 0).toFixed(2)}"`);
+  rows.push(`"Received Weighted Baseline Value","${Number(varianceSummary.received_weighted_baseline_value || 0).toFixed(2)}"`);
+  rows.push(`"Received vs Weighted Variance Value","${Number(varianceSummary.received_vs_weighted_variance_value || 0).toFixed(2)}"`);
+  rows.push(`"Received vs Weighted Variance Percent","${varianceSummary.received_vs_weighted_variance_percent == null ? '' : `${Number(varianceSummary.received_vs_weighted_variance_percent).toFixed(2)}%`}"`);
+  rows.push('');
+
+  rows.push('"--- TOP SUPPLIER VARIANCE ---"');
+  rows.push(['Supplier', 'Ordered Supplier Value', 'Ordered Weighted Baseline Value', 'Ordered Variance Value', 'Ordered Variance %'].join(','));
+  supplierVarianceRows.slice(0, 10).forEach((supplier) => {
+    rows.push([
+      escapeCSV(supplier.supplier_name),
+      Number(supplier.ordered_supplier_value || 0).toFixed(2),
+      Number(supplier.ordered_weighted_baseline_value || 0).toFixed(2),
+      Number(supplier.ordered_vs_weighted_variance_value || 0).toFixed(2),
+      supplier.ordered_vs_weighted_variance_percent == null ? '' : `${Number(supplier.ordered_vs_weighted_variance_percent).toFixed(2)}%`
+    ].join(','));
+  });
+  rows.push('');
+
+  rows.push('"--- TOP ITEM VARIANCE ---"');
+  rows.push(['Item', 'SKU', 'Ordered Supplier Value', 'Ordered Weighted Baseline Value', 'Ordered Variance Value', 'Ordered Variance %'].join(','));
+  itemVarianceRows.slice(0, 10).forEach((item) => {
+    rows.push([
+      escapeCSV(item.item_name),
+      escapeCSV(item.sku_code || ''),
+      Number(item.total_value || 0).toFixed(2),
+      Number(item.weighted_baseline_value || 0).toFixed(2),
+      Number(item.ordered_vs_weighted_variance_value || 0).toFixed(2),
+      item.ordered_vs_weighted_variance_percent == null ? '' : `${Number(item.ordered_vs_weighted_variance_percent).toFixed(2)}%`
+    ].join(','));
+  });
   rows.push('');
 
   rows.push('"--- PENDING DELIVERIES ---"');
@@ -650,36 +693,46 @@ const generatePOAnalysisCSV = (data) => {
 
 const generateExecutiveSummaryCSV = (data) => {
   const rows = [];
+  const inventoryOverview = data?.inventory_overview || {};
+  const procurementOverview = data?.procurement_overview || {};
 
   rows.push('"EXECUTIVE SUMMARY REPORT"');
   rows.push(`"Generated At","${data.generated_at}"`);
   rows.push('');
 
   rows.push('"INVENTORY OVERVIEW"');
-  rows.push(`"Total Inventory Value","${data.inventory_overview.total_inventory_value.toFixed(2)}"`);
-  rows.push(`"Total Items","${data.inventory_overview.total_items}"`);
+  rows.push(`"Total Inventory Value","${Number(inventoryOverview.total_inventory_value || 0).toFixed(2)}"`);
+  rows.push(`"Legacy Total Inventory Value","${Number(inventoryOverview.legacy_total_inventory_value || inventoryOverview.total_inventory_value || 0).toFixed(2)}"`);
+  rows.push(`"Weighted Total Inventory Value","${Number(inventoryOverview.weighted_total_inventory_value || inventoryOverview.total_inventory_value || 0).toFixed(2)}"`);
+  rows.push(`"Weighted Total Available Qty","${Number(inventoryOverview.weighted_total_available_qty || 0).toFixed(2)}"`);
+  rows.push(`"Weighted Average Cost Per Unit","${Number(inventoryOverview.weighted_average_cost_per_unit || 0).toFixed(4)}"`);
+  rows.push(`"Inventory Value Delta","${Number(inventoryOverview.inventory_value_delta || 0).toFixed(2)}"`);
+  rows.push(`"Total Items","${inventoryOverview.total_items || 0}"`);
   rows.push('');
 
   rows.push('"STOCK HEALTH"');
-  rows.push(`"Low Stock Items Count","${data.stock_health.low_stock_count}"`);
+  rows.push(`"Low Stock Items Count","${data.stock_health.low_stock_count || 0}"`);
   rows.push('');
 
   rows.push('"EXPIRY RISK"');
-  rows.push(`"Expired Batches","${data.expiry_risk.expired_count}"`);
-  rows.push(`"Expired Value","${data.expiry_risk.expired_value.toFixed(2)}"`);
-  rows.push(`"Total Value at Risk","${data.expiry_risk.total_value_at_risk.toFixed(2)}"`);
+  rows.push(`"Expired Batches","${data.expiry_risk.expired_count || 0}"`);
+  rows.push(`"Expired Value","${Number(data.expiry_risk.expired_value || 0).toFixed(2)}"`);
+  rows.push(`"Total Value at Risk","${Number(data.expiry_risk.total_value_at_risk || 0).toFixed(2)}"`);
   rows.push('');
 
   rows.push('"PRODUCTION OVERVIEW"');
-  rows.push(`"Total Job Orders","${data.production_overview.total_job_orders}"`);
-  rows.push(`"Completion Rate","${data.production_overview.completion_rate.toFixed(1)}%"`);
-  rows.push(`"Production Efficiency","${data.production_overview.production_efficiency.toFixed(1)}%"`);
+  rows.push(`"Total Job Orders","${data.production_overview.total_job_orders || 0}"`);
+  rows.push(`"Completion Rate","${Number(data.production_overview.completion_rate || 0).toFixed(1)}%"`);
+  rows.push(`"Production Efficiency","${Number(data.production_overview.production_efficiency || 0).toFixed(1)}%"`);
   rows.push('');
 
   rows.push('"PROCUREMENT OVERVIEW"');
-  rows.push(`"Total Orders","${data.procurement_overview.total_orders}"`);
-  rows.push(`"Pending Orders","${data.procurement_overview.pending_orders}"`);
-  rows.push(`"Fulfillment Rate","${data.procurement_overview.fulfillment_rate.toFixed(1)}%"`);
+  rows.push(`"Total Orders","${procurementOverview.total_orders || 0}"`);
+  rows.push(`"Pending Orders","${procurementOverview.pending_orders || 0}"`);
+  rows.push(`"Total Order Value","${Number(procurementOverview.total_order_value || 0).toFixed(2)}"`);
+  rows.push(`"Fulfillment Rate","${Number(procurementOverview.fulfillment_rate || 0).toFixed(1)}%"`);
+  rows.push(`"Ordered vs Weighted Variance Value","${Number(procurementOverview.ordered_vs_weighted_variance_value || 0).toFixed(2)}"`);
+  rows.push(`"Ordered vs Weighted Variance Percent","${procurementOverview.ordered_vs_weighted_variance_percent == null ? '' : `${Number(procurementOverview.ordered_vs_weighted_variance_percent).toFixed(2)}%`}"`);
 
   return rows.join('\n');
 };

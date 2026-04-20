@@ -10,6 +10,11 @@ import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    getItemCostMetrics,
+    getItemsCostMetrics,
+    invalidateItemCostMetricsCache
+} from '../services/costValuationService.js';
 
 const settingsCache = new Map();
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -360,6 +365,8 @@ export const itemRepository = {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
         const ItemFolder = dbStore.get('ItemFolder');
+        const valuationLocationId = Number.parseInt(queryParams?.valuation_location_id, 10);
+        const hasValuationLocation = Number.isInteger(valuationLocationId) && valuationLocationId > 0;
 
         if (queryParams.fields === 'dropdown') {
             const { limit = 1000, category, status } = queryParams;
@@ -375,12 +382,20 @@ export const itemRepository = {
             });
 
             const items = rows.map((item) => ({ ...item.toJSON(), id: item.item_id }));
-            return {
+            const costMetricsByItemId = await getItemsCostMetrics({
                 items,
+                locationId: hasValuationLocation ? valuationLocationId : null
+            });
+            const itemsWithCostMetrics = items.map((item) => ({
+                ...item,
+                cost_metrics: costMetricsByItemId.get(Number(item.item_id))
+            }));
+            return {
+                items: itemsWithCostMetrics,
                 pagination: {
                     page: 1,
                     limit: parseInt(limit, 10),
-                    total: items.length,
+                    total: itemsWithCostMetrics.length,
                     pages: 1
                 }
             };
@@ -516,8 +531,18 @@ export const itemRepository = {
             return transformed;
         });
 
-        return {
+        const costMetricsByItemId = await getItemsCostMetrics({
             items: transformedItems,
+            locationId: hasValuationLocation ? valuationLocationId : null
+        });
+
+        const itemsWithCostMetrics = transformedItems.map((item) => ({
+            ...item,
+            cost_metrics: costMetricsByItemId.get(Number(item.item_id))
+        }));
+
+        return {
+            items: itemsWithCostMetrics,
             pagination: {
                 page: parsedPage,
                 limit: parsedLimit,
@@ -526,7 +551,7 @@ export const itemRepository = {
             }
         };
     },
-    async getItemById(itemId) {
+    async getItemById(itemId, queryParams = {}) {
         const Item = dbStore.get('Item');
         const ItemNutrition = dbStore.get('ItemNutrition');
         const ItemAllergen = dbStore.get('ItemAllergen');
@@ -543,6 +568,13 @@ export const itemRepository = {
         const SupplierItem = dbStore.get('SupplierItem');
         const Supplier = dbStore.get('Supplier');
         const ItemFolder = dbStore.get('ItemFolder');
+
+        const hasLocationStocksAssociation = Boolean(
+            ItemLocationStock?.findAll && Item?.associations?.locationStocks
+        );
+        const canIncludeLocationOnLocationStocks = Boolean(
+            hasLocationStocksAssociation && ItemLocationStock?.associations?.location && TenantLocation
+        );
 
         const item = await findVisibleItemById(Item, itemId, {
             include: [
@@ -566,11 +598,13 @@ export const itemRepository = {
                     required: false,
                     include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }]
                 },
-                ...(ItemLocationStock?.findAll ? [{
+                ...(hasLocationStocksAssociation ? [{
                     model: ItemLocationStock,
                     as: 'locationStocks',
                     required: false,
-                    include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }]
+                    ...(canIncludeLocationOnLocationStocks
+                        ? { include: [{ model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: false }] }
+                        : {})
                 }] : []),
                 {
                     model: SupplierItem,
@@ -696,6 +730,14 @@ export const itemRepository = {
             formattedItem.item_location_stocks = [];
         }
 
+        const valuationLocationId = Number.parseInt(queryParams?.valuation_location_id, 10);
+        const hasValuationLocation = Number.isInteger(valuationLocationId) && valuationLocationId > 0;
+        formattedItem.cost_metrics = await getItemCostMetrics({
+            item: formattedItem,
+            locationId: hasValuationLocation ? valuationLocationId : null,
+            includeByLocation: true
+        });
+
         return formattedItem;
     },
     async createItem(itemData, userId = null) {
@@ -816,6 +858,7 @@ export const itemRepository = {
             }
 
             await transaction.commit();
+            invalidateItemCostMetricsCache({ itemIds: [item.item_id] });
 
             inventoryRepositoryDependencies.syncItemEmbedding(item).catch((error) => (
                 console.error(`Embedding sync failed for new item ${item.item_id}:`, error.message)
@@ -976,6 +1019,7 @@ export const itemRepository = {
             }
 
             await transaction.commit();
+            invalidateItemCostMetricsCache({ itemIds: [itemId] });
             return itemRepository.getItemById(itemId);
         } catch (error) {
             if (!transaction.finished) {

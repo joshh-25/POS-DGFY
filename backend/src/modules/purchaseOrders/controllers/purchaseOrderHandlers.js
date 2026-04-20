@@ -52,7 +52,10 @@ export const getPurchaseOrders = async (req, res, next) => {
 
 export const getPurchaseOrderById = async (req, res, next) => {
   try {
-    const result = await getPurchaseOrderByIdUseCase({ poId: req.params.po_id });
+    const result = await getPurchaseOrderByIdUseCase({
+      poId: req.params.po_id,
+      valuationLocationId: req.query?.valuation_location_id ?? null
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,

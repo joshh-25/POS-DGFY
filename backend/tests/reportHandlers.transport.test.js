@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 
 const mockGetExpiryReportUseCase = jest.fn();
+const mockGetPurchaseOrderAnalysisUseCase = jest.fn();
+const mockGetExecutiveSummaryUseCase = jest.fn();
 const mockGetComplianceBooksPackageUseCase = jest.fn();
 const mockExportComplianceBooksPackageUseCase = jest.fn();
 const mockGetSnapshotsUseCase = jest.fn();
@@ -13,8 +15,8 @@ jest.unstable_mockModule('../src/modules/reports/index.js', () => ({
   getExpiryReportUseCase: mockGetExpiryReportUseCase,
   getEnhancedStockAgingUseCase: jest.fn(),
   getProductionReportUseCase: jest.fn(),
-  getPurchaseOrderAnalysisUseCase: jest.fn(),
-  getExecutiveSummaryUseCase: jest.fn(),
+  getPurchaseOrderAnalysisUseCase: mockGetPurchaseOrderAnalysisUseCase,
+  getExecutiveSummaryUseCase: mockGetExecutiveSummaryUseCase,
   getComplianceBooksPackageUseCase: mockGetComplianceBooksPackageUseCase,
   exportComplianceBooksPackageUseCase: mockExportComplianceBooksPackageUseCase,
   getSnapshotsUseCase: mockGetSnapshotsUseCase,
@@ -334,6 +336,120 @@ describe('reportHandlers transport contracts', () => {
       signalCode: 'mass_export_threshold_reached',
       severity: 'warning'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('exportReportCSV includes weighted variance sections for po_analysis export', async () => {
+    mockGetPurchaseOrderAnalysisUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        summary: { total_orders: 2, total_order_value: 1000, fulfillment_rate: 50 },
+        pending_deliveries: [],
+        cost_variance: {
+          baseline_scope: 'location',
+          baseline_location_id: 3,
+          summary: {
+            ordered_supplier_value: 1000,
+            ordered_weighted_baseline_value: 920,
+            ordered_vs_weighted_variance_value: 80,
+            ordered_vs_weighted_variance_percent: 8.7,
+            received_supplier_value: 500,
+            received_weighted_baseline_value: 470,
+            received_vs_weighted_variance_value: 30,
+            received_vs_weighted_variance_percent: 6.4
+          },
+          by_supplier: [{
+            supplier_name: 'Prime Supply',
+            ordered_supplier_value: 1000,
+            ordered_weighted_baseline_value: 920,
+            ordered_vs_weighted_variance_value: 80,
+            ordered_vs_weighted_variance_percent: 8.7
+          }],
+          by_item: [{
+            item_name: 'Flour',
+            sku_code: 'FLR-001',
+            total_value: 700,
+            weighted_baseline_value: 650,
+            ordered_vs_weighted_variance_value: 50,
+            ordered_vs_weighted_variance_percent: 7.7
+          }]
+        }
+      }
+    });
+
+    const req = {
+      query: { type: 'po_analysis' },
+      requestId: 'req-report-export-po-analysis',
+      user: { user_id: 9, tenant_id: 'tenant-1' }
+    };
+    const res = {
+      setHeader: jest.fn(),
+      send: jest.fn(),
+      status: jest.fn(),
+      json: jest.fn()
+    };
+    res.status.mockReturnValue(res);
+    const next = jest.fn();
+
+    await exportReportCSV(req, res, next);
+
+    expect(res.send).toHaveBeenCalledWith(expect.any(String));
+    const csvOutput = res.send.mock.calls[0][0];
+    expect(csvOutput).toContain('COST VARIANCE SUMMARY');
+    expect(csvOutput).toContain('TOP SUPPLIER VARIANCE');
+    expect(csvOutput).toContain('Ordered vs Weighted Variance Value');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('exportReportCSV includes weighted inventory and procurement fields for executive_summary export', async () => {
+    mockGetExecutiveSummaryUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        generated_at: '2026-04-20T00:00:00.000Z',
+        inventory_overview: {
+          total_inventory_value: 120000,
+          legacy_total_inventory_value: 120000,
+          weighted_total_inventory_value: 118700,
+          weighted_total_available_qty: 4840,
+          weighted_average_cost_per_unit: 24.52,
+          inventory_value_delta: -1300,
+          total_items: 55
+        },
+        stock_health: { low_stock_count: 4 },
+        expiry_risk: { expired_count: 1, expired_value: 300, total_value_at_risk: 1200 },
+        production_overview: { total_job_orders: 6, completion_rate: 82.5, production_efficiency: 91.2 },
+        procurement_overview: {
+          total_orders: 12,
+          pending_orders: 4,
+          total_order_value: 92840,
+          fulfillment_rate: 66.7,
+          ordered_vs_weighted_variance_value: 2740,
+          ordered_vs_weighted_variance_percent: 3.0
+        }
+      }
+    });
+
+    const req = {
+      query: { type: 'executive_summary' },
+      requestId: 'req-report-export-exec',
+      user: { user_id: 9, tenant_id: 'tenant-1' }
+    };
+    const res = {
+      setHeader: jest.fn(),
+      send: jest.fn(),
+      status: jest.fn(),
+      json: jest.fn()
+    };
+    res.status.mockReturnValue(res);
+    const next = jest.fn();
+
+    await exportReportCSV(req, res, next);
+
+    expect(res.send).toHaveBeenCalledWith(expect.any(String));
+    const csvOutput = res.send.mock.calls[0][0];
+    expect(csvOutput).toContain('Weighted Total Inventory Value');
+    expect(csvOutput).toContain('Weighted Average Cost Per Unit');
+    expect(csvOutput).toContain('Ordered vs Weighted Variance Value');
     expect(next).not.toHaveBeenCalled();
   });
 

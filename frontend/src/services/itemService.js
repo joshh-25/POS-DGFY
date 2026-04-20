@@ -22,8 +22,8 @@ export const getItems = async (params = {}) => {
   return data;
 };
 
-export const getItemById = async (itemId) => {
-  const response = await api.get(`/items/${itemId}`);
+export const getItemById = async (itemId, params = {}) => {
+  const response = await api.get(`/items/${itemId}`, { params });
   const item = response.data.data;
 
   // Transform to ensure both id fields exist

@@ -1,3 +1,3 @@
 export const buildGetItemByIdUseCase = ({ itemRepository }) => {
-    return async ({ itemId }) => itemRepository.getItemById(itemId);
+    return async ({ itemId, query }) => itemRepository.getItemById(itemId, query || {});
 };

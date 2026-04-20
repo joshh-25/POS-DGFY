@@ -4,6 +4,28 @@ import path from 'path';
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { getItemsCostMetrics, getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+
+const toNumberOrZero = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const round4 = (value) => Math.round(toNumberOrZero(value) * 10000) / 10000;
+
+const toVariancePercent = (actualValue, baselineValue) => (
+  baselineValue > 0 ? ((actualValue - baselineValue) / baselineValue) * 100 : null
+);
+
+const resolveVarianceBaselineSource = (metrics = null) => {
+  if (metrics?.scoped?.source === 'fifo_batches') {
+    return 'location_weighted_avg_cost';
+  }
+  if (metrics?.global?.source === 'fifo_batches') {
+    return 'global_weighted_avg_cost';
+  }
+  return 'item_cost_fallback';
+};
 
 // ============================================
 // EXPIRY REPORT (P0 Priority)
@@ -471,6 +493,8 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
   const Supplier = dbStore.get('Supplier');
   const POLineItem = dbStore.get('POLineItem');
   const Item = dbStore.get('Item');
+  const valuationLocationId = Number.parseInt(filters.location_id, 10);
+  const hasValuationLocation = Number.isInteger(valuationLocationId) && valuationLocationId > 0;
 
   // Build date filter
   const dateFilter = {};
@@ -499,11 +523,25 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
         include: [{
           model: Item,
           as: 'item',
-          attributes: ['item_id', 'name', 'sku_code']
+          attributes: ['item_id', 'name', 'sku_code', 'cost_per_unit', 'current_stock']
         }]
       }
     ],
     order: [['order_date', 'DESC']]
+  });
+
+  const valuationItems = purchaseOrders
+    .flatMap((po) => po.items || [])
+    .map((poItem) => {
+      const itemRow = poItem?.item;
+      if (!itemRow) return null;
+      return typeof itemRow.toJSON === 'function' ? itemRow.toJSON() : itemRow;
+    })
+    .filter(Boolean);
+
+  const itemCostMetrics = await getItemsCostMetrics({
+    items: valuationItems,
+    locationId: hasValuationLocation ? valuationLocationId : null
   });
 
   // Status breakdown
@@ -527,6 +565,11 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
 
   // Cost trends by month
   const costByMonth = {};
+  const sampledLineVariance = [];
+  let orderedSupplierValue = 0;
+  let orderedWeightedBaselineValue = 0;
+  let receivedSupplierValue = 0;
+  let receivedWeightedBaselineValue = 0;
 
   purchaseOrders.forEach(po => {
     statusCounts[po.status] = (statusCounts[po.status] || 0) + 1;
@@ -550,7 +593,12 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
           total_orders: 0,
           completed_orders: 0,
           total_value: 0,
-          on_time_deliveries: 0
+          on_time_deliveries: 0,
+          ordered_supplier_value: 0,
+          ordered_weighted_baseline_value: 0,
+          received_supplier_value: 0,
+          received_weighted_baseline_value: 0,
+          line_count: 0
         };
       }
       supplierStats[supplierId].total_orders++;
@@ -573,6 +621,22 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
     (po.items || []).forEach(poItem => {
       if (poItem.item) {
         const itemId = poItem.item.item_id;
+        const qtyOrdered = toNumberOrZero(poItem.quantity_ordered ?? poItem.quantity);
+        const qtyReceived = toNumberOrZero(poItem.quantity_received);
+        const unitPrice = toNumberOrZero(poItem.unit_price);
+        const metrics = itemCostMetrics.get(Number(itemId));
+        const baselineUnitCost = toNumberOrZero(
+          metrics?.scoped?.weighted_avg_cost
+          ?? metrics?.global?.weighted_avg_cost
+          ?? poItem.item.cost_per_unit
+        );
+        const orderedActualValue = qtyOrdered * unitPrice;
+        const orderedBaselineValue = qtyOrdered * baselineUnitCost;
+        const receivedActualValue = qtyReceived * unitPrice;
+        const receivedBaselineValue = qtyReceived * baselineUnitCost;
+        const orderedVarianceValue = orderedActualValue - orderedBaselineValue;
+        const receivedVarianceValue = receivedActualValue - receivedBaselineValue;
+
         if (!itemFrequency[itemId]) {
           itemFrequency[itemId] = {
             item_id: itemId,
@@ -580,12 +644,56 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
             sku_code: poItem.item.sku_code,
             order_count: 0,
             total_quantity: 0,
-            total_value: 0
+            total_value: 0,
+            total_received_quantity: 0,
+            total_received_value: 0,
+            weighted_baseline_value: 0,
+            weighted_received_baseline_value: 0
           };
         }
         itemFrequency[itemId].order_count++;
-        itemFrequency[itemId].total_quantity += parseFloat(poItem.quantity) || 0;
-        itemFrequency[itemId].total_value += parseFloat(poItem.total_price) || 0;
+        itemFrequency[itemId].total_quantity += qtyOrdered;
+        itemFrequency[itemId].total_value += orderedActualValue;
+        itemFrequency[itemId].total_received_quantity += qtyReceived;
+        itemFrequency[itemId].total_received_value += receivedActualValue;
+        itemFrequency[itemId].weighted_baseline_value += orderedBaselineValue;
+        itemFrequency[itemId].weighted_received_baseline_value += receivedBaselineValue;
+
+        orderedSupplierValue += orderedActualValue;
+        orderedWeightedBaselineValue += orderedBaselineValue;
+        receivedSupplierValue += receivedActualValue;
+        receivedWeightedBaselineValue += receivedBaselineValue;
+
+        if (po.supplier) {
+          const supplierId = po.supplier.supplier_id;
+          const supplierEntry = supplierStats[supplierId];
+          if (supplierEntry) {
+            supplierEntry.ordered_supplier_value += orderedActualValue;
+            supplierEntry.ordered_weighted_baseline_value += orderedBaselineValue;
+            supplierEntry.received_supplier_value += receivedActualValue;
+            supplierEntry.received_weighted_baseline_value += receivedBaselineValue;
+            supplierEntry.line_count += 1;
+          }
+        }
+
+        sampledLineVariance.push({
+          po_id: po.po_id,
+          po_number: po.po_number,
+          supplier_id: po.supplier?.supplier_id || null,
+          supplier_name: po.supplier?.name || null,
+          item_id: itemId,
+          item_name: poItem.item.name,
+          unit_price: round4(unitPrice),
+          weighted_avg_cost: round4(baselineUnitCost),
+          qty_ordered: round4(qtyOrdered),
+          qty_received: round4(qtyReceived),
+          ordered_variance_value: round4(orderedVarianceValue),
+          ordered_variance_percent: baselineUnitCost > 0
+            ? round4(((unitPrice - baselineUnitCost) / baselineUnitCost) * 100)
+            : null,
+          received_variance_value: round4(receivedVarianceValue),
+          source: resolveVarianceBaselineSource(metrics)
+        });
       }
     });
 
@@ -603,7 +711,38 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
     supplier.on_time_rate = supplier.completed_orders > 0
       ? (supplier.on_time_deliveries / supplier.completed_orders) * 100
       : 0;
+    supplier.ordered_vs_weighted_variance_value = round4(
+      supplier.ordered_supplier_value - supplier.ordered_weighted_baseline_value
+    );
+    supplier.ordered_vs_weighted_variance_percent = supplier.ordered_weighted_baseline_value > 0
+      ? round4(toVariancePercent(supplier.ordered_supplier_value, supplier.ordered_weighted_baseline_value))
+      : null;
+    supplier.received_vs_weighted_variance_value = round4(
+      supplier.received_supplier_value - supplier.received_weighted_baseline_value
+    );
+    supplier.received_vs_weighted_variance_percent = supplier.received_weighted_baseline_value > 0
+      ? round4(toVariancePercent(supplier.received_supplier_value, supplier.received_weighted_baseline_value))
+      : null;
   });
+
+  const itemVarianceSummary = Object.values(itemFrequency).map((item) => {
+    const orderedVarianceValue = item.total_value - item.weighted_baseline_value;
+    const receivedVarianceValue = item.total_received_value - item.weighted_received_baseline_value;
+    return {
+      ...item,
+      ordered_vs_weighted_variance_value: round4(orderedVarianceValue),
+      ordered_vs_weighted_variance_percent: item.weighted_baseline_value > 0
+        ? round4(toVariancePercent(item.total_value, item.weighted_baseline_value))
+        : null,
+      received_vs_weighted_variance_value: round4(receivedVarianceValue),
+      received_vs_weighted_variance_percent: item.weighted_received_baseline_value > 0
+        ? round4(toVariancePercent(item.total_received_value, item.weighted_received_baseline_value))
+        : null
+    };
+  });
+
+  const orderedVarianceTotal = orderedSupplierValue - orderedWeightedBaselineValue;
+  const receivedVarianceTotal = receivedSupplierValue - receivedWeightedBaselineValue;
 
   // Get pending POs (expected deliveries)
   const pendingPOs = purchaseOrders
@@ -632,8 +771,35 @@ export const getPurchaseOrderAnalysis = async (filters = {}) => {
     },
     pending_deliveries: pendingPOs,
     supplier_performance: Object.values(supplierStats).sort((a, b) => b.total_value - a.total_value),
-    most_ordered_items: Object.values(itemFrequency).sort((a, b) => b.order_count - a.order_count).slice(0, 20),
-    cost_trends: Object.values(costByMonth).sort((a, b) => a.month.localeCompare(b.month))
+    most_ordered_items: [...itemVarianceSummary].sort((a, b) => b.order_count - a.order_count).slice(0, 20),
+    cost_trends: Object.values(costByMonth).sort((a, b) => a.month.localeCompare(b.month)),
+    cost_variance: {
+      baseline_scope: hasValuationLocation ? 'location' : 'global',
+      baseline_location_id: hasValuationLocation ? valuationLocationId : null,
+      summary: {
+        ordered_supplier_value: round4(orderedSupplierValue),
+        ordered_weighted_baseline_value: round4(orderedWeightedBaselineValue),
+        ordered_vs_weighted_variance_value: round4(orderedVarianceTotal),
+        ordered_vs_weighted_variance_percent: orderedWeightedBaselineValue > 0
+          ? round4(toVariancePercent(orderedSupplierValue, orderedWeightedBaselineValue))
+          : null,
+        received_supplier_value: round4(receivedSupplierValue),
+        received_weighted_baseline_value: round4(receivedWeightedBaselineValue),
+        received_vs_weighted_variance_value: round4(receivedVarianceTotal),
+        received_vs_weighted_variance_percent: receivedWeightedBaselineValue > 0
+          ? round4(toVariancePercent(receivedSupplierValue, receivedWeightedBaselineValue))
+          : null,
+        analyzed_line_count: sampledLineVariance.length
+      },
+      by_supplier: Object.values(supplierStats)
+        .sort((a, b) => Math.abs(b.ordered_vs_weighted_variance_value) - Math.abs(a.ordered_vs_weighted_variance_value)),
+      by_item: [...itemVarianceSummary]
+        .sort((a, b) => Math.abs(b.ordered_vs_weighted_variance_value) - Math.abs(a.ordered_vs_weighted_variance_value))
+        .slice(0, 25),
+      line_samples: sampledLineVariance
+        .sort((a, b) => Math.abs(b.ordered_variance_value) - Math.abs(a.ordered_variance_value))
+        .slice(0, 50)
+    }
   };
 };
 
@@ -720,6 +886,10 @@ export const getExecutiveSummary = async (filters = {}) => {
     },
     inventory_overview: {
       total_inventory_value: financialData.total_inventory_value,
+      weighted_total_inventory_value: financialData.weighted_total_inventory_value ?? financialData.total_inventory_value,
+      weighted_total_available_qty: financialData.weighted_total_available_qty ?? 0,
+      weighted_average_cost_per_unit: financialData.weighted_average_cost_per_unit ?? 0,
+      legacy_total_inventory_value: financialData.legacy_total_inventory_value ?? financialData.total_inventory_value,
       total_items: financialData.total_items,
       items_with_value: financialData.items_with_value,
       average_item_value: financialData.average_item_value
@@ -757,7 +927,9 @@ export const getExecutiveSummary = async (filters = {}) => {
       total_orders: poData.summary.total_orders,
       pending_orders: poData.summary.pending_orders,
       total_order_value: poData.summary.total_order_value,
-      fulfillment_rate: poData.summary.fulfillment_rate
+      fulfillment_rate: poData.summary.fulfillment_rate,
+      ordered_vs_weighted_variance_value: poData.cost_variance?.summary?.ordered_vs_weighted_variance_value ?? 0,
+      ordered_vs_weighted_variance_percent: poData.cost_variance?.summary?.ordered_vs_weighted_variance_percent ?? null
     },
     top_movers: {
       fastest: sortedByMovement.slice(0, 10),
@@ -1225,10 +1397,13 @@ export const getSurplusShortageReport = async () => {
 export const getFinancialSummary = async () => {
   const Item = dbStore.get('Item');
 
-  const items = await Item.findAll({
-    where: buildVisibleWhere({ status: 'active' }),
-    attributes: ['current_stock', 'cost_per_unit']
-  });
+  const [items, weightedOverview] = await Promise.all([
+    Item.findAll({
+      where: buildVisibleWhere({ status: 'active' }),
+      attributes: ['current_stock', 'cost_per_unit']
+    }),
+    getWeightedInventoryValueOverview()
+  ]);
 
   const totalValue = items.reduce((sum, item) => {
     const stock = parseFloat(item.current_stock) || 0;
@@ -1243,9 +1418,14 @@ export const getFinancialSummary = async () => {
 
   return {
     total_inventory_value: totalValue,
+    legacy_total_inventory_value: totalValue,
+    weighted_total_inventory_value: weightedOverview.weighted_total_inventory_value,
+    weighted_total_available_qty: weightedOverview.weighted_total_available_qty,
+    weighted_average_cost_per_unit: weightedOverview.weighted_average_cost_per_unit,
     total_items: totalItems,
     items_with_value: itemsWithValue,
-    average_item_value: itemsWithValue > 0 ? totalValue / itemsWithValue : 0
+    average_item_value: itemsWithValue > 0 ? totalValue / itemsWithValue : 0,
+    inventory_value_delta: round4(weightedOverview.weighted_total_inventory_value - totalValue)
   };
 };
 
@@ -1328,4 +1508,3 @@ export const getReportSnapshotById = async (snapshotId) => {
   const snapshot = await ReportSnapshot.findByPk(snapshotId);
   return snapshot;
 };
-

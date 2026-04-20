@@ -510,6 +510,20 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
       const ing1Batches = await getItemBatches(ingredient1.item_id, sourceLocationId);
       const ing2Batches = await getItemBatches(ingredient2.item_id, sourceLocationId);
       const productBatches = await getItemBatches(finishedProduct.item_id, destinationLocationId);
+      const consumptionMovements = await StockMovement.findAll({
+        where: {
+          reference_id: createdJO.jo_number,
+          movement_type: 'production_consumption'
+        },
+        include: [{ model: BatchTransaction, as: 'batchTransactions' }]
+      });
+      const outputMovements = await StockMovement.findAll({
+        where: {
+          reference_id: createdJO.jo_number,
+          movement_type: 'production_output',
+          item_id: finishedProduct.item_id
+        }
+      });
 
       // Note: available_quantity is returned as string from SQL computed column, must parseFloat
       // Ingredient 1: 50kg available @ $6/kg = $300
@@ -520,13 +534,28 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
       const ing2Value = ing2Batches.reduce((sum, b) => sum + (parseFloat(b.dataValues.available_quantity) * parseFloat(b.cost_per_unit)), 0);
       expect(ing2Value).toBe(225);
 
-      // Product: 10 units available @ $50/unit = $500 (uses item cost, not ingredient-based)
-      const productValue = productBatches.reduce((sum, b) => sum + (parseFloat(b.dataValues.available_quantity) * parseFloat(b.cost_per_unit)), 0);
-      expect(productValue).toBe(500);
+      const totalConsumedInputCost = consumptionMovements.reduce((sum, movement) => (
+        sum + movement.batchTransactions.reduce((lineSum, tx) => (
+          lineSum + (parseFloat(tx.quantity_consumed) * parseFloat(tx.cost_per_unit))
+        ), 0)
+      ), 0);
+      const totalProducedQuantity = outputMovements.reduce((sum, movement) => (
+        sum + parseFloat(movement.quantity || 0)
+      ), 0);
+      const expectedOutputUnitCost = totalProducedQuantity > 0
+        ? totalConsumedInputCost / totalProducedQuantity
+        : parseFloat(finishedProduct.cost_per_unit || 0);
 
-      // Total inventory value: $1,025
+      // Product valuation should follow JO output cost computed from consumed FIFO batches.
+      const productValue = productBatches.reduce((sum, b) => sum + (parseFloat(b.dataValues.available_quantity) * parseFloat(b.cost_per_unit)), 0);
+      const expectedProductValue = productBatches.reduce((sum, b) => (
+        sum + (parseFloat(b.dataValues.available_quantity) * expectedOutputUnitCost)
+      ), 0);
+      expect(productValue).toBeCloseTo(expectedProductValue, 4);
+
+      // Total inventory value follows current on-hand balances.
       const totalValue = ing1Value + ing2Value + productValue;
-      expect(totalValue).toBe(1025);
+      expect(totalValue).toBeCloseTo(ing1Value + ing2Value + expectedProductValue, 4);
     });
   });
 });

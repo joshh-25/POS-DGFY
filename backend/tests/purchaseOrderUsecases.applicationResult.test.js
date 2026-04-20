@@ -17,6 +17,28 @@ describe('purchaseOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 
+  it('getPurchaseOrderById validates valuationLocationId when provided', async () => {
+    const useCase = buildGetPurchaseOrderByIdUseCase({
+      purchaseOrderRepository: { getPurchaseOrderById: jest.fn() }
+    });
+
+    const result = await useCase({ poId: 22, valuationLocationId: 'bad-location' });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(400);
+  });
+
+  it('getPurchaseOrderById forwards normalized valuationLocationId to repository', async () => {
+    const getPurchaseOrderById = jest.fn().mockResolvedValue({ po_id: 22 });
+    const useCase = buildGetPurchaseOrderByIdUseCase({
+      purchaseOrderRepository: { getPurchaseOrderById }
+    });
+
+    const result = await useCase({ poId: '22', valuationLocationId: '9' });
+    expect(result.success).toBe(true);
+    expect(getPurchaseOrderById).toHaveBeenCalledWith(22, { valuationLocationId: 9 });
+  });
+
   it('createPurchaseOrder wraps repository success payload', async () => {
     const createPurchaseOrder = jest.fn().mockResolvedValue({
       po_id: 45,

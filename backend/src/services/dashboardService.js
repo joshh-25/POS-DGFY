@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
 
 export const getDashboardStats = async () => {
   const Item = dbStore.get('Item');
@@ -19,6 +20,7 @@ export const getDashboardStats = async () => {
     activeJOs,
     pendingDispatchOrders,
     inventoryValueResult,
+    weightedOverview,
     itemsMissingCost,
     itemsWithZeroStock
   ] = await Promise.all([
@@ -85,6 +87,8 @@ export const getDashboardStats = async () => {
       raw: true
     }),
 
+    getWeightedInventoryValueOverview(),
+
     // Data quality: items missing cost_per_unit
     Item.count({
       where: buildVisibleWhere({
@@ -103,6 +107,9 @@ export const getDashboardStats = async () => {
   ]);
 
   const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
+  const weightedTotalValue = Number(weightedOverview?.weighted_total_inventory_value || 0);
+  const weightedAverageCostPerUnit = Number(weightedOverview?.weighted_average_cost_per_unit || 0);
+  const weightedTotalAvailableQty = Number(weightedOverview?.weighted_total_available_qty || 0);
 
   // Return camelCase field names to match frontend expectations
   return {
@@ -111,6 +118,10 @@ export const getDashboardStats = async () => {
     healthyCount: healthyStockItems,
     overStockCount: overStockItems,
     totalValue,
+    weightedTotalValue,
+    weightedAverageCostPerUnit,
+    weightedTotalAvailableQty,
+    inventoryValueDelta: Math.round((weightedTotalValue - totalValue) * 10000) / 10000,
     // Keep these for backward compatibility
     pending_purchase_orders: pendingPOs,
     active_job_orders: activeJOs,

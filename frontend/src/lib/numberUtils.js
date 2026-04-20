@@ -47,3 +47,29 @@ export const formatQty = (value) => {
   });
 };
 
+/**
+ * Format a value as Philippine Peso currency.
+ *
+ * @param {string|number|null|undefined} value
+ * @param {{decimals?: number, useGrouping?: boolean}} options
+ * @returns {string}
+ */
+export const formatPeso = (value, options = {}) => {
+  const normalizedOptions = typeof options === 'number'
+    ? { decimals: options }
+    : (options || {});
+  const { decimals = 2, useGrouping = false } = normalizedOptions;
+  if (value === null || value === undefined || value === '') {
+    return `₱${(0).toFixed(decimals)}`;
+  }
+  const num = typeof value === 'string' ? Number.parseFloat(value) : Number(value);
+  const safe = Number.isFinite(num) ? num : 0;
+  const formatted = useGrouping
+    ? safe.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    })
+    : safe.toFixed(decimals);
+  return `₱${formatted}`;
+};
+

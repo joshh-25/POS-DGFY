@@ -26,6 +26,7 @@ import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useExpiryAlerts } from '@/hooks/useAlerts.js';
 import { usePermission } from '../src/hooks/usePermission';
 import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
+import { formatPeso } from '../src/lib/numberUtils.js';
 
 export default function Dashboard() {
   const subscriptionFeaturesEnabled = subscriptionsEnabled();
@@ -73,8 +74,13 @@ export default function Dashboard() {
     lowStockCount: lowStockItems?.length || 0,
     overStockCount: 0,
     healthyCount: 0,
-    totalValue: 0
+    totalValue: 0,
+    weightedTotalValue: 0,
+    weightedAverageCostPerUnit: 0
   };
+  const inventoryValueDisplay = (displayStats.weightedTotalValue > 0
+    ? displayStats.weightedTotalValue
+    : displayStats.totalValue) || 0;
 
   // Calculate expiry statistics
   const criticalExpiryCount = expiryAlerts?.filter(a => a.severity === 'critical').length || 0;
@@ -127,7 +133,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <StatsCard
           title="Total Items"
           value={displayStats.totalItems || 0}
@@ -158,10 +164,17 @@ export default function Dashboard() {
         />
         <StatsCard
           title="Inventory Value"
-          value={`₱${(displayStats.totalValue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          subtitle="Total stock value"
+          value={formatPeso(inventoryValueDisplay, { useGrouping: true })}
+          subtitle={displayStats.weightedTotalValue > 0 ? "On-hand weighted value" : "Total stock value"}
           icon={DollarSign}
           color="emerald"
+        />
+        <StatsCard
+          title="Avg Cost (On-hand)"
+          value={formatPeso(displayStats.weightedAverageCostPerUnit || 0, { useGrouping: true })}
+          subtitle="Across available units"
+          icon={TrendingUp}
+          color="blue"
         />
       </div>
 
@@ -277,3 +290,5 @@ export default function Dashboard() {
     </div >
   );
 }
+
+

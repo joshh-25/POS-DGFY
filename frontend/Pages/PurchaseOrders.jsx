@@ -1,6 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { format } from 'date-fns';
-import { Plus, Search, Filter, Eye, Package, Truck, CheckCircle, Clock, AlertCircle, Loader2, FileEdit, XCircle, Archive, ArchiveRestore, QrCode } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Plus, Search, Filter, Eye, Package, CheckCircle, Clock, Loader2, FileEdit, XCircle, Archive, ArchiveRestore, QrCode } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -11,12 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "../src/lib/utils.js";
 import { usePurchaseOrders, useCreatePurchaseOrder, useReceivePurchaseOrder, useArchivePurchaseOrder, useRestorePurchaseOrder } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
@@ -27,8 +20,7 @@ import PODetailsModal from '@/components/po/PODetailsModal';
 import POReceiptModal from '@/components/po/POReceiptModal';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
-import { formatNumber } from '../src/lib/numberUtils.js';
-import { getCurrentUser } from '../src/services/authService.js';
+import { formatPeso } from '../src/lib/numberUtils.js';
 import { usePermission } from '../src/hooks/usePermission';
 import QRCodeModal from '@/components/common/QRCodeModal';
 import { generateReceiveToken } from '../src/services/receiveTokenService.js';
@@ -42,52 +34,91 @@ const statusConfig = {
   cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle }
 };
 
+const resolveWeightedAvgCost = (itemData = {}) => Number(
+  itemData.weighted_avg_cost
+  ?? itemData?.cost_metrics?.scoped?.weighted_avg_cost
+  ?? itemData?.cost_metrics?.global?.weighted_avg_cost
+  ?? itemData.cost_per_unit
+  ?? 0
+);
+
+const transformPurchaseOrderForModal = (fullPO, fallbackPo = {}) => {
+  const lineItems = fullPO.lineItems || fullPO.LineItems || [];
+  const items = lineItems.map((lineItem) => {
+    const lineItemData = lineItem.toJSON ? lineItem.toJSON() : lineItem;
+    const itemData = lineItemData.item || lineItemData.Item || {};
+    const itemName = itemData.name || itemData.item_name || lineItemData.item_name;
+    const weightedAvgCost = resolveWeightedAvgCost(itemData);
+
+    return {
+      line_item_id: lineItemData.line_item_id,
+      item_id: lineItemData.item_id,
+      item_name: itemName,
+      quantity: lineItemData.quantity_ordered,
+      quantity_received: lineItemData.quantity_received || 0,
+      unit_price: lineItemData.unit_price,
+      total_price: lineItemData.total_price,
+      expiry_date: lineItemData.expiry_date,
+      fifo_enabled: Boolean(itemData.fifo_enabled),
+      shelf_life_days: itemData.shelf_life_days ?? null,
+      cost_metrics: itemData.cost_metrics || null,
+      weighted_avg_cost: weightedAvgCost > 0 ? weightedAvgCost : null,
+      quality_check: lineItemData.quality_check_status === 'passed' ? 'pass'
+        : lineItemData.quality_check_status === 'failed' ? 'fail' : 'pass'
+    };
+  });
+
+  const poData = fullPO.toJSON ? fullPO.toJSON() : fullPO;
+  const supplierData = poData.supplier || poData.Supplier || {};
+  return {
+    ...poData,
+    items,
+    supplier_name: supplierData.name || fallbackPo.supplier_name,
+    po_number: poData.po_number || fallbackPo.po_number
+  };
+};
+
 export default function PurchaseOrders() {
   const [showArchivedTab, setShowArchivedTab] = useState(false);
   const { purchaseOrders, loading, error, refetch } = usePurchaseOrders({ archived: showArchivedTab ? 'true' : 'false' });
   const { suppliers, loading: suppliersLoading } = useSuppliers();
-  const { items, loading: itemsLoading } = useItems({ limit: 1000, fields: 'dropdown' });
-  const { createPurchaseOrder, loading: creating } = useCreatePurchaseOrder();
-  const { receivePurchaseOrder, loading: receiving } = useReceivePurchaseOrder();
+  const [valuationLocationId, setValuationLocationId] = useState('');
+  const itemQuery = useMemo(() => ({
+    limit: 1000,
+    fields: 'dropdown',
+    ...(valuationLocationId ? { valuation_location_id: valuationLocationId } : {})
+  }), [valuationLocationId]);
+  const { items, loading: itemsLoading } = useItems(itemQuery);
+  const { createPurchaseOrder } = useCreatePurchaseOrder();
+  const { receivePurchaseOrder } = useReceivePurchaseOrder();
   const { archivePurchaseOrder, loading: archiving } = useArchivePurchaseOrder();
   const { restorePurchaseOrder, loading: restoring } = useRestorePurchaseOrder();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedPO, setSelectedPO] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [showCreateWizard, setShowCreateWizard] = useState(() => (
+    new URLSearchParams(window.location.search).get('action') === 'create'
+  ));
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [initialItemId, setInitialItemId] = useState(null);
+  const [initialItemId, setInitialItemId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') !== 'create') return null;
+    return params.get('itemId');
+  });
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [poToArchive, setPoToArchive] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrPO, setQrPO] = useState(null);
-  const { canCreate, canEdit, canDelete, can } = usePermission();
-
-  // Fetch current user for role-based access
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const user = await getCurrentUser();
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('Failed to fetch current user:', error);
-      }
-    };
-    fetchUser();
-  }, []);
+  const [receiptLocationRefreshing, setReceiptLocationRefreshing] = useState(false);
+  const receiptFetchRequestRef = useRef(0);
+  const { canCreate, canDelete, can } = usePermission();
 
   // Check URL params for deep linking
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('action') === 'create') {
-      const itemId = params.get('itemId');
-      if (itemId) {
-        setInitialItemId(itemId);
-      }
-      setShowCreateWizard(true);
-      // Clean up URL without reload
+      // Clean up URL without reload.
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -103,39 +134,17 @@ export default function PurchaseOrders() {
     }).sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
   }, [purchaseOrders, searchQuery, statusFilter]);
 
+  const buildValuationParams = (locationId = valuationLocationId) => (
+    locationId ? { valuation_location_id: locationId } : {}
+  );
+
   const handleView = async (po) => {
     try {
-      // Fetch full PO details with line items
-      const fullPO = await purchaseOrderService.getPurchaseOrderById(po.po_id || po.id);
-
-      // Transform lineItems to items format expected by modal
-      const lineItems = fullPO.lineItems || fullPO.LineItems || [];
-      const items = lineItems.map(lineItem => {
-        const lineItemData = lineItem.toJSON ? lineItem.toJSON() : lineItem;
-        const itemData = lineItemData.item || lineItemData.Item || {};
-        const itemName = itemData.name || itemData.item_name || lineItemData.item_name;
-
-        return {
-          line_item_id: lineItemData.line_item_id,
-          item_id: lineItemData.item_id,
-          item_name: itemName,
-          quantity: lineItemData.quantity_ordered,
-          quantity_received: lineItemData.quantity_received || 0,
-          unit_price: lineItemData.unit_price,
-          total_price: lineItemData.total_price,
-          expiry_date: lineItemData.expiry_date
-        };
-      });
-
-      const poData = fullPO.toJSON ? fullPO.toJSON() : fullPO;
-      const supplierData = poData.supplier || poData.Supplier || {};
-
-      setSelectedPO({
-        ...poData,
-        items: items,
-        supplier_name: supplierData.name || po.supplier_name,
-        po_number: poData.po_number || po.po_number
-      });
+      const fullPO = await purchaseOrderService.getPurchaseOrderById(
+        po.po_id || po.id,
+        buildValuationParams()
+      );
+      setSelectedPO(transformPurchaseOrderForModal(fullPO, po));
       setShowDetailsModal(true);
     } catch (error) {
       if (!normalizeApiError(error).isGlobalCandidate) {
@@ -146,43 +155,52 @@ export default function PurchaseOrders() {
 
   const handleReceive = async (po) => {
     try {
-      // Fetch full PO details with line items to ensure we have line_item_id
-      const fullPO = await purchaseOrderService.getPurchaseOrderById(po.po_id || po.id);
-
-      // Transform lineItems to items format expected by modal
-      // Handle both Sequelize models and plain objects
-      const lineItems = fullPO.lineItems || fullPO.LineItems || [];
-      const items = lineItems.map(lineItem => {
-        const lineItemData = lineItem.toJSON ? lineItem.toJSON() : lineItem;
-        const itemData = lineItemData.item || lineItemData.Item || {};
-        const itemName = itemData.name || itemData.item_name || lineItemData.item_name;
-
-        return {
-          line_item_id: lineItemData.line_item_id,
-          item_id: lineItemData.item_id,
-          item_name: itemName,
-          quantity: lineItemData.quantity_ordered,
-          quantity_received: lineItemData.quantity_received || 0,
-          unit_price: lineItemData.unit_price,
-          total_price: lineItemData.total_price,
-          quality_check: lineItemData.quality_check_status === 'passed' ? 'pass' :
-            lineItemData.quality_check_status === 'failed' ? 'fail' : 'pass'
-        };
-      });
-
-      const poData = fullPO.toJSON ? fullPO.toJSON() : fullPO;
-      const supplierData = poData.supplier || poData.Supplier || {};
-
-      setSelectedPO({
-        ...poData,
-        items: items,
-        supplier_name: supplierData.name || po.supplier_name,
-        po_number: poData.po_number || po.po_number
-      });
+      const fullPO = await purchaseOrderService.getPurchaseOrderById(
+        po.po_id || po.id,
+        buildValuationParams()
+      );
+      setSelectedPO(transformPurchaseOrderForModal(fullPO, po));
       setShowReceiptModal(true);
     } catch (error) {
       if (!normalizeApiError(error).isGlobalCandidate) {
         toast.error('Failed to load purchase order details');
+      }
+    }
+  };
+
+  const handleReceiptLocationChange = async (locationId) => {
+    const poId = selectedPO?.po_id || selectedPO?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!poId || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+      return;
+    }
+
+    const requestId = receiptFetchRequestRef.current + 1;
+    receiptFetchRequestRef.current = requestId;
+    setReceiptLocationRefreshing(true);
+
+    try {
+      const fullPO = await purchaseOrderService.getPurchaseOrderById(
+        poId,
+        { valuation_location_id: normalizedLocationId }
+      );
+      if (receiptFetchRequestRef.current !== requestId) return;
+
+      setSelectedPO((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...transformPurchaseOrderForModal(fullPO, prev)
+        };
+      });
+      setValuationLocationId(String(normalizedLocationId));
+    } catch (error) {
+      if (receiptFetchRequestRef.current === requestId && !normalizeApiError(error).isGlobalCandidate) {
+        toast.error('Failed to refresh location-based average cost');
+      }
+    } finally {
+      if (receiptFetchRequestRef.current === requestId) {
+        setReceiptLocationRefreshing(false);
       }
     }
   };
@@ -231,10 +249,12 @@ export default function PurchaseOrders() {
       };
 
       await receivePurchaseOrder(selectedPO.po_id || selectedPO.id, transformedData);
+      setValuationLocationId(String(receiptData.location_id));
       toast.success('Purchase order received successfully');
       refetch();
       setShowReceiptModal(false);
       setSelectedPO(null);
+      setReceiptLocationRefreshing(false);
     } catch (error) {
       if (error.response?.status === 403) {
         toast.error("You do not have permission to receive Purchase Orders.");
@@ -402,7 +422,7 @@ export default function PurchaseOrders() {
                     </td>
                     <td className="p-4 text-slate-600">{po.supplier_name || po.Supplier?.name || 'N/A'}</td>
                     <td className="p-4 text-slate-600">{po.item_count || 0} items</td>
-                    <td className="p-4 font-medium text-slate-900">₱{formatNumber(po.total_amount, 2)}</td>
+                    <td className="p-4 font-medium text-slate-900">{formatPeso(po.total_amount)}</td>
                     <td className="p-4 text-slate-600">{po.order_date}</td>
                     <td className="p-4 text-slate-600">{po.expected_delivery_date}</td>
                     <td className="p-4">
@@ -497,8 +517,14 @@ export default function PurchaseOrders() {
           <POReceiptModal
             po={selectedPO}
             open={showReceiptModal}
-            onClose={() => setShowReceiptModal(false)}
+            onClose={() => {
+              receiptFetchRequestRef.current += 1;
+              setReceiptLocationRefreshing(false);
+              setShowReceiptModal(false);
+            }}
             onConfirm={handleReceiptConfirm}
+            onLocationChange={handleReceiptLocationChange}
+            locationUpdating={receiptLocationRefreshing}
           />
         )
       }

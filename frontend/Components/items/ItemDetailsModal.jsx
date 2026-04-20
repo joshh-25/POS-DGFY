@@ -29,7 +29,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
 import FIFOBatchViewer from './FIFOBatchViewer';
-import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatPeso, formatQty } from '../../src/lib/numberUtils.js';
 import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
 import { calculateTotalProductCost } from './details/helpers';
 
@@ -44,10 +44,8 @@ import {
 // Import detail section components
 import BasicInfoSection from './details/BasicInfoSection';
 import StockInventorySection from './details/StockInventorySection';
-import RecipeIngredientsSection from './details/RecipeIngredientsSection';
 import YieldManagementSection from './details/YieldManagementSection';
 import NutritionalInfoSection from './details/NutritionalInfoSection';
-import AllergenSection from './details/AllergenSection';
 import PhysicalPropertiesSection from './details/PhysicalPropertiesSection';
 import ShelfLifeSection from './details/ShelfLifeSection';
 import PackagingInfoSection from './details/PackagingInfoSection';
@@ -58,14 +56,7 @@ import RegulatoryComplianceSection from './details/RegulatoryComplianceSection';
 // Import helper functions
 import {
   hasNutritionalInfo,
-  hasAllergens,
-  hasPhysicalProperties,
-  hasShelfLife,
-  hasPackagingInfo,
-  hasQualityControl,
-  hasRegulatoryCompliance,
   hasYieldManagement,
-  hasRecipeData,
 } from './details/helpers';
 
 const statusConfig = {
@@ -76,7 +67,7 @@ const statusConfig = {
 };
 
 export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
-  const [defaultOpenSections, setDefaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
+  const [defaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
 
   if (!item) return null;
 
@@ -99,6 +90,11 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
   const Icon = category.icon;
   const percentage = Math.round((item.current_stock / item.max_capacity) * 100);
   const totalValue = item.current_stock * calculateTotalProductCost(item);
+  const weightedGlobal = item?.cost_metrics?.global || null;
+  const weightedAvgCost = Number(weightedGlobal?.weighted_avg_cost || 0);
+  const weightedInventoryValue = Number(weightedGlobal?.inventory_value || 0);
+  const weightedSource = weightedGlobal?.source || null;
+  const weightedByLocation = Array.isArray(item?.cost_metrics?.by_location) ? item.cost_metrics.by_location : [];
 
   // Render simple view for ingredients and packaging
   if (!isProduct) {
@@ -153,7 +149,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                   <p className="text-slate-500">Total Value</p>
-                  <p className="font-semibold text-emerald-600">₱{formatNumber(totalValue, 2)}</p>
+                  <p className="font-semibold text-emerald-600">{formatPeso(totalValue)}</p>
                 </div>
               </div>
             </div>
@@ -218,19 +214,49 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
 
             {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
             {item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
-
             {/* Cost Info */}
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <p className="text-sm text-slate-500">Cost per Unit</p>
-                <p className="text-xl font-bold text-slate-900">₱{formatNumber(item.cost_per_unit, 2)}</p>
+            <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">Cost per Unit</p>
+                  <p className="text-xl font-bold text-slate-900">{formatPeso(item.cost_per_unit)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Avg Cost (On-hand)</p>
+                  <p className="text-xl font-bold text-teal-700">{formatPeso(weightedAvgCost || item.cost_per_unit)}</p>
+                  {weightedSource && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      {weightedSource === 'item_cost_fallback' ? 'Fallback source' : 'FIFO on-hand source'}
+                    </p>
+                  )}
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-sm text-slate-500">On-hand Value</p>
+                  <p className="text-xl font-bold text-slate-900">
+                    {formatPeso(weightedInventoryValue || totalValue)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">{item.last_updated ? `Updated ${item.last_updated}` : 'No update timestamp'}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-slate-500">Last Updated</p>
-                <p className="font-medium text-slate-700">{item.last_updated}</p>
-              </div>
-            </div>
 
+              {weightedByLocation.length > 0 && (
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
+                    <p className="text-xs font-semibold text-slate-700">Location Breakdown</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {weightedByLocation.map((row, index) => (
+                      <div key={`item-cost-location-${row.location_id ?? 'na'}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                        <span className="text-slate-700">{row.location_name || 'Unassigned'}</span>
+                        <span className="text-slate-600">
+                          {formatNumber(row.available_qty || 0, 2)} @ {formatPeso(row.weighted_avg_cost || 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Actions */}
             <div className="flex gap-6 pt-6 pb-4 border-t border-slate-200 mt-4">
               <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
@@ -443,3 +469,4 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
     </Dialog>
   );
 }
+

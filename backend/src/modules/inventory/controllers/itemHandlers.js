@@ -107,7 +107,7 @@ export const getItemById = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const result = await runInventoryUseCase(
-      () => getItemByIdUseCase({ itemId: item_id }),
+      () => getItemByIdUseCase({ itemId: item_id, query: req.query }),
       'Failed to retrieve item'
     );
     await trackProductUsageFromResult({

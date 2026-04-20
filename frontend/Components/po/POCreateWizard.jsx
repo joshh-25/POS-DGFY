@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
@@ -20,7 +20,6 @@ import {
   Check,
   Star,
   Truck,
-  DollarSign,
   AlertTriangle,
   Package,
   Plus,
@@ -30,7 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
-import { formatNumber, formatQty } from '../../src/lib/numberUtils.js';
+import { formatNumber, formatPeso, formatQty } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { isPurchasable } from '@/components/utils/categoryHelpers';
@@ -48,11 +47,40 @@ const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
 
 const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
 
+const getItemWeightedAvgCost = (item) => {
+  const weighted = Number(item?.cost_metrics?.global?.weighted_avg_cost);
+  if (Number.isFinite(weighted) && weighted > 0) return weighted;
+  const fallback = Number(item?.cost_per_unit);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+};
+
+const getUnitPriceVarianceMeta = ({ unitPrice = 0, baselineCost = 0 }) => {
+  if (!(baselineCost > 0)) return null;
+  const variancePerUnit = unitPrice - baselineCost;
+  const variancePercent = (variancePerUnit / baselineCost) * 100;
+  if (Math.abs(variancePercent) < 0.05) {
+    return {
+      label: 'At average',
+      className: 'bg-slate-100 text-slate-700 border-slate-200'
+    };
+  }
+
+  const isHigher = variancePerUnit > 0;
+  return {
+    label: `${isHigher ? '+' : ''}${formatNumber(variancePercent, 1)}% vs avg`,
+    className: isHigher
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  };
+};
+
 export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
   const navigate = useNavigate();
   const { workflowMode } = useWorkflowMode();
   const [step, setStep] = useState(1);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItems, setSelectedItems] = useState(() => (
+    initialItemId ? [parseInt(initialItemId, 10)] : []
+  ));
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [supplierItemMapping, setSupplierItemMapping] = useState({});
   const [orderQuantities, setOrderQuantities] = useState({});
@@ -62,16 +90,6 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNoSupplierWarning, setShowNoSupplierWarning] = useState(false);
-
-  // Initialize with passed item
-  useEffect(() => {
-    if (open && initialItemId) {
-      setSelectedItems([parseInt(initialItemId)]);
-    } else if (open) {
-      // Reset if opened without initial item
-      setSelectedItems([]);
-    }
-  }, [open, initialItemId]);
 
   // Filter items for restocking using workflow-mode purchasable semantics.
   const restockItems = useMemo(() => {
@@ -129,6 +147,12 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
         return sum + (supplierItem?.price_per_unit || 0) * qty;
       }, 0);
+      const baselineCost = canSupply.reduce((sum, itemId) => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const item = items.find(i => i.id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return sum + (getItemWeightedAvgCost(item) * qty);
+      }, 0);
 
       const moqCompatible = canSupply.every(itemId => {
         const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
@@ -142,6 +166,9 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         canSupplyCount: canSupply.length,
         additionalLowStock,
         totalCost,
+        baselineCost,
+        varianceValue: totalCost - baselineCost,
+        variancePercent: baselineCost > 0 ? ((totalCost - baselineCost) / baselineCost) * 100 : null,
         moqCompatible,
         coverage: (canSupply.length / selectedItems.length) * 100
       };
@@ -152,7 +179,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
         if (b.coverage !== a.coverage) return b.coverage - a.coverage;
         return a.totalCost - b.totalCost;
       });
-  }, [selectedItems, suppliers, orderQuantities, restockItems]);
+  }, [selectedItems, suppliers, orderQuantities, restockItems, items]);
 
   // Select all low stock items
   const handleSelectAllLowStock = () => {
@@ -567,6 +594,9 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                         <p className="text-sm text-slate-500">
                           Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
                         </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Avg Cost (On-hand): {formatPeso(getItemWeightedAvgCost(item))}/{getDisplayUom(item.unit_of_measure)}
+                        </p>
                       </div>
                       {isSelected && (
                         <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -661,8 +691,16 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="text-lg font-bold text-slate-900">₱{formatNumber(supplier.totalCost, 2)}</p>
+                              <p className="text-lg font-bold text-slate-900">{formatPeso(supplier.totalCost)}</p>
                               <p className="text-sm text-slate-500">Est. Total</p>
+                              {supplier.variancePercent !== null && (
+                                <p className={cn(
+                                  "text-xs font-medium mt-1",
+                                  supplier.varianceValue > 0 ? "text-amber-700" : "text-emerald-700"
+                                )}>
+                                  {supplier.varianceValue > 0 ? '+' : ''}{formatNumber(supplier.variancePercent, 1)}% vs avg
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-4 text-sm">
@@ -696,6 +734,10 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                               {supplier.additionalLowStock.map(item => {
                                 const supplierItem = supplier.items_supplied.find(si => si.item_id === item.id);
                                 const isAdded = supplierItemMapping[supplier.id]?.includes(item.id);
+                                const varianceMeta = getUnitPriceVarianceMeta({
+                                  unitPrice: Number(supplierItem?.price_per_unit || 0),
+                                  baselineCost: getItemWeightedAvgCost(item)
+                                });
                                 return (
                                   <div
                                     key={item.id}
@@ -710,8 +752,13 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                                       </div>
                                       <p className="text-xs text-slate-500">
                                         Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
-                                        {supplierItem && ` • ₱${supplierItem.price_per_unit}/${getDisplayUom(item.unit_of_measure)}`}
+                                        {supplierItem && ` | ${formatPeso(supplierItem.price_per_unit)}/${getDisplayUom(item.unit_of_measure)}`}
                                       </p>
+                                      {varianceMeta && (
+                                        <Badge variant="outline" className={cn("mt-1 text-[10px]", varianceMeta.className)}>
+                                          {varianceMeta.label}
+                                        </Badge>
+                                      )}
                                     </div>
                                     {!isAdded ? (
                                       <Button
@@ -773,6 +820,16 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                     const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
                     return sum + (qty * (supplierItem?.price_per_unit || 0));
                   }, 0);
+                  const weightedBaselineSubtotal = supplierItemIds.reduce((sum, itemId) => {
+                    const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                    const item = items.find(i => i.id === itemId);
+                    const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                    return sum + (qty * getItemWeightedAvgCost(item));
+                  }, 0);
+                  const supplierVarianceValue = subtotal - weightedBaselineSubtotal;
+                  const supplierVariancePercent = weightedBaselineSubtotal > 0
+                    ? (supplierVarianceValue / weightedBaselineSubtotal) * 100
+                    : null;
 
                   return (
                     <div key={supplier.id} className="border rounded-xl overflow-hidden">
@@ -796,12 +853,25 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                             const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
                             const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
                             const total = qty * (supplierItem?.price_per_unit || 0);
+                            const varianceMeta = getUnitPriceVarianceMeta({
+                              unitPrice: Number(supplierItem?.price_per_unit || 0),
+                              baselineCost: getItemWeightedAvgCost(item)
+                            });
                             return (
                               <tr key={itemId}>
                                 <td className="p-3 font-medium text-slate-900">{item?.name}</td>
                                 <td className="p-3 text-right text-slate-600">{qty}</td>
-                                <td className="p-3 text-right text-slate-600">₱{formatNumber(supplierItem?.price_per_unit, 2)}</td>
-                                <td className="p-3 text-right font-medium text-slate-900">₱{formatNumber(total, 2)}</td>
+                                <td className="p-3 text-right text-slate-600">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span>{formatPeso(supplierItem?.price_per_unit)}</span>
+                                    {varianceMeta && (
+                                      <Badge variant="outline" className={cn("text-[10px]", varianceMeta.className)}>
+                                        {varianceMeta.label}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3 text-right font-medium text-slate-900">{formatPeso(total)}</td>
                               </tr>
                             );
                           })}
@@ -811,8 +881,16 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                       <div className="bg-slate-50 p-4 border-t border-slate-200">
                         <div className="flex justify-between text-lg font-bold">
                           <span>Supplier Total</span>
-                          <span className="text-teal-600">₱{formatNumber(subtotal, 2)}</span>
+                          <span className="text-teal-600">{formatPeso(subtotal)}</span>
                         </div>
+                        {supplierVariancePercent !== null && (
+                          <p className={cn(
+                            "text-xs mt-1 text-right font-medium",
+                            supplierVarianceValue > 0 ? "text-amber-700" : "text-emerald-700"
+                          )}>
+                            {supplierVarianceValue > 0 ? '+' : ''}{formatNumber(supplierVariancePercent, 1)}% vs on-hand average cost
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -826,7 +904,7 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                     <p className="text-xs text-slate-500">{selectedSuppliers.length} supplier{selectedSuppliers.length !== 1 ? 's' : ''}</p>
                   </div>
                   <p className="text-2xl font-bold text-teal-600">
-                    ₱{formatNumber(
+                    {formatPeso(
                       selectedSuppliers.reduce((sum, supplier) => {
                         const supplierItemIds = supplierItemMapping[supplier.id] || [];
                         return sum + supplierItemIds.reduce((itemSum, itemId) => {
@@ -835,7 +913,6 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
                           return itemSum + (qty * (parseFloat(supplierItem?.price_per_unit || 0)));
                         }, 0);
                       }, 0),
-                      2
                     )}
                   </p>
                 </div>
@@ -1011,3 +1088,4 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
     </>
   );
 }
+
