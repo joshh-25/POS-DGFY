@@ -2213,11 +2213,27 @@ List publicly discoverable stores for list/grid/map storefront views.
 | `longitude` | number | Optional user longitude for distance sorting |
 | `page` | number | Page number (default 1) |
 | `limit` | number | Rows per page (default 20, max 100) |
+| `result_mode` | string | Optional match mode: `union` (default), `item_only`, `store_only` |
+| `stock_filter` | string | Optional item-match stock scope: `in_stock_only` (default when `search` is present) or `include_out_of_stock` |
+| `pin_scope` | string | Optional map pin scope: `nearest_matching_branch` (default when coordinates are provided), `all_matching_branches`, `tenant_primary` |
+| `include_match_meta` | boolean | Optional, defaults `true`; when `false`, match metadata fields are omitted from each row |
 
 **Search Notes**
-- Item-name search includes tenants that have matching catalog items.
-- Item-name matching considers storefront-visible items regardless of stock.
+- Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
+- Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
+- `union` mode returns the union of store-field matches and eligible item matches.
+- `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
 - Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+
+**Discovery Row Metadata**
+- When `include_match_meta=true`, discovery rows include:
+  - `match_reasons` (`store`, `item`, or both)
+  - `matching_item_count`
+  - `matching_item_sample`
+  - `has_in_stock_match`
+  - `matching_location_ids`
+  - `nearest_matching_location_id`
+- Response also includes `applied_filters` with resolved values for `result_mode`, `stock_filter`, `pin_scope`, and `include_match_meta`.
 
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.

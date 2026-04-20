@@ -15,6 +15,7 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'pos_open_status',
     'pos_wait_time_minutes'
 ]);
+const SEARCH_SNAPSHOT_VERSION = 1;
 
 const parseBoolean = (value, fallback = false) => {
     if (value === null || value === undefined || value === '') return fallback;
@@ -93,9 +94,28 @@ const toLocationPlain = (location) => (
         : location
 );
 
+const normalizeSearchToken = (value) => String(value || '').trim().toLowerCase();
+
+const buildItemSearchText = (item = {}) => (
+    [
+        item?.name,
+        item?.sku_code,
+        item?.description
+    ]
+        .filter((value) => value != null && value !== '')
+        .map((value) => normalizeSearchToken(value))
+        .join(' ')
+);
+
 const buildTenantSnapshot = async (tenant) => {
     const tenantConnection = await tenantConnector.getConnection(tenant);
-    const { SystemSetting, TenantLocation, Item, PosCatalogOverride } = getTenantModels(tenantConnection);
+    const {
+        SystemSetting,
+        TenantLocation,
+        Item,
+        PosCatalogOverride,
+        ItemLocationStock
+    } = getTenantModels(tenantConnection);
 
     const settingsRows = await SystemSetting.findAll({
         where: {
@@ -153,6 +173,25 @@ const buildTenantSnapshot = async (tenant) => {
     }
 
     const location = toLocationPlain(primaryLocation);
+    const allActiveLocationIds = (activeLocations || [])
+        .map((entry) => Number(toLocationPlain(entry).location_id))
+        .filter((locationId) => Number.isInteger(locationId) && locationId > 0);
+    const activeLocationSnapshot = (activeLocations || []).map((entry) => {
+        const plainLocation = toLocationPlain(entry);
+        return {
+            location_id: plainLocation.location_id || null,
+            name: plainLocation.name || null,
+            address_line: plainLocation.address_line || null,
+            latitude: Number(plainLocation.latitude),
+            longitude: Number(plainLocation.longitude),
+            is_open: plainLocation.is_open !== false,
+            is_active: plainLocation.is_active !== false,
+            is_primary_storefront: plainLocation.is_primary_storefront === true,
+            supports_delivery: plainLocation.supports_delivery !== false,
+            supports_pickup: plainLocation.supports_pickup !== false,
+            supports_dine_in: plainLocation.supports_dine_in !== false
+        };
+    }).filter((entry) => Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude));
     const latitude = Number(location.latitude);
     const longitude = Number(location.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -161,7 +200,7 @@ const buildTenantSnapshot = async (tenant) => {
 
     const baseCatalogQuery = {
         where: buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: true }),
-        attributes: ['item_id', 'category', 'product_type']
+        attributes: ['item_id', 'name', 'sku_code', 'description', 'category', 'product_type', 'current_stock']
     };
     const overrideInclude = PosCatalogOverride
         ? [{
@@ -183,7 +222,69 @@ const buildTenantSnapshot = async (tenant) => {
         }
         catalogRows = await Item.findAll(baseCatalogQuery);
     }
-    const catalogCount = (catalogRows || []).filter((row) => isCatalogItemVisible(toLocationPlain(row))).length;
+    const visibleCatalogRows = (catalogRows || [])
+        .map((row) => toLocationPlain(row))
+        .filter((row) => isCatalogItemVisible(row));
+    const catalogCount = visibleCatalogRows.length;
+
+    const visibleItemIds = visibleCatalogRows.map((row) => Number(row.item_id)).filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+    const activeLocationIds = allActiveLocationIds;
+
+    let locationStockRows = [];
+    if (ItemLocationStock && visibleItemIds.length > 0 && activeLocationIds.length > 0) {
+        locationStockRows = await ItemLocationStock.findAll({
+            where: {
+                item_id: { [Op.in]: visibleItemIds },
+                location_id: { [Op.in]: activeLocationIds }
+            },
+            attributes: ['item_id', 'location_id', 'quantity_on_hand']
+        });
+    }
+
+    const stockByItemId = new Map();
+    (locationStockRows || []).forEach((row) => {
+        const plain = toLocationPlain(row);
+        const itemId = Number(plain.item_id);
+        const locationId = Number(plain.location_id);
+        const quantity = Number(plain.quantity_on_hand || 0);
+        if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(locationId) || locationId <= 0) {
+            return;
+        }
+        const bucket = stockByItemId.get(itemId) || {
+            matchingLocationIds: new Set(),
+            inStockLocationIds: new Set()
+        };
+        bucket.matchingLocationIds.add(locationId);
+        if (quantity > 0) {
+            bucket.inStockLocationIds.add(locationId);
+        }
+        stockByItemId.set(itemId, bucket);
+    });
+
+    const fallbackPrimaryLocationId = Number(location.location_id);
+    const itemSearchSnapshot = visibleCatalogRows
+        .map((row) => {
+            const itemId = Number(row.item_id);
+            const stockBucket = stockByItemId.get(itemId);
+            const matchingLocationIds = stockBucket
+                ? Array.from(stockBucket.matchingLocationIds)
+                : activeLocationIds;
+            const inStockLocationIds = stockBucket
+                ? Array.from(stockBucket.inStockLocationIds)
+                : (Number(row.current_stock || 0) > 0 && Number.isInteger(fallbackPrimaryLocationId) && fallbackPrimaryLocationId > 0
+                    ? [fallbackPrimaryLocationId]
+                    : []);
+            const text = buildItemSearchText(row);
+            if (!text) return null;
+            return {
+                item_id: itemId,
+                item_name: row.name || null,
+                text,
+                matching_location_ids: matchingLocationIds,
+                in_stock_location_ids: inStockLocationIds
+            };
+        })
+        .filter(Boolean);
 
     const storefrontOpen = parseBoolean(settings.pos_open_status, true) && location.is_open !== false;
     const now = new Date();
@@ -206,6 +307,9 @@ const buildTenantSnapshot = async (tenant) => {
         supports_dine_in: location.supports_dine_in !== false,
         store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
         catalog_count: Number(catalogCount) || 0,
+        active_location_snapshot: activeLocationSnapshot,
+        item_search_snapshot: itemSearchSnapshot,
+        search_snapshot_version: SEARCH_SNAPSHOT_VERSION,
         source_updated_at: now,
         last_synced_at: now,
         __used_fallback_primary: usedFallbackPrimary

@@ -1,14 +1,9 @@
-import { StorefrontDiscoveryIndex, Tenant } from '../../../models/index.js';
+import { StorefrontDiscoveryIndex } from '../../../models/index.js';
 import { reconcileStorefrontDiscoveryIndex } from '../../../services/storefrontDiscoveryIndexService.js';
 import { getStorefrontDiscoveryCacheVersion } from '../../../services/storefrontDiscoveryCacheState.js';
 import { getStorefrontDiscoverySharedSignature } from '../../../services/storefrontDiscoveryFreshnessService.js';
-import { Op } from 'sequelize';
-import tenantConnector from '../../../utils/TenantConnector.js';
-import { getTenantModels } from '../../../utils/tenantModelFactory.js';
-import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import logger from '../../../config/logger.js';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
-import { isCatalogItemVisible } from '../../shared/utils/catalogVisibilityPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
 let cache = {
@@ -18,11 +13,11 @@ let cache = {
     signature: '0:0'
 };
 let emptyAutoRepairInFlight = false;
+const SUPPORTED_SEARCH_SNAPSHOT_VERSION = 1;
 
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
 const shouldAutoRepairEmptyIndex = () => process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY !== 'false';
 const shouldEnableFanoutFallback = () => process.env.STOREFRONT_DISCOVERY_FANOUT_FALLBACK_ENABLED === 'true';
-const SEARCH_FANOUT_CONCURRENCY = 4;
 
 const toRadians = (deg) => (deg * Math.PI) / 180;
 const distanceKm = (lat1, lng1, lat2, lng2) => {
@@ -38,34 +33,48 @@ const toNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
-const toPlain = (value) => (
-    value && typeof value.toJSON === 'function'
-        ? value.toJSON()
-        : value
-);
-const isMissingPosCatalogOverrideTableError = (error) => {
-    if (!error) return false;
-    const code = error.original?.code || error.parent?.code || error.code;
-    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
-};
-const mapWithConcurrency = async (items = [], limit = 4, worker) => {
-    const normalizedLimit = Math.max(1, Number(limit) || 1);
-    const results = new Array(items.length);
-    let cursor = 0;
 
-    const runWorker = async () => {
-        while (true) {
-            const current = cursor;
-            cursor += 1;
-            if (current >= items.length) return;
-            results[current] = await worker(items[current], current);
+const parseJsonArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
         }
-    };
+    }
+    return [];
+};
 
-    const workers = Array.from({ length: Math.min(normalizedLimit, items.length) }, () => runWorker());
-    await Promise.all(workers);
-    return results;
+const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
+
+const resolveResultMode = (query = {}) => {
+    const raw = normalizeSearchText(query.result_mode);
+    if (raw === 'item_only' || raw === 'store_only' || raw === 'union') return raw;
+    return 'union';
+};
+
+const resolveStockFilter = (query = {}, hasSearch = false) => {
+    const raw = normalizeSearchText(query.stock_filter);
+    if (raw === 'include_out_of_stock' || raw === 'in_stock_only') return raw;
+    return hasSearch ? 'in_stock_only' : 'include_out_of_stock';
+};
+
+const resolvePinScope = (query = {}, withDistance = false) => {
+    const raw = normalizeSearchText(query.pin_scope);
+    if (raw === 'nearest_matching_branch' || raw === 'all_matching_branches' || raw === 'tenant_primary') {
+        return raw;
+    }
+    return withDistance ? 'nearest_matching_branch' : 'tenant_primary';
+};
+
+const resolveIncludeMatchMeta = (query = {}) => {
+    if (typeof query.include_match_meta === 'boolean') return query.include_match_meta;
+    const raw = normalizeSearchText(query.include_match_meta);
+    if (raw === 'false' || raw === '0' || raw === 'no') return false;
+    return true;
 };
 
 const toPlainEntry = (row) => ({
@@ -84,7 +93,10 @@ const toPlainEntry = (row) => ({
     supports_pickup: row.supports_pickup !== false,
     supports_dine_in: row.supports_dine_in !== false,
     store_delivery_fee: toNumber(row.store_delivery_fee, 0),
-    catalog_count: toNumber(row.catalog_count, 0)
+    catalog_count: toNumber(row.catalog_count, 0),
+    active_location_snapshot: parseJsonArray(row.active_location_snapshot),
+    item_search_snapshot: parseJsonArray(row.item_search_snapshot),
+    search_snapshot_version: toNumber(row.search_snapshot_version, 0)
 });
 
 const warmIndexOnEmpty = async () => {
@@ -136,7 +148,6 @@ const loadAllEntries = async () => {
         });
     }
 
-    // Transitional emergency fallback (disabled by default).
     if ((!rows || rows.length === 0) && shouldEnableFanoutFallback()) {
         logger.warn('[StorefrontDiscovery] Index is empty and fan-out fallback was requested, but fallback path is removed.');
     }
@@ -162,127 +173,257 @@ export const clearStorefrontDiscoveryRepositoryCache = () => {
     };
 };
 
-const getTenantIdsMatchingCatalogSearch = async (entries = [], search = '') => {
-    const normalizedSearch = String(search || '').trim();
-    if (!normalizedSearch) return new Set();
+const collectItemMatchByTenant = (entries = [], search = '') => {
+    const normalizedSearch = normalizeSearchText(search);
+    if (!normalizedSearch) {
+        return {
+            itemMatchByTenant: new Map(),
+            degradedTenants: []
+        };
+    }
 
-    const tenantIds = Array.from(new Set(
-        (entries || [])
-            .map((entry) => String(entry?.tenant_id || '').trim())
-            .filter(Boolean)
-    ));
-    if (tenantIds.length === 0) return new Set();
+    const map = new Map();
+    const degradedTenants = [];
+    for (const entry of entries) {
+        const tenantId = String(entry?.tenant_id || '').trim();
+        if (!tenantId) continue;
 
-    const tenants = await Tenant.findAll({
-        where: {
-            id: { [Op.in]: tenantIds },
-            status: 'active'
-        },
-        attributes: ['id', 'name', 'company_token', 'db_name']
-    });
-    if (!Array.isArray(tenants) || tenants.length === 0) return new Set();
-
-    const matches = await mapWithConcurrency(tenants, SEARCH_FANOUT_CONCURRENCY, async (tenant) => {
-        try {
-            const tenantConnection = await tenantConnector.getConnection(tenant);
-            const { Item, PosCatalogOverride } = getTenantModels(tenantConnection);
-            const where = buildVisibleWhere(
-                {
-                    [Op.or]: [
-                        { name: { [Op.like]: `%${normalizedSearch}%` } },
-                        { sku_code: { [Op.like]: `%${normalizedSearch}%` } },
-                        { description: { [Op.like]: `%${normalizedSearch}%` } }
-                    ]
-                },
-                { statusField: 'status', excludeInactiveStatus: true }
-            );
-
-            const includeOverride = PosCatalogOverride
-                ? [{
-                    model: PosCatalogOverride,
-                    as: 'posCatalogOverride',
-                    attributes: ['pos_visible'],
-                    required: false
-                }]
-                : [];
-
-            const findMatchingItems = async (include = []) => Item.findAll({
-                where,
-                attributes: ['item_id', 'name', 'category', 'product_type'],
-                include,
-                order: [['item_id', 'ASC']],
-                limit: 100
+        const snapshotVersion = Number(entry?.search_snapshot_version || 0);
+        const hasSupportedVersion = snapshotVersion === SUPPORTED_SEARCH_SNAPSHOT_VERSION;
+        const hasItemSnapshot = Array.isArray(entry?.item_search_snapshot);
+        const hasActiveLocationSnapshot = Array.isArray(entry?.active_location_snapshot);
+        if (!hasSupportedVersion || !hasItemSnapshot || !hasActiveLocationSnapshot) {
+            const reasons = [];
+            if (!hasSupportedVersion) reasons.push('unsupported_snapshot_version');
+            if (!hasItemSnapshot) reasons.push('missing_item_search_snapshot');
+            if (!hasActiveLocationSnapshot) reasons.push('missing_active_location_snapshot');
+            degradedTenants.push({
+                tenant_id: tenantId,
+                slug: String(entry?.slug || ''),
+                reason_codes: reasons
             });
-
-            if (!PosCatalogOverride) {
-                const rows = await findMatchingItems([]);
-                const hasVisibleMatch = (rows || [])
-                    .map(toPlain)
-                    .some((plain) => Boolean(plain) && isCatalogItemVisible(plain));
-                return hasVisibleMatch ? String(tenant.id) : null;
-            }
-
-            let rows;
-            try {
-                rows = await findMatchingItems(includeOverride);
-            } catch (error) {
-                if (!isMissingPosCatalogOverrideTableError(error)) {
-                    throw error;
-                }
-                rows = await findMatchingItems([]);
-            }
-
-            const hasVisibleMatch = (rows || [])
-                .map(toPlain)
-                .some((plain) => Boolean(plain) && isCatalogItemVisible(plain));
-            return hasVisibleMatch ? String(tenant.id) : null;
-        } catch (error) {
-            logger.warn('[StorefrontDiscovery] Catalog search fanout failed for tenant', {
-                tenantId: tenant?.id || null,
-                error: error?.message || 'unknown_error'
-            });
-            return null;
+            continue;
         }
-    });
 
-    return new Set((matches || []).filter(Boolean));
+        const snapshotRows = Array.isArray(entry?.item_search_snapshot) ? entry.item_search_snapshot : [];
+        if (snapshotRows.length === 0) {
+            const catalogCount = Number(entry?.catalog_count || 0);
+            if (catalogCount > 0) {
+                degradedTenants.push({
+                    tenant_id: tenantId,
+                    slug: String(entry?.slug || ''),
+                    reason_codes: ['empty_item_search_snapshot']
+                });
+            }
+            continue;
+        }
+
+        let matchingItemCount = 0;
+        const sampleNames = [];
+        const matchingLocationIds = new Set();
+        const inStockLocationIds = new Set();
+
+        snapshotRows.forEach((item) => {
+            const searchable = normalizeSearchText(item?.text);
+            if (!searchable.includes(normalizedSearch)) return;
+
+            matchingItemCount += 1;
+            if (sampleNames.length < 3 && item?.item_name) {
+                sampleNames.push(String(item.item_name));
+            }
+
+            const allLocations = Array.isArray(item?.matching_location_ids) ? item.matching_location_ids : [];
+            allLocations.forEach((locationId) => {
+                const numericLocationId = Number(locationId);
+                if (Number.isInteger(numericLocationId) && numericLocationId > 0) {
+                    matchingLocationIds.add(numericLocationId);
+                }
+            });
+
+            const inStockLocations = Array.isArray(item?.in_stock_location_ids) ? item.in_stock_location_ids : [];
+            inStockLocations.forEach((locationId) => {
+                const numericLocationId = Number(locationId);
+                if (Number.isInteger(numericLocationId) && numericLocationId > 0) {
+                    inStockLocationIds.add(numericLocationId);
+                }
+            });
+        });
+
+        if (matchingItemCount > 0) {
+            map.set(tenantId, {
+                matching_item_count: matchingItemCount,
+                matching_item_sample: sampleNames,
+                matching_location_ids: Array.from(matchingLocationIds),
+                in_stock_location_ids: Array.from(inStockLocationIds),
+                has_in_stock_match: inStockLocationIds.size > 0
+            });
+        }
+    }
+
+    return {
+        itemMatchByTenant: map,
+        degradedTenants
+    };
+};
+
+const resolveLocationById = (entry = {}, locationId = null) => {
+    const numericLocationId = Number(locationId);
+    if (!Number.isInteger(numericLocationId) || numericLocationId <= 0) return null;
+    const activeLocations = Array.isArray(entry?.active_location_snapshot) ? entry.active_location_snapshot : [];
+    return activeLocations.find((location) => Number(location.location_id) === numericLocationId) || null;
+};
+
+const resolveNearestLocationId = (entry = {}, candidateLocationIds = [], latitude = null, longitude = null) => {
+    const activeLocations = Array.isArray(entry?.active_location_snapshot) ? entry.active_location_snapshot : [];
+    const candidateSet = new Set(
+        (Array.isArray(candidateLocationIds) ? candidateLocationIds : [])
+            .map((locationId) => Number(locationId))
+            .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+    );
+
+    const filteredLocations = activeLocations.filter((location) => candidateSet.has(Number(location.location_id)));
+    if (filteredLocations.length === 0) return null;
+
+    const hasCoords = Number.isFinite(latitude) && Number.isFinite(longitude);
+    if (!hasCoords) {
+        return Number(filteredLocations[0].location_id);
+    }
+
+    const sorted = filteredLocations
+        .filter((location) => Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude)))
+        .map((location) => ({
+            location,
+            distance: distanceKm(latitude, longitude, Number(location.latitude), Number(location.longitude))
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+    if (sorted.length === 0) return Number(filteredLocations[0].location_id);
+    return Number(sorted[0].location.location_id);
 };
 
 const applyDiscoveryQuery = async (entries = [], query = {}) => {
-    const search = String(query.search || '').trim().toLowerCase();
+    const startedAt = Date.now();
+    const search = normalizeSearchText(query.search);
     const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
     const limit = Math.max(1, Math.min(100, Number.parseInt(query.limit, 10) || 20));
     const lat = Number(query.latitude);
     const lng = Number(query.longitude);
     const withDistance = Number.isFinite(lat) && Number.isFinite(lng);
+    const resultMode = resolveResultMode(query);
+    const stockFilter = resolveStockFilter(query, Boolean(search));
+    const pinScope = resolvePinScope(query, withDistance);
+    const includeMatchMeta = resolveIncludeMatchMeta(query);
 
     let rows = entries;
+    const tenantFieldMatches = new Set();
+    const { itemMatchByTenant, degradedTenants } = search
+        ? collectItemMatchByTenant(rows, search)
+        : { itemMatchByTenant: new Map(), degradedTenants: [] };
+    if (search && Array.isArray(degradedTenants) && degradedTenants.length > 0) {
+        logger.warn('[StorefrontDiscovery] Snapshot compatibility fallback applied', {
+            query_length: search.length,
+            affected_tenant_count: degradedTenants.length,
+            affected_tenants: degradedTenants
+        });
+    }
+
     if (search) {
-        const tenantFieldMatches = new Set(
-            rows
-                .filter((entry) => (
-                    String(entry.tenant_name || '').toLowerCase().includes(search)
-                    || String(entry.slug || '').toLowerCase().includes(search)
-                    || String(entry.address_line || '').toLowerCase().includes(search)
-                    || String(entry.location_name || '').toLowerCase().includes(search)
-                ))
-                .map((entry) => String(entry.tenant_id || ''))
-        );
-        const itemNameMatchTenantIds = await getTenantIdsMatchingCatalogSearch(rows, search);
-        if (itemNameMatchTenantIds.size > 0) {
-            rows = rows.filter((entry) => itemNameMatchTenantIds.has(String(entry.tenant_id || '')));
-        } else {
-            rows = rows.filter((entry) => tenantFieldMatches.has(String(entry.tenant_id || '')));
-        }
+        rows.forEach((entry) => {
+            const matched = (
+                normalizeSearchText(entry?.tenant_name).includes(search)
+                || normalizeSearchText(entry?.slug).includes(search)
+                || normalizeSearchText(entry?.address_line).includes(search)
+                || normalizeSearchText(entry?.location_name).includes(search)
+            );
+            if (matched) tenantFieldMatches.add(String(entry.tenant_id || ''));
+        });
+
+        rows = rows.filter((entry) => {
+            const tenantId = String(entry?.tenant_id || '');
+            const storeMatch = tenantFieldMatches.has(tenantId);
+            const itemMeta = itemMatchByTenant.get(tenantId) || null;
+            const itemExists = Boolean(itemMeta);
+            const itemEligible = itemExists && (
+                stockFilter === 'include_out_of_stock'
+                || itemMeta.has_in_stock_match === true
+            );
+
+            if (resultMode === 'item_only') return itemEligible;
+            if (resultMode === 'store_only') return storeMatch;
+            return storeMatch || itemEligible;
+        });
     }
 
     rows = rows.map((entry) => {
-        if (!withDistance) return { ...entry, distance_km: null };
-        return {
+        const tenantId = String(entry?.tenant_id || '');
+        const storeMatch = search ? tenantFieldMatches.has(tenantId) : false;
+        const itemMeta = search ? (itemMatchByTenant.get(tenantId) || null) : null;
+        const itemEligible = Boolean(itemMeta) && (
+            stockFilter === 'include_out_of_stock'
+            || itemMeta.has_in_stock_match === true
+        );
+        const locationCandidateIds = itemEligible
+            ? (
+                stockFilter === 'in_stock_only'
+                    ? itemMeta.in_stock_location_ids
+                    : itemMeta.matching_location_ids
+            )
+            : [];
+
+        const nearestMatchingLocationId = itemEligible
+            ? resolveNearestLocationId(entry, locationCandidateIds, withDistance ? lat : null, withDistance ? lng : null)
+            : null;
+
+        const anchorLocation = (
+            pinScope === 'nearest_matching_branch' && Number.isInteger(nearestMatchingLocationId)
+                ? resolveLocationById(entry, nearestMatchingLocationId)
+                : null
+        );
+        const anchorLatitude = Number.isFinite(Number(anchorLocation?.latitude)) ? Number(anchorLocation.latitude) : Number(entry.latitude);
+        const anchorLongitude = Number.isFinite(Number(anchorLocation?.longitude)) ? Number(anchorLocation.longitude) : Number(entry.longitude);
+        const distance = withDistance
+            ? Number(distanceKm(lat, lng, anchorLatitude, anchorLongitude).toFixed(2))
+            : null;
+
+        const nextRow = {
             ...entry,
-            distance_km: Number(distanceKm(lat, lng, entry.latitude, entry.longitude).toFixed(2))
+            latitude: anchorLatitude,
+            longitude: anchorLongitude,
+            distance_km: distance
+        };
+
+        if (!includeMatchMeta) {
+            return nextRow;
+        }
+
+        const matchReasons = [];
+        if (storeMatch && resultMode !== 'item_only') matchReasons.push('store');
+        if (itemEligible && resultMode !== 'store_only') matchReasons.push('item');
+
+        return {
+            ...nextRow,
+            match_reasons: matchReasons,
+            matching_item_count: itemMeta?.matching_item_count || 0,
+            matching_item_sample: itemMeta?.matching_item_sample || [],
+            has_in_stock_match: itemMeta?.has_in_stock_match === true,
+            matching_location_ids: Array.isArray(locationCandidateIds) ? locationCandidateIds : [],
+            nearest_matching_location_id: Number.isInteger(nearestMatchingLocationId) ? nearestMatchingLocationId : null
         };
     });
+
+    if (search) {
+        logger.info('[StorefrontDiscovery] Discovery search resolved', {
+            result_mode: resultMode,
+            stock_filter: stockFilter,
+            pin_scope: pinScope,
+            include_match_meta: includeMatchMeta,
+            query_length: search.length,
+            with_distance: withDistance,
+            row_count: rows.length,
+            zero_result: rows.length === 0,
+            latency_ms: Date.now() - startedAt
+        });
+    }
 
     rows = rows.sort((a, b) => {
         if (a.storefront_open !== b.storefront_open) return a.storefront_open ? -1 : 1;
@@ -301,6 +442,12 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
             limit,
             total,
             totalPages: Math.max(1, Math.ceil(total / limit))
+        },
+        applied_filters: {
+            result_mode: resultMode,
+            stock_filter: stockFilter,
+            pin_scope: pinScope,
+            include_match_meta: includeMatchMeta
         }
     };
 };

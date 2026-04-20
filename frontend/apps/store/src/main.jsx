@@ -4,6 +4,12 @@ import L from 'leaflet';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
+import {
+  getDiscoveryEmptyStateMessage,
+  getDiscoveryMatchBadges,
+  getPreferredDiscoveryLocationId,
+  selectDiscoveryPinLocations
+} from './discoveryPresentation.js';
 import { normalizeStorefrontErrorMessage } from './storefrontErrorMessages.js';
 import 'leaflet/dist/leaflet.css';
 
@@ -14,6 +20,13 @@ const ORDER_METHOD_OPTIONS = [
   { value: 'dine_in', label: 'Dine In' },
   { value: 'takeout', label: 'Takeout' }
 ];
+const DISCOVERY_BADGE_TONE_STYLES = {
+  teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
+  blue: { color: '#1d4ed8', background: '#eff6ff', borderColor: '#bfdbfe' },
+  slate: { color: '#334155', background: '#f8fafc', borderColor: '#cbd5e1' },
+  emerald: { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' },
+  amber: { color: '#92400e', background: '#fff7ed', borderColor: '#fed7aa' }
+};
 
 const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
 const toSlug = (v) => String(v || '').trim().toLowerCase();
@@ -310,7 +323,7 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   );
 }
 
-function App() {
+export function App() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const previousRouteSlugRef = useRef(routeSlug);
 
@@ -318,10 +331,18 @@ function App() {
   const [loadingStores, setLoadingStores] = useState(true);
   const [storesError, setStoresError] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedDiscoverySearch, setDebouncedDiscoverySearch] = useState('');
+  const searchRef = useRef(search);
+  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
+  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('in_stock_only');
+  const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
+  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
+  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
   const [discoveryCoords, setDiscoveryCoords] = useState(null);
+  const discoveryCoordsRef = useRef(discoveryCoords);
   const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
   const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
@@ -361,35 +382,69 @@ function App() {
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
+  const discoveryRequestSequenceRef = useRef(0);
+  const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
 
   const isStorePage = Boolean(routeSlug);
 
-  const loadStores = useCallback(async (coords = null) => {
+  const loadStores = useCallback(async (coords = undefined, options = {}) => {
+    const useImmediateSearch = options?.useImmediateSearch === true;
+    const requestSearch = useImmediateSearch ? String(searchRef.current || '').trim() : debouncedDiscoverySearch.trim();
+    if (useImmediateSearch) {
+      lastImmediateDiscoveryRequestRef.current = { search: requestSearch, at: Date.now() };
+    }
+    const requestSequence = discoveryRequestSequenceRef.current + 1;
+    discoveryRequestSequenceRef.current = requestSequence;
     setLoadingStores(true);
     setStoresError('');
     try {
+      const resolvedCoords = coords === undefined ? discoveryCoordsRef.current : coords;
       const q = new URLSearchParams();
-      if (search.trim()) q.set('search', search.trim());
-      if (coords?.latitude && coords?.longitude) {
-        q.set('latitude', String(coords.latitude));
-        q.set('longitude', String(coords.longitude));
-        setDiscoveryCoords({
-          latitude: Number(coords.latitude),
-          longitude: Number(coords.longitude)
+      if (requestSearch) q.set('search', requestSearch);
+      q.set('result_mode', discoveryResultMode);
+      q.set('stock_filter', discoveryStockFilter);
+      q.set('pin_scope', discoveryPinScope);
+      q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
+      if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
+        q.set('latitude', String(resolvedCoords.latitude));
+        q.set('longitude', String(resolvedCoords.longitude));
+        const nextCoords = {
+          latitude: Number(resolvedCoords.latitude),
+          longitude: Number(resolvedCoords.longitude)
+        };
+        discoveryCoordsRef.current = nextCoords;
+        setDiscoveryCoords((previous) => {
+          if (
+            previous
+            && Number(previous.latitude) === Number(nextCoords.latitude)
+            && Number(previous.longitude) === Number(nextCoords.longitude)
+          ) {
+            return previous;
+          }
+          return nextCoords;
         });
       } else {
+        discoveryCoordsRef.current = null;
         setDiscoveryCoords(null);
       }
       q.set('limit', '100');
       const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`);
-      setStores(Array.isArray(data?.stores) ? data.stores : []);
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setStores(Array.isArray(data?.stores) ? data.stores : []);
+        setDiscoveryAppliedFilters(data?.applied_filters || null);
+      }
     } catch (error) {
-      setStores([]);
-      setStoresError(error.message || 'Failed to load discovery stores.');
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setStores([]);
+        setDiscoveryAppliedFilters(null);
+        setStoresError(error.message || 'Failed to load discovery stores.');
+      }
     } finally {
-      setLoadingStores(false);
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setLoadingStores(false);
+      }
     }
-  }, [search]);
+  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta]);
 
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
@@ -461,8 +516,32 @@ function App() {
   }, [preferredStoreLocationSelection]);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedDiscoverySearch(search);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+
+  useEffect(() => {
+    const lastImmediate = lastImmediateDiscoveryRequestRef.current;
+    const debouncedSearch = debouncedDiscoverySearch.trim();
+    if (
+      debouncedSearch
+      && lastImmediate?.search === debouncedSearch
+      && Date.now() - Number(lastImmediate.at || 0) < 400
+    ) {
+      return;
+    }
     loadStores();
-  }, [loadStores]);
+  }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    discoveryCoordsRef.current = discoveryCoords;
+  }, [discoveryCoords]);
 
   useEffect(() => {
     if (!routeSlug) return;
@@ -625,6 +704,7 @@ function App() {
     setPreferredStoreLocationSelection(null);
     setCatalog([]);
     setCatalogError('');
+    setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
   };
 
@@ -647,10 +727,19 @@ function App() {
             longitude: toNumberOrNull(location?.longitude)
           }))
           .filter((location) => location.latitude != null && location.longitude != null);
+        const matchingLocationIds = Array.isArray(store?.matching_location_ids)
+          ? store.matching_location_ids
+            .map((locationId) => Number(locationId))
+            .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+          : [];
+        const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
+        const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
+          ? (pins.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
+          : null;
         const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
-        const fallbackLocation = primaryLocation || pins[0] || null;
+        const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
         const fallbackLat = toNumberOrNull(store?.latitude);
         const fallbackLng = toNumberOrNull(store?.longitude);
         const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
@@ -674,7 +763,13 @@ function App() {
           nearest_distance_km: nearestDistanceKm,
           nearest_location_name: nearestLocation?.name || null,
           nearest_location_id: nearestLocation?.location_id ?? null,
-          nearest_is_primary: nearestLocation?.is_primary_storefront === true
+          nearest_is_primary: nearestLocation?.is_primary_storefront === true,
+          match_reasons: Array.isArray(store?.match_reasons) ? store.match_reasons : [],
+          matching_item_count: Number(store?.matching_item_count || 0),
+          matching_item_sample: Array.isArray(store?.matching_item_sample) ? store.matching_item_sample : [],
+          has_in_stock_match: store?.has_in_stock_match === true,
+          matching_location_ids: matchingLocationIds,
+          nearest_matching_location_id: Number.isInteger(nearestMatchingLocationId) ? nearestMatchingLocationId : null
         };
       })
       .sort((a, b) => {
@@ -688,6 +783,7 @@ function App() {
     const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
     const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
     const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
+    const hasSearchQuery = search.trim().length > 0;
     const pins = [];
     storesWithNearestBranch.forEach((store) => {
       const slug = toSlug(store?.slug);
@@ -695,12 +791,21 @@ function App() {
       const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
       const activeWithCoords = locations
         .filter((location) => location?.is_active !== false)
-        .map((location) => ({
-          ...location,
-          latitude: toNumberOrNull(location?.latitude),
-          longitude: toNumberOrNull(location?.longitude)
-        }))
-        .filter((location) => location.latitude != null && location.longitude != null);
+          .map((location) => ({
+            ...location,
+            latitude: toNumberOrNull(location?.latitude),
+            longitude: toNumberOrNull(location?.longitude)
+          }))
+          .filter((location) => location.latitude != null && location.longitude != null);
+      const matchingLocationIds = Array.isArray(store?.matching_location_ids)
+        ? store.matching_location_ids
+          .map((locationId) => Number(locationId))
+          .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+        : [];
+      const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
+      const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
+        ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
+        : null;
       if (activeWithCoords.length === 0) {
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
@@ -717,7 +822,16 @@ function App() {
         });
         return;
       }
-      activeWithCoords.forEach((location) => {
+
+      const scopedLocations = selectDiscoveryPinLocations({
+        activeLocations: activeWithCoords,
+        hasSearchQuery,
+        pinScope: discoveryPinScope,
+        matchingLocationIds,
+        nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
+      });
+
+      scopedLocations.forEach((location) => {
         pins.push({
           ...store,
           marker_key: `${slug}:${location.location_id}`,
@@ -740,7 +854,19 @@ function App() {
       if (left !== right) return left - right;
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
-  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords]);
+  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords, discoveryPinScope, search]);
+  const discoveryPinsBySlug = useMemo(() => {
+    const map = {};
+    discoveryMapPins.forEach((pin) => {
+      const slug = toSlug(pin?.slug);
+      if (!slug) return;
+      if (!Array.isArray(map[slug])) {
+        map[slug] = [];
+      }
+      map[slug].push(pin);
+    });
+    return map;
+  }, [discoveryMapPins]);
   const discoverySummary = useMemo(() => {
     const totalStores = storesWithNearestBranch.length;
     const openStores = storesWithNearestBranch.filter((store) => store.storefront_open).length;
@@ -1054,18 +1180,19 @@ function App() {
 
   const handleNearMe = () => {
     if (!navigator?.geolocation) {
-      loadStores();
+      loadStores(undefined, { useImmediateSearch: true });
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setDiscoveryPinScope((current) => (current === 'tenant_primary' ? 'nearest_matching_branch' : current));
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
-        });
+        }, { useImmediateSearch: true });
       },
       () => {
-        loadStores();
+        loadStores(undefined, { useImmediateSearch: true });
       },
       {
         enableHighAccuracy: true,
@@ -1085,17 +1212,49 @@ function App() {
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search store, slug, address, or item..." style={{ flex: '1 1 360px', border: '1px solid #cbd5e1', borderRadius: 10, padding: '10px 12px' }} />
-                <button type="button" onClick={() => loadStores()} style={{ borderRadius: 10, border: '1px solid #0f766e', color: '#0f766e', background: '#fff', padding: '10px 14px', fontWeight: 700 }}>Search</button>
+                <button type="button" onClick={() => loadStores(undefined, { useImmediateSearch: true })} style={{ borderRadius: 10, border: '1px solid #0f766e', color: '#0f766e', background: '#fff', padding: '10px 14px', fontWeight: 700 }}>Search</button>
                 <button type="button" onClick={handleNearMe} style={{ borderRadius: 10, border: '1px solid #0f766e', color: '#0f766e', background: '#fff', padding: '10px 14px', fontWeight: 700 }}>Near Me</button>
                 {['list', 'grid', 'map'].map((mode) => (
                   <button key={mode} type="button" onClick={() => setViewMode(mode)} style={{ borderRadius: 10, border: `1px solid ${viewMode === mode ? '#1d9a8a' : '#cbd5e1'}`, background: viewMode === mode ? '#e6fffb' : '#fff', padding: '10px 14px', fontWeight: 700, textTransform: 'capitalize' }}>{mode}</button>
                 ))}
+              </div>
+              <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                <label style={{ fontSize: 12, color: '#475569' }}>
+                  Result Mode
+                  <select value={discoveryResultMode} onChange={(e) => setDiscoveryResultMode(e.target.value)} style={{ width: '100%', marginTop: 4, border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
+                    <option value="union">Union (store + item)</option>
+                    <option value="item_only">Item matches only</option>
+                    <option value="store_only">Store matches only</option>
+                  </select>
+                </label>
+                <label style={{ fontSize: 12, color: '#475569' }}>
+                  Stock Filter
+                  <select value={discoveryStockFilter} onChange={(e) => setDiscoveryStockFilter(e.target.value)} style={{ width: '100%', marginTop: 4, border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
+                    <option value="in_stock_only">In-stock matches only</option>
+                    <option value="include_out_of_stock">Include out-of-stock matches</option>
+                  </select>
+                </label>
+                <label style={{ fontSize: 12, color: '#475569' }}>
+                  Pin Scope
+                  <select value={discoveryPinScope} onChange={(e) => setDiscoveryPinScope(e.target.value)} style={{ width: '100%', marginTop: 4, border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 10px', background: '#fff' }}>
+                    <option value="nearest_matching_branch">Nearest matching branch</option>
+                    <option value="all_matching_branches">All matching branches</option>
+                    <option value="tenant_primary">Tenant primary branch</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569', marginTop: 18 }}>
+                  <input type="checkbox" checked={discoveryIncludeMatchMeta} onChange={(e) => setDiscoveryIncludeMatchMeta(e.target.checked)} />
+                  Include match metadata
+                </label>
               </div>
               <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
                 {discoveryCoords
                   ? `Near Me is active (${discoveryCoords.latitude.toFixed(4)}, ${discoveryCoords.longitude.toFixed(4)}). Results are sorted by nearest active storefront branch${nearestDistanceKm != null ? ` • nearest: ${nearestDistanceKm.toFixed(2)} km` : ''}.`
                   : 'Tip: Near Me uses your browser location to sort stores by nearest active storefront branch.'}
                 {loadingDiscoveryLocations ? ' Syncing branch pins...' : ''}
+                {discoveryAppliedFilters
+                  ? ` Applied: mode=${discoveryAppliedFilters.result_mode}, stock=${discoveryAppliedFilters.stock_filter}, pins=${discoveryAppliedFilters.pin_scope}.`
+                  : ''}
               </div>
 
               <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
@@ -1128,9 +1287,7 @@ function App() {
                   {!loadingStores && storesError && <div style={{ color: '#b91c1c' }}>{storesError}</div>}
                   {!loadingStores && !storesError && storesWithNearestBranch.length === 0 && (
                     <div style={{ color: '#64748b' }}>
-                      {search.trim()
-                        ? `No stores matched "${search.trim()}" in visible storefront catalog items.`
-                        : 'No visible storefronts yet. Tenant pages auto-activate once each tenant enables storefront visibility and active location setup.'}
+                      {getDiscoveryEmptyStateMessage(search)}
                     </div>
                   )}
 
@@ -1149,37 +1306,76 @@ function App() {
 
                   {!loadingStores && !storesError && storesWithNearestBranch.length > 0 && viewMode !== 'map' && (
                     <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'list' ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                      {storesWithNearestBranch.map((store) => (
-                        <button
-                          key={store.slug}
-                          type="button"
-                          onMouseEnter={() => {
-                            setHighlightedStoreSlug(store.slug);
-                            const nearestPin = discoveryMapPins.find((pin) => pin.slug === store.slug);
-                            if (nearestPin) setHighlightedDiscoveryMarkerKey(nearestPin.marker_key);
-                          }}
-                          onClick={() => goStore(store.slug)}
-                          style={{ textAlign: 'left', borderRadius: 14, border: '1px solid #d6e2e8', background: '#fff', padding: 14, cursor: 'pointer' }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                            <strong style={{ fontSize: 18 }}>{store.tenant_name}</strong>
-                            <span style={{ fontSize: 12, color: store.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700 }}>{store.storefront_open ? 'Open' : 'Closed'}</span>
-                          </div>
-                          <div style={{ marginTop: 8, color: '#425466', fontSize: 13 }}>{store.address_line || 'Address unavailable'}</div>
-                          <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) • Wait {store.estimated_wait_minutes} min</div>
-                          {Number.isFinite(Number(store.nearest_distance_km)) && (
-                            <div style={{ marginTop: 4, fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
-                              {Number(store.nearest_distance_km).toFixed(2)} km from your location
+                      {storesWithNearestBranch.map((store) => {
+                        const storeSlug = toSlug(store?.slug);
+                        const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
+                        const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
+                        const highlightedPin = storePins[0] || null;
+                        const badges = getDiscoveryMatchBadges(store, search.trim().length > 0);
+                        return (
+                          <button
+                            key={store.slug}
+                            type="button"
+                            onMouseEnter={() => {
+                              setHighlightedStoreSlug(store.slug);
+                              if (highlightedPin) setHighlightedDiscoveryMarkerKey(highlightedPin.marker_key);
+                            }}
+                            onClick={() => goStore(store.slug, preferredLocationId)}
+                            style={{ textAlign: 'left', borderRadius: 14, border: '1px solid #d6e2e8', background: '#fff', padding: 14, cursor: 'pointer' }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                              <strong style={{ fontSize: 18 }}>{store.tenant_name}</strong>
+                              <span style={{ fontSize: 12, color: store.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700 }}>{store.storefront_open ? 'Open' : 'Closed'}</span>
                             </div>
-                          )}
-                          {store.nearest_location_name && (
-                            <div style={{ marginTop: 4, fontSize: 12, color: '#334155' }}>
-                              Nearest branch: <strong>{store.nearest_location_name}</strong> {store.nearest_is_primary ? '(Primary)' : ''}
-                            </div>
-                          )}
-                          <div style={{ marginTop: 10, fontSize: 12, color: '#0f766e', textDecoration: 'underline' }}>Open tenant storefront page</div>
-                        </button>
-                      ))}
+                            {badges.length > 0 && (
+                              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {badges.map((badge) => {
+                                  const tone = DISCOVERY_BADGE_TONE_STYLES[badge.tone] || DISCOVERY_BADGE_TONE_STYLES.slate;
+                                  return (
+                                    <span
+                                      key={`${store.slug}:${badge.key}`}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        borderRadius: 999,
+                                        border: `1px solid ${tone.borderColor}`,
+                                        background: tone.background,
+                                        color: tone.color,
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        padding: '3px 8px'
+                                      }}
+                                    >
+                                      {badge.label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <div style={{ marginTop: 8, color: '#425466', fontSize: 13 }}>{store.address_line || 'Address unavailable'}</div>
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) • Wait {store.estimated_wait_minutes} min</div>
+                            {Number(store.matching_item_count) > 0 && search.trim() && (
+                              <div style={{ marginTop: 4, fontSize: 12, color: '#334155' }}>
+                                {store.matching_item_count} matching item(s)
+                                {Array.isArray(store.matching_item_sample) && store.matching_item_sample.length > 0
+                                  ? ` • e.g. ${store.matching_item_sample.join(', ')}`
+                                  : ''}
+                              </div>
+                            )}
+                            {Number.isFinite(Number(store.nearest_distance_km)) && (
+                              <div style={{ marginTop: 4, fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
+                                {Number(store.nearest_distance_km).toFixed(2)} km from your location
+                              </div>
+                            )}
+                            {store.nearest_location_name && (
+                              <div style={{ marginTop: 4, fontSize: 12, color: '#334155' }}>
+                                Nearest branch: <strong>{store.nearest_location_name}</strong> {store.nearest_is_primary ? '(Primary)' : ''}
+                              </div>
+                            )}
+                            <div style={{ marginTop: 10, fontSize: 12, color: '#0f766e', textDecoration: 'underline' }}>Open tenant storefront page</div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -1203,12 +1399,47 @@ function App() {
 
                   {highlightedStore && (
                     <article style={{ border: '1px solid #dbeafe', borderRadius: 12, background: '#eff6ff', padding: 10 }}>
+                      {(() => {
+                        const highlightedSlug = toSlug(highlightedStore?.slug);
+                        const highlightedPins = Array.isArray(discoveryPinsBySlug[highlightedSlug]) ? discoveryPinsBySlug[highlightedSlug] : [];
+                        const highlightedBadges = getDiscoveryMatchBadges(highlightedStore, search.trim().length > 0);
+                        const highlightedPreferredLocationId = getPreferredDiscoveryLocationId({
+                          store: highlightedStore,
+                          storePins: highlightedPins
+                        });
+                        return (
+                          <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                         <strong>{highlightedStore.tenant_name}</strong>
                         <span style={{ color: highlightedStore.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700, fontSize: 12 }}>
                           {highlightedStore.storefront_open ? 'Open' : 'Closed'}
                         </span>
                       </div>
+                      {highlightedBadges.length > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {highlightedBadges.map((badge) => {
+                            const tone = DISCOVERY_BADGE_TONE_STYLES[badge.tone] || DISCOVERY_BADGE_TONE_STYLES.slate;
+                            return (
+                              <span
+                                key={`highlighted:${badge.key}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  borderRadius: 999,
+                                  border: `1px solid ${tone.borderColor}`,
+                                  background: tone.background,
+                                  color: tone.color,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: '3px 8px'
+                                }}
+                              >
+                                {badge.label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div style={{ fontSize: 13, marginTop: 6, color: '#334155' }}>{highlightedStore.address_line || 'Address unavailable'}</div>
                       {Number.isFinite(Number(highlightedStore.nearest_distance_km)) && (
                         <div style={{ marginTop: 6, fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
@@ -1220,9 +1451,12 @@ function App() {
                           Closest active branch: <strong>{highlightedStore.nearest_location_name}</strong> {highlightedStore.nearest_is_primary ? '(Primary)' : ''}
                         </div>
                       )}
-                      <button type="button" onClick={() => goStore(highlightedStore.slug)} style={{ marginTop: 10, width: '100%', borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 10px', fontWeight: 700 }}>
+                      <button type="button" onClick={() => goStore(highlightedStore.slug, highlightedPreferredLocationId)} style={{ marginTop: 10, width: '100%', borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 10px', fontWeight: 700 }}>
                         Open This Tenant Storefront
                       </button>
+                          </>
+                        );
+                      })()}
                     </article>
                   )}
 
@@ -1726,9 +1960,12 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-    <Toaster richColors position="top-right" />
-  </React.StrictMode>
-);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+      <Toaster richColors position="top-right" />
+    </React.StrictMode>
+  );
+}

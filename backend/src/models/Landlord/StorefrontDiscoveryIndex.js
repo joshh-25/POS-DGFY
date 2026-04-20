@@ -91,6 +91,19 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        active_location_snapshot: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        item_search_snapshot: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        search_snapshot_version: {
+            type: DataTypes.INTEGER.UNSIGNED,
+            allowNull: false,
+            defaultValue: 1
+        },
         source_updated_at: {
             type: DataTypes.DATE,
             allowNull: true
@@ -109,4 +122,3 @@ export default (sequelize) => {
 
     return StorefrontDiscoveryIndex;
 };
-
