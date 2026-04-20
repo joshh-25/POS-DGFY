@@ -1,6 +1,6 @@
 # Archive: Testing Artifacts (2026-03)
 
-This folder contains historical POS hardening planning and forensic artifacts from March 2026, plus legacy SKU expansion manual walkthrough notes.
+This folder contains historical POS hardening planning, forensic artifacts, archived UAT run evidence from March 2026, and legacy SKU expansion manual walkthrough notes.
 
 Superseding active references:
 
