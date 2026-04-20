@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import L from 'leaflet';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
+import { filterCatalogItems } from './catalogSearch.js';
 import { normalizeStorefrontErrorMessage } from './storefrontErrorMessages.js';
 import 'leaflet/dist/leaflet.css';
 
@@ -311,11 +312,13 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
 
 function App() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
+  const previousRouteSlugRef = useRef(routeSlug);
 
   const [stores, setStores] = useState([]);
   const [loadingStores, setLoadingStores] = useState(true);
   const [storesError, setStoresError] = useState('');
   const [search, setSearch] = useState('');
+  const [catalogSearch, setCatalogSearch] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
   const [discoveryCoords, setDiscoveryCoords] = useState(null);
@@ -465,6 +468,20 @@ function App() {
     if (!routeSlug) return;
     openStoreBySlug(routeSlug);
   }, [routeSlug, openStoreBySlug]);
+
+  useEffect(() => {
+    if (isStorePage) return;
+    setCatalogSearch('');
+  }, [isStorePage]);
+
+  useEffect(() => {
+    const previousRouteSlug = previousRouteSlugRef.current;
+    const currentRouteSlug = routeSlug;
+    if (previousRouteSlug && currentRouteSlug && previousRouteSlug !== currentRouteSlug) {
+      setCatalogSearch('');
+    }
+    previousRouteSlugRef.current = currentRouteSlug;
+  }, [routeSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -754,6 +771,8 @@ function App() {
     if (selectedLocationId == null) return null;
     return storeLocations.find((location) => Number(location.location_id) === Number(selectedLocationId)) || null;
   }, [storeLocations, selectedLocationId]);
+  const filteredCatalog = useMemo(() => filterCatalogItems(catalog, catalogSearch), [catalog, catalogSearch]);
+  const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const isDeliveryOrder = orderMethod === 'delivery';
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
@@ -1275,14 +1294,25 @@ function App() {
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h2 style={{ margin: 0, fontSize: 34 }}>Store Catalog</h2>
-                <button type="button" onClick={() => openStoreBySlug(routeSlug)} style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}>Refresh Tenant Page</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: '#334155', fontWeight: 700 }}>Search</span>
+                    <input
+                      value={catalogSearch}
+                      onChange={(e) => setCatalogSearch(e.target.value)}
+                      placeholder="Search items in this store catalog..."
+                      style={{ width: 280, maxWidth: '100%', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', padding: '8px 11px' }}
+                    />
+                  </label>
+                  <button type="button" onClick={() => openStoreBySlug(routeSlug)} style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}>Refresh Tenant Page</button>
+                </div>
               </div>
 
               {loadingCatalog && <p style={{ color: '#475569' }}>Loading tenant catalog...</p>}
               {!loadingCatalog && catalogError && <p style={{ color: '#b91c1c' }}>{catalogError}</p>}
               {!loadingCatalog && !catalogError && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginTop: 10 }}>
-                  {catalog.map((item) => {
+                  {filteredCatalog.map((item) => {
                     const itemId = Number(item.item_id);
                     const imageUrl = withAssetOrigin(item.image_url);
                     const imageBlocked = Number.isFinite(itemId) && catalogImageErrors.has(itemId);
@@ -1357,7 +1387,12 @@ function App() {
                       </div>
                     );
                   })}
-                  {catalog.length === 0 && <p style={{ color: '#64748b' }}>No storefront-visible items configured for this tenant yet.</p>}
+                  {!hasCatalogSearchQuery && catalog.length === 0 && <p style={{ color: '#64748b' }}>No storefront-visible items configured for this tenant yet.</p>}
+                  {hasCatalogSearchQuery && catalog.length > 0 && filteredCatalog.length === 0 && (
+                    <p style={{ color: '#64748b' }}>
+                      No catalog items matched &quot;{catalogSearch.trim()}&quot;.
+                    </p>
+                  )}
                 </div>
               )}
             </section>
