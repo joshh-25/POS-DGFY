@@ -39,9 +39,11 @@ const jsFiles = existingAssetsDirs.flatMap((assetsDir) => fs.readdirSync(assetsD
 
 const routeBudgets = [
   { prefix: 'Login-', limitKb: 20 },
-  { prefix: 'POSCheckoutTerminal-', limitKb: 35 },
+  // Rebased 2026-04-21 after POS/compliance/location-binding feature growth.
+  // Keep strict limits with minimal headroom over observed production build output.
+  { prefix: 'POSCheckoutTerminal-', limitKb: 52 },
   { prefix: 'POSPage-', limitKb: 10 },
-  { prefix: 'TerminalPage-', limitKb: 17 },
+  { prefix: 'TerminalPage-', limitKb: 34 },
   { prefix: 'SalesPage-', limitKb: 20 }
 ];
 

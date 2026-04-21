@@ -65,6 +65,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
   });
 
+  it('keeps cashier scroll-zone badge contextual to desktop sidebar usage', () => {
+    expect(terminalWorkspaceSidebarContent).toContain('showScrollZoneBadge = true');
+    expect(terminalWorkspaceSidebarContent).toContain('{showScrollZoneBadge && (');
+    expect(terminalPageLayoutContent).toContain('showScrollZoneBadge={false}');
+    expect(terminalPageLayoutContent).toContain('showScrollZoneBadge');
+  });
+
   it('renders forbidden/error states and transact guard in incoming queue workspace', () => {
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'forbidden\'');
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'error\'');

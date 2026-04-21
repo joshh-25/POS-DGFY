@@ -4,6 +4,11 @@ const modeChoiceSchema = Joi.object({
     mode_choice: Joi.string().trim().valid('non_compliant', 'compliant').required()
 });
 
+const modeDowngradeSchema = Joi.object({
+    reason: Joi.string().trim().min(3).max(255).required(),
+    context: Joi.object().unknown(true).default({})
+}).unknown(false);
+
 const dateOnlySchema = Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/);
 const optionalDateOnlySchema = dateOnlySchema.allow('', null);
 const optionalIsoOrDateTimeLocalSchema = Joi.alternatives().try(
@@ -211,6 +216,7 @@ const validateSchema = (schema, source, target, options = {}) => (req, res, next
 };
 
 export const validateComplianceModeChoice = validateSchema(modeChoiceSchema, 'body', 'validatedData');
+export const validateComplianceModeDowngrade = validateSchema(modeDowngradeSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceProfilePatch = validateSchema(profilePatchSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceActivateMode = validateSchema(activateCompliantModeSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceArtifactCreate = validateSchema(artifactSchema, 'body', 'validatedData');

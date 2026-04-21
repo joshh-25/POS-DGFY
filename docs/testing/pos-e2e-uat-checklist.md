@@ -98,6 +98,27 @@ Expected:
 Evidence:
 - Screenshot of cart before checkout
 
+### 4.1A POS Scroll Behavior (Terminal + IMS Standalone)
+1. In terminal workspace (`/terminal`) on desktop (`>=1536px`), verify `Scroll Zone: Catalog` and `Scroll Zone: Current Sale` badges are shown.
+2. In terminal workspace, place cursor inside catalog pane and scroll down/up; verify only catalog pane moves.
+3. In terminal workspace, place cursor inside current-sale pane and scroll down/up; verify only current-sale pane moves and sticky action footer remains visible.
+4. In terminal workspace, click the catalog scroll area, then use keyboard: `ArrowUp/ArrowDown`, `PageUp/PageDown`, `Home/End`; verify pane scroll response is deterministic.
+5. In IMS standalone POS (`/pos`) below `2xl`, verify badges switch to page-scrolling copy (`Scroll: Page (...)`) and page scroll remains functional.
+6. In IMS standalone POS at `>=2xl`, verify split-pane scroll returns and pane-level scroll behavior matches terminal workspace.
+7. In mobile drawer navigation, verify cashier menu remains scrollable and no misleading desktop-only scroll-zone badge is shown.
+
+Expected:
+1. Scroll badges match actual behavior by context (`pane` vs `page`).
+2. No dead-zone where wheel/trackpad appears blocked.
+3. Overflow fade cues appear only when additional content exists in that direction.
+4. Keyboard scroll actions work when pane is focused.
+
+Evidence:
+- Screen recording: terminal split-pane scroll (`catalog` and `current sale`)
+- Screenshot: standalone POS below `2xl` showing `Scroll: Page (...)`
+- Screenshot: standalone POS at `>=2xl` showing split-pane zones
+- Screen recording: focused keyboard scroll (`PageDown`, `Home`, `End`)
+
 ### 4.2 Checkout + Digital Receipt
 1. Perform checkout (`Cash`, `Dine In`).
 2. Open receipt preview.

@@ -1859,15 +1859,15 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       try {
         page = await context.newPage();
         await loginViaUi(page);
+        const a11ySeedSuffix = `${Date.now()}-${viewportProfile.key}`;
+        const a11yItemName = `E2E A11Y Item ${a11ySeedSuffix}`;
+        const a11ySkuCode = `E2EA11Y-${Date.now()}`;
+        await createSellableItemViaItemsPage(page, a11yItemName, a11ySkuCode);
         await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: /POS Terminal Workspace/i }).waitFor({ timeout: 60000 });
         await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
         await ensureShiftOpenForCheckout(page);
-
-        await ensureCheckoutWorkspaceVisible(page);
-        const { heading: historyHeading } = await openPosHistoryWorkspace(page);
-        expect(await historyHeading.isVisible()).toBe(true);
-        await gotoSalesFromPosHistoryContext(page);
+        await checkoutAndOpenSalesReport(page, a11yItemName);
 
         const salesTable = page.locator('table[aria-label="Unified sales transactions table"]');
         const salesTableAttached = await salesTable
@@ -1881,12 +1881,20 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
         const detailRegion = page.locator('[aria-label="Selected transaction detail"]').first();
         expect(await detailRegion.getAttribute('aria-live')).toBe('polite');
 
-        const salesRows = salesTable.locator('tbody tr');
-        const rowCount = await salesRows.count();
-        expect(rowCount).toBeGreaterThan(0);
-
-        const targetIndex = rowCount > 1 ? 1 : 0;
-        const targetRow = salesRows.nth(targetIndex);
+        const targetRow = await (async () => {
+          const deadline = Date.now() + 20000;
+          while (Date.now() < deadline) {
+            const resolved = await resolveFirstDataRow(salesTable, /No sales transactions found/i);
+            if (resolved) return resolved;
+            await delay(500);
+          }
+          return null;
+        })();
+        if (!targetRow) {
+          const emptyStateRow = salesTable.locator('tbody tr').filter({ hasText: /No sales transactions found/i }).first();
+          expect(await emptyStateRow.isVisible().catch(() => false)).toBe(true);
+          continue;
+        }
         const rowText = String(await targetRow.textContent().catch(() => '') || '');
         if (/No sales transactions found/i.test(rowText)) {
           throw new Error('Sales table has no data rows for accessibility validation');

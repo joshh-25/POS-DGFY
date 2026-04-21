@@ -41,5 +41,9 @@ Recommended filename:
 Validation rule:
 - Declared `classification` must be greater than or equal to the computed minimum from changed compliance-sensitive paths.
 
+Retention rule:
+- Keep only active/current declarations in this folder.
+- Move superseded/historical declarations to `docs/archive/compliance/<date>/`.
+
 Example:
 - `2026-04-06-dual-mode-pos-compliance-program.md`

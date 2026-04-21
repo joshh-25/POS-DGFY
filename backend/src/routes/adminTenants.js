@@ -22,6 +22,7 @@ import {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminForceNonCompliant,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
@@ -35,6 +36,7 @@ import {
     validateComplianceSecurityIncidentQuery,
     validateComplianceSecurityIncidentParam,
     validateComplianceSecurityIncidentAction,
+    validateComplianceModeDowngrade,
     validateFinalReviewDocumentIdParam,
     validateFinalReviewDocumentReview
 } from '../validators/complianceValidator.js';
@@ -77,6 +79,7 @@ router.get('/:id/compliance/audit-logs', authenticateAdmin, validateComplianceAu
 router.get('/:id/compliance/security-incidents', authenticateAdmin, validateComplianceSecurityIncidentQuery, adminListComplianceSecurityIncidents);
 router.post('/:id/compliance/security-incidents/:incident_id/acknowledge', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminAcknowledgeComplianceSecurityIncident);
 router.post('/:id/compliance/security-incidents/:incident_id/resolve', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminResolveComplianceSecurityIncident);
+router.post('/:id/force-non-compliant', authenticateAdmin, validateComplianceModeDowngrade, adminForceNonCompliant);
 
 // ADMIN: Compliance verification operations (platform admin)
 router.post('/:id/compliance/artifacts/:artifact_id/verification', authenticateAdmin, validateComplianceArtifactIdParam, validateComplianceVerificationAction, adminUpdateComplianceArtifactVerification);

@@ -407,6 +407,18 @@ const assertMasterAdminLevelActor = (actorUser = null) => {
     );
 };
 
+const assertTenantMasterAdminActor = (actorUser = null) => {
+    if (isTenantMasterAdminActor(actorUser)) {
+        return;
+    }
+
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'Tenant master-admin access is required for this compliance operation',
+        { statusCode: 403 }
+    );
+};
+
 const resolveVerifierActorType = (actorUser = null) => {
     if (isPlatformAdminActor(actorUser)) {
         return COMPLIANCE_VERIFIER_ACTOR_TYPE.PLATFORM_ADMIN;
@@ -757,6 +769,12 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
                 mode_selected_by: tenant.compliance_mode_selected_by,
                 activated_at: tenant.compliance_activated_at,
                 policy_version: tenant.compliance_policy_version,
+                compliance_cycle_version: Number.parseInt(tenant.compliance_cycle_version || 0, 10) || 0,
+                compliance_revert_last_cycle_version: Number.parseInt(tenant.compliance_revert_last_cycle_version || 0, 10) || 0,
+                can_revert_to_non_compliant:
+                    ['compliant_pending', 'compliant_active'].includes(String(tenant.compliance_mode_state || '').trim())
+                    && (Number.parseInt(tenant.compliance_revert_last_cycle_version || 0, 10) || 0)
+                        < (Number.parseInt(tenant.compliance_cycle_version || 0, 10) || 0),
                 profile: normalizedProfile,
                 checklist,
                 counts: {
@@ -821,12 +839,18 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
 
             const transaction = await complianceRepository.beginTransaction();
             try {
+                const currentCycleVersion = Number.parseInt(tenant.compliance_cycle_version || 0, 10) || 0;
+                const shouldIncrementCycle = nextState === COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+                    && tenant.compliance_mode_state !== COMPLIANCE_MODE_STATE.COMPLIANT_PENDING;
                 const updated = await complianceRepository.updateTenantById(tenantId, {
                     compliance_mode_state: nextState,
                     compliance_mode_choice_required: false,
                     compliance_mode_selected_at: new Date(),
                     compliance_mode_selected_by: normalizeActorIdentity(actorUser),
-                    compliance_policy_version: '2026.04.07'
+                    compliance_policy_version: '2026.04.07',
+                    ...(shouldIncrementCycle
+                        ? { compliance_cycle_version: currentCycleVersion + 1 }
+                        : {})
                 }, {
                     transaction,
                     lock: true
@@ -844,7 +868,8 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
                         actor_user_id: parsePositiveInt(actorUser?.user_id),
                         metadata: {
                             mode_choice: normalizedModeChoice,
-                            mode_state: nextState
+                            mode_state: nextState,
+                            compliance_cycle_version: shouldIncrementCycle ? currentCycleVersion + 1 : currentCycleVersion
                         }
                     },
                     fallbackContext: {
@@ -919,11 +944,13 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
 
             const transaction = await complianceRepository.beginTransaction();
             try {
+                const currentCycleVersion = Number.parseInt(tenant.compliance_cycle_version || 0, 10) || 0;
                 const updated = await complianceRepository.updateTenantById(tenantId, {
                     compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
                     compliance_mode_selected_at: new Date(),
                     compliance_mode_selected_by: normalizeActorIdentity(actorUser),
-                    compliance_policy_version: '2026.04.07'
+                    compliance_policy_version: '2026.04.07',
+                    compliance_cycle_version: currentCycleVersion + 1
                 }, {
                     transaction,
                     lock: true
@@ -941,7 +968,8 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
                         actor_user_id: parsePositiveInt(actorUser?.user_id),
                         metadata: {
                             previous_mode_state: tenant.compliance_mode_state,
-                            next_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
+                            next_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
+                            compliance_cycle_version: currentCycleVersion + 1
                         }
                     },
                     fallbackContext: {
@@ -965,6 +993,254 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
             }
         } catch (error) {
             return failWithDomainOrInternal(error, 'Failed to upgrade tenant compliance mode');
+        }
+    };
+};
+
+export const buildForceNonCompliantModeUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, reason, context = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedReason = String(reason || '').trim();
+        if (normalizedReason.length < 3) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'reason is required and must be at least 3 characters',
+                { statusCode: 422 }
+            ));
+        }
+
+        if (!isPlatformAdminActor(actorUser)) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Platform admin access is required for this compliance operation',
+                { statusCode: 403 }
+            ));
+        }
+
+        try {
+            const tenant = await complianceRepository.findTenantById(tenantId);
+            if (!tenant) {
+                return fail(new DomainError(
+                    DomainErrorCode.TENANT_NOT_FOUND,
+                    'Tenant not found',
+                    { statusCode: 404 }
+                ));
+            }
+
+            if (tenant.compliance_mode_state === COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE) {
+                return fail(new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Tenant is already in non_compliant_active mode',
+                    { statusCode: 409 }
+                ));
+            }
+
+            if (![COMPLIANCE_MODE_STATE.COMPLIANT_PENDING, COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE].includes(tenant.compliance_mode_state)) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Platform force non-compliant override is only allowed from compliant_pending or compliant_active',
+                    { statusCode: 422 }
+                ));
+            }
+
+            const transaction = await complianceRepository.beginTransaction();
+            try {
+                const updated = await complianceRepository.updateTenantById(tenantId, {
+                    compliance_mode_state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE,
+                    compliance_mode_choice_required: false,
+                    compliance_mode_override_by: normalizeActorIdentity(actorUser),
+                    compliance_mode_override_at: new Date(),
+                    compliance_mode_override_reason: normalizedReason
+                }, {
+                    transaction,
+                    lock: true
+                });
+
+                const auditPersistence = await persistAuditLogWithFallback({
+                    complianceRepository,
+                    logger,
+                    auditPayload: {
+                        tenant_id: tenantId,
+                        event_type: 'mode_force_non_compliant',
+                        operation: 'compliance.mode.force_non_compliant',
+                        decision: COMPLIANCE_DECISION.ALLOW,
+                        reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                        actor_user_id: parsePositiveInt(actorUser?.user_id),
+                        metadata: {
+                            previous_mode_state: tenant.compliance_mode_state || null,
+                            next_mode_state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE,
+                            reason: normalizedReason,
+                            context: context && typeof context === 'object' ? context : {}
+                        }
+                    },
+                    fallbackContext: {
+                        path: 'buildForceNonCompliantModeUseCase',
+                        stage: 'mode_force_non_compliant'
+                    },
+                    primaryOptions: { transaction }
+                });
+                if (auditPersistence?.persisted !== 'primary') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Failed to persist compliance audit trail for force non-compliant operation',
+                        { statusCode: 500 }
+                    );
+                }
+
+                await transaction.commit();
+                return ok({
+                    mode_state: updated.compliance_mode_state,
+                    mode_choice_required: updated.compliance_mode_choice_required === true,
+                    overridden_at: updated.compliance_mode_override_at,
+                    overridden_by: updated.compliance_mode_override_by
+                });
+            } catch (error) {
+                if (!transaction.finished) {
+                    await transaction.rollback();
+                }
+                throw error;
+            }
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to force tenant non-compliant mode');
+        }
+    };
+};
+
+export const buildRevertToNonCompliantModeUseCase = ({ complianceRepository, logger }) => {
+    return async ({ tenantId, reason, context = {}, actorUser = null }) => {
+        if (!tenantId) {
+            return fail(new DomainError(
+                DomainErrorCode.TENANT_CONTEXT_MISSING,
+                'Tenant context is required',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedReason = String(reason || '').trim();
+        if (normalizedReason.length < 3) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'reason is required and must be at least 3 characters',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            assertTenantMasterAdminActor(actorUser);
+            const tenant = await complianceRepository.findTenantById(tenantId);
+            if (!tenant) {
+                return fail(new DomainError(
+                    DomainErrorCode.TENANT_NOT_FOUND,
+                    'Tenant not found',
+                    { statusCode: 404 }
+                ));
+            }
+
+            if (tenant.compliance_mode_state === COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE) {
+                return fail(new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Tenant is already in non_compliant_active mode',
+                    { statusCode: 409 }
+                ));
+            }
+
+            if (![COMPLIANCE_MODE_STATE.COMPLIANT_PENDING, COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE].includes(tenant.compliance_mode_state)) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Tenant revert is only allowed from compliant_pending or compliant_active',
+                    { statusCode: 422 }
+                ));
+            }
+
+            const cycleVersion = Number.parseInt(tenant.compliance_cycle_version || 0, 10) || 0;
+            const lastRevertCycleVersion = Number.parseInt(tenant.compliance_revert_last_cycle_version || 0, 10) || 0;
+            if (cycleVersion <= 0) {
+                return fail(new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Compliance cycle is not initialized for tenant revert',
+                    { statusCode: 409 }
+                ));
+            }
+
+            if (lastRevertCycleVersion >= cycleVersion) {
+                return fail(new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Tenant revert to non-compliant has already been used in this compliance cycle',
+                    { statusCode: 409 }
+                ));
+            }
+
+            const transaction = await complianceRepository.beginTransaction();
+            try {
+                const updated = await complianceRepository.updateTenantById(tenantId, {
+                    compliance_mode_state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE,
+                    compliance_mode_choice_required: false,
+                    compliance_mode_revert_by: normalizeActorIdentity(actorUser),
+                    compliance_mode_revert_at: new Date(),
+                    compliance_mode_revert_reason: normalizedReason,
+                    compliance_revert_last_cycle_version: cycleVersion
+                }, {
+                    transaction,
+                    lock: true
+                });
+
+                const auditPersistence = await persistAuditLogWithFallback({
+                    complianceRepository,
+                    logger,
+                    auditPayload: {
+                        tenant_id: tenantId,
+                        event_type: 'mode_revert_non_compliant',
+                        operation: 'compliance.mode.revert_non_compliant',
+                        decision: COMPLIANCE_DECISION.ALLOW,
+                        reason_code: COMPLIANCE_REASON_CODE.ALLOWED,
+                        actor_user_id: parsePositiveInt(actorUser?.user_id),
+                        metadata: {
+                            previous_mode_state: tenant.compliance_mode_state || null,
+                            next_mode_state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE,
+                            reason: normalizedReason,
+                            context: context && typeof context === 'object' ? context : {},
+                            compliance_cycle_version: cycleVersion,
+                            compliance_revert_last_cycle_version: cycleVersion
+                        }
+                    },
+                    fallbackContext: {
+                        path: 'buildRevertToNonCompliantModeUseCase',
+                        stage: 'mode_revert_non_compliant'
+                    },
+                    primaryOptions: { transaction }
+                });
+                if (auditPersistence?.persisted !== 'primary') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Failed to persist compliance audit trail for revert non-compliant operation',
+                        { statusCode: 500 }
+                    );
+                }
+
+                await transaction.commit();
+                return ok({
+                    mode_state: updated.compliance_mode_state,
+                    mode_choice_required: updated.compliance_mode_choice_required === true,
+                    reverted_at: updated.compliance_mode_revert_at,
+                    reverted_by: updated.compliance_mode_revert_by,
+                    compliance_cycle_version: cycleVersion,
+                    compliance_revert_last_cycle_version: cycleVersion
+                });
+            } catch (error) {
+                if (!transaction.finished) {
+                    await transaction.rollback();
+                }
+                throw error;
+            }
+        } catch (error) {
+            return failWithDomainOrInternal(error, 'Failed to revert tenant to non-compliant mode');
         }
     };
 };

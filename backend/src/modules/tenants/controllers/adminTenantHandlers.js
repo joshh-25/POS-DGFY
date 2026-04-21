@@ -21,6 +21,7 @@ import {
     listComplianceSecurityIncidentsUseCase,
     updateComplianceArtifactVerificationUseCase,
     updateCompliancePeripheralVerificationUseCase,
+    forceNonCompliantModeUseCase,
     reviewFinalReviewDocumentUseCase,
     updateComplianceSecurityIncidentStatusUseCase
 } from '../../compliance/index.js';
@@ -28,6 +29,7 @@ import * as emailService from '../../../services/emailService.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { paymentsEnabled, paymentsDisabledMessage } from '../../../config/paymentsFeature.js';
+import { invalidateTenantLookupCache } from '../../../middleware/tenantHandler.js';
 
 const hasSubscriptionFlowRequest = ({ plan, subscriptionId }) => {
     const requestedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
@@ -429,6 +431,26 @@ export const adminResolveComplianceSecurityIncident = async (req, res) => {
 };
 
 /**
+ * ADMIN: Force tenant back to non-compliant mode from compliant states.
+ */
+export const adminForceNonCompliant = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const result = await forceNonCompliantModeUseCase({
+        tenantId: req.params?.id,
+        reason: payload.reason,
+        context: payload.context || {},
+        actorUser: buildPlatformAdminActor(req)
+    });
+    if (result?.success) {
+        invalidateTenantLookupCache({ tenantId: req.params?.id || null });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to force tenant non-compliant mode'
+    });
+};
+
+/**
  * ADMIN: Verify/reject/revoke tenant compliance artifact
  */
 export const adminUpdateComplianceArtifactVerification = async (req, res) => {
@@ -522,5 +544,6 @@ export default {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminForceNonCompliant,
     resubmitRegistration
 };

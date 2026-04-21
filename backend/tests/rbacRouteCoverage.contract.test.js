@@ -67,6 +67,16 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'complianceController.updateComplianceProfile'
             ]
         });
+        expectRouteContract({
+            source: complianceRoutes,
+            method: 'post',
+            routePath: '/mode/revert-to-non-compliant',
+            requiredFragments: [
+                'checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS)',
+                'validateComplianceModeDowngrade',
+                'complianceController.revertToNonCompliantMode'
+            ]
+        });
     });
 
     it('guards POS terminal mutation routes with explicit action permissions', () => {
@@ -148,6 +158,16 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'adminResolveComplianceSecurityIncident'
             ]
         });
+        expectRouteContract({
+            source: adminTenantRoutes,
+            method: 'post',
+            routePath: '/:id/force-non-compliant',
+            requiredFragments: [
+                'authenticateAdmin',
+                'validateComplianceModeDowngrade',
+                'adminForceNonCompliant'
+            ]
+        });
     });
 
     it('keeps route evidence synced with the RBAC sensitive action matrix', () => {
@@ -158,8 +178,10 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             '/z-reading/close-day',
             'PUT /profile',
             'POST /activate',
+            'POST /mode/revert-to-non-compliant',
             '/:id/compliance/security-incidents/:incident_id/acknowledge',
-            '/:id/compliance/security-incidents/:incident_id/resolve'
+            '/:id/compliance/security-incidents/:incident_id/resolve',
+            '/:id/force-non-compliant'
         ].forEach((token) => {
             expect(rbacMatrix).toContain(token);
         });

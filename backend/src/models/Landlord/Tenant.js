@@ -59,6 +59,40 @@ export default (sequelize) => {
             type: DataTypes.STRING(120),
             allowNull: true
         },
+        compliance_mode_override_by: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        compliance_mode_override_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        compliance_mode_override_reason: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        compliance_mode_revert_by: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        compliance_mode_revert_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        compliance_mode_revert_reason: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        compliance_cycle_version: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
+        compliance_revert_last_cycle_version: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
         compliance_activated_at: {
             type: DataTypes.DATE,
             allowNull: true

@@ -100,6 +100,14 @@ CREATE TABLE tenants (
     compliance_mode_choice_required BOOLEAN NOT NULL DEFAULT true,
     compliance_mode_selected_at DATETIME NULL,
     compliance_mode_selected_by VARCHAR(120) NULL,
+    compliance_mode_override_by VARCHAR(120) NULL,
+    compliance_mode_override_at DATETIME NULL,
+    compliance_mode_override_reason VARCHAR(255) NULL,
+    compliance_mode_revert_by VARCHAR(120) NULL,
+    compliance_mode_revert_at DATETIME NULL,
+    compliance_mode_revert_reason VARCHAR(255) NULL,
+    compliance_cycle_version INT NOT NULL DEFAULT 0,
+    compliance_revert_last_cycle_version INT NOT NULL DEFAULT 0,
     compliance_activated_at DATETIME NULL,
     compliance_policy_version VARCHAR(40) NULL,
     compliance_profile JSON NULL,
@@ -125,10 +133,14 @@ Subscription notes:
 - Compliance lifecycle fields are landlord-tenant scoped and enforced in runtime + DB:
   - `compliance_mode_state`, `compliance_mode_choice_required`
   - `compliance_mode_selected_*`, `compliance_activated_at`
+  - `compliance_mode_override_*`, `compliance_mode_revert_*`
+  - `compliance_cycle_version`, `compliance_revert_last_cycle_version`
   - `compliance_policy_version`, `compliance_profile`
 - Drift-alignment migrations:
   - `20260407000003-align-tenant-schema-with-model.cjs` aligns tenant landlord schema with active runtime model (including admin fields and enum normalization).
   - `20260407000002-compliance-hardening-phase1-2.cjs` and `20260407000005-add-compliance-audit-fallback-table.cjs` complete compliance table/column hardening for runtime checks.
+  - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
+  - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`

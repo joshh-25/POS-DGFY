@@ -424,6 +424,21 @@ export const resolveTenantComplianceSecurityIncident = async (tenantId, incident
 };
 
 /**
+ * Platform-admin action: force tenant back to non-compliant mode.
+ */
+export const forceTenantNonCompliant = async (tenantId, payload) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/force-non-compliant`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
  * Platform-admin verification action for tenant compliance artifact
  */
 export const updateTenantComplianceArtifactVerification = async (tenantId, artifactId, payload) => {

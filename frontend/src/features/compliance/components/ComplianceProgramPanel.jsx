@@ -345,6 +345,7 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
   const [confirmText, setConfirmText] = useState('');
   const [upgradeText, setUpgradeText] = useState('');
   const [activateText, setActivateText] = useState('');
+  const [revertReason, setRevertReason] = useState('');
   const [artifactForm, setArtifactForm] = useState({ artifact_type: ARTIFACT_TYPES[0], artifact_name: '' });
   const [peripheralForm, setPeripheralForm] = useState({
     terminal_id: '',
@@ -363,6 +364,7 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
     engineering_signed_at: '',
     compliance_signed_at: ''
   });
+  const [auditLogs, setAuditLogs] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -373,6 +375,13 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
         complianceService.listCompliancePeripherals(),
         complianceService.listFinalReviewDocuments()
       ]);
+      let logsPayload = { logs: [] };
+      try {
+        logsPayload = await complianceService.listComplianceAuditLogs({ limit: 80 });
+      } catch {
+        logsPayload = { logs: [] };
+        toast.error('Compliance history is temporarily unavailable. Core compliance data is still available.');
+      }
       setProfile(p || null);
       setProfileForm(mergeProfile(PROFILE_DEFAULT, p?.profile || {}));
       setProfileErrors({});
@@ -390,6 +399,7 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
       });
       setFinalReviewFormByRequirement(formSeed);
       setFinalReviewFiles({});
+      setAuditLogs(Array.isArray(logsPayload?.logs) ? logsPayload.logs : []);
       const signoff = f?.signoff || {};
       setFinalReviewSignoff({
         engineering_approver: signoff.engineering_approver || '',
@@ -417,6 +427,9 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
   const sectionProgress = checklist.section_progress || {};
   const modeState = profile?.mode_state || null;
   const modeChoiceRequired = profile?.mode_choice_required === true;
+  const cycleVersion = Number(profile?.compliance_cycle_version || 0);
+  const lastRevertCycleVersion = Number(profile?.compliance_revert_last_cycle_version || 0);
+  const canRevertToNonCompliant = profile?.can_revert_to_non_compliant === true;
   const activationBlockers = Array.isArray(checklist.activation_blockers) ? checklist.activation_blockers : [];
   const missingRequirements = requirements.filter((entry) => entry.status !== 'complete');
   const documentaryReadinessItems = Array.isArray(checklist?.documentary_readiness?.items)
@@ -730,6 +743,60 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
               </Button>
             </div>
           )}
+
+          {modeState !== 'non_compliant_active' && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-2">
+              <Label>Revert to non-compliant (one time per compliance cycle)</Label>
+              <p className="text-xs text-slate-700">
+                Current cycle: <strong>{cycleVersion}</strong> | Last revert cycle: <strong>{lastRevertCycleVersion}</strong>
+              </p>
+              <Input
+                value={revertReason}
+                onChange={(event) => setRevertReason(event.target.value)}
+                placeholder="Reason for reverting to non-compliant mode"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!isMasterAdmin || busy === 'revert' || !canRevertToNonCompliant || revertReason.trim().length < 3}
+                onClick={() => run(
+                  'revert',
+                  async () => {
+                    await complianceService.revertToNonCompliant({ reason: revertReason.trim() });
+                    setRevertReason('');
+                  },
+                  'Tenant reverted to non-compliant mode'
+                )}
+              >
+                Revert to non-compliant
+              </Button>
+              {!canRevertToNonCompliant && (
+                <p className="text-xs text-rose-700">
+                  Revert is not available for this cycle or current mode.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">Compliance History</p>
+            {auditLogs.length === 0 ? (
+              <p className="text-xs text-slate-500">No compliance history entries yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {auditLogs.slice(0, 10).map((entry, idx) => (
+                  <div key={entry?.tenant_compliance_audit_log_id || `${entry?.event_type}-${idx}`} className="rounded border border-slate-100 px-2 py-1">
+                    <p className="text-xs text-slate-800">
+                      <strong>{entry?.event_type || 'event'}</strong> {entry?.created_at ? `• ${fmtDate(entry.created_at)}` : ''}
+                    </p>
+                    {entry?.metadata?.reason && (
+                      <p className="text-xs text-slate-600">Reason: {entry.metadata.reason}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div id="section-final-review" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
             <Label>Final review</Label>

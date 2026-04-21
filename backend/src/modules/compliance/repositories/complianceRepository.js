@@ -4,8 +4,8 @@ import dbStore from '../../../utils/dbStore.js';
 
 const COMPLIANCE_TRANSITIONS = Object.freeze({
     non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
-    compliant_pending: new Set(['compliant_pending', 'compliant_active']),
-    compliant_active: new Set(['compliant_active'])
+    compliant_pending: new Set(['non_compliant_active', 'compliant_pending', 'compliant_active']),
+    compliant_active: new Set(['non_compliant_active', 'compliant_active'])
 });
 
 const toPlain = (value) => (

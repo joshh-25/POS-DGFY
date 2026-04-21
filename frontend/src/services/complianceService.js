@@ -9,6 +9,9 @@ export const selectComplianceMode = async (modeChoice) => (
 );
 
 export const upgradeToCompliant = async () => unwrapData(await api.post('/compliance/mode/upgrade'));
+export const revertToNonCompliant = async (payload) => (
+  unwrapData(await api.post('/compliance/mode/revert-to-non-compliant', payload))
+);
 
 export const getComplianceChecklist = async ({ terminalId = null } = {}) => {
   const params = {};

@@ -24,6 +24,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260407000002-compliance-hardening-phase1-2.cjs' },
         { name: '20260408000004-add-pos-operation-replays.cjs' },
         { name: '20260408000005-add-security-signal-audit-enum.cjs' },
+        { name: '20260422000001-add-compliance-downgrade-override-controls.cjs' },
+        { name: '20260422000002-harden-compliance-downgrade-controls.cjs' },
         { name: '20260416000007-add-multi-location-inventory-ledger.cjs' },
         { name: '20260416000008-backfill-user-location-grants.cjs' }
     ])),
@@ -41,6 +43,12 @@ const buildHealthySequelizeMock = () => ({
                     compliance_mode_state: {},
                     compliance_mode_choice_required: {},
                     compliance_profile: {},
+                    compliance_mode_override_by: {},
+                    compliance_mode_override_at: {},
+                    compliance_mode_revert_by: {},
+                    compliance_mode_revert_at: {},
+                    compliance_cycle_version: {},
+                    compliance_revert_last_cycle_version: {},
                     subscription_status: {},
                     current_period_end: {},
                     payment_method: {},
@@ -299,7 +307,13 @@ describe('runtimeSchemaAuditService', () => {
                         plan: {},
                         compliance_mode_state: {},
                         compliance_mode_choice_required: {},
-                        compliance_profile: {}
+                        compliance_profile: {},
+                        compliance_mode_override_by: {},
+                        compliance_mode_override_at: {},
+                        compliance_mode_revert_by: {},
+                        compliance_mode_revert_at: {},
+                        compliance_cycle_version: {},
+                        compliance_revert_last_cycle_version: {}
                     };
                 }
                 return buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);

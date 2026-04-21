@@ -5,6 +5,7 @@ Accepted (2026-04-06)
 Updated: 2026-04-07
 Update note (2026-04-07): regulatory source chain refreshed to include BIR RR 7-2024, RR 11-2025, RR 26-2025, and BSP PSOF/MORPS context without changing lifecycle architecture decisions.
 Update note (2026-04-07): compliance declaration guardrail semantics tightened with path/surface-computed minimum classification floors and strict major/regulatory preflight evidence validation, without changing route/API contracts.
+Update note (2026-04-21): superseded in part by ADR 0011 for governed compliant-to-non-compliant downgrade exceptions (platform force and tenant one-per-cycle revert).
 
 ## Context
 The product must support both:
@@ -21,7 +22,7 @@ Adopt a permanent dual-mode compliance architecture with these rules:
    - `non_compliant_active`
    - `compliant_pending`
    - `compliant_active`
-3. Compliant downgrade is forbidden at API/use-case, repository, and DB trigger layers.
+3. Generic compliant downgrade is forbidden; only governed downgrade exceptions defined in ADR 0011 are allowed at API/use-case/repository/DB-trigger layers.
 4. Existing tenants require one-time mode selection (`compliance_mode_choice_required=true`) before POS/terminal/payment capability operations proceed.
 5. POS output contract is mode-based:
    - non-compliant and compliant-pending -> `non_fiscal_slip`
@@ -39,8 +40,8 @@ Adopt a permanent dual-mode compliance architecture with these rules:
 
 ## Locked Product Decisions (Thread Consolidated)
 1. Tenant selects mode at registration.
-2. `compliant` path is irreversible.
-3. Non-compliant tenants may upgrade to compliant later, irreversibly.
+2. `compliant` path remains irreversible by default.
+3. Non-compliant tenants may upgrade to compliant later; downgrade is only possible via governed exceptions in ADR 0011.
 4. Legacy tenants must complete one-time mode choice before gated operations continue.
 5. Non-compliant output is explicitly non-fiscal.
 6. Compliant mode requires accredited/verified peripherals for required classes.
@@ -51,7 +52,7 @@ Adopt a permanent dual-mode compliance architecture with these rules:
 1. No tenant reaches `compliant_active` using unverified self-attested artifact/peripheral status only.
 2. Non-compliant tenants cannot emit fiscal output contracts.
 3. Compliant-active terminal operations fail when terminal-required classes are missing (unless shared fallback satisfies).
-4. Legacy mode choice is enforced exactly once and is irreversible.
+4. Legacy mode choice is enforced exactly once; later downgrade remains governed by ADR 0011 exceptions.
 5. Runtime policy denials include reason codes and deterministic decision output.
 6. Compliance-sensitive diffs fail CI/pre-commit without valid declaration metadata.
 7. `check:architecture`, `check:compliance`, and docs lint stay mandatory gates.
@@ -65,4 +66,4 @@ Adopt a permanent dual-mode compliance architecture with these rules:
 ## Rollback Notes
 1. Runtime rollback: revert compliance-sensitive module/UI changes as a bounded set.
 2. Schema rollback: run migration undo in reverse order for compliance migrations if release policy allows.
-3. Operational rollback constraint: no rollback may violate irreversible compliant-state DB constraints.
+3. Operational rollback constraint: no rollback may violate governed compliant-state DB constraints (ADR 0011).

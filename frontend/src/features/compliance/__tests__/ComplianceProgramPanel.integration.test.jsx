@@ -11,15 +11,19 @@ const {
   mockListComplianceArtifacts,
   mockListCompliancePeripherals,
   mockListFinalReviewDocuments,
+  mockListComplianceAuditLogs,
   mockUpdateComplianceProfile,
-  mockActivateCompliantMode
+  mockActivateCompliantMode,
+  mockToastError
 } = vi.hoisted(() => ({
   mockGetComplianceProfile: vi.fn(),
   mockListComplianceArtifacts: vi.fn(),
   mockListCompliancePeripherals: vi.fn(),
   mockListFinalReviewDocuments: vi.fn(),
+  mockListComplianceAuditLogs: vi.fn(),
   mockUpdateComplianceProfile: vi.fn(),
-  mockActivateCompliantMode: vi.fn()
+  mockActivateCompliantMode: vi.fn(),
+  mockToastError: vi.fn()
 }));
 
 vi.mock('@/services/complianceService.js', () => ({
@@ -27,8 +31,10 @@ vi.mock('@/services/complianceService.js', () => ({
   listComplianceArtifacts: mockListComplianceArtifacts,
   listCompliancePeripherals: mockListCompliancePeripherals,
   listFinalReviewDocuments: mockListFinalReviewDocuments,
+  listComplianceAuditLogs: mockListComplianceAuditLogs,
   updateComplianceProfile: mockUpdateComplianceProfile,
   activateCompliantMode: mockActivateCompliantMode,
+  revertToNonCompliant: vi.fn(),
   selectComplianceMode: vi.fn(),
   upgradeToCompliant: vi.fn(),
   createComplianceArtifact: vi.fn(),
@@ -43,7 +49,7 @@ vi.mock('@/services/complianceService.js', () => ({
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
-    error: vi.fn(),
+    error: mockToastError,
     info: vi.fn()
   }
 }));
@@ -116,6 +122,7 @@ describe('ComplianceProgramPanel integration', () => {
     mockListComplianceArtifacts.mockResolvedValue({ artifacts: [] });
     mockListCompliancePeripherals.mockResolvedValue({ peripherals: [] });
     mockListFinalReviewDocuments.mockResolvedValue({ documents: [], signoff: {} });
+    mockListComplianceAuditLogs.mockResolvedValue({ logs: [] });
     mockUpdateComplianceProfile.mockResolvedValue({ profile: {} });
     mockActivateCompliantMode.mockResolvedValue({ mode_state: 'compliant_active' });
 
@@ -259,5 +266,16 @@ describe('ComplianceProgramPanel integration', () => {
     await user.click(screen.getByRole('button', { name: /Fix now/i }));
 
     expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps core compliance panel usable when audit history fetch fails', async () => {
+    mockGetComplianceProfile.mockResolvedValue(baseProfileResponse);
+    mockListComplianceAuditLogs.mockRejectedValue(new Error('audit unavailable'));
+
+    renderPanel();
+
+    expect(await screen.findByText('Lifecycle')).toBeTruthy();
+    expect(await screen.findByText('Compliance Profile & Readiness')).toBeTruthy();
+    expect(mockToastError).toHaveBeenCalled();
   });
 });

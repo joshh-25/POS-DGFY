@@ -1,7 +1,7 @@
 ---
-status: reference
+status: historical
 owner: engineering
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-22
 related_adr: 0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-04-07-phase1-3-compliance-restart-baseline
 classification: regulatory
@@ -15,6 +15,7 @@ preflight_reason_code: ALLOWED
 preflight_run_at: 2026-04-07T12:13:06+08:00
 preflight_request_ref: PHASE1-3-BASELINE-2026-04-07
 snapshot_commit: 2c3a8a23c713abef01055899a1d4e2c72f4aec93
+superseded_by: 2026-04-22-compliance-downgrade-escape-hatch-hardening
 ---
 
 # 2026-04-07 Phase 1-3 Compliance Restart Baseline
@@ -28,7 +29,7 @@ Regulatory
 - Compliance preflight contract test coverage and declaration guardrail hardening.
 
 ## Compliance Preconditions
-1. Dual-mode lifecycle remains unchanged and irreversible toward compliant states.
+1. Historical note: this baseline predates ADR 0011 governed downgrade exceptions.
 2. Request-time preflight remains hard-gated: only `result=no_breach` permits implementation.
 3. Compliance-sensitive diffs still require declaration evidence before merge.
 

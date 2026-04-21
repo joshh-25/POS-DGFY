@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -292,15 +292,32 @@ export default function POSCheckoutTerminal({
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
     const [imagePreview, setImagePreview] = useState(null);
+    const catalogScrollRef = useRef(null);
+    const currentSaleScrollRef = useRef(null);
+    const [catalogPaneScrollState, setCatalogPaneScrollState] = useState({
+        canScroll: false,
+        atTop: true,
+        atBottom: true
+    });
+    const [currentSalePaneScrollState, setCurrentSalePaneScrollState] = useState({
+        canScroll: false,
+        atTop: true,
+        atBottom: true
+    });
     const isEmbeddedLayout = layoutContext === 'embedded';
+    const [isAtLeast2xlViewport, setIsAtLeast2xlViewport] = useState(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        return window.matchMedia('(min-width: 1536px)').matches;
+    });
+    const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;
     const shellClassName = isEmbeddedLayout ? 'flex h-full min-h-0 flex-col gap-5' : 'space-y-5';
     const checkoutGridClassName = isEmbeddedLayout
         ? 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6 h-full min-h-0'
         : 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';
     const checkoutPaneClassName = isEmbeddedLayout ? '2xl:max-h-none' : '2xl:max-h-[70dvh]';
-    const splitPaneScrollClassName = isEmbeddedLayout
+    const splitPaneScrollClassName = hasSplitPaneScroll
         ? 'h-full overflow-y-auto pr-1 2xl:overscroll-contain'
-        : 'pr-1 2xl:h-full 2xl:overflow-y-auto 2xl:overscroll-contain';
+        : 'pr-1';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
@@ -313,6 +330,110 @@ export default function POSCheckoutTerminal({
             onViewModeChange(nextMode);
         }
     }, [isViewModeControlled, onViewModeChange]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+        const mediaQuery = window.matchMedia('(min-width: 1536px)');
+        const syncViewport = (event) => {
+            setIsAtLeast2xlViewport(Boolean(event?.matches));
+        };
+        syncViewport(mediaQuery);
+
+        if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', syncViewport);
+            return () => mediaQuery.removeEventListener('change', syncViewport);
+        }
+
+        mediaQuery.addListener(syncViewport);
+        return () => mediaQuery.removeListener(syncViewport);
+    }, []);
+
+    const handleScrollPaneKeyDown = useCallback((event) => {
+        if (event.target !== event.currentTarget) return;
+        const node = event.currentTarget;
+        const lineStep = 64;
+        const pageStep = Math.max(120, Math.round(node.clientHeight * 0.8));
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            node.scrollBy({ top: lineStep, behavior: 'auto' });
+            return;
+        }
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            node.scrollBy({ top: -lineStep, behavior: 'auto' });
+            return;
+        }
+        if (event.key === 'PageDown') {
+            event.preventDefault();
+            node.scrollBy({ top: pageStep, behavior: 'auto' });
+            return;
+        }
+        if (event.key === 'PageUp') {
+            event.preventDefault();
+            node.scrollBy({ top: -pageStep, behavior: 'auto' });
+            return;
+        }
+        if (event.key === 'Home') {
+            event.preventDefault();
+            node.scrollTo({ top: 0, behavior: 'auto' });
+            return;
+        }
+        if (event.key === 'End') {
+            event.preventDefault();
+            node.scrollTo({ top: node.scrollHeight, behavior: 'auto' });
+        }
+    }, []);
+
+    const evaluatePaneScrollState = useCallback((node) => {
+        if (!node) return { canScroll: false, atTop: true, atBottom: true };
+        const scrollHeight = Number(node.scrollHeight || 0);
+        const clientHeight = Number(node.clientHeight || 0);
+        const scrollTop = Number(node.scrollTop || 0);
+        const canScroll = scrollHeight - clientHeight > 1;
+        if (!canScroll) {
+            return { canScroll: false, atTop: true, atBottom: true };
+        }
+        const atTop = scrollTop <= 1;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+        return { canScroll: true, atTop, atBottom };
+    }, []);
+
+    const syncCatalogPaneScrollState = useCallback(() => {
+        setCatalogPaneScrollState(evaluatePaneScrollState(catalogScrollRef.current));
+    }, [evaluatePaneScrollState]);
+
+    const syncCurrentSalePaneScrollState = useCallback(() => {
+        setCurrentSalePaneScrollState(evaluatePaneScrollState(currentSaleScrollRef.current));
+    }, [evaluatePaneScrollState]);
+
+    useEffect(() => {
+        if (!hasSplitPaneScroll) {
+            setCatalogPaneScrollState({ canScroll: false, atTop: true, atBottom: true });
+            return;
+        }
+        const node = catalogScrollRef.current;
+        if (!node) return undefined;
+
+        syncCatalogPaneScrollState();
+        const handleResize = () => syncCatalogPaneScrollState();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [catalog.length, catalogLoading, hasSplitPaneScroll, syncCatalogPaneScrollState]);
+
+    useEffect(() => {
+        if (!hasSplitPaneScroll) {
+            setCurrentSalePaneScrollState({ canScroll: false, atTop: true, atBottom: true });
+            return;
+        }
+        const node = currentSaleScrollRef.current;
+        if (!node) return undefined;
+
+        syncCurrentSalePaneScrollState();
+        const handleResize = () => syncCurrentSalePaneScrollState();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [cart.length, currentViewMode, hasSplitPaneScroll, syncCurrentSalePaneScrollState]);
 
     const syncQueuedCheckoutsState = useCallback(() => {
         setQueuedCheckouts(readCheckoutIntentQueue());
@@ -1285,6 +1406,11 @@ export default function POSCheckoutTerminal({
 
             {currentViewMode === 'checkout' && (
                 <div className={checkoutGridClassName}>
+            {hasSplitPaneScroll && (
+                <p className="2xl:col-span-12 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                    Scroll tip: hover or focus inside each pane to scroll it independently.
+                </p>
+            )}
             <section className={`2xl:col-span-8 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
                     <div>
@@ -1300,7 +1426,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 <div className="mb-2 flex justify-end">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        Scroll Zone: Catalog
+                        {hasSplitPaneScroll ? 'Scroll Zone: Catalog' : 'Scroll: Page (Catalog)'}
                     </span>
                 </div>
 
@@ -1383,9 +1509,20 @@ export default function POSCheckoutTerminal({
                 </div>
 
                 <div className="relative flex-1 min-h-0">
-                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
-                    <div className={splitPaneScrollClassName}>
+                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atTop && (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
+                    )}
+                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atBottom && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
+                    )}
+                    <div
+                        ref={catalogScrollRef}
+                        className={splitPaneScrollClassName}
+                        tabIndex={0}
+                        aria-label="POS catalog scroll area"
+                        onKeyDown={handleScrollPaneKeyDown}
+                        onScroll={syncCatalogPaneScrollState}
+                    >
                 {catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
@@ -1500,13 +1637,24 @@ export default function POSCheckoutTerminal({
                 <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
                 <div className="mb-2 flex justify-end">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        Scroll Zone: Current Sale
+                        {hasSplitPaneScroll ? 'Scroll Zone: Current Sale' : 'Scroll: Page (Current Sale)'}
                     </span>
                 </div>
                 <div className="relative flex-1 min-h-0">
-                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
-                    <div className={splitPaneScrollClassName}>
+                    {hasSplitPaneScroll && currentSalePaneScrollState.canScroll && !currentSalePaneScrollState.atTop && (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
+                    )}
+                    {hasSplitPaneScroll && currentSalePaneScrollState.canScroll && !currentSalePaneScrollState.atBottom && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
+                    )}
+                    <div
+                        ref={currentSaleScrollRef}
+                        className={splitPaneScrollClassName}
+                        tabIndex={0}
+                        aria-label="Current sale scroll area"
+                        onKeyDown={handleScrollPaneKeyDown}
+                        onScroll={syncCurrentSalePaneScrollState}
+                    >
                 <div className="space-y-3 mb-4">
                     <label className="text-xs text-slate-500 block">
                         Order Method
@@ -1591,13 +1739,6 @@ export default function POSCheckoutTerminal({
                                             step="0.0001"
                                             value={line.quantity}
                                             onChange={(event) => updateCartQuantity(line.item_id, event.target.value || 0)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                                                    event.preventDefault();
-                                                    const delta = event.key === 'ArrowUp' ? 1 : -1;
-                                                    updateCartQuantity(line.item_id, Number(line.quantity || 0) + delta);
-                                                }
-                                            }}
                                             className="h-11 text-base"
                                         />
                                         <Button
@@ -1621,14 +1762,6 @@ export default function POSCheckoutTerminal({
                                         onChange={(event) => updateCartLine(line.item_id, {
                                             sale_price: Number(event.target.value || 0)
                                         })}
-                                        onKeyDown={(event) => {
-                                            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                                                event.preventDefault();
-                                                const delta = event.key === 'ArrowUp' ? 1 : -1;
-                                                const nextValue = Math.max(0, Number(line.sale_price || 0) + delta);
-                                                updateCartLine(line.item_id, { sale_price: nextValue });
-                                            }
-                                        }}
                                         className="h-11 text-base"
                                         disabled={!canOverridePrice}
                                     />

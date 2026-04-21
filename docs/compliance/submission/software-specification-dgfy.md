@@ -1,6 +1,6 @@
 # DGFY Software Specification Packet
 
-Last updated: 2026-04-08
+Last updated: 2026-04-22
 Owner: Engineering / Compliance
 
 ## 1. Product Scope
@@ -9,7 +9,9 @@ SKU Inventory Manager supports dual-mode compliance lifecycle:
 2. `compliant_pending`
 3. `compliant_active`
 
-Lifecycle is irreversible toward compliant states and enforced by policy and database constraints.
+Lifecycle is governed toward compliant states with controlled downgrade exceptions enforced by policy and database constraints:
+1. Platform force: `POST /api/v1/admin/tenants/:id/force-non-compliant`
+2. Tenant one-per-cycle revert: `POST /api/v1/compliance/mode/revert-to-non-compliant`
 
 ## 2. Runtime Architecture
 Module boundary contract:

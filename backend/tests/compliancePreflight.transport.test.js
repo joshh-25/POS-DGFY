@@ -34,6 +34,7 @@ jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
     updateCompliancePeripheralUseCase: noopUseCase,
     updateCompliancePeripheralVerificationUseCase: noopUseCase,
     listComplianceAuditLogsUseCase: noopUseCase,
+    revertToNonCompliantModeUseCase: noopUseCase,
     compliancePreflightUseCase: mockCompliancePreflightUseCase
 }));
 

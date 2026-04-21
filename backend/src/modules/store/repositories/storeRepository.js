@@ -48,33 +48,68 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
 };
 
+const isMissingItemLocationStockSchemaError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
+        return true;
+    }
+    if (code === 'ER_BAD_FIELD_ERROR' && message.includes('item_location_stocks')) {
+        return true;
+    }
+    return false;
+};
+
 const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
     const normalizedLocationId = Number.parseInt(locationId, 10);
     if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
-        return new Map();
+        return {
+            stockMap: new Map(),
+            locationScopeResolved: false
+        };
     }
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
-        return new Map();
+        return {
+            stockMap: new Map(),
+            locationScopeResolved: true
+        };
     }
 
     const ItemLocationStock = dbStore.get('ItemLocationStock');
     if (!ItemLocationStock) {
-        return new Map();
+        return {
+            stockMap: new Map(),
+            locationScopeResolved: false
+        };
     }
 
-    const rows = await ItemLocationStock.findAll({
-        where: {
-            location_id: normalizedLocationId,
-            item_id: { [Op.in]: itemIds }
-        },
-        attributes: ['item_id', 'quantity_on_hand'],
-        transaction: options.transaction
-    });
+    try {
+        const rows = await ItemLocationStock.findAll({
+            where: {
+                location_id: normalizedLocationId,
+                item_id: { [Op.in]: itemIds }
+            },
+            attributes: ['item_id', 'quantity_on_hand'],
+            transaction: options.transaction
+        });
 
-    return new Map(rows.map((row) => {
-        const payload = toPlain(row);
-        return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
-    }));
+        return {
+            stockMap: new Map(rows.map((row) => {
+                const payload = toPlain(row);
+                return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
+            })),
+            locationScopeResolved: true
+        };
+    } catch (error) {
+        if (isMissingItemLocationStockSchemaError(error)) {
+            return {
+                stockMap: new Map(),
+                locationScopeResolved: false
+            };
+        }
+        throw error;
+    }
 };
 
 const applyLocationStock = (rows = [], stockMap = new Map()) => (
@@ -238,13 +273,13 @@ export const storeRepository = {
             const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row));
-            const stockMap = await loadLocationStockMap(
+            const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
-                ? applyLocationStock(catalogRows, stockMap)
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows;
         } catch (error) {
             if (!isMissingPosCatalogOverrideTableError(error)) {
@@ -254,13 +289,13 @@ export const storeRepository = {
             const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row));
-            const stockMap = await loadLocationStockMap(
+            const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
-                ? applyLocationStock(catalogRows, stockMap)
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows;
         }
     },
@@ -333,13 +368,13 @@ export const storeRepository = {
                 include: includeOverride
             });
             const catalogRows = mapCatalogRows(rows);
-            const stockMap = await loadLocationStockMap(
+            const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
-                ? applyLocationStock(catalogRows, stockMap)
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows.map((row) => ({
                     ...row,
                     is_available: Number(row.current_stock || 0) > 0,
@@ -351,13 +386,13 @@ export const storeRepository = {
             }
             const rows = await Item.findAll(baseQuery);
             const catalogRows = mapCatalogRows(rows);
-            const stockMap = await loadLocationStockMap(
+            const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0
-                ? applyLocationStock(catalogRows, stockMap)
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows.map((row) => ({
                     ...row,
                     is_available: Number(row.current_stock || 0) > 0,

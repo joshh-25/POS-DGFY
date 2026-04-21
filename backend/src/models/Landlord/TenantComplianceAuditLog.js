@@ -22,6 +22,8 @@ export default (sequelize) => {
                 'mode_selection',
                 'mode_upgrade',
                 'mode_activation',
+                'mode_force_non_compliant',
+                'mode_revert_non_compliant',
                 'blocked_operation',
                 'artifact_expiry',
                 'device_mismatch',

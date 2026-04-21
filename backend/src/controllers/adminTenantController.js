@@ -25,6 +25,7 @@ export {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminForceNonCompliant,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -51,6 +52,7 @@ import {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminForceNonCompliant,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
@@ -77,5 +79,6 @@ export default {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminForceNonCompliant,
     resubmitRegistration
 };

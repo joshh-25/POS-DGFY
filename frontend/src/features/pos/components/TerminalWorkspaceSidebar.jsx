@@ -35,6 +35,7 @@ const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = fals
 
 export default function TerminalWorkspaceSidebar({
   className = '',
+  showScrollZoneBadge = true,
   locked = false,
   isMsmeMode = false,
   terminalUser = null,
@@ -70,11 +71,13 @@ export default function TerminalWorkspaceSidebar({
         <p className="mt-1 text-sm font-semibold text-slate-900">{terminalUser?.username || 'Terminal Locked'}</p>
         <p className="text-xs text-slate-500">{shiftState?.shift ? 'Shift Open' : 'Shift Closed'}</p>
       </div>
-      <div className="flex justify-end">
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-          Scroll Zone: Cashier
-        </span>
-      </div>
+      {showScrollZoneBadge && (
+        <div className="flex justify-end">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Scroll Zone: Cashier
+          </span>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Primary Modes</p>

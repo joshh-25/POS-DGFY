@@ -24,6 +24,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260407000002-compliance-hardening-phase1-2.cjs',
     '20260408000004-add-pos-operation-replays.cjs',
     '20260408000005-add-security-signal-audit-enum.cjs',
+    '20260422000001-add-compliance-downgrade-override-controls.cjs',
+    '20260422000002-harden-compliance-downgrade-controls.cjs',
     '20260416000007-add-multi-location-inventory-ledger.cjs',
     '20260416000008-backfill-user-location-grants.cjs'
 ]);
@@ -38,7 +40,13 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'plan',
         'compliance_mode_state',
         'compliance_mode_choice_required',
-        'compliance_profile'
+        'compliance_profile',
+        'compliance_mode_override_by',
+        'compliance_mode_override_at',
+        'compliance_mode_revert_by',
+        'compliance_mode_revert_at',
+        'compliance_cycle_version',
+        'compliance_revert_last_cycle_version'
     ],
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],

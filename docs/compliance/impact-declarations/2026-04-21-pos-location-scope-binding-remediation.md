@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-04-21
 declaration_id: 2026-04-21-pos-location-scope-binding-remediation
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.04.07
 verification_evidence: npm run check:architecture,npm run lint:docs,npm run test:backend,npm run test:frontend,npm run build

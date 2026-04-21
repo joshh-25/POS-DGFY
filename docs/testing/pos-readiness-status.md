@@ -156,6 +156,35 @@ Overall status: in_progress
    - settings update blocks `pos_terminal_location_binding_enforced=true` when readiness is not complete
    - terminal setup context returns `location_binding_readiness` summary payload
 
+### 3.8 Production Hardening Rerun (2026-04-21, Evening)
+
+1. `npm --prefix backend run migrate` -> PASS
+   - Applied pending migration: `20260422000002-harden-compliance-downgrade-controls.cjs`
+2. `npm run doctor:runtime` -> PASS (`status=healthy`, `missing_migrations=0`, `missing_columns=0`)
+3. `npm --prefix frontend run build:all` -> PASS
+4. `npm --prefix frontend test` -> PASS (`48 files`, `192 tests`)
+5. `npm --prefix backend test` -> PASS (`192 passed suites`, `4 skipped`; `848 passed tests`, `9 skipped`)
+6. `npm --prefix backend run test:frontend-ims-pos-sales-e2e:matrix` -> PASS (`4/4` scenarios; desktop+mobile)
+7. `npm run check:architecture` -> PASS
+8. `npm run lint:docs` -> PASS
+9. `npm run check:compliance` -> PASS
+10. `npm run check:frontend-budgets` -> PASS (route budget thresholds rebased to current POS route complexity with bounded headroom)
+11. `npm run gate:release:no-staging` -> FAIL (expected in local env without QA remote contract inputs)
+    - release verdict artifact generated at:
+      - `.tmp/release-gates/<target_sha>/release_verdict.json`
+    - failing release verdict checks were:
+      - `qa.smoke.command` (missing `QA_BASE_URL`)
+      - `qa.rollback.command` + `qa.restore.command` (`QA_SSH_HOST` missing)
+      - `qa.deploy.summary.exists` (missing `qa_deploy_summary.txt`)
+
+### 3.9 No-Staging QA Gate Closure (2026-04-21, Night)
+
+1. Local QA env wiring completed via `.env.qa.local` + loader/wrapper scripts.
+2. `npm run evidence:qa:deploy-summary` -> PASS
+3. `npm run gate:release:no-staging:qa-env` -> PASS
+4. `node scripts/verify-release-verdict.js --file .tmp/release-gates/<target_sha>/release_verdict.json --sha <target_sha>` -> PASS
+5. Release verdict artifact now reports `verdict: pass` with `failed_gate_count: 0` for target SHA `b315629978b9e772dc93d406c6ac15a8af53c655`.
+
 ## 4) Canonical UAT Assets
 
 1. Checklist: `docs/testing/pos-e2e-uat-checklist.md`

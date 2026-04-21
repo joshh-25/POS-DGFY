@@ -1891,6 +1891,11 @@ Compliance checklist contract (used by Settings > Compliance and Admin review):
   - `evidence.encryption_policy_issues[]`
 - `POST /api/v1/compliance/activate` requires body payload:
   - `{ "confirmation_text": "ACTIVATE COMPLIANT" }`
+- `POST /api/v1/compliance/mode/revert-to-non-compliant` requires:
+  - `reason` (required, min length 3)
+  - optional `context` object
+  - allowed only from `compliant_pending` or `compliant_active`
+  - one successful revert per compliance cycle (`compliance_cycle_version`)
 
 Final Review documentary (tenant self-serve):
 - `GET /api/v1/compliance/final-review/documents`
@@ -3266,6 +3271,24 @@ Append immutable compliance audit evidence that an incident has been acknowledge
 
 ### POST /admin/tenants/:id/compliance/security-incidents/:incident_id/resolve
 Append immutable compliance audit evidence that an incident has been resolved.
+
+### POST /admin/tenants/:id/force-non-compliant
+Platform-admin governed downgrade to force tenant lifecycle back to `non_compliant_active`.
+
+**Request Body**
+```json
+{
+  "reason": "Emergency rollback due to compliance incident",
+  "context": {
+    "ticket": "OPS-431"
+  }
+}
+```
+
+**Behavior**
+- Allowed only when tenant lifecycle is `compliant_pending` or `compliant_active`.
+- Returns `409` when tenant is already `non_compliant_active`.
+- Persists immutable compliance audit event `mode_force_non_compliant`.
 
 **Request Body (both endpoints)**
 ```json

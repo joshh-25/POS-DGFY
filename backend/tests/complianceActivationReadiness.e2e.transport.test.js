@@ -247,6 +247,7 @@ const createComplianceHarness = () => {
       listComplianceAuditLogsUseCase: buildListComplianceAuditLogsUseCase({
         complianceRepository: repository
       }),
+      revertToNonCompliantModeUseCase: noopUseCase,
       compliancePreflightUseCase: noopUseCase
     }
   };

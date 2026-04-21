@@ -2,10 +2,10 @@
 status: authoritative
 authority_level: authoritative
 owner: compliance
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-22
 applies_to: ph_pos_software_provider
 topic: ph_pos_software_developer_compliance
-related_adr: 0007-dual-mode-pos-compliance-program.md
+related_adr: 0007-dual-mode-pos-compliance-program.md,0011-compliance-downgrade-escape-hatches.md
 ---
 
 # PH POS Software Developer Compliance Guide
@@ -40,7 +40,9 @@ This guide defines regulator-aligned controls to enforce in product logic, persi
    - OPS FAQ: https://www.bsp.gov.ph/PaymentAndSettlement/FAQ_OPS_Registration.pdf
 
 ## Product Compliance Model
-1. Mode lifecycle is irreversible toward compliant states.
+1. Mode lifecycle is irreversible toward compliant states except governed escape hatches:
+   - Platform admin force downgrade (`compliant_* -> non_compliant_active`) with reasoned audit trail.
+   - Tenant master-admin one-time revert per compliance cycle (`compliant_* -> non_compliant_active`) with cycle tracking.
 2. Legacy tenants must complete one-time mode selection before gated operations.
 3. Non-compliant mode issues only `non_fiscal_slip`.
 4. Fiscal behavior is allowed only in `compliant_active`, fail-closed on policy failure.
@@ -62,9 +64,14 @@ This guide defines regulator-aligned controls to enforce in product logic, persi
 
 ## Engineering Guardrails
 1. Runtime policy engine remains fail-closed for compliant mode.
-2. DB-level transition guardrails prevent compliant downgrade.
-3. CI and pre-commit enforce compliance declarations on sensitive changes.
-4. Request-time preflight blocks implementation on `breach` and `review_required`.
+2. DB-level transition guardrails block generic compliant downgrade and allow only governed override/revert paths.
+3. Controlled downgrade trigger semantics are strict:
+   - downgrade must mutate governed markers in the same update;
+   - mixed override+revert marker mutations in one downgrade update are rejected;
+   - tenant revert must persist `compliance_revert_last_cycle_version = compliance_cycle_version`.
+4. Force/revert operations are fail-closed on audit durability; primary compliance audit persistence is required to commit.
+5. CI and pre-commit enforce compliance declarations on sensitive changes.
+6. Request-time preflight blocks implementation on `breach` and `review_required`.
 
 ## Release Gates
 1. `npm run lint:docs`

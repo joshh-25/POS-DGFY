@@ -2,6 +2,7 @@ import {
     getComplianceProfileUseCase,
     selectComplianceModeUseCase,
     upgradeToCompliantUseCase,
+    revertToNonCompliantModeUseCase,
     getComplianceChecklistUseCase,
     activateCompliantModeUseCase,
     updateComplianceProfileUseCase,
@@ -106,6 +107,33 @@ export const upgradeToCompliant = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Tenant moved to compliant_pending mode',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const revertToNonCompliantMode = async (req, res, next) => {
+    try {
+        const result = await revertToNonCompliantModeUseCase({
+            tenantId: resolveTenantId(req),
+            actorUser: req.user,
+            reason: req.validatedData?.reason || req.body?.reason,
+            context: req.validatedData?.context || req.body?.context || {}
+        });
+        if (result?.success) {
+            invalidateTenantCache(req);
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Tenant reverted to non_compliant_active mode',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -562,6 +590,7 @@ export default {
     getComplianceProfile,
     selectComplianceMode,
     upgradeToCompliant,
+    revertToNonCompliantMode,
     getComplianceChecklist,
     activateCompliantMode,
     updateComplianceProfile,

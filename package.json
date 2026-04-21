@@ -55,6 +55,7 @@
     "drill:qa:restore": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-restore-drill.ps1",
     "evidence:qa:deploy-summary": "powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1",
     "gate:release:no-staging": "node scripts/gate-release-no-staging.js",
+    "gate:release:no-staging:qa-env": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-release-gate.ps1",
     "verify:release-verdict": "node scripts/verify-release-verdict.js"
   },
   "keywords": [

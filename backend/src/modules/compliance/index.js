@@ -6,6 +6,8 @@ import {
     buildGetComplianceProfileUseCase,
     buildSelectComplianceModeUseCase,
     buildUpgradeToCompliantUseCase,
+    buildForceNonCompliantModeUseCase,
+    buildRevertToNonCompliantModeUseCase,
     buildGetComplianceChecklistUseCase,
     buildActivateCompliantModeUseCase,
     buildUpdateComplianceProfileUseCase,
@@ -64,6 +66,16 @@ export const selectComplianceModeUseCase = buildSelectComplianceModeUseCase({
 });
 
 export const upgradeToCompliantUseCase = buildUpgradeToCompliantUseCase({
+    complianceRepository,
+    logger
+});
+
+export const forceNonCompliantModeUseCase = buildForceNonCompliantModeUseCase({
+    complianceRepository,
+    logger
+});
+
+export const revertToNonCompliantModeUseCase = buildRevertToNonCompliantModeUseCase({
     complianceRepository,
     logger
 });

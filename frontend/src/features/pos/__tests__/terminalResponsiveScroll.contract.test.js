@@ -34,5 +34,40 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
   });
-});
 
+  it('uses viewport-aware split-pane detection and truthful scroll affordances', () => {
+    expect(posCheckoutContent).toContain("window.matchMedia('(min-width: 1536px)')");
+    expect(posCheckoutContent).toContain('const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;');
+    expect(posCheckoutContent).toContain("Scroll: Page (Catalog)");
+    expect(posCheckoutContent).toContain("Scroll: Page (Current Sale)");
+    expect(posCheckoutContent).toContain("Scroll tip: hover or focus inside each pane to scroll it independently.");
+  });
+
+  it('keeps catalog/current-sale panes keyboard-scrollable with explicit focus targets', () => {
+    expect(posCheckoutContent).toContain('aria-label="POS catalog scroll area"');
+    expect(posCheckoutContent).toContain('aria-label="Current sale scroll area"');
+    expect(posCheckoutContent).toContain('onKeyDown={handleScrollPaneKeyDown}');
+    expect(posCheckoutContent).toContain('onScroll={syncCatalogPaneScrollState}');
+    expect(posCheckoutContent).toContain('onScroll={syncCurrentSalePaneScrollState}');
+    expect(posCheckoutContent).toContain("if (event.key === 'PageDown')");
+    expect(posCheckoutContent).toContain("if (event.key === 'Home')");
+    expect(posCheckoutContent).toContain('tabIndex={0}');
+  });
+
+  it('renders overflow cues only when pane content is actually scrollable', () => {
+    expect(posCheckoutContent).toContain('catalogPaneScrollState.canScroll');
+    expect(posCheckoutContent).toContain('currentSalePaneScrollState.canScroll');
+    expect(posCheckoutContent).toContain('!catalogPaneScrollState.atTop');
+    expect(posCheckoutContent).toContain('!currentSalePaneScrollState.atBottom');
+  });
+
+  it('removes custom ArrowUp/ArrowDown interception in quantity and price inputs', () => {
+    expect(posCheckoutContent).not.toContain('updateCartQuantity(line.item_id, Number(line.quantity || 0) + delta);');
+    expect(posCheckoutContent).not.toContain('const nextValue = Math.max(0, Number(line.sale_price || 0) + delta);');
+  });
+
+  it('keeps workspace container scroll fallback enabled in checkout mode', () => {
+    expect(terminalLayoutContent).toContain('xl:overflow-y-auto xl:overscroll-contain');
+    expect(terminalLayoutContent).not.toContain("isCheckoutWorkspaceMode ? 'xl:overflow-hidden'");
+  });
+});

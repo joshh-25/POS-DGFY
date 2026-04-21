@@ -106,7 +106,7 @@ const categorizeAuditEvent = (eventType) => {
         return 'security';
     }
     if (normalized === 'blocked_operation') return 'blocked';
-    if (['mode_selection', 'mode_upgrade', 'mode_activation'].includes(normalized)) return 'lifecycle';
+    if (['mode_selection', 'mode_upgrade', 'mode_activation', 'mode_force_non_compliant', 'mode_revert_non_compliant'].includes(normalized)) return 'lifecycle';
     return 'all';
 };
 
@@ -344,10 +344,37 @@ export default function TenantManager() {
         }
     };
 
+    const handleForceNonCompliant = async (tenant) => {
+        if (!tenant?.id) return;
+        if (tenant.compliance_mode_state === 'non_compliant_active') {
+            toast.error('Tenant is already in non-compliant mode.');
+            return;
+        }
+        const reason = prompt(`Force "${tenant.name}" back to non-compliant mode.\n\nReason (required):`);
+        if (reason === null) return;
+        if (!String(reason || '').trim() || String(reason || '').trim().length < 3) {
+            toast.error('Reason is required and must be at least 3 characters.');
+            return;
+        }
+        setActionLoading(tenant.id);
+        try {
+            await adminService.forceTenantNonCompliant(tenant.id, { reason: String(reason).trim() });
+            await loadTenants();
+            toast.success(`${tenant.name} forced to non-compliant mode`);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to force non-compliant mode: ${normalized.message}`);
+            }
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const loadTenantComplianceData = async (tenantId) => {
         setComplianceLoading(true);
         try {
-            const [artifactsResponse, peripheralsResponse, checklistResponse, auditLogsResponse, incidentsResponse] = await Promise.all([
+            const [artifactsResult, peripheralsResult, checklistResult, auditLogsResult, incidentsResult] = await Promise.allSettled([
                 adminService.listTenantComplianceArtifacts(tenantId),
                 adminService.listTenantCompliancePeripherals(tenantId),
                 adminService.getTenantComplianceChecklist(tenantId),
@@ -355,11 +382,43 @@ export default function TenantManager() {
                 adminService.listTenantComplianceSecurityIncidents(tenantId, { limit: 200 })
             ]);
 
-            setComplianceArtifacts(artifactsResponse?.data?.artifacts || []);
-            setCompliancePeripherals(peripheralsResponse?.data?.peripherals || []);
-            setComplianceChecklist(checklistResponse?.data || null);
-            setComplianceAuditLogs(auditLogsResponse?.data?.logs || []);
-            setComplianceSecurityIncidents(incidentsResponse?.data?.incidents || []);
+            setComplianceArtifacts(
+                artifactsResult.status === 'fulfilled'
+                    ? (artifactsResult.value?.data?.artifacts || [])
+                    : []
+            );
+            setCompliancePeripherals(
+                peripheralsResult.status === 'fulfilled'
+                    ? (peripheralsResult.value?.data?.peripherals || [])
+                    : []
+            );
+            setComplianceChecklist(
+                checklistResult.status === 'fulfilled'
+                    ? (checklistResult.value?.data || null)
+                    : null
+            );
+            setComplianceAuditLogs(
+                auditLogsResult.status === 'fulfilled'
+                    ? (auditLogsResult.value?.data?.logs || [])
+                    : []
+            );
+            setComplianceSecurityIncidents(
+                incidentsResult.status === 'fulfilled'
+                    ? (incidentsResult.value?.data?.incidents || [])
+                    : []
+            );
+
+            const failedSections = [
+                artifactsResult.status === 'rejected' ? 'artifacts' : null,
+                peripheralsResult.status === 'rejected' ? 'peripherals' : null,
+                checklistResult.status === 'rejected' ? 'checklist' : null,
+                auditLogsResult.status === 'rejected' ? 'audit history' : null,
+                incidentsResult.status === 'rejected' ? 'security incidents' : null
+            ].filter(Boolean);
+
+            if (failedSections.length > 0) {
+                toast.error(`Some compliance sections failed to load: ${failedSections.join(', ')}`);
+            }
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) {
@@ -842,6 +901,15 @@ export default function TenantManager() {
                                                     Compliance
                                                 </Button>
                                                 <Button
+                                                    onClick={() => handleForceNonCompliant(tenant)}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isProcessing || tenant.compliance_mode_state === 'non_compliant_active'}
+                                                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                                                >
+                                                    Force non-compliant
+                                                </Button>
+                                                <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"
                                                     size="sm"
@@ -1308,7 +1376,7 @@ export default function TenantManager() {
                                         <option value="compliant">Compliant POS (Pending Activation)</option>
                                     </select>
                                     <p className="text-xs text-slate-500">
-                                        Compliant mode is irreversible after activation.
+                                        Compliant mode supports governed downgrade exceptions for platform admins and one-per-cycle tenant master-admin revert.
                                     </p>
                                 </div>
                                 <div className="space-y-2">

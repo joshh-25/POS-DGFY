@@ -4,6 +4,7 @@ import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateComplianceModeChoice,
+    validateComplianceModeDowngrade,
     validateComplianceProfilePatch,
     validateComplianceArtifactCreate,
     validateComplianceArtifactUpdate,
@@ -30,6 +31,7 @@ router.use(authenticate);
 router.get('/profile', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), complianceController.getComplianceProfile);
 router.post('/mode/select', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceModeChoice, complianceController.selectComplianceMode);
 router.post('/mode/upgrade', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), complianceController.upgradeToCompliant);
+router.post('/mode/revert-to-non-compliant', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceModeDowngrade, complianceController.revertToNonCompliantMode);
 router.get('/checklist', checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), validateComplianceChecklistQuery, complianceController.getComplianceChecklist);
 router.post('/activate', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateComplianceActivateMode, complianceController.activateCompliantMode);
 

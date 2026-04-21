@@ -305,6 +305,7 @@ export default function TerminalPageLayout({
                         <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500">Loading menu...</div>}>
                             <TerminalWorkspaceSidebar
                                 className="flex"
+                                showScrollZoneBadge={false}
                                 locked={locked}
                                 isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
@@ -342,6 +343,7 @@ export default function TerminalPageLayout({
                     <Suspense fallback={<div className="hidden xl:block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading POS navigation...</div>}>
                         <TerminalWorkspaceSidebar
                             className="hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain"
+                            showScrollZoneBadge
                             locked={locked}
                             isMsmeMode={isMsmeMode}
                             terminalUser={terminalUser}
@@ -363,7 +365,7 @@ export default function TerminalPageLayout({
                 <div
                     id={TERMINAL_SECTION_IDS.checkoutWorkspace}
                     ref={workspacePaneRef}
-                    className={`transition xl:h-full xl:min-h-0 ${isCheckoutWorkspaceMode ? 'xl:overflow-hidden' : 'xl:overflow-y-auto xl:overscroll-contain'} ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+                    className={`transition xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
                 >
                     {isCheckoutWorkspaceMode && (
                         <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
