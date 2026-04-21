@@ -185,6 +185,25 @@ Overall status: in_progress
 4. `node scripts/verify-release-verdict.js --file .tmp/release-gates/<target_sha>/release_verdict.json --sha <target_sha>` -> PASS
 5. Release verdict artifact now reports `verdict: pass` with `failed_gate_count: 0` for target SHA `b315629978b9e772dc93d406c6ac15a8af53c655`.
 
+### 3.10 Storefront Catalog Production Incident Remediation (2026-04-21, Night)
+
+1. Observed production symptom:
+   - Public tenant storefront intermittently returned `500` on `GET /api/v1/store/catalog?limit=120&location_id=...` for one tenant while another tenant continued to return `200`.
+2. Root cause:
+   - Tenant-level schema drift on location-stock support (`item_location_stocks`) combined with `location_id` catalog scope path.
+   - Existing catalog compatibility fallback handled missing `pos_catalog_overrides` but did not gracefully degrade missing location-stock schema.
+3. Permanent backend fix:
+   - `backend/src/modules/store/repositories/storeRepository.js` now treats missing location-stock table/column errors as compatibility fallback and returns global stock-based availability instead of propagating `500`.
+4. Regression coverage:
+   - `backend/tests/storeRepository.locationStockFallback.test.js`
+5. Verification evidence:
+   - `npm --prefix backend test -- --runInBand --runTestsByPath tests/storeRepository.locationStockFallback.test.js tests/storeUsecases.applicationResult.test.js` -> PASS
+   - `npm run check:architecture` -> PASS
+6. Deployment evidence:
+   - Full verified deploy completed for commit `4a6d76a789cd60526cd2909cd4d72e5a225c683c`.
+   - Summary artifact: `logs/deploy/deploy_20260421_212450.summary.txt`
+   - Public checks passed for IMS/POS/storefront/tenant-store and tenant-store asset integrity.
+
 ## 4) Canonical UAT Assets
 
 1. Checklist: `docs/testing/pos-e2e-uat-checklist.md`

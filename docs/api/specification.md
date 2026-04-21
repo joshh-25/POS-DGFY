@@ -2259,6 +2259,7 @@ List tenant storefront catalog items (public read).
 |------|------|-------------|
 | `search` | string | Optional item name filter |
 | `limit` | number | Row limit (default 60, max 200) |
+| `location_id` | number | Optional active fulfillment location scope for availability calculation |
 
 Catalog rows include:
 - `item_id`, `name`, `category`, `unit_of_measure`
@@ -2274,6 +2275,7 @@ Catalog rows include:
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
 - `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
 - Exact quantity remains server-side and is enforced during quote/checkout validation.
+- Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support, `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.

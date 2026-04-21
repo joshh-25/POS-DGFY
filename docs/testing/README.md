@@ -106,6 +106,9 @@ Before running manual UAT after backend changes:
    - `http://localhost:5000/api/v1/sales/transactions`
 9. Verify store checkout validation path is fail-closed:
    - `POST /api/v1/store/checkout` should return `422` for invalid/out-of-stock payloads, not `500`.
+10. Verify storefront catalog location-scope compatibility path is fail-closed:
+   - `GET /api/v1/store/catalog?limit=120&location_id=<active_location_id>` should return `200` for active tenants.
+   - If tenant location-stock schema is not fully aligned yet, API must degrade to global availability computation (still `200`, never `500`).
 
 This prevents transient startup-side `500` errors caused by runtime schema `alter` operations.
 
