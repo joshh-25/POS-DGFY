@@ -91,6 +91,10 @@ const sanitizeTerminalRegistryId = (value) => String(value || '')
   .toUpperCase()
   .replace(/\s+/g, '-')
   .replace(/[^A-Z0-9._-]/g, '');
+const toPositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
 
 const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((acc, method) => {
   acc[method.key] = {
@@ -125,6 +129,7 @@ const normalizeTerminalRegistry = (rawRegistry) => {
     normalized.push({
       terminal_id: terminalId,
       label: String(entry?.label || '').trim(),
+      location_id: toPositiveInt(entry?.location_id),
       is_active: isActive,
       is_default: isActive && entry?.is_default === true
     });
@@ -163,6 +168,7 @@ const SETTINGS_FIELD_LABELS = {
   pos_accreditation_number: 'Accreditation Number',
   pos_receipt_footer_message: 'Receipt Footer Message',
   pos_terminal_registry_mode: 'Terminal Registry Mode',
+  pos_terminal_location_binding_enforced: 'Strict Location Binding',
   pos_petty_cash_symbol: 'Petty Cash Currency Symbol',
   pos_petty_cash_amount: 'Petty Cash Amount',
   ops_workflow_mode: 'Business Mode',
@@ -233,6 +239,7 @@ export default function Settings() {
     posOrderMethodFees: createDefaultOrderMethodFees(),
     posTerminalRegistry: [],
     posTerminalRegistryMode: 'warn',
+    posTerminalLocationBindingEnforced: false,
     posPettyCashSymbol: 'PHP',
     posPettyCashAmount: 0,
     opsWorkflowMode: DEFAULT_WORKFLOW_MODE,
@@ -359,6 +366,7 @@ export default function Settings() {
           posTerminalRegistryMode: TERMINAL_REGISTRY_MODE_OPTIONS.includes(String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase())
             ? String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
             : 'warn',
+          posTerminalLocationBindingEnforced: systemSettings.pos_terminal_location_binding_enforced?.value === true,
           posPettyCashSymbol: systemSettings.pos_petty_cash_symbol?.value || 'PHP',
           posPettyCashAmount: Number(systemSettings.pos_petty_cash_amount?.value ?? 0) || 0,
           opsWorkflowMode: normalizedWorkflowMode,
@@ -573,6 +581,7 @@ export default function Settings() {
         ? prev.posTerminalRegistry.map((entry) => ({
           terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
+          location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true
         }))
@@ -580,6 +589,7 @@ export default function Settings() {
       const existing = entries[index] || {
         terminal_id: '',
         label: '',
+        location_id: null,
         is_active: true,
         is_default: entries.length === 0
       };
@@ -615,6 +625,7 @@ export default function Settings() {
         ? prev.posTerminalRegistry.map((entry) => ({
           terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
+          location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true
         }))
@@ -622,6 +633,7 @@ export default function Settings() {
       entries.push({
         terminal_id: '',
         label: '',
+        location_id: null,
         is_active: true,
         is_default: entries.length === 0
       });
@@ -635,6 +647,7 @@ export default function Settings() {
         .map((entry) => ({
           terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
+          location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true
         }))
@@ -902,6 +915,7 @@ export default function Settings() {
         .map((entry) => ({
           terminal_id: sanitizeTerminalRegistryId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
+          location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true
         }))
@@ -963,6 +977,7 @@ export default function Settings() {
         pos_order_method_fees: posOrderMethodFees,
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
+        pos_terminal_location_binding_enforced: settings.posTerminalLocationBindingEnforced === true,
         pos_petty_cash_symbol: settings.posPettyCashSymbol,
         pos_petty_cash_amount: Number(settings.posPettyCashAmount || 0),
         store_delivery_fee: Number(settings.storeDeliveryFee || 0),
@@ -1037,6 +1052,7 @@ export default function Settings() {
       posOrderMethodFees: createDefaultOrderMethodFees(),
       posTerminalRegistry: [],
       posTerminalRegistryMode: 'warn',
+      posTerminalLocationBindingEnforced: false,
       posPettyCashSymbol: 'PHP',
       posPettyCashAmount: 0,
       opsWorkflowMode: currentUser?.is_master_admin === true ? persistedWorkflowMode : DEFAULT_WORKFLOW_MODE,
@@ -1795,6 +1811,20 @@ export default function Settings() {
                       {(settings.posTerminalRegistryMode || 'warn') === 'enforce'
                         ? 'Enforce mode blocks unlock/open-shift/checkout when terminal_id is not an active registry entry.'
                         : 'Warn mode allows manual/fallback terminal IDs but surfaces policy warnings.'}
+                    </div>
+                    <div className="md:col-span-12">
+                      <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Strict Shift Location Binding</p>
+                          <p className="text-xs text-slate-500">
+                            When enabled, shift open/checkout/switch strictly require location-bound terminal policy readiness.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={settings.posTerminalLocationBindingEnforced === true}
+                          onCheckedChange={(checked) => handleChange('posTerminalLocationBindingEnforced', checked)}
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-2">

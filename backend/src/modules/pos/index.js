@@ -15,6 +15,7 @@ import {
     buildUploadPosCatalogImageUseCase,
     buildDeletePosCatalogImageUseCase,
     buildOpenTerminalShiftUseCase,
+    buildSwitchTerminalShiftLocationUseCase,
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
@@ -44,6 +45,7 @@ export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     imageStorage: posCatalogImageStorage
 });
 export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });

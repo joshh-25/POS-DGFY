@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-14
+last_reviewed: 2026-04-21
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -43,12 +43,29 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 
 ## Cashier Journey
 1. Unlock terminal with credentials and selected terminal ID.
-2. Open shift (or continue with reused open shift).
-3. Use `Sell` mode for checkout and catalog/cart actions.
-4. Use `Orders` mode for online order queue actions.
-5. Complete checkout and review receipt.
-6. Use `History` mode for transaction lookup and receipt re-open.
-7. Use `Open in Sales Report` when escalation/reporting is required.
+2. Select an `Operating Location` before opening a shift.
+3. Open shift (or continue with reused open shift).
+4. Use `Sell` mode for checkout and catalog/cart actions; checkout remains bound to shift location.
+5. Use `Orders` mode for online order queue actions with independent `Queue Location Scope`.
+6. Complete checkout and review receipt.
+7. Use `History` mode for transaction lookup and receipt re-open.
+8. Use `Open in Sales Report` when escalation/reporting is required.
+
+## Terminal Location Safety Contract
+1. POS read paths are fail-closed by location grants for:
+   - catalog read,
+   - incoming queue read,
+   - terminal today dashboard,
+   - POS history query.
+2. Invalid or unauthorized location scope returns deterministic denial responses; no silent broad fallback is allowed.
+3. Shift location switching is privileged:
+   - permission: `pos:switch_location`,
+   - flow: atomic close current shift + open replacement shift at target location,
+   - reason is required and transition is audited.
+4. If user lacks `pos:switch_location`, terminal UI must show guidance and block switch action.
+5. MSME mode keeps a minimal operating-location selector while preserving simplified surface.
+6. Strict location-binding activation (`pos_terminal_location_binding_enforced=true`) is blocked until backfill readiness is green (`unresolved_count=0` and `low_confidence_count=0`).
+7. Terminal setup context must display location-binding readiness summary (counts + migration tag) for operator rollout visibility.
 
 ## PO/JO Quantity UX Contract
 1. PO and JO quantity entry use a shared numeric stepper component with:

@@ -54,6 +54,11 @@ export const openTerminalShift = async (payload = {}) => {
     return response.data?.data;
 };
 
+export const switchTerminalShiftLocation = async (shiftId, payload = {}) => {
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/switch-location`, payload);
+    return response.data?.data;
+};
+
 export const recordCashDrawerEvent = async (shiftId, payload = {}) => {
     const response = await api.post(`/pos/terminal/shifts/${shiftId}/cash-events`, payload);
     return response.data?.data;
@@ -93,6 +98,7 @@ export default {
     incrementGovernedResetCounter,
     fetchCurrentTerminalShift,
     openTerminalShift,
+    switchTerminalShiftLocation,
     recordCashDrawerEvent,
     closeTerminalShift,
     fetchTerminalTodayDashboard,

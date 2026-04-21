@@ -39,6 +39,8 @@ import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
+import PosShiftLocationTransition from './PosShiftLocationTransition.js';
+import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
 import UserLocationGrant from './UserLocationGrant.js';
@@ -248,13 +250,27 @@ Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
+PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
 PosTerminalShift.hasMany(PosTransaction, { foreignKey: 'shift_id', as: 'transactions' });
 PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift' });
 PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
+PosShiftLocationTransition.belongsTo(PosTerminalShift, { foreignKey: 'from_shift_id', as: 'fromShift' });
+PosShiftLocationTransition.belongsTo(PosTerminalShift, { foreignKey: 'to_shift_id', as: 'toShift' });
+PosShiftLocationTransition.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
+PosShiftLocationTransition.belongsTo(TenantLocation, { foreignKey: 'from_location_id', as: 'fromLocation' });
+PosShiftLocationTransition.belongsTo(TenantLocation, { foreignKey: 'to_location_id', as: 'toLocation' });
+PosTerminalShift.hasMany(PosShiftLocationTransition, { foreignKey: 'from_shift_id', as: 'locationTransitionsFrom' });
+PosTerminalShift.hasMany(PosShiftLocationTransition, { foreignKey: 'to_shift_id', as: 'locationTransitionsTo' });
+PosShiftLocationBackfillAudit.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosShiftLocationBackfillAudit.belongsTo(TenantLocation, { foreignKey: 'previous_location_id', as: 'previousLocation' });
+PosShiftLocationBackfillAudit.belongsTo(TenantLocation, { foreignKey: 'resolved_location_id', as: 'resolvedLocation' });
+PosTerminalShift.hasMany(PosShiftLocationBackfillAudit, { foreignKey: 'shift_id', as: 'locationBackfillAudits' });
 User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
 User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
+User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
+TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
@@ -334,6 +350,8 @@ const db = {
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
+  PosShiftLocationTransition,
+  PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
   UserLocationGrant,
@@ -397,6 +415,8 @@ export {
   PosCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
+  PosShiftLocationTransition,
+  PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
   UserLocationGrant,

@@ -47,7 +47,7 @@ Precondition:
 ## 4) Human UAT Completion
 
 1. Run `docs/testing/pos-e2e-uat-checklist.md`
-2. Record evidence in `docs/testing/pos-e2e-uat-run-2026-03-28.md`
+2. Record evidence in the latest dated run log (current: `docs/testing/pos-e2e-uat-run-2026-04-16.md`)
 3. Capture cashier/admin signoffs.
 
 ## 5) Exit Rule

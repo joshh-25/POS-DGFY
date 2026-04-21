@@ -55,7 +55,8 @@ export const PERMISSIONS = {
             PRICE_OVERRIDE_POS: "pos:price_override",
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             CLOSE_DAY_POS: "pos:close_day",
-            REPRINT_POS_RECEIPT: "pos:reprint"
+            REPRINT_POS_RECEIPT: "pos:reprint",
+            SWITCH_LOCATION_POS: "pos:switch_location"
         }
     },
     STOCK: {
@@ -152,7 +153,8 @@ export const PERMISSION_GROUPS = {
             PRICE_OVERRIDE_POS: "pos:price_override",
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             CLOSE_DAY_POS: "pos:close_day",
-            REPRINT_POS_RECEIPT: "pos:reprint"
+            REPRINT_POS_RECEIPT: "pos:reprint",
+            SWITCH_LOCATION_POS: "pos:switch_location"
         }
     },
     STOCK: {

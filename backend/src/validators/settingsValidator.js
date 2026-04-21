@@ -92,6 +92,7 @@ const posTerminalRegistryEntrySchema = Joi.object({
     'any.required': 'Terminal ID is required',
     'string.pattern.base': 'Terminal ID may only contain letters, numbers, dot, underscore, or hyphen'
   }),
+  location_id: Joi.number().integer().positive().allow(null).optional(),
   label: Joi.string().trim().max(80).allow('', null).optional(),
   is_active: Joi.boolean().default(true),
   is_default: Joi.boolean().default(false)
@@ -189,6 +190,7 @@ export const updateSettingsSchema = Joi.object({
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
     'any.only': 'Terminal registry mode must be warn or enforce'
   }),
+  pos_terminal_location_binding_enforced: Joi.boolean().optional(),
   pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
@@ -302,6 +304,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
       'any.only': 'Terminal registry mode must be warn or enforce'
     }),
+    pos_terminal_location_binding_enforced: Joi.boolean(),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     store_delivery_fee: Joi.number().min(0).precision(4),

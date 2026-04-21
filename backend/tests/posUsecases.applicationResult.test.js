@@ -53,12 +53,27 @@ describe('pos use-cases application result contract', () => {
                 toJSON: () => ({ item_id: 1, name: 'Sample', pos_visible: true, current_stock: 5 })
             }
         ]);
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 9 });
         const useCase = buildListPosCatalogUseCase({
-            posRepository: { listCatalog }
+            posRepository: { listCatalog },
+            resolveLocationScope
         });
 
-        const result = await useCase({ query: { search: 'sam' } });
-        expect(listCatalog).toHaveBeenCalledWith({ search: 'sam', limit: 100, folder_id: undefined });
+        const result = await useCase({
+            query: { search: 'sam' },
+            user: { user_id: 15 }
+        });
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: undefined,
+            userId: 15,
+            operationLabel: 'POS catalog read'
+        });
+        expect(listCatalog).toHaveBeenCalledWith({
+            search: 'sam',
+            limit: 100,
+            folder_id: undefined,
+            location_id: 9
+        });
         expect(result).toEqual({
             success: true,
             data: [{ item_id: 1, name: 'Sample', pos_visible: true, current_stock: 5 }],
@@ -69,12 +84,22 @@ describe('pos use-cases application result contract', () => {
 
     it('listPosCatalog forwards optional folder filter', async () => {
         const listCatalog = jest.fn().mockResolvedValue([]);
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 12 });
         const useCase = buildListPosCatalogUseCase({
-            posRepository: { listCatalog }
+            posRepository: { listCatalog },
+            resolveLocationScope
         });
 
-        const result = await useCase({ query: { search: '', limit: 50, folder_id: 12 } });
-        expect(listCatalog).toHaveBeenCalledWith({ search: '', limit: 50, folder_id: 12 });
+        const result = await useCase({
+            query: { search: '', limit: 50, folder_id: 12, location_id: 12 },
+            user: { user_id: 21 }
+        });
+        expect(listCatalog).toHaveBeenCalledWith({
+            search: '',
+            limit: 50,
+            folder_id: 12,
+            location_id: 12
+        });
         expect(result.success).toBe(true);
         expect(result.data).toEqual([]);
     });
@@ -86,17 +111,36 @@ describe('pos use-cases application result contract', () => {
             { item_id: 3, name: 'Hidden In POS', pos_visible: false, current_stock: 10 },
             { item_id: 4, name: 'Implicit Visible In Stock', current_stock: 1 }
         ]);
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 5 });
         const useCase = buildListPosCatalogUseCase({
-            posRepository: { listCatalog }
+            posRepository: { listCatalog },
+            resolveLocationScope
         });
 
-        const result = await useCase({ query: {} });
+        const result = await useCase({
+            query: {},
+            user: { user_id: 33 }
+        });
         expect(result.success).toBe(true);
         expect(result.data).toEqual([
             { item_id: 1, name: 'Visible In Stock', pos_visible: true, current_stock: 3 },
             { item_id: 2, name: 'Visible Out Of Stock', pos_visible: true, current_stock: 0 },
             { item_id: 4, name: 'Implicit Visible In Stock', current_stock: 1 }
         ]);
+    });
+
+    it('listPosCatalog requires an authenticated user for location fail-closed enforcement', async () => {
+        const listCatalog = jest.fn();
+        const useCase = buildListPosCatalogUseCase({
+            posRepository: { listCatalog }
+        });
+
+        const result = await useCase({ query: {} });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.AUTHENTICATION_FAILED);
+        expect(result.error.statusCode).toBe(401);
+        expect(listCatalog).not.toHaveBeenCalled();
     });
 
     it('listPosCatalogOverrides preserves normalized pos_readiness metadata contract', async () => {

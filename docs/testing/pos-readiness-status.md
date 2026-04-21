@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-04-16
+Last updated: 2026-04-21
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -10,6 +10,7 @@ Overall status: in_progress
 2. Release-gate/nightly browser E2E evidence is configured but still needs sustained green history capture.
 3. Terminal identity is policy-driven (`warn`/`enforce`) but centralized admin-managed registry governance still requires operational rollout discipline.
 4. Source-separation manual UAT parity proof (POS History source filter vs Sales POS channel filter vs CSV `pos_order_source`) is pending human evidence capture.
+5. Strict location-binding rollout cutover remains gated until legacy shift-location remediation evidence is fully reviewed and accepted by operations.
 
 ## 2) Current Behavior Snapshot
 
@@ -60,6 +61,11 @@ Overall status: in_progress
 21. Settings deep-link resolver now supports dynamic final-review document anchors (`#final-review-doc-*`) without hash resolution drift.
 22. POS operational surfaces now share centralized fulfillment label/action mapping (`ready_for_pickup` displayed as `Ready for pickup`).
 23. Storefront error normalization is extracted into a dedicated utility with direct unit coverage.
+24. Legacy POS shift-location remediation is implemented with deterministic precedence and provenance:
+- precedence: `transaction_unique_location` -> `terminal_home_location` -> `tenant_primary_location` -> `active_location_fallback`
+- remediation writes per-shift provenance rows to `pos_shift_location_backfill_audit`
+- strict-binding activation is blocked when unresolved/low-confidence readiness remains
+- terminal setup context surfaces `location_binding_readiness` for operator visibility
 
 ## 3) Automated Gate Status (Latest)
 
@@ -139,12 +145,23 @@ Overall status: in_progress
 6. Dedicated manual run log scaffold created:
    - `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 
+### 3.7 POS Shift-Location Remediation + Strict-Binding Guardrail Rerun (2026-04-21)
+
+1. `npm --prefix backend test -- --runInBand posValidator.terminalShiftIdentity.test.js posUsecases.applicationResult.test.js posHandlers.transport.test.js rbacRouteCoverage.contract.test.js settingsUsecases.applicationResult.test.js posShiftLocationResolution.test.js posShiftLocationBackfillRemediation.migration.test.js posTerminalReadiness.usecase.test.js` -> PASS
+2. `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalLocationScope.integration.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsStrictBinding.contract.test.js` -> PASS
+3. `npm --prefix frontend run build:pos` -> PASS
+4. `npm run check:architecture` -> PASS
+5. `npm run lint:docs` -> PASS
+6. Strict-binding readiness guardrails verified:
+   - settings update blocks `pos_terminal_location_binding_enforced=true` when readiness is not complete
+   - terminal setup context returns `location_binding_readiness` summary payload
+
 ## 4) Canonical UAT Assets
 
 1. Checklist: `docs/testing/pos-e2e-uat-checklist.md`
 2. Execution script: `docs/testing/pos-e2e-uat-execution-script.md`
 3. Evidence template: `docs/testing/pos-e2e-uat-evidence-template.md`
-4. Current run log: `docs/testing/pos-e2e-uat-run-2026-03-28.md`
+4. Current run log: `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 5. Canonical IMS to POS to Sales role journey: `docs/features/IMS_POS_SALES_UX_JOURNEY.md`
 
 ## 5) Update Rule

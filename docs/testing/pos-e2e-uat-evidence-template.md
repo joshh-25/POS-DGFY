@@ -2,7 +2,7 @@
 
 Status: in_progress
 
-Use this template to append evidence to `docs/testing/pos-e2e-uat-run-2026-03-28.md` (or a new dated run file).
+Use this template to append evidence to the latest dated run file (current baseline: `docs/testing/pos-e2e-uat-run-2026-04-16.md`) or create a new dated run file.
 
 ## 1) Metadata
 

@@ -84,6 +84,7 @@ const listTransactionsQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
     order_source: Joi.string().valid(...ORDER_SOURCES).optional()
@@ -133,11 +134,13 @@ const governedResetSchema = Joi.object({
 });
 
 const terminalCurrentShiftQuerySchema = Joi.object({
-    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    location_id: Joi.number().integer().positive().optional()
 });
 
 const terminalDashboardTodayQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    location_id: Joi.number().integer().positive().optional(),
     business_date: Joi.date().iso().optional()
 });
 
@@ -156,9 +159,19 @@ const openTerminalShiftSchema = Joi.object({
         'any.required': 'terminal_id is required',
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
     }),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
     business_date: Joi.date().iso().optional(),
     opening_float_amount: Joi.number().min(0).precision(4).default(0),
     opening_note: Joi.string().trim().max(255).allow(null, '').optional()
+});
+
+const switchTerminalShiftLocationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    target_location_id: Joi.number().integer().positive().required(),
+    reason: Joi.string().trim().min(8).max(255).required()
 });
 
 const cashDrawerEventSchema = Joi.object({
@@ -220,6 +233,7 @@ export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashbo
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
+export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');

@@ -5,7 +5,7 @@ Run order: sequential (do not skip failed steps)
 
 ## 0) Session Header
 
-1. Fill run metadata in `docs/testing/pos-e2e-uat-run-2026-03-28.md`.
+1. Fill run metadata in the latest dated run log (current baseline: `docs/testing/pos-e2e-uat-run-2026-04-16.md`) or create a new dated run file.
 2. Open and complete signoff rows in `docs/testing/pos-e2e-uat-checklist.md`.
 3. Create screenshot folder: `docs/testing/evidence/pos-e2e-<date>/`.
 

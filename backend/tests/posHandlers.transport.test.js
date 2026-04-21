@@ -13,6 +13,7 @@ const mockUpdatePosCatalogOverrideUseCase = jest.fn();
 const mockUploadPosCatalogImageUseCase = jest.fn();
 const mockDeletePosCatalogImageUseCase = jest.fn();
 const mockOpenTerminalShiftUseCase = jest.fn();
+const mockSwitchTerminalShiftLocationUseCase = jest.fn();
 const mockGetCurrentTerminalShiftUseCase = jest.fn();
 const mockRecordCashDrawerEventUseCase = jest.fn();
 const mockCloseTerminalShiftUseCase = jest.fn();
@@ -35,6 +36,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     uploadPosCatalogImageUseCase: mockUploadPosCatalogImageUseCase,
     deletePosCatalogImageUseCase: mockDeletePosCatalogImageUseCase,
     openTerminalShiftUseCase: mockOpenTerminalShiftUseCase,
+    switchTerminalShiftLocationUseCase: mockSwitchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
     closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
@@ -54,6 +56,7 @@ let closeDayZReading;
 let getCurrentXReading;
 let incrementGovernedResetCounter;
 let openTerminalShift;
+let switchTerminalShiftLocation;
 let recordCashDrawerEvent;
 let closeTerminalShift;
 let updateOnlineOrderStatus;
@@ -67,6 +70,7 @@ beforeAll(async () => {
     getCurrentXReading = mod.getCurrentXReading;
     incrementGovernedResetCounter = mod.incrementGovernedResetCounter;
     openTerminalShift = mod.openTerminalShift;
+    switchTerminalShiftLocation = mod.switchTerminalShiftLocation;
     recordCashDrawerEvent = mod.recordCashDrawerEvent;
     closeTerminalShift = mod.closeTerminalShift;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
@@ -94,13 +98,21 @@ describe('posHandlers transport contracts', () => {
             data: [{ item_id: 1, name: 'Tea' }]
         });
 
-        const req = { query: {}, validatedQuery: { search: '', folder_id: 7, limit: 100 }, requestId: 'req-pos-catalog' };
+        const req = {
+            query: {},
+            validatedQuery: { search: '', folder_id: 7, limit: 100 },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-catalog'
+        };
         const res = createRes();
         const next = jest.fn();
 
         await listCatalog(req, res, next);
 
-        expect(mockListPosCatalogUseCase).toHaveBeenCalledWith({ query: { search: '', folder_id: 7, limit: 100 } });
+        expect(mockListPosCatalogUseCase).toHaveBeenCalledWith({
+            query: { search: '', folder_id: 7, limit: 100 },
+            user: expect.objectContaining({ user_id: 4 })
+        });
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith({
             success: true,
@@ -375,6 +387,55 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Cash drawer event recorded',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('switchTerminalShiftLocation returns stable success payload', async () => {
+        mockSwitchTerminalShiftLocationUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                from_shift: { pos_terminal_shift_id: 77, location_id: 2 },
+                to_shift: { pos_terminal_shift_id: 78, location_id: 3 }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 77 },
+            params: { id: 77 },
+            validatedData: {
+                target_location_id: 3,
+                reason: 'Staff reassignment for lunch coverage',
+                idempotency_key: 'shift-switch-20260409-01'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-shift-switch'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await switchTerminalShiftLocation(req, res, next);
+
+        expect(mockSwitchTerminalShiftLocationUseCase).toHaveBeenCalledWith({
+            shiftId: 77,
+            payload: {
+                target_location_id: 3,
+                reason: 'Staff reassignment for lunch coverage',
+                idempotency_key: 'shift-switch-20260409-01'
+            },
+            user: expect.objectContaining({ user_id: 4 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                replay_outcome: 'processed'
+            }),
+            message: 'Terminal shift location switched successfully',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

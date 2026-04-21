@@ -65,6 +65,30 @@ describe('settings use-cases application result contract', () => {
     });
   });
 
+  it('updateSettingByKey blocks strict POS location binding when readiness is not complete', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: false,
+          unresolved_count: 1,
+          low_confidence_count: 0
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'pos_terminal_location_binding_enforced',
+      value: true,
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
   it('resetSettingsToDefault maps repository failures', async () => {
     const useCase = buildResetSettingsToDefaultUseCase({
       settingsRepository: {
@@ -76,5 +100,31 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.INTERNAL_ERROR);
     expect(result.error.message).toBe('Reset failed');
+  });
+
+  it('updateSettings blocks strict POS location binding when readiness is not complete', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: false,
+          unresolved_count: 2,
+          low_confidence_count: 1
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_terminal_location_binding_enforced: true
+      },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 });

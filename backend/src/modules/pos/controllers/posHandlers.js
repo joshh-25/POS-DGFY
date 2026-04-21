@@ -12,6 +12,7 @@ import {
     uploadPosCatalogImageUseCase,
     deletePosCatalogImageUseCase,
     openTerminalShiftUseCase,
+    switchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase,
     closeTerminalShiftUseCase,
@@ -37,7 +38,10 @@ const defaultErrorPayload = (req, res, failure) => ({
 
 export const listCatalog = async (req, res, next) => {
     try {
-        const result = await listPosCatalogUseCase({ query: req.validatedQuery || req.query });
+        const result = await listPosCatalogUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({
@@ -148,6 +152,42 @@ export const openTerminalShift = async (req, res, next) => {
     }
 };
 
+export const switchTerminalShiftLocation = async (req, res, next) => {
+    try {
+        const result = await switchTerminalShiftLocationUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_terminal_shift_location_switched',
+            surface: 'pos_terminal',
+            action: 'switch_location',
+            result,
+            successMetadataResolver: (data) => ({
+                from_shift_id: data?.from_shift?.pos_terminal_shift_id || null,
+                to_shift_id: data?.to_shift?.pos_terminal_shift_id || null,
+                from_location_id: data?.from_shift?.location_id || null,
+                to_location_id: data?.to_shift?.location_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Terminal shift location switched successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const recordCashDrawerEvent = async (req, res, next) => {
     try {
         const result = await recordCashDrawerEventUseCase({
@@ -238,7 +278,8 @@ export const getTerminalTodayDashboard = async (req, res, next) => {
 export const listIncomingOnlineOrders = async (req, res, next) => {
     try {
         const result = await listIncomingOnlineOrdersUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            user: req.user
         });
 
         return sendUseCaseResult(res, result, {
@@ -281,7 +322,8 @@ export const updateOnlineOrderStatus = async (req, res, next) => {
 export const listTransactions = async (req, res, next) => {
     try {
         const result = await listPosTransactionsUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            user: req.user
         });
         await trackProductUsageFromResult({
             req,
@@ -547,6 +589,7 @@ export default {
     deleteCatalogImage,
     getCurrentTerminalShift,
     openTerminalShift,
+    switchTerminalShiftLocation,
     recordCashDrawerEvent,
     closeTerminalShift,
     getTerminalTodayDashboard,

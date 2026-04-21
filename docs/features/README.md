@@ -17,6 +17,8 @@ When to use:
 - Nested product composition behavior and constraints.
 5. `docs/features/TENANT_MANAGEMENT.md`
 - Tenant lifecycle and management constraints, including isolation and provisioning rules.
+6. `docs/features/multi-location-inventory/OPERATION_CONTRACT_MATRIX.md`
+- Operational contract matrix for location-scoped stock, POS read/write safety, and phased rollout controls.
 
 ## Usage Notes
 
@@ -27,4 +29,5 @@ When to use:
 - `docs/architecture/adr/0007-dual-mode-pos-compliance-program.md`
 - `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
 - `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
+- `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
 - `docs/architecture/adr/0010-weighted-average-cost-valuation-and-variance-analytics.md`

@@ -21,6 +21,7 @@ import {
     validateIncomingOnlineOrdersQuery,
     validateShiftIdParam,
     validateOpenTerminalShift,
+    validateSwitchTerminalShiftLocation,
     validateCashDrawerEvent,
     validateCloseTerminalShift,
     validateUpdateOnlineOrderStatus
@@ -42,6 +43,7 @@ router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), v
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
 router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
 router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
+router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateShiftIdParam, validateSwitchTerminalShiftLocation, posController.switchTerminalShiftLocation);
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);

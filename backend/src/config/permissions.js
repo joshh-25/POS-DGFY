@@ -65,7 +65,8 @@ export const PERMISSIONS = {
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
-            REPRINT_POS_RECEIPT: "pos:reprint" // Reprint historical POS receipts
+            REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts
+            SWITCH_LOCATION_POS: "pos:switch_location" // Switch terminal shift location using governed flow
         }
     },
 

@@ -113,7 +113,7 @@ function IncomingQueueWorkspace({
   incomingHistoryOpeningId,
   refreshIncomingOrders,
   locationsState,
-  selectedLocationId,
+  queueLocationScopeId,
   locked,
   sectionId
 }) {
@@ -121,9 +121,9 @@ function IncomingQueueWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const selectedLocationName = !selectedLocationId
-    ? 'All Locations'
-    : (locations.find((location) => Number(location.location_id) === Number(selectedLocationId))?.name || 'Selected Location');
+  const selectedLocationName = !queueLocationScopeId
+    ? 'Not selected'
+    : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
 
   return (
     <div id={sectionId} className="space-y-3">
@@ -231,8 +231,8 @@ function IncomingQueueWorkspace({
 function LocationScopeWorkspace({
   canViewPos,
   locationsState,
-  selectedLocationId,
-  setSelectedLocationId,
+  queueLocationScopeId,
+  setQueueLocationScopeId,
   incomingOrdersState,
   refreshIncomingOrders,
   locked,
@@ -253,13 +253,13 @@ function LocationScopeWorkspace({
             <Label className="text-xs">Queue Location Scope</Label>
             <select
               className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
-              value={selectedLocationId || ''}
+              value={queueLocationScopeId || ''}
               onChange={(event) => {
                 const nextValue = event.target.value ? Number(event.target.value) : null;
-                setSelectedLocationId(nextValue);
+                setQueueLocationScopeId(nextValue);
               }}
             >
-              <option value="">All Locations</option>
+              <option value="" disabled>Select queue location</option>
               {locations.map((location) => (
                 <option key={`workspace-location-${location.location_id}`} value={location.location_id}>
                   {location.name}
@@ -287,6 +287,11 @@ function LocationScopeWorkspace({
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
+  locationsState,
+  operatingLocationId,
+  setOperatingLocationId,
+  canSwitchPosLocation,
+  handleSwitchShiftLocation,
   openShiftForm,
   setOpenShiftForm,
   handleOpenShift,
@@ -296,8 +301,32 @@ function ShiftControlsWorkspace({
   refreshOperationalContext,
   sectionId
 }) {
+  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
+  const [switchReason, setSwitchReason] = React.useState('');
+  const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
+
   return (
     <div id={sectionId} className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <Label className="text-xs">Operating Location</Label>
+        <select
+          className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+          value={operatingLocationId || ''}
+          onChange={(event) => {
+            const nextValue = event.target.value ? Number(event.target.value) : null;
+            setOperatingLocationId(nextValue);
+          }}
+        >
+          {locations.map((location) => (
+            <option key={`shift-operating-location-${location.location_id}`} value={location.location_id}>
+              {location.name}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-xs text-slate-600">
+          Catalog, checkout, and dashboard use this location scope.
+        </p>
+      </div>
       {shiftState.loading ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading shift context...</p>
       ) : shiftState.shift ? (
@@ -310,6 +339,49 @@ function ShiftControlsWorkspace({
             <p className="text-slate-600">Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span></p>
             <p className="text-slate-600">Cash Sales: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.cash_sales_amount)}</span></p>
           </div>
+          <p className="mt-2 text-xs text-slate-600">
+            Shift location: <span className="font-semibold text-slate-900">{shiftState?.shift?.location?.name || shiftState?.shift?.location_name || shiftState?.shift?.location_id || 'Unassigned'}</span>
+          </p>
+          {canSwitchPosLocation && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <Label className="text-xs">Switch Shift Location</Label>
+              <select
+                className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+                value={operatingLocationId || ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value ? Number(event.target.value) : null;
+                  setOperatingLocationId(nextValue);
+                }}
+              >
+                {locations.map((location) => (
+                  <option key={`switch-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <Input
+                value={switchReason}
+                onChange={(event) => setSwitchReason(event.target.value)}
+                placeholder="Reason for location switch"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={shiftActionLoading.switchLocation || !operatingLocationId || Number(operatingLocationId) === Number(shiftLocationId)}
+                onClick={() => handleSwitchShiftLocation?.({
+                  targetLocationId: operatingLocationId,
+                  reason: switchReason
+                })}
+              >
+                {shiftActionLoading.switchLocation ? 'Switching...' : 'Switch Shift Location'}
+              </Button>
+            </div>
+          )}
+          {!canSwitchPosLocation && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              You do not have permission to switch shift location.
+            </p>
+          )}
           <Button type="button" variant="outline" className="mt-3" onClick={refreshOperationalContext}>
             Refresh Shift Data
           </Button>
@@ -516,6 +588,15 @@ function SalesTodayWorkspace({ todayDashboard, terminalMeta, sectionId }) {
 }
 
 function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
+  const readiness = terminalMeta?.locationBindingReadiness || null;
+  const unresolvedCount = Number(readiness?.unresolved_count || 0);
+  const lowConfidenceCount = Number(readiness?.low_confidence_count || 0);
+  const strictReady = readiness?.ready_for_strict_mode === true;
+  const readinessStatusLabel = strictReady ? 'Ready' : 'Needs remediation';
+  const readinessStatusClass = strictReady
+    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    : 'text-amber-700 bg-amber-50 border-amber-200';
+
   return (
     <div id={sectionId} className="space-y-3">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -539,6 +620,21 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
         Terminal setup values are managed in Settings &gt; POS Setup and applied here as runtime context.
       </p>
+      {readiness && (
+        <div className={`rounded-lg border px-3 py-3 text-xs ${readinessStatusClass}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold">Location Binding Readiness: {readinessStatusLabel}</p>
+            {readiness?.migration_tag && (
+              <p className="text-[11px] opacity-80">Audit tag: {readiness.migration_tag}</p>
+            )}
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-3">
+            <p>Total shifts: <span className="font-semibold">{Number(readiness?.total_shifts || 0)}</span></p>
+            <p>Unresolved: <span className="font-semibold">{unresolvedCount}</span></p>
+            <p>Low confidence: <span className="font-semibold">{lowConfidenceCount}</span></p>
+          </div>
+        </div>
+      )}
       {terminalMeta.loading && (
         <p className="text-xs text-slate-500">Refreshing terminal setup context...</p>
       )}
@@ -556,6 +652,7 @@ export default function TerminalOperationsWorkspace({
   todayDashboard,
   canViewPos,
   canTransactPos,
+  canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
   openShiftForm,
@@ -566,12 +663,15 @@ export default function TerminalOperationsWorkspace({
   setCloseShiftForm,
   shiftActionLoading,
   handleOpenShift,
+  handleSwitchShiftLocation = () => {},
   handleRecordCashEvent,
   handleCloseShift,
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
-  selectedLocationId = null,
-  setSelectedLocationId = () => {},
+  operatingLocationId = null,
+  setOperatingLocationId = () => {},
+  queueLocationScopeId = null,
+  setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
@@ -604,7 +704,7 @@ export default function TerminalOperationsWorkspace({
           incomingHistoryOpeningId={incomingHistoryOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
           locationsState={locationsState}
-          selectedLocationId={selectedLocationId}
+          queueLocationScopeId={queueLocationScopeId}
           locked={locked}
           sectionId={sectionIds.incomingOrders}
         />
@@ -614,8 +714,8 @@ export default function TerminalOperationsWorkspace({
         <LocationScopeWorkspace
           canViewPos={canViewPos}
           locationsState={locationsState}
-          selectedLocationId={selectedLocationId}
-          setSelectedLocationId={setSelectedLocationId}
+          queueLocationScopeId={queueLocationScopeId}
+          setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrdersState={incomingOrdersState}
           refreshIncomingOrders={refreshIncomingOrders}
           locked={locked}
@@ -627,6 +727,11 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          locationsState={locationsState}
+          operatingLocationId={operatingLocationId}
+          setOperatingLocationId={setOperatingLocationId}
+          canSwitchPosLocation={canSwitchPosLocation}
+          handleSwitchShiftLocation={handleSwitchShiftLocation}
           openShiftForm={openShiftForm}
           setOpenShiftForm={setOpenShiftForm}
           handleOpenShift={handleOpenShift}
@@ -690,6 +795,7 @@ export default function TerminalOperationsWorkspace({
   }, [
     canAdjustCashDrawer,
     canCloseDay,
+    canSwitchPosLocation,
     canTransactPos,
     canViewPos,
     cashEventForm,
@@ -701,12 +807,15 @@ export default function TerminalOperationsWorkspace({
     handleOpenIncomingOrderHistory,
     incomingHistoryOpeningId,
     handleOpenShift,
+    handleSwitchShiftLocation,
     handleRecordCashEvent,
     incomingOrderActionState,
     incomingOrdersState,
     locationsState,
     locked,
+    operatingLocationId,
     openShiftForm,
+    queueLocationScopeId,
     refreshIncomingOrders,
     refreshOperationalContext,
     sectionIds.activeShift,
@@ -716,11 +825,11 @@ export default function TerminalOperationsWorkspace({
     sectionIds.locationScope,
     sectionIds.salesToday,
     sectionIds.terminalSetup,
-    selectedLocationId,
+    setOperatingLocationId,
+    setQueueLocationScopeId,
     setCashEventForm,
     setCloseShiftForm,
     setOpenShiftForm,
-    setSelectedLocationId,
     shiftActionLoading,
     shiftState,
     terminalMeta,

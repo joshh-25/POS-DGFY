@@ -14,6 +14,7 @@ const ORDER_METHOD_DEFAULT_LABELS = {
     delivery: 'Delivery Fee',
     online: 'Online Fee'
 };
+const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 
 const createDefaultOrderMethodFees = () => ORDER_METHODS.reduce((acc, method) => {
     acc[method] = {
@@ -25,6 +26,10 @@ const createDefaultOrderMethodFees = () => ORDER_METHODS.reduce((acc, method) =>
 }, {});
 
 const parseBooleanLike = (value) => value === true || value === 'true' || value === 1 || value === '1';
+const parsePositiveInt = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
 
 const parseJsonLoosely = (raw) => {
     if (raw == null) return null;
@@ -122,6 +127,7 @@ const normalizeTerminalRegistry = (rawValue) => {
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
+            location_id: parsePositiveInt(entry?.location_id),
             is_active: isActive,
             is_default: isActive && parseBooleanLike(entry?.is_default)
         });
@@ -437,6 +443,121 @@ export const settingsRepository = {
     },
     async applyThresholdSettings() {
         return applyThresholdSettingsInternal();
+    },
+    async getPosLocationBindingReadinessSummary(options = {}) {
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        if (!sequelize) {
+            return {
+                total_shifts: 0,
+                unresolved_count: 0,
+                low_confidence_count: 0,
+                source_counts: {},
+                ready_for_strict_mode: true
+            };
+        }
+        try {
+            const [latestMigrationTagRows] = await sequelize.query(`
+            SELECT migration_tag
+            FROM pos_shift_location_backfill_audit
+            ORDER BY pos_shift_location_backfill_audit_id DESC
+            LIMIT 1
+        `, { transaction: options.transaction });
+            const latestMigrationTag = latestMigrationTagRows?.[0]?.migration_tag || null;
+
+            if (!latestMigrationTag) {
+                const [fallbackCountsRows] = await sequelize.query(`
+                SELECT
+                    COUNT(*) AS total_shifts,
+                    SUM(CASE WHEN location_id IS NULL THEN 1 ELSE 0 END) AS unresolved_count
+                FROM pos_terminal_shifts
+            `, { transaction: options.transaction });
+                const totalShifts = Number.parseInt(fallbackCountsRows?.[0]?.total_shifts || 0, 10) || 0;
+                const unresolvedCount = Number.parseInt(fallbackCountsRows?.[0]?.unresolved_count || 0, 10) || 0;
+                return {
+                    total_shifts: totalShifts,
+                    unresolved_count: unresolvedCount,
+                    low_confidence_count: unresolvedCount,
+                    source_counts: {},
+                    ready_for_strict_mode: unresolvedCount === 0
+                };
+            }
+
+            const [summaryRows] = await sequelize.query(`
+            SELECT
+                COUNT(*) AS total_shifts,
+                SUM(CASE WHEN s.location_id IS NULL THEN 1 ELSE 0 END) AS unresolved_count,
+                SUM(CASE WHEN a.resolution_source IN ('active_location_fallback', 'no_resolution') THEN 1 ELSE 0 END) AS low_confidence_count
+            FROM pos_terminal_shifts s
+            LEFT JOIN (
+                SELECT audit.*
+                FROM pos_shift_location_backfill_audit audit
+                INNER JOIN (
+                    SELECT shift_id, MAX(pos_shift_location_backfill_audit_id) AS latest_id
+                    FROM pos_shift_location_backfill_audit
+                    WHERE migration_tag = :migrationTag
+                    GROUP BY shift_id
+                ) latest ON latest.latest_id = audit.pos_shift_location_backfill_audit_id
+            ) a ON a.shift_id = s.pos_terminal_shift_id
+        `, {
+            replacements: { migrationTag: latestMigrationTag },
+            transaction: options.transaction
+        });
+
+            const [sourceRows] = await sequelize.query(`
+            SELECT
+                a.resolution_source AS resolution_source,
+                COUNT(*) AS count
+            FROM (
+                SELECT audit.*
+                FROM pos_shift_location_backfill_audit audit
+                INNER JOIN (
+                    SELECT shift_id, MAX(pos_shift_location_backfill_audit_id) AS latest_id
+                    FROM pos_shift_location_backfill_audit
+                    WHERE migration_tag = :migrationTag
+                    GROUP BY shift_id
+                ) latest ON latest.latest_id = audit.pos_shift_location_backfill_audit_id
+            ) a
+            GROUP BY a.resolution_source
+        `, {
+            replacements: { migrationTag: latestMigrationTag },
+            transaction: options.transaction
+        });
+
+            const sourceCounts = {};
+            sourceRows.forEach((row) => {
+                const source = String(row?.resolution_source || '').trim();
+                if (!source) return;
+                sourceCounts[source] = Number.parseInt(row?.count || 0, 10) || 0;
+            });
+
+            const totalShifts = Number.parseInt(summaryRows?.[0]?.total_shifts || 0, 10) || 0;
+            const unresolvedCount = Number.parseInt(summaryRows?.[0]?.unresolved_count || 0, 10) || 0;
+            const lowConfidenceCount = Number.parseInt(summaryRows?.[0]?.low_confidence_count || 0, 10) || 0;
+            const lowConfidenceFromSources = Array.from(LOW_CONFIDENCE_BACKFILL_SOURCES).reduce(
+                (acc, source) => acc + (sourceCounts[source] || 0),
+                0
+            );
+            const normalizedLowConfidenceCount = Math.max(lowConfidenceCount, lowConfidenceFromSources);
+
+            return {
+                migration_tag: latestMigrationTag,
+                total_shifts: totalShifts,
+                unresolved_count: unresolvedCount,
+                low_confidence_count: normalizedLowConfidenceCount,
+                source_counts: sourceCounts,
+                ready_for_strict_mode: unresolvedCount === 0 && normalizedLowConfidenceCount === 0
+            };
+        } catch (error) {
+            logger.warn(`[SettingsRepository] Failed to compute POS location binding readiness summary: ${error.message}`);
+            return {
+                total_shifts: 0,
+                unresolved_count: 0,
+                low_confidence_count: 0,
+                source_counts: {},
+                ready_for_strict_mode: false,
+                error: 'READINESS_SUMMARY_UNAVAILABLE'
+            };
+        }
     }
 };
 

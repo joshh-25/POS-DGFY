@@ -12,7 +12,12 @@ const toNumber = (value, fallback = 0) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
 };
+const toPositiveInt = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
+const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const parseJsonLoosely = (value) => {
     if (value == null) return null;
@@ -48,10 +53,12 @@ const normalizeTerminalRegistry = (rawValue) => {
         if (entry?.is_active === false) {
             return;
         }
+        const locationId = toPositiveInt(entry?.location_id);
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
-            label: String(entry?.label || '').trim()
+            label: String(entry?.label || '').trim(),
+            location_id: locationId
         });
     });
     return normalized;
@@ -59,6 +66,14 @@ const normalizeTerminalRegistry = (rawValue) => {
 const toPositiveNumber = (value) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+};
+const toBoolean = (value, fallback = false) => {
+    if (typeof value === 'boolean') return value;
+    if (value == null) return fallback;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+    return fallback;
 };
 const BASE_POS_ITEM_ATTRIBUTES = [
     'item_id',
@@ -343,6 +358,7 @@ const buildTransactionInclude = () => ([
             'pos_terminal_shift_id',
             'business_date',
             'terminal_id',
+            'location_id',
             'cashier_id',
             'status',
             'opened_at',
@@ -562,6 +578,10 @@ export const posRepository = {
         if (filters.search) {
             where.invoice_number = { [Op.like]: `%${String(filters.search).trim()}%` };
         }
+        const locationId = Number.parseInt(filters.location_id, 10);
+        if (Number.isInteger(locationId) && locationId > 0) {
+            where.location_id = locationId;
+        }
 
         if (filters.date_from || filters.date_to) {
             where.created_at = {};
@@ -585,7 +605,7 @@ export const posRepository = {
                 {
                     model: dbStore.get('PosTerminalShift'),
                     as: 'shift',
-                    attributes: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'status']
+                    attributes: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'location_id', 'status']
                 }
             ],
             order: [['created_at', 'DESC']],
@@ -604,7 +624,7 @@ export const posRepository = {
         };
     },
 
-    async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null }, options = {}) {
+    async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null, locationId = null }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
@@ -617,6 +637,7 @@ export const posRepository = {
         if (terminalId) where.terminal_id = terminalId;
         if (cashierId) where.cashier_id = cashierId;
         if (shiftId) where.shift_id = shiftId;
+        if (locationId) where.location_id = locationId;
 
         const [summaryRow] = await PosTransaction.findAll({
             where,
@@ -707,14 +728,19 @@ export const posRepository = {
         if (!SystemSetting) {
             return {
                 mode: 'warn',
-                active_registry: []
+                active_registry: [],
+                binding_enforced: false
             };
         }
 
         const rows = await SystemSetting.findAll({
             where: {
                 setting_key: {
-                    [Op.in]: ['pos_terminal_registry_mode', 'pos_terminal_registry']
+                    [Op.in]: [
+                        'pos_terminal_registry_mode',
+                        'pos_terminal_registry',
+                        'pos_terminal_location_binding_enforced'
+                    ]
                 }
             },
             attributes: ['setting_key', 'setting_value', 'data_type'],
@@ -734,11 +760,132 @@ export const posRepository = {
         const parsedRegistry = rawRegistrySetting?.data_type === 'json'
             ? parseJsonLoosely(rawRegistrySetting.setting_value)
             : rawRegistrySetting?.setting_value;
+        const bindingEnforced = toBoolean(
+            lookup.get('pos_terminal_location_binding_enforced')?.setting_value,
+            false
+        );
 
         return {
             mode,
-            active_registry: normalizeTerminalRegistry(parsedRegistry)
+            active_registry: normalizeTerminalRegistry(parsedRegistry),
+            binding_enforced: bindingEnforced
         };
+    },
+
+    async getShiftLocationBindingReadinessSummary(options = {}) {
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        if (!sequelize) {
+            return {
+                total_shifts: 0,
+                unresolved_count: 0,
+                low_confidence_count: 0,
+                source_counts: {},
+                ready_for_strict_mode: false
+            };
+        }
+
+        try {
+            const [latestMigrationTagRows] = await sequelize.query(`
+                SELECT migration_tag
+                FROM pos_shift_location_backfill_audit
+                ORDER BY pos_shift_location_backfill_audit_id DESC
+                LIMIT 1
+            `, { transaction: options.transaction });
+            const latestMigrationTag = latestMigrationTagRows?.[0]?.migration_tag || null;
+
+            if (!latestMigrationTag) {
+                const [fallbackCountsRows] = await sequelize.query(`
+                    SELECT
+                        COUNT(*) AS total_shifts,
+                        SUM(CASE WHEN location_id IS NULL THEN 1 ELSE 0 END) AS unresolved_count
+                    FROM pos_terminal_shifts
+                `, { transaction: options.transaction });
+                const totalShifts = Number.parseInt(fallbackCountsRows?.[0]?.total_shifts || 0, 10) || 0;
+                const unresolvedCount = Number.parseInt(fallbackCountsRows?.[0]?.unresolved_count || 0, 10) || 0;
+                return {
+                    total_shifts: totalShifts,
+                    unresolved_count: unresolvedCount,
+                    low_confidence_count: unresolvedCount,
+                    source_counts: {},
+                    ready_for_strict_mode: unresolvedCount === 0
+                };
+            }
+
+            const [summaryRows] = await sequelize.query(`
+                SELECT
+                    COUNT(*) AS total_shifts,
+                    SUM(CASE WHEN s.location_id IS NULL THEN 1 ELSE 0 END) AS unresolved_count,
+                    SUM(CASE WHEN a.resolution_source IN ('active_location_fallback', 'no_resolution') THEN 1 ELSE 0 END) AS low_confidence_count
+                FROM pos_terminal_shifts s
+                LEFT JOIN (
+                    SELECT audit.*
+                    FROM pos_shift_location_backfill_audit audit
+                    INNER JOIN (
+                        SELECT shift_id, MAX(pos_shift_location_backfill_audit_id) AS latest_id
+                        FROM pos_shift_location_backfill_audit
+                        WHERE migration_tag = :migrationTag
+                        GROUP BY shift_id
+                    ) latest ON latest.latest_id = audit.pos_shift_location_backfill_audit_id
+                ) a ON a.shift_id = s.pos_terminal_shift_id
+            `, {
+                replacements: { migrationTag: latestMigrationTag },
+                transaction: options.transaction
+            });
+
+            const [sourceRows] = await sequelize.query(`
+                SELECT
+                    a.resolution_source AS resolution_source,
+                    COUNT(*) AS count
+                FROM (
+                    SELECT audit.*
+                    FROM pos_shift_location_backfill_audit audit
+                    INNER JOIN (
+                        SELECT shift_id, MAX(pos_shift_location_backfill_audit_id) AS latest_id
+                        FROM pos_shift_location_backfill_audit
+                        WHERE migration_tag = :migrationTag
+                        GROUP BY shift_id
+                    ) latest ON latest.latest_id = audit.pos_shift_location_backfill_audit_id
+                ) a
+                GROUP BY a.resolution_source
+            `, {
+                replacements: { migrationTag: latestMigrationTag },
+                transaction: options.transaction
+            });
+
+            const sourceCounts = {};
+            sourceRows.forEach((row) => {
+                const source = String(row?.resolution_source || '').trim();
+                if (!source) return;
+                sourceCounts[source] = Number.parseInt(row?.count || 0, 10) || 0;
+            });
+
+            const totalShifts = Number.parseInt(summaryRows?.[0]?.total_shifts || 0, 10) || 0;
+            const unresolvedCount = Number.parseInt(summaryRows?.[0]?.unresolved_count || 0, 10) || 0;
+            const lowConfidenceCount = Number.parseInt(summaryRows?.[0]?.low_confidence_count || 0, 10) || 0;
+            const lowConfidenceFromSources = Array.from(LOW_CONFIDENCE_BACKFILL_SOURCES).reduce(
+                (acc, source) => acc + (sourceCounts[source] || 0),
+                0
+            );
+            const normalizedLowConfidenceCount = Math.max(lowConfidenceCount, lowConfidenceFromSources);
+
+            return {
+                migration_tag: latestMigrationTag,
+                total_shifts: totalShifts,
+                unresolved_count: unresolvedCount,
+                low_confidence_count: normalizedLowConfidenceCount,
+                source_counts: sourceCounts,
+                ready_for_strict_mode: unresolvedCount === 0 && normalizedLowConfidenceCount === 0
+            };
+        } catch {
+            return {
+                total_shifts: 0,
+                unresolved_count: 0,
+                low_confidence_count: 0,
+                source_counts: {},
+                ready_for_strict_mode: false,
+                error: 'READINESS_SUMMARY_UNAVAILABLE'
+            };
+        }
     },
 
     async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
@@ -1000,17 +1147,23 @@ export const posRepository = {
         }
     },
 
-    async findOpenTerminalShift({ terminalId = null, cashierId = null } = {}, options = {}) {
+    async findOpenTerminalShift({ terminalId = null, cashierId = null, locationId = null } = {}, options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         const where = { status: 'open' };
         if (terminalId) where.terminal_id = terminalId;
         if (cashierId) where.cashier_id = cashierId;
+        if (locationId) where.location_id = locationId;
         return PosTerminalShift.findOne({
             where,
             include: [
                 {
                     model: dbStore.get('PosCashDrawerEvent'),
                     as: 'cashEvents',
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
                     required: false
                 }
             ],
@@ -1025,6 +1178,14 @@ export const posRepository = {
         return PosTerminalShift.create(payload, { transaction: options.transaction });
     },
 
+    async createShiftLocationTransition(payload = {}, options = {}) {
+        const PosShiftLocationTransition = dbStore.get('PosShiftLocationTransition');
+        if (!PosShiftLocationTransition) {
+            throw new Error('PosShiftLocationTransition model is unavailable');
+        }
+        return PosShiftLocationTransition.create(payload, { transaction: options.transaction });
+    },
+
     async getTerminalShiftById(shiftId, options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         return PosTerminalShift.findByPk(shiftId, {
@@ -1032,6 +1193,11 @@ export const posRepository = {
                 {
                     model: dbStore.get('PosCashDrawerEvent'),
                     as: 'cashEvents',
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
                     required: false
                 }
             ],

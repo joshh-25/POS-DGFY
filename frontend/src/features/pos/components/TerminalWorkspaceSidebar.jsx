@@ -45,7 +45,7 @@ export default function TerminalWorkspaceSidebar({
   shiftState = { shift: null },
   incomingOrdersState = { orders: [] },
   locationsState = { locations: [] },
-  selectedLocationId = null,
+  queueLocationScopeId = null,
   onSelectViewMode = () => {},
   onUnlock = () => {},
   onLock = () => {}
@@ -54,9 +54,9 @@ export default function TerminalWorkspaceSidebar({
     ? incomingOrdersState.orders.length
     : 0;
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const selectedLocationName = !selectedLocationId
-    ? 'All Locations'
-    : (locations.find((location) => Number(location.location_id) === Number(selectedLocationId))?.name || 'Selected Location');
+  const selectedLocationName = !queueLocationScopeId
+    ? 'Not selected'
+    : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
   const showIncomingQueue = !isMsmeMode;
   const showLocationScope = !isMsmeMode;
   const showAdvancedOps = !isMsmeMode;

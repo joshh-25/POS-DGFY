@@ -1,6 +1,6 @@
 # RBAC Sensitive Action Matrix
 
-Last updated: 2026-04-08
+Last updated: 2026-04-21
 
 ## Objective
 Map sensitive compliance and POS operations to required permissions and enforcement surface.
@@ -9,6 +9,7 @@ Map sensitive compliance and POS operations to required permissions and enforcem
 |---|---|---|---|
 | POS checkout | `pos:transact` | `backend/src/routes/pos.js`, `backend/src/modules/pos/controllers/posHandlers.js` | `frontend/src/features/pos/pages/TerminalPage.jsx` |
 | Open terminal shift | `pos:transact` | `backend/src/routes/pos.js` (`/terminal/shifts/open`) | `frontend/src/features/pos/pages/TerminalPage.jsx` |
+| Switch terminal shift location | `pos:switch_location` | `backend/src/routes/pos.js` (`/terminal/shifts/:id/switch-location`) | `frontend/src/features/pos/pages/TerminalPage.jsx` |
 | Cash drawer adjustment | `pos:cash_drawer_adjust` | `backend/src/routes/pos.js` (`/terminal/shifts/:id/cash-events`) | `frontend/src/features/pos/pages/TerminalPage.jsx` |
 | Close terminal shift / day | `pos:close_day` | `backend/src/routes/pos.js` (`/terminal/shifts/:id/close`, `/z-reading/close-day`) | `frontend/src/features/pos/pages/TerminalPage.jsx` |
 | Compliance profile update | `system:edit_settings` | `backend/src/routes/compliance.js` (`PUT /profile`) | `frontend/src/features/compliance/components/ComplianceProgramPanel.jsx` |
@@ -19,4 +20,5 @@ Map sensitive compliance and POS operations to required permissions and enforcem
 ## Verification References
 - `backend/tests/complianceActivation.transport.test.js`
 - `backend/tests/posHandlers.transport.test.js`
+- `backend/tests/posValidator.terminalShiftIdentity.test.js`
 - `backend/tests/complianceSecurityIncidents.usecase.test.js`

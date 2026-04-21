@@ -12,6 +12,9 @@
 - [Landlord Database (Registry)](#landlord-database-registry)
 - [Tenant Databases (Isolated Contexts)](#tenant-databases-isolated-contexts)
 
+### Recent Addenda
+- [POS Shift-Location Safety Addendum (2026-04-21)](#pos-shift-location-safety-addendum-2026-04-21)
+
 ### Table Definitions
 - [1. Users Table](#1-users-table)
 - [2. Items (SKU Master) Table](#2-items-sku-master-table)
@@ -131,6 +134,20 @@ Subscription notes:
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
 
 Every tenant database follows the **Master Schema** defined below. When a new company is registered, the system creates a new database and executes all migrations to ensure it matches this structure.
+
+## POS Shift-Location Safety Addendum (2026-04-21)
+
+The following POS location-safety schema additions are now part of the active tenant schema behavior:
+
+1. `pos_terminal_shifts.location_id` is the shift location anchor for POS operations.
+2. `pos_shift_location_transitions` stores privileged location switch audit transitions (close+open flow).
+3. `pos_shift_location_backfill_audit` stores legacy shift-location remediation provenance (`resolution_source`, `resolution_reason`, `migration_tag`).
+4. Terminal registry entries support a single home location mapping (`pos_terminal_registry[].location_id`) used by remediation and strict-binding policy checks.
+
+Primary migrations:
+
+1. `20260421000001-add-pos-shift-location-binding.cjs`
+2. `20260421000002-remediate-pos-shift-location-backfill.cjs`
 
 ---
 

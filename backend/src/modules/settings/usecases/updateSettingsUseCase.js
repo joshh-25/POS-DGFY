@@ -9,6 +9,8 @@ import {
 } from '../../compliance/index.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY = 'pos_terminal_location_binding_enforced';
+const POS_LOCATION_BINDING_REASON_CODE = 'POS_LOCATION_BINDING_READINESS_REQUIRED';
 
 const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     if (!Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY)) {
@@ -60,6 +62,30 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
         try {
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            const requestedStrictBinding = settingsData[POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY] === true;
+
+            if (
+                requestedStrictBinding
+                && typeof settingsRepository?.getPosLocationBindingReadinessSummary === 'function'
+            ) {
+                const readinessSummary = await settingsRepository.getPosLocationBindingReadinessSummary();
+                const unresolvedCount = Number.parseInt(readinessSummary?.unresolved_count || 0, 10) || 0;
+                const lowConfidenceCount = Number.parseInt(readinessSummary?.low_confidence_count || 0, 10) || 0;
+
+                if (unresolvedCount > 0 || lowConfidenceCount > 0 || readinessSummary?.ready_for_strict_mode === false) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Strict POS location binding cannot be enabled until location backfill readiness is complete.',
+                        {
+                            statusCode: 422,
+                            details: {
+                                reason_code: POS_LOCATION_BINDING_REASON_CODE,
+                                location_binding_readiness: readinessSummary || null
+                            }
+                        }
+                    );
+                }
+            }
 
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {

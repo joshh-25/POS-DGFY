@@ -29,7 +29,8 @@ export default function TerminalPageLayout({
     shiftState,
     incomingOrdersState,
     locationsState,
-    selectedLocationId,
+    operatingLocationId,
+    queueLocationScopeId,
     handleSelectViewMode,
     handleLock,
     setDrawerOpen,
@@ -49,10 +50,13 @@ export default function TerminalPageLayout({
     setCloseShiftForm,
     shiftActionLoading,
     handleOpenShift,
+    canSwitchPosLocation,
+    handleSwitchShiftLocation,
     handleRecordCashEvent,
     handleCloseShift,
     refreshOperationalContext,
-    setSelectedLocationId,
+    setOperatingLocationId,
+    setQueueLocationScopeId,
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
     handleOpenIncomingOrderReceipt,
@@ -89,6 +93,12 @@ export default function TerminalPageLayout({
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const shiftOpen = Boolean(activeShiftId);
   const complianceBlocked = Boolean(complianceBlockerDetails);
+  const shiftLocationLabel = String(
+    shiftState?.shift?.location?.name
+    || shiftState?.shift?.location_name
+    || shiftState?.shift?.location_id
+    || 'Unassigned'
+  ).trim();
   const statusRailItems = [
     {
       label: 'Connectivity',
@@ -102,7 +112,7 @@ export default function TerminalPageLayout({
     },
     {
       label: 'Shift',
-      value: shiftOpen ? `Open #${activeShiftId}` : 'Closed',
+      value: shiftOpen ? `Open #${activeShiftId} @ ${shiftLocationLabel}` : 'Closed',
       tone: shiftOpen ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-700'
     },
     {
@@ -305,7 +315,7 @@ export default function TerminalPageLayout({
                                 shiftState={shiftState}
                                 incomingOrdersState={incomingOrdersState}
                                 locationsState={locationsState}
-                                selectedLocationId={selectedLocationId}
+                                queueLocationScopeId={queueLocationScopeId}
                                 onSelectViewMode={handleSelectViewMode}
                                 onUnlock={() => {
                                     setDrawerOpen(true);
@@ -342,7 +352,7 @@ export default function TerminalPageLayout({
                             shiftState={shiftState}
                             incomingOrdersState={incomingOrdersState}
                             locationsState={locationsState}
-                            selectedLocationId={selectedLocationId}
+                            queueLocationScopeId={queueLocationScopeId}
                             onSelectViewMode={handleSelectViewMode}
                             onUnlock={() => setDrawerOpen(true)}
                             onLock={handleLock}
@@ -362,7 +372,7 @@ export default function TerminalPageLayout({
                                 isMsmeMode={isMsmeMode}
                                 layoutContext="embedded"
                                 canViewHistory={canViewPos}
-                                selectedLocationId={selectedLocationId}
+                                selectedLocationId={operatingLocationId}
                                 activeShiftId={activeShiftId}
                                 terminalId={activeTerminalId}
                                 checkoutBlockedReason={checkoutBlockedReason}
@@ -408,12 +418,16 @@ export default function TerminalPageLayout({
                                 setCloseShiftForm={setCloseShiftForm}
                                 shiftActionLoading={shiftActionLoading}
                                 handleOpenShift={handleOpenShift}
+                                canSwitchPosLocation={canSwitchPosLocation}
+                                handleSwitchShiftLocation={handleSwitchShiftLocation}
                                 handleRecordCashEvent={handleRecordCashEvent}
                                 handleCloseShift={handleCloseShift}
                                 refreshOperationalContext={refreshOperationalContext}
                                 locationsState={locationsState}
-                                selectedLocationId={selectedLocationId}
-                                setSelectedLocationId={setSelectedLocationId}
+                                operatingLocationId={operatingLocationId}
+                                setOperatingLocationId={setOperatingLocationId}
+                                queueLocationScopeId={queueLocationScopeId}
+                                setQueueLocationScopeId={setQueueLocationScopeId}
                                 incomingOrdersState={incomingOrdersState}
                                 incomingOrderActionState={incomingOrderActionState}
                                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
@@ -454,12 +468,16 @@ export default function TerminalPageLayout({
                             setCloseShiftForm={setCloseShiftForm}
                             shiftActionLoading={shiftActionLoading}
                             handleOpenShift={handleOpenShift}
+                            canSwitchPosLocation={canSwitchPosLocation}
+                            handleSwitchShiftLocation={handleSwitchShiftLocation}
                             handleRecordCashEvent={handleRecordCashEvent}
                             handleCloseShift={handleCloseShift}
                             refreshOperationalContext={refreshOperationalContext}
                             locationsState={locationsState}
-                            selectedLocationId={selectedLocationId}
-                            setSelectedLocationId={setSelectedLocationId}
+                            operatingLocationId={operatingLocationId}
+                            setOperatingLocationId={setOperatingLocationId}
+                            queueLocationScopeId={queueLocationScopeId}
+                            setQueueLocationScopeId={setQueueLocationScopeId}
                             incomingOrdersState={incomingOrdersState}
                             incomingOrderActionState={incomingOrderActionState}
                             handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}

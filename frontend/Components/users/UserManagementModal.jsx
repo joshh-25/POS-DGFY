@@ -39,7 +39,7 @@ const PERMISSION_TEMPLATES = {
       'po:view', 'po:create', 'po:approve', 'po:receive',
       'jo:view', 'jo:create', 'jo:approve', 'jo:complete',
       'do:view', 'do:create', 'do:dispatch', 'do:delete',
-      'pos:view', 'pos:transact', 'pos:price_override', 'pos:cash_drawer_adjust', 'pos:close_day', 'pos:reprint',
+      'pos:view', 'pos:transact', 'pos:price_override', 'pos:cash_drawer_adjust', 'pos:close_day', 'pos:reprint', 'pos:switch_location',
       'stock:view', 'stock:adjust', 'batches:view', 'batches:edit',
       'reports:view',
       'ai:chat', 'ai:action',

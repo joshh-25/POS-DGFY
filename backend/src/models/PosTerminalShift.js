@@ -15,6 +15,10 @@ const PosTerminalShift = sequelize.define('PosTerminalShift', {
         type: DataTypes.STRING(100),
         allowNull: false
     },
+    location_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     cashier_id: {
         type: DataTypes.INTEGER,
         allowNull: false
@@ -70,8 +74,10 @@ const PosTerminalShift = sequelize.define('PosTerminalShift', {
     indexes: [
         { fields: ['business_date'] },
         { fields: ['terminal_id'] },
+        { fields: ['location_id'] },
         { fields: ['cashier_id', 'status'] },
-        { fields: ['terminal_id', 'status'] }
+        { fields: ['terminal_id', 'status'] },
+        { fields: ['terminal_id', 'location_id', 'status'] }
     ]
 });
 

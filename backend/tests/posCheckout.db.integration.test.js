@@ -239,7 +239,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const rawMaterial = await createRawMaterial({ current_stock: 10, default_sale_price: 80 });
 
         const catalogBeforeEnable = await runInTenantContext(() => listPosCatalogUseCase({
-            query: { search: rawMaterial.sku_code, limit: 50 }
+            query: { search: rawMaterial.sku_code, limit: 50 },
+            user: { user_id: cashier.user_id }
         }));
         expect(catalogBeforeEnable.success).toBe(true);
         expect(catalogBeforeEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);
@@ -261,7 +262,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
 
         const catalogAfterEnable = await runInTenantContext(() => listPosCatalogUseCase({
-            query: { search: rawMaterial.sku_code, limit: 50 }
+            query: { search: rawMaterial.sku_code, limit: 50 },
+            user: { user_id: cashier.user_id }
         }));
         expect(catalogAfterEnable.success).toBe(true);
         expect(catalogAfterEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(true);
@@ -284,7 +286,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
 
         const catalogAfterHide = await runInTenantContext(() => listPosCatalogUseCase({
-            query: { search: rawMaterial.sku_code, limit: 50 }
+            query: { search: rawMaterial.sku_code, limit: 50 },
+            user: { user_id: cashier.user_id }
         }));
         expect(catalogAfterHide.success).toBe(true);
         expect(catalogAfterHide.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);

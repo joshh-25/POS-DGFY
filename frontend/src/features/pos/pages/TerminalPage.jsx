@@ -6,6 +6,7 @@ import {
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
   openTerminalShift,
+  switchTerminalShiftLocation,
   recordCashDrawerEvent,
   updateOnlineOrderStatus
 } from '../services/posService';
@@ -117,6 +118,7 @@ const normalizeTerminalRegistry = (rawRegistry) => {
     normalized.push({
       terminal_id: terminalId,
       label: String(entry?.label || '').trim(),
+      location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
       is_active: isActive,
       is_default: isActive && entry?.is_default === true
     });
@@ -266,7 +268,8 @@ export default function TerminalPage() {
     pettyCashSymbol: DEFAULT_CURRENCY,
     pettyCashAmount: 0,
     activeDiscountCount: 0,
-    enabledFeeMethods: []
+    enabledFeeMethods: [],
+    locationBindingReadiness: null
   });
   const [complianceGate, setComplianceGate] = useState({
     loading: false,
@@ -309,6 +312,7 @@ export default function TerminalPage() {
   });
   const [shiftActionLoading, setShiftActionLoading] = useState({
     open: false,
+    switchLocation: false,
     cashEvent: false,
     close: false
   });
@@ -316,7 +320,8 @@ export default function TerminalPage() {
     loading: false,
     locations: []
   });
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [operatingLocationId, setOperatingLocationId] = useState(null);
+  const [queueLocationScopeId, setQueueLocationScopeId] = useState(null);
   const [incomingOrdersState, setIncomingOrdersState] = useState({
     loading: false,
     orders: [],
@@ -382,6 +387,7 @@ export default function TerminalPage() {
 
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
+  const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
 
@@ -467,7 +473,8 @@ export default function TerminalPage() {
         pettyCashSymbol,
         pettyCashAmount: Number.isFinite(pettyCashAmount) ? pettyCashAmount : 0,
         activeDiscountCount,
-        enabledFeeMethods
+        enabledFeeMethods,
+        locationBindingReadiness: null
       });
     } catch {
       setTerminalRegistry([]);
@@ -544,29 +551,46 @@ export default function TerminalPage() {
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
       return;
     }
+    const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationId))
+      ? Number(operatingLocationId)
+      : null;
+    if (!scopedOperatingLocationId) {
+      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null }));
+      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
+      return;
+    }
     setShiftState((prev) => ({ ...prev, loading: true }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const [currentShiftResult, dashboardResult] = await Promise.all([
-        fetchCurrentTerminalShift({ terminal_id: terminalId }),
-        fetchTerminalTodayDashboard({ terminal_id: terminalId })
+        fetchCurrentTerminalShift({ terminal_id: terminalId, location_id: scopedOperatingLocationId }),
+        fetchTerminalTodayDashboard({ terminal_id: terminalId, location_id: scopedOperatingLocationId })
       ]);
 
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
       const activeShift = dashboardResult?.active_shift || shiftPayload;
       const activeShiftSummary = dashboardResult?.active_shift_cash_summary || cashSummary;
+      const readinessSummary = dashboardResult?.location_binding_readiness || currentShiftResult?.location_binding_readiness || null;
 
       setShiftState({
         loading: false,
         shift: activeShift,
         cashSummary: activeShiftSummary
       });
+      const shiftLocationId = Number(activeShift?.location_id);
+      if (Number.isInteger(shiftLocationId) && shiftLocationId > 0 && shiftLocationId !== scopedOperatingLocationId) {
+        setOperatingLocationId(shiftLocationId);
+      }
       setTodayDashboard({
         loading: false,
         businessDate: dashboardResult?.business_date || null,
         salesSummary: dashboardResult?.sales_summary || null
       });
+      setTerminalMeta((prev) => ({
+        ...prev,
+        locationBindingReadiness: readinessSummary
+      }));
     } catch (error) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
@@ -574,7 +598,7 @@ export default function TerminalPage() {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
     }
-  }, [activeTerminalId, canViewPos, locked]);
+  }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
   const refreshTenantLocations = useCallback(async () => {
     if (locked) return;
@@ -597,16 +621,24 @@ export default function TerminalPage() {
         locations: activeLocations
       });
 
-      if (
-        selectedLocationId
-        && !activeLocations.some((location) => Number(location.location_id) === Number(selectedLocationId))
-      ) {
-        setSelectedLocationId(null);
+      const fallbackLocationId = activeLocations.length > 0
+        ? Number(activeLocations[0].location_id)
+        : null;
+      const hasOperatingLocation = operatingLocationId
+        && activeLocations.some((location) => Number(location.location_id) === Number(operatingLocationId));
+      const hasQueueLocationScope = queueLocationScopeId
+        && activeLocations.some((location) => Number(location.location_id) === Number(queueLocationScopeId));
+
+      if (!hasOperatingLocation) {
+        setOperatingLocationId(fallbackLocationId);
+      }
+      if (!hasQueueLocationScope) {
+        setQueueLocationScopeId(fallbackLocationId);
       }
     } catch {
       setLocationsState((prev) => ({ ...prev, loading: false }));
     }
-  }, [locked, selectedLocationId]);
+  }, [locked, operatingLocationId, queueLocationScopeId]);
 
   const refreshIncomingOrders = useCallback(async ({ silent = false } = {}) => {
     if (locked) {
@@ -628,6 +660,15 @@ export default function TerminalPage() {
       });
       return;
     }
+    if (!queueLocationScopeId) {
+      setIncomingOrdersState({
+        loading: false,
+        orders: [],
+        accessState: 'idle',
+        errorMessage: 'Select queue location scope to load incoming online orders.'
+      });
+      return;
+    }
 
     if (!silent) {
       setIncomingOrdersState((prev) => ({
@@ -639,7 +680,7 @@ export default function TerminalPage() {
     }
 
     try {
-      const params = selectedLocationId ? { location_id: selectedLocationId } : {};
+      const params = queueLocationScopeId ? { location_id: queueLocationScopeId } : {};
       const payload = await fetchIncomingOnlineOrders(params, {
         skipGlobalErrorToast: silent === true
       });
@@ -664,7 +705,7 @@ export default function TerminalPage() {
         toast.error(error?.response?.data?.message || 'Failed to load incoming online orders.');
       }
     }
-  }, [canViewPos, locked, selectedLocationId]);
+  }, [canViewPos, locked, queueLocationScopeId]);
 
   const replayQueuedTerminalOperations = useCallback(async ({ toastIfEmpty = false } = {}) => {
     if (locked || !isOnline || replayingQueueRef.current) {
@@ -1084,6 +1125,11 @@ export default function TerminalPage() {
     if (!registryEnforced && activeTerminalRegistry.length > 0 && !terminalRegistryLookup.has(terminalId)) {
       toast.warning(`Terminal ID ${terminalId} is not in active registry. Shift open continues in warn mode.`);
     }
+    const scopedOperatingLocationId = Number(operatingLocationId);
+    if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
+      toast.error('Select an operating location before opening shift.');
+      return;
+    }
 
     const rawOpeningFloat = String(openShiftForm.openingFloatAmount ?? '').trim();
     const fallbackOpeningFloat = Number(terminalMeta.pettyCashAmount ?? 0);
@@ -1095,6 +1141,7 @@ export default function TerminalPage() {
 
     const payload = {
       terminal_id: terminalId,
+      location_id: scopedOperatingLocationId,
       opening_float_amount: openingFloatAmount,
       opening_note: String(openShiftForm.openingNote || '').trim() || undefined,
       idempotency_key: createIdempotencyKey('pos-shift-open')
@@ -1130,6 +1177,46 @@ export default function TerminalPage() {
       }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
+    }
+  };
+
+  const handleSwitchShiftLocation = async ({ targetLocationId, reason }) => {
+    if (!activeShiftId) {
+      toast.error('No active shift to switch.');
+      return;
+    }
+    if (!canSwitchPosLocation) {
+      toast.error('Your account does not have permission to switch shift location.');
+      return;
+    }
+    const normalizedTargetLocationId = Number.parseInt(targetLocationId, 10);
+    if (!Number.isInteger(normalizedTargetLocationId) || normalizedTargetLocationId <= 0) {
+      toast.error('Select a valid target location.');
+      return;
+    }
+    const normalizedReason = String(reason || '').trim();
+    if (normalizedReason.length < 8) {
+      toast.error('Switch reason is required (at least 8 characters).');
+      return;
+    }
+
+    setShiftActionLoading((prev) => ({ ...prev, switchLocation: true }));
+    try {
+      await switchTerminalShiftLocation(activeShiftId, {
+        target_location_id: normalizedTargetLocationId,
+        reason: normalizedReason,
+        idempotency_key: createIdempotencyKey('pos-shift-switch')
+      });
+      setOperatingLocationId(normalizedTargetLocationId);
+      toast.success('Shift location switched successfully.');
+      await Promise.all([
+        refreshOperationalContext(),
+        refreshIncomingOrders({ silent: true })
+      ]);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to switch shift location.');
+    } finally {
+      setShiftActionLoading((prev) => ({ ...prev, switchLocation: false }));
     }
   };
 
@@ -1466,7 +1553,8 @@ export default function TerminalPage() {
         shiftState={shiftState}
         incomingOrdersState={incomingOrdersState}
         locationsState={locationsState}
-        selectedLocationId={selectedLocationId}
+        operatingLocationId={operatingLocationId}
+        queueLocationScopeId={queueLocationScopeId}
         handleSelectViewMode={handleSelectViewMode}
         handleLock={handleLock}
         setDrawerOpen={setDrawerOpen}
@@ -1486,10 +1574,13 @@ export default function TerminalPage() {
         setCloseShiftForm={setCloseShiftForm}
         shiftActionLoading={shiftActionLoading}
         handleOpenShift={handleOpenShift}
+        canSwitchPosLocation={canSwitchPosLocation}
+        handleSwitchShiftLocation={handleSwitchShiftLocation}
         handleRecordCashEvent={handleRecordCashEvent}
         handleCloseShift={handleCloseShift}
         refreshOperationalContext={refreshOperationalContext}
-        setSelectedLocationId={setSelectedLocationId}
+        setOperatingLocationId={setOperatingLocationId}
+        setQueueLocationScopeId={setQueueLocationScopeId}
         incomingOrderActionState={incomingOrderActionState}
         handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
         handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}

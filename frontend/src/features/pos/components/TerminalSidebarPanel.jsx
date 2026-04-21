@@ -72,6 +72,7 @@ export default function TerminalSidebarPanel({
   todayDashboard,
   canViewPos,
   canTransactPos,
+  canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
   openShiftForm,
@@ -82,12 +83,15 @@ export default function TerminalSidebarPanel({
   setCloseShiftForm,
   shiftActionLoading,
   handleOpenShift,
+  handleSwitchShiftLocation = () => {},
   handleRecordCashEvent,
   handleCloseShift,
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
-  selectedLocationId = null,
-  setSelectedLocationId = () => {},
+  operatingLocationId = null,
+  setOperatingLocationId = () => {},
+  queueLocationScopeId = null,
+  setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
@@ -109,6 +113,7 @@ export default function TerminalSidebarPanel({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
+  const [switchReason, setSwitchReason] = React.useState('');
 
   const showSection = (key) => {
     if (isMsmeMode && hiddenSectionsInMsme.has(key)) return false;
@@ -224,6 +229,14 @@ export default function TerminalSidebarPanel({
             <span className="text-slate-600">Compliance Policy</span>
             <span className="font-semibold text-emerald-700">Dual-mode</span>
           </div>
+          {terminalMeta?.locationBindingReadiness && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Binding Readiness</span>
+              <span className={`font-semibold ${terminalMeta.locationBindingReadiness.ready_for_strict_mode === true ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {terminalMeta.locationBindingReadiness.ready_for_strict_mode === true ? 'Ready' : 'Needs remediation'}
+              </span>
+            </div>
+          )}
           <p className="text-[11px] text-slate-500">
             Managed by tenant compliance mode and verification controls.
           </p>
@@ -236,6 +249,24 @@ export default function TerminalSidebarPanel({
       {showSection('shift_controls') && (
         <div id={sectionIds.activeShift} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active Shift</p>
+          <Label className="text-xs">Operating Location</Label>
+          <select
+            className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+            value={operatingLocationId || ''}
+            onChange={(event) => {
+              const nextValue = event.target.value ? Number(event.target.value) : null;
+              setOperatingLocationId(nextValue);
+            }}
+          >
+            {locations.map((location) => (
+              <option key={`sidebar-operating-location-${location.location_id}`} value={location.location_id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500">
+            Catalog and checkout follow this location scope.
+          </p>
           {shiftState.loading ? (
             <p className="text-xs text-slate-500">Loading shift context...</p>
           ) : shiftState.shift ? (
@@ -268,6 +299,45 @@ export default function TerminalSidebarPanel({
                   {terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.cash_sales_amount)}
                 </span>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">Shift Location</span>
+                <span className="font-semibold text-slate-900">
+                  {shiftState?.shift?.location?.name || shiftState?.shift?.location_name || shiftState?.shift?.location_id || 'Unassigned'}
+                </span>
+              </div>
+              {canSwitchPosLocation && (
+                <div className="mt-2 space-y-1.5">
+                  <Input
+                    value={switchReason}
+                    onChange={(event) => setSwitchReason(event.target.value)}
+                    placeholder="Reason for location switch"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={
+                      shiftActionLoading.switchLocation
+                      || !operatingLocationId
+                      || Number(operatingLocationId) === Number(shiftState?.shift?.location_id)
+                      || String(switchReason || '').trim().length < 8
+                    }
+                    onClick={() => {
+                      handleSwitchShiftLocation({
+                        targetLocationId: operatingLocationId,
+                        reason: switchReason
+                      });
+                    }}
+                  >
+                    {shiftActionLoading.switchLocation ? 'Switching...' : 'Switch Shift Location'}
+                  </Button>
+                </div>
+              )}
+              {!canSwitchPosLocation && (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  You do not have permission to switch shift location.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -395,13 +465,13 @@ export default function TerminalSidebarPanel({
             <>
               <select
                 className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
-                value={selectedLocationId || ''}
+                value={queueLocationScopeId || ''}
                 onChange={(event) => {
                   const nextValue = event.target.value ? Number(event.target.value) : null;
-                  setSelectedLocationId(nextValue);
+                  setQueueLocationScopeId(nextValue);
                 }}
               >
-                <option value="">All Locations</option>
+                <option value="" disabled>Select queue location</option>
                 {locations.map((location) => (
                   <option key={`location-${location.location_id}`} value={location.location_id}>
                     {location.name}

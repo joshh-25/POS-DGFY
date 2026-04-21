@@ -37,6 +37,31 @@ Adopt a phased multi-location inventory architecture with these rules:
 4. Storefront location discovery may be filtered by item availability for map/list/grid UX.
 5. Customer-facing storefront stock visibility defaults to availability status (not exact counts).
 
+## Addendum (2026-04-21): POS Terminal Location-Bound Shifts
+This addendum extends ADR 0009 rollout policy for terminal operations:
+
+1. `pos_terminal_shifts.location_id` is the operational location anchor for POS terminal shift lifecycle.
+2. Terminal registry entries support single-home-location mapping (`pos_terminal_registry[].location_id`).
+3. Location binding can be phased:
+   - compatibility mode: `pos_terminal_location_binding_enforced=false`,
+   - strict mode: `pos_terminal_location_binding_enforced=true`.
+4. POS read endpoints for catalog, incoming queue, terminal dashboard, and POS history are fail-closed by location grant resolution.
+5. Shift location changes are privileged and auditable through atomic close+open transition, persisted in `pos_shift_location_transitions`.
+6. Permission token `pos:switch_location` gates shift location switch behavior.
+7. Operating location scope and incoming-queue location scope are independent in POS UX to prevent cross-flow ambiguity.
+
+## Addendum (2026-04-21): POS Shift Location Backfill Remediation and Strict-Mode Readiness
+This addendum clarifies corrective rollout requirements for legacy shift records and strict binding activation:
+
+1. Legacy `pos_terminal_shifts.location_id` remediation follows deterministic precedence:
+   - `transaction_unique_location`,
+   - `terminal_home_location`,
+   - `tenant_primary_location`,
+   - `active_location_fallback`.
+2. Backfill provenance is persisted in `pos_shift_location_backfill_audit` for every evaluated shift with source and migration tag.
+3. Strict binding enablement (`pos_terminal_location_binding_enforced=true`) is blocked when unresolved or low-confidence backfill states remain.
+4. POS terminal setup context exposes location-binding readiness summary for rollout/operator visibility.
+
 ## Safety and Rollout Policy
 1. Additive schema only during rollout (no destructive drops/renames in migration window).
 2. Backup + restore drill must pass before production cutover.
