@@ -38,6 +38,8 @@ RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
 DEEP_VERIFY="${DEPLOY_POST_DEPLOY_VERIFY:-0}"
 VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
 STRICT_LEGACY_AUDIT="${DEPLOY_STRICT_LEGACY_AUDIT:-0}"
+WINDOWS_LOCK_CLEANUP_MODE="${DEPLOY_WINDOWS_LOCK_CLEANUP:-auto}"
+WINDOWS_LOCK_CLEANUP_DELAY_SECONDS="${DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS:-2}"
 STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
 if [[ "$STORE_BASE_PATH" != /* ]]; then
     STORE_BASE_PATH="/$STORE_BASE_PATH"
@@ -92,6 +94,8 @@ while [[ $# -gt 0 ]]; do
             echo "  DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1 (default 1)"
             echo "  DEPLOY_NPM_CI_RETRIES=<n> (default 3)"
             echo "  DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n> (default 5)"
+            echo "  DEPLOY_WINDOWS_LOCK_CLEANUP=auto|0|1 (default auto)"
+            echo "  DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS=<n> (default 2)"
             echo "  DEPLOY_VERIFY_TENANT_NAME=<tenant name> (default Premium Corp)"
             echo "  DEPLOY_VERIFY_TENANT_TOKEN=<company token>"
             echo "  DEPLOY_VERIFY_SKIP_IF_MISSING=0|1 (default 1)"
@@ -181,6 +185,12 @@ run_npm_ci_with_retry() {
         warn "Invalid DEPLOY_NPM_CI_RETRY_DELAY_SECONDS='$delay_seconds'. Falling back to 5."
         delay_seconds=5
     fi
+    if ! [[ "$WINDOWS_LOCK_CLEANUP_DELAY_SECONDS" =~ ^[0-9]+$ ]] || [[ "$WINDOWS_LOCK_CLEANUP_DELAY_SECONDS" -lt 0 ]]; then
+        warn "Invalid DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS='$WINDOWS_LOCK_CLEANUP_DELAY_SECONDS'. Falling back to 2."
+        WINDOWS_LOCK_CLEANUP_DELAY_SECONDS=2
+    fi
+
+    run_windows_lock_cleanup "pre-npm-ci in $dir"
 
     local attempt
     for ((attempt=1; attempt<=attempts; attempt++)); do
@@ -192,6 +202,7 @@ run_npm_ci_with_retry() {
         fi
 
         if [[ "$attempt" -lt "$attempts" ]]; then
+            run_windows_lock_cleanup "post-failed npm ci attempt $attempt/$attempts in $dir"
             warn "npm ci attempt $attempt/$attempts failed in $dir. Retrying after ${delay_seconds}s (common cause: transient file lock/EPERM)."
             sleep "$delay_seconds"
         fi
@@ -210,6 +221,70 @@ run_optional_node_script() {
         (cd "$cwd" && node "$relative_script")
     else
         warn "Optional hook not found, skipping: $relative_script"
+    fi
+}
+
+is_windows_runtime() {
+    local uname_out
+    uname_out="$(uname -s 2>/dev/null || echo unknown)"
+    case "$uname_out" in
+        *MINGW*|*MSYS*|*CYGWIN*|*NT*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_truthy() {
+    local value
+    value="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
+    [[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
+}
+
+is_falsy() {
+    local value
+    value="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
+    [[ "$value" == "0" || "$value" == "false" || "$value" == "no" || "$value" == "off" ]]
+}
+
+should_run_windows_lock_cleanup() {
+    if is_falsy "$WINDOWS_LOCK_CLEANUP_MODE"; then
+        return 1
+    fi
+    if is_truthy "$WINDOWS_LOCK_CLEANUP_MODE"; then
+        return 0
+    fi
+    if [[ "$WINDOWS_LOCK_CLEANUP_MODE" == "auto" ]]; then
+        is_windows_runtime
+        return $?
+    fi
+    warn "Unknown DEPLOY_WINDOWS_LOCK_CLEANUP='$WINDOWS_LOCK_CLEANUP_MODE'. Falling back to auto."
+    is_windows_runtime
+}
+
+run_windows_lock_cleanup() {
+    local reason="${1:-unspecified}"
+    if ! should_run_windows_lock_cleanup; then
+        return 0
+    fi
+
+    local ps_shell=""
+    if command -v powershell.exe >/dev/null 2>&1; then
+        ps_shell="powershell.exe"
+    elif command -v pwsh >/dev/null 2>&1; then
+        ps_shell="pwsh"
+    elif command -v powershell >/dev/null 2>&1; then
+        ps_shell="powershell"
+    else
+        warn "Windows lock cleanup requested, but no PowerShell executable was found."
+        return 0
+    fi
+
+    log "Running Windows process-lock cleanup ($reason)..."
+    local ps_script
+    ps_script="\$names=@('node','esbuild'); Get-Process -ErrorAction SilentlyContinue | Where-Object { \$names -contains \$_.ProcessName } | Stop-Process -Force -ErrorAction SilentlyContinue"
+    "$ps_shell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ps_script" >/dev/null 2>&1 || true
+
+    if [[ "$WINDOWS_LOCK_CLEANUP_DELAY_SECONDS" -gt 0 ]]; then
+        sleep "$WINDOWS_LOCK_CLEANUP_DELAY_SECONDS"
     fi
 }
 

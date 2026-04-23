@@ -19,19 +19,20 @@ What it does:
 2. Pulls from git (fast-forward only)
 3. Re-executes script after pull to use latest logic
 4. Runs deterministic installs (`npm ci`) with bounded retry/backoff for transient lock failures
-5. Runs docs lint and architecture checks
-6. Builds frontend
-7. Runs DB migrations
-8. Normalizes the original legacy tenant account path (idempotent)
-9. Audits original legacy tenant invariants (report-only by default; strict when `DEPLOY_STRICT_LEGACY_AUDIT=1`)
-10. Skips optional legacy maintenance hooks by default
-11. Repairs required indexes (`npm run repair:indexes`)
-12. Runs strict index audit (`npm run audit:indexes`)
-13. Runs billing telemetry checks only when billing checks are enabled (`PAYMENTS_ENABLED` + `DEPLOY_RUN_BILLING_VERIFY`)
-14. Runs tenant schema sync in `report` mode and writes report artifact
-15. Applies tenant schema sync regression gate against baseline
-16. Runs tenant index headroom audit in strict mode by default
-17. Reloads PM2 and runs runtime/public health checks
+5. On Windows hosts, runs a pre-install process lock cleanup (terminates `node`/`esbuild` holders) before `npm ci` and between retries (configurable)
+6. Runs docs lint and architecture checks
+7. Builds frontend
+8. Runs DB migrations
+9. Normalizes the original legacy tenant account path (idempotent)
+10. Audits original legacy tenant invariants (report-only by default; strict when `DEPLOY_STRICT_LEGACY_AUDIT=1`)
+11. Skips optional legacy maintenance hooks by default
+12. Repairs required indexes (`npm run repair:indexes`)
+13. Runs strict index audit (`npm run audit:indexes`)
+14. Runs billing telemetry checks only when billing checks are enabled (`PAYMENTS_ENABLED` + `DEPLOY_RUN_BILLING_VERIFY`)
+15. Runs tenant schema sync in `report` mode and writes report artifact
+16. Applies tenant schema sync regression gate against baseline
+17. Runs tenant index headroom audit in strict mode by default
+18. Reloads PM2 and runs runtime/public health checks
 
 Important strict defaults:
 - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1` by default (set `0` only for controlled exception windows)
@@ -40,6 +41,14 @@ Important strict defaults:
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES` (default `3`)
 - `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS` (default `5`)
+
+Windows lock cleanup controls:
+- `DEPLOY_WINDOWS_LOCK_CLEANUP=auto|0|1` (default `auto`)
+  - `auto`: enabled only on Windows runtimes
+  - `0`: disabled
+  - `1`: forced enabled
+- `DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS` (default `2`)
+  - short cooldown after terminating lock-holding processes before retrying `npm ci`
 
 Billing verification mode override:
 ```bash
