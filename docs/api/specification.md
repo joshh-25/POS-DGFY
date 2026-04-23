@@ -3324,7 +3324,9 @@ Platform-admin governed downgrade to force tenant lifecycle back to `non_complia
 **Behavior**
 - Allowed only when tenant lifecycle is `compliant_pending` or `compliant_active`.
 - Returns `409` when tenant is already `non_compliant_active`.
+- Returns `422` when tenant lifecycle is not one of the allowed compliant states.
 - Persists immutable compliance audit event `mode_force_non_compliant`.
+- Platform admin UI guard: action is disabled for unsupported lifecycle states and shows helper text to prevent avoidable `422` requests.
 
 **Request Body (both endpoints)**
 ```json

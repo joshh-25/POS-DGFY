@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-14
+last_reviewed: 2026-04-23
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -183,4 +183,5 @@ Located at `/admin/tenants`.
 - **List View**: Filter by status (Pending, Active, etc.).
 - **Search/Filter**: Quickly find companies.
 - **Quick Actions**: Approve, Reject, Edit, Delete.
+- **Compliance Safety Guard**: `Force non-compliant` is available only when tenant `compliance_mode_state` is `compliant_pending` or `compliant_active`; unsupported states render a disabled action with an inline helper message.
 - **Stats**: Total tenants, active vs pending counts.

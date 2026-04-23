@@ -39,6 +39,8 @@ const COMPLIANCE_MODE_LABELS = {
     compliant_pending: 'Compliant (Pending)',
     compliant_active: 'Compliant (Active)'
 };
+const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
+const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Allowed only for compliant_pending or compliant_active tenants.';
 
 const COMPLIANCE_REVIEW_FILTERS = [
     { value: 'needs_review', label: 'Needs review' },
@@ -346,8 +348,15 @@ export default function TenantManager() {
 
     const handleForceNonCompliant = async (tenant) => {
         if (!tenant?.id) return;
-        if (tenant.compliance_mode_state === 'non_compliant_active') {
+        const modeState = String(tenant.compliance_mode_state || '').trim();
+        if (modeState === 'non_compliant_active') {
             toast.error('Tenant is already in non-compliant mode.');
+            return;
+        }
+        if (!FORCE_NON_COMPLIANT_ALLOWED_STATES.has(modeState)) {
+            toast.error(
+                `Force non-compliant is only allowed from compliant_pending or compliant_active. Current state: ${modeState || 'unselected'}.`
+            );
             return;
         }
         const reason = prompt(`Force "${tenant.name}" back to non-compliant mode.\n\nReason (required):`);
@@ -904,11 +913,17 @@ export default function TenantManager() {
                                                     onClick={() => handleForceNonCompliant(tenant)}
                                                     variant="outline"
                                                     size="sm"
-                                                    disabled={isProcessing || tenant.compliance_mode_state === 'non_compliant_active'}
+                                                    disabled={isProcessing || !FORCE_NON_COMPLIANT_ALLOWED_STATES.has(String(tenant.compliance_mode_state || '').trim())}
                                                     className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                                                    title={FORCE_NON_COMPLIANT_HELPER_TEXT}
                                                 >
                                                     Force non-compliant
                                                 </Button>
+                                                {!FORCE_NON_COMPLIANT_ALLOWED_STATES.has(String(tenant.compliance_mode_state || '').trim()) && (
+                                                    <p className="w-full text-[10px] text-slate-500">
+                                                        {FORCE_NON_COMPLIANT_HELPER_TEXT}
+                                                    </p>
+                                                )}
                                                 <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"
