@@ -93,6 +93,8 @@ Notes:
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
+- Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
+- Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
 
 One-time setup for persistent passwordless deploy access (per machine):
 ```bash
@@ -138,6 +140,23 @@ Behavior:
 - Compares local built entry script/CSS/manifest basenames against served public HTML refs.
 - Returns non-zero on mismatch.
 - Designed to catch stale frontend bundles served after deploy.
+
+## 2b. `scripts/check-no-staging-prereqs.js`
+Preflight validator for no-staging release gate prerequisites.
+
+Usage:
+```bash
+RELEASE_TARGET_SHA=<sha> DEPLOY_ENFORCE_NO_STAGING_GATE=1 npm run gate:release:no-staging:preflight
+```
+
+Behavior:
+- Fails fast before push/deploy when no-staging hard gate is enabled but required inputs are missing.
+- Validates:
+  - `QA_BASE_URL`
+  - `QA_SSH_HOST`
+  - `ssh` command availability
+  - `powershell`/`pwsh` availability (used by QA gate wrapper scripts)
+  - QA deploy summary source availability (local file or SSH-fetch path)
 
 ## 3. `backend/scripts/repair-required-indexes.js`
 Self-heal script for required DB index contract.

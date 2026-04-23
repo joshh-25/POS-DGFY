@@ -173,18 +173,33 @@ else
 fi
 
 # ------------------------------------------
+# Step 3.5: No-staging gate preflight (before push)
+# ------------------------------------------
+LOCAL_COMMIT="$(git rev-parse HEAD)"
+if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
+    echo -e "\n${YELLOW}Running no-staging release preflight for commit ${LOCAL_COMMIT}...${NC}"
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_ENFORCE_NO_STAGING_GATE=1 npm run gate:release:no-staging:preflight
+    echo -e "${GREEN}No-staging preflight passed.${NC}"
+fi
+
+# ------------------------------------------
 # Step 4: Push to GitHub
 # ------------------------------------------
 echo -e "\n${YELLOW}Pushing to GitHub ($TARGET_BRANCH)...${NC}"
 git push origin "$TARGET_BRANCH"
 echo -e "${GREEN}Push successful.${NC}"
 
-LOCAL_COMMIT="$(git rev-parse HEAD)"
-
 # ------------------------------------------
 # Step 5: Enforce no-staging release hard gate
 # ------------------------------------------
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
+    QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt}"
+    if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
+        echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
+        RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
+        echo -e "${GREEN}Fetched QA deploy summary: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
+    fi
+
     echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
     RELEASE_TARGET_SHA="$LOCAL_COMMIT" npm run gate:release:no-staging
     echo -e "${GREEN}No-staging release gate passed.${NC}"

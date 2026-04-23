@@ -21,6 +21,12 @@ RELEASE_TARGET_SHA=<target_sha> npm run gate:release:no-staging
 DEPLOY_ENFORCE_NO_STAGING_GATE=1
 ```
 
+Before push, `scripts/deploy-remote.sh` now runs a prerequisite preflight:
+```bash
+npm run gate:release:no-staging:preflight
+```
+The preflight fails early if required QA environment inputs are missing.
+
 ## Evidence Contracts
 Default evidence root:
 ```text

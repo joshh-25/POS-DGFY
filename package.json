@@ -54,6 +54,7 @@
     "drill:qa:rollback": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-rollback-drill.ps1",
     "drill:qa:restore": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-restore-drill.ps1",
     "evidence:qa:deploy-summary": "powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1",
+    "gate:release:no-staging:preflight": "node scripts/check-no-staging-prereqs.js",
     "gate:release:no-staging": "node scripts/gate-release-no-staging.js",
     "gate:release:no-staging:qa-env": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-release-gate.ps1",
     "gate:release:local": "node scripts/gate-release-local.js",

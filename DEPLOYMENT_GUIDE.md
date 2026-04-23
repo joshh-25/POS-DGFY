@@ -73,8 +73,16 @@ bash scripts/deploy-remote.sh
 
 Behavior:
 1. Pushes target commit.
-2. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-3. Proceeds to production SSH deploy only when gate verdict is pass/bypassed.
+2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
+3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
+4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
+5. Proceeds to production SSH deploy only when gate verdict is pass/bypassed.
+
+No-staging preflight checks:
+1. `QA_BASE_URL` configured (for QA smoke contract).
+2. `QA_SSH_HOST` configured (for QA drills/evidence fetch).
+3. Local runtime has `ssh` and `powershell`/`pwsh`.
+4. QA deploy summary can be sourced (existing local file or SSH fetch path).
 
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
