@@ -777,8 +777,8 @@ export default function TenantManager() {
                                 key={tenant.id}
                                 className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow"
                             >
-                                <div className="flex items-start justify-between">
-                                    <div className="flex-1">
+                                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                                    <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-3 mb-2">
                                             <h3 className="text-xl font-semibold text-slate-900">
                                                 {tenant.name}
@@ -792,14 +792,16 @@ export default function TenantManager() {
                                             </span>
                                         </div>
 
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 text-sm mt-4">
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 <Mail className="w-4 h-4 text-slate-400" />
-                                                <span>{tenant.admin_email || 'N/A'}</span>
+                                                <span className="truncate" title={tenant.admin_email || 'N/A'}>
+                                                    {tenant.admin_email || 'N/A'}
+                                                </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 <Key className="w-4 h-4 text-slate-400" />
-                                                <code className="bg-slate-100 px-2 py-0.5 rounded text-xs">
+                                                <code className="bg-slate-100 px-2 py-0.5 rounded text-xs break-all">
                                                     {tenant.company_token}
                                                 </code>
                                             </div>
@@ -839,7 +841,7 @@ export default function TenantManager() {
                                     </div>
 
                                     {/* Actions */}
-                                    <div className="flex flex-col gap-2 ml-4">
+                                    <div className="w-full xl:w-auto xl:min-w-[320px] xl:max-w-[380px]">
                                         {tenant.status === 'pending' ? (
                                             <div className="flex items-center gap-2">
                                                 <Button
@@ -879,56 +881,56 @@ export default function TenantManager() {
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                {tenant.status === 'inactive' && (
+                                            <div className="space-y-2">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {tenant.status === 'inactive' && (
+                                                        <Button
+                                                            onClick={() => handleReactivate(tenant.id, tenant.name)}
+                                                            disabled={isProcessing}
+                                                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                            size="sm"
+                                                        >
+                                                            {isProcessing ? (
+                                                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <>
+                                                                    <RotateCcw className="w-4 h-4 mr-1" />
+                                                                    Reactivate
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    )}
+                                                    {/* DISABLED - switching to PayMongo */}
+                                                    {/* {tenant.status === 'active' && tenant.payment_method !== 'paypal' && (
+                                                        <Button
+                                                            onClick={() => handleSetupPayPal(tenant.id)}
+                                                            disabled={isProcessing}
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                        >
+                                                            {isProcessing ? (
+                                                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <>
+                                                                    <CreditCard className="w-4 h-4 mr-1" />
+                                                                    Setup PayPal
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    )} */}
                                                     <Button
-                                                        onClick={() => handleReactivate(tenant.id, tenant.name)}
-                                                        disabled={isProcessing}
-                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                                        size="sm"
-                                                    >
-                                                        {isProcessing ? (
-                                                            <RefreshCw className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                            <>
-                                                                <RotateCcw className="w-4 h-4 mr-1" />
-                                                                Reactivate
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                )}
-                                                {/* DISABLED - switching to PayMongo */}
-                                                {/* {tenant.status === 'active' && tenant.payment_method !== 'paypal' && (
-                                                    <Button
-                                                        onClick={() => handleSetupPayPal(tenant.id)}
-                                                        disabled={isProcessing}
+                                                        onClick={() => openComplianceModal(tenant)}
                                                         variant="outline"
                                                         size="sm"
-                                                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                        className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
                                                     >
-                                                        {isProcessing ? (
-                                                            <RefreshCw className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                            <>
-                                                                <CreditCard className="w-4 h-4 mr-1" />
-                                                                Setup PayPal
-                                                            </>
-                                                        )}
+                                                        <ShieldCheck className="w-4 h-4 mr-1" />
+                                                        Compliance
                                                     </Button>
-                                                )} */}
-                                                <Button
-                                                    onClick={() => openComplianceModal(tenant)}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                                                >
-                                                    <ShieldCheck className="w-4 h-4 mr-1" />
-                                                    Compliance
-                                                </Button>
-                                                {(() => {
-                                                    const forceEligibility = deriveForceNonCompliantEligibility(tenant);
-                                                    return (
-                                                        <>
+                                                    {(() => {
+                                                        const forceEligibility = deriveForceNonCompliantEligibility(tenant);
+                                                        return (
                                                             <Button
                                                                 onClick={() => handleForceNonCompliant(tenant)}
                                                                 variant="outline"
@@ -939,31 +941,36 @@ export default function TenantManager() {
                                                             >
                                                                 Force non-compliant
                                                             </Button>
-                                                            {!forceEligibility.allowed && (
-                                                                <p className="w-full text-[10px] text-slate-500">
-                                                                    {forceEligibility.reason}
-                                                                </p>
-                                                            )}
-                                                        </>
-                                                    );
+                                                        );
+                                                    })()}
+                                                </div>
+                                                {(() => {
+                                                    const forceEligibility = deriveForceNonCompliantEligibility(tenant);
+                                                    return !forceEligibility.allowed ? (
+                                                        <p className="text-[10px] text-slate-500">
+                                                            {forceEligibility.reason}
+                                                        </p>
+                                                    ) : null;
                                                 })()}
-                                                <Button
-                                                    onClick={() => openEditModal(tenant)}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="text-slate-600"
-                                                >
-                                                    <Edit2 className="w-4 h-4 mr-1" />
-                                                    Edit
-                                                </Button>
-                                                <Button
-                                                    onClick={() => openDeleteModal(tenant)}
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <Button
+                                                        onClick={() => openEditModal(tenant)}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="text-slate-600"
+                                                    >
+                                                        <Edit2 className="w-4 h-4 mr-1" />
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => openDeleteModal(tenant)}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
