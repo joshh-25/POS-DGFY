@@ -46,6 +46,12 @@ Required before production (no-staging hard gate):
 RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
 ```
 
+Recommended local setup (keeps gate inputs consistent across runs):
+```bash
+cp .env.qa.local.example .env.qa.local
+# fill values, then load them into your shell before deploy/gates
+```
+
 Production release contract gate (run before and after deploy):
 ```bash
 # Optional: avoid auth/login lockouts by reusing an active JWT session
