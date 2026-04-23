@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-23
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -48,5 +48,5 @@ Canonical planning entry:
 
 ## Current Repository Notes
 - Build artifacts are generated into `dist-apps/` and `frontend/dist/` and should be treated as disposable outputs.
-- Deployment state metadata is kept in `.deploy-state/` and is used by `scripts/deploy.sh`.
+- Deployment state metadata is kept in `.deploy-state/` and is used by `scripts/deploy.sh` as runtime state only.
 - Historical/non-governed root docs are supplemental only; governed sources are under `docs/`.

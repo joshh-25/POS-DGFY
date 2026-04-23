@@ -61,6 +61,7 @@ htdocs/.htaccess
 
 # Build outputs
 .vite/
+.deploy-state/
 
 nul
 

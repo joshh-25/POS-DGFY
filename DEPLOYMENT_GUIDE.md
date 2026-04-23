@@ -111,7 +111,7 @@ Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.changed_files.txt`
 - `logs/deploy/deploy_<timestamp>.summary.txt`
 - `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
-- `.deploy-state/last_deployed_commit`
+- `.deploy-state/last_deployed_commit` (runtime marker, not source-controlled)
 
 Tenant sync baseline file (repo-tracked):
 - `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
@@ -124,6 +124,14 @@ Tenant schema/index risk controls:
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
 - `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n>` (default: `5`)
+
+Windows lock cleanup controls:
+- `DEPLOY_WINDOWS_LOCK_CLEANUP=auto|0|1` (default: `auto`)
+  - `auto`: enable cleanup only on Windows runtimes.
+  - `0`: disable cleanup.
+  - `1`: force-enable cleanup.
+- `DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS=<n>` (default: `2`)
+  - cooldown after terminating lock-holding `node`/`esbuild` processes before retrying `npm ci`.
 
 Deep verification controls (`--verify`):
 - `DEPLOY_VERIFY_TENANT_NAME=<tenant name>` (default: `Premium Corp`)
