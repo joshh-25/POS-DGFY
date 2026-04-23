@@ -25,6 +25,14 @@ const missingLocationStockTableError = () => ({
     }
 });
 
+const missingLocationStockColumnError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_BAD_FIELD_ERROR',
+        sqlMessage: "Unknown column 'quantity_on_hand' in 'field list'"
+    }
+});
+
 const buildCatalogRow = (overrides = {}) => ({
     item_id: overrides.item_id || 10,
     name: overrides.name || 'Test Item',
@@ -79,5 +87,23 @@ describe('storeRepository location-stock schema fallback', () => {
             current_stock: 3
         }));
     });
-});
 
+    it('listStoreCatalog falls back when item_location_stocks schema is missing quantity_on_hand column', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 300, current_stock: 2 })]);
+        itemLocationStockFindAllMock.mockRejectedValue(missingLocationStockColumnError());
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: 2
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 300,
+            current_stock: 2,
+            is_available: true,
+            availability_status: 'in_stock'
+        }));
+    });
+});

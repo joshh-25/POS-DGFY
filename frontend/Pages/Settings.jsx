@@ -2,17 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Settings as SettingsIcon,
   Save,
-  Package,
   AlertTriangle,
   Warehouse,
-  Percent,
-  Bell,
   RefreshCw,
   User,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   Users,
   Building2,
   Copy,
@@ -36,7 +29,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import useStore from '../src/store/useStore.js';
-import { usePermission } from '../src/hooks/usePermission';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
@@ -58,13 +50,6 @@ import {
   normalizeWorkflowMode
 } from '../src/features/settings/workflowMode.js';
 
-const ORDER_METHOD_FEE_DEFINITIONS = [
-  { key: 'dine_in', label: 'Dine In', defaultFeeLabel: 'Dine In Fee' },
-  { key: 'takeout', label: 'Takeout', defaultFeeLabel: 'Takeout Fee' },
-  { key: 'pickup', label: 'Pickup', defaultFeeLabel: 'Pickup Fee' },
-  { key: 'delivery', label: 'Delivery', defaultFeeLabel: 'Delivery Fee' },
-  { key: 'online', label: 'Online', defaultFeeLabel: 'Online Fee' }
-];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
 const HASH_TARGET_ID_PATTERN = /^[A-Za-z][-A-Za-z0-9_:.]*$/;
@@ -95,15 +80,6 @@ const toPositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
-
-const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_DEFINITIONS.reduce((acc, method) => {
-  acc[method.key] = {
-    enabled: false,
-    amount: 0,
-    label: method.defaultFeeLabel
-  };
-  return acc;
-}, {});
 
 const normalizeTerminalRegistry = (rawRegistry) => {
   let parsed = rawRegistry;
@@ -207,6 +183,26 @@ const createDefaultLocationForm = () => ({
   supports_dine_in: true
 });
 
+const sanitizeDiscountProfile = (profile) => ({
+  name: String(profile?.name || '').trim(),
+  percentage: Number(profile?.percentage ?? 0),
+  active: profile?.active !== false
+});
+
+const normalizeDiscountProfiles = (rawProfiles) => {
+  let parsed = rawProfiles;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(sanitizeDiscountProfile);
+};
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -236,7 +232,6 @@ export default function Settings() {
     posAccreditationNumber: '',
     posReceiptFooterMessage: '',
     posDiscountProfiles: [],
-    posOrderMethodFees: createDefaultOrderMethodFees(),
     posTerminalRegistry: [],
     posTerminalRegistryMode: 'warn',
     posTerminalLocationBindingEnforced: false,
@@ -258,17 +253,10 @@ export default function Settings() {
     confirmPassword: ''
   });
 
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false
-  });
-
-  const [profileErrors, setProfileErrors] = useState({});
+  const [, setProfileErrors] = useState({});
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [companyInfo, setCompanyInfo] = useState(null);
   const { currentUser, setCurrentUser } = useStore();
-  const { can } = usePermission();
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -361,7 +349,6 @@ export default function Settings() {
           posAccreditationNumber: systemSettings.pos_accreditation_number?.value || '',
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
-          posOrderMethodFees: normalizeOrderMethodFees(systemSettings.pos_order_method_fees?.value),
           posTerminalRegistry: normalizeTerminalRegistry(systemSettings.pos_terminal_registry?.value),
           posTerminalRegistryMode: TERMINAL_REGISTRY_MODE_OPTIONS.includes(String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase())
             ? String(systemSettings.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
@@ -396,7 +383,7 @@ export default function Settings() {
     };
 
     fetchData();
-  }, []);
+  }, [setCurrentUser]);
 
   // Fetch billing data when tab changes to subscription
   useEffect(() => {
@@ -482,65 +469,6 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
-  };
-
-  const sanitizeDiscountProfile = (profile) => ({
-    name: String(profile?.name || '').trim(),
-    percentage: Number(profile?.percentage ?? 0),
-    active: profile?.active !== false
-  });
-
-  const normalizeDiscountProfiles = (rawProfiles) => {
-    let parsed = rawProfiles;
-    if (typeof parsed === 'string') {
-      try {
-        parsed = JSON.parse(parsed);
-      } catch {
-        parsed = [];
-      }
-    }
-
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(sanitizeDiscountProfile);
-  };
-
-  const normalizeOrderMethodFees = (rawFees) => {
-    let parsed = rawFees;
-    if (typeof parsed === 'string') {
-      try {
-        parsed = JSON.parse(parsed);
-      } catch {
-        parsed = {};
-      }
-    }
-
-    const defaults = createDefaultOrderMethodFees();
-    if (!parsed || typeof parsed !== 'object') return defaults;
-
-    ORDER_METHOD_FEE_DEFINITIONS.forEach((method) => {
-      const entry = parsed?.[method.key];
-      if (!entry || typeof entry !== 'object') return;
-      const amount = Number(entry.amount);
-      defaults[method.key] = {
-        enabled: entry.enabled === true || entry.enabled === 'true' || entry.enabled === 1 || entry.enabled === '1',
-        amount: Number.isFinite(amount) ? Math.max(0, amount) : 0,
-        label: String(entry.label || '').trim() || method.defaultFeeLabel
-      };
-    });
-
-    return defaults;
-  };
-
-  const handleOrderMethodFeeChange = (methodKey, key, value) => {
-    setSettings((prev) => {
-      const nextFees = normalizeOrderMethodFees(prev.posOrderMethodFees);
-      const current = nextFees[methodKey] || { enabled: false, amount: 0, label: '' };
-      nextFees[methodKey] = {
-        ...current,
-        [key]: key === 'amount' ? Number(value) : value
-      };
-      return { ...prev, posOrderMethodFees: nextFees };
-    });
   };
 
   const handleDiscountProfileChange = (index, key, value) => {
@@ -906,7 +834,6 @@ export default function Settings() {
         normalizedNames.add(normalizedName);
       }
 
-      const posOrderMethodFees = normalizeOrderMethodFees(settings.posOrderMethodFees);
       const rawTerminalRegistry = Array.isArray(settings.posTerminalRegistry)
         ? settings.posTerminalRegistry
         : [];
@@ -974,7 +901,6 @@ export default function Settings() {
         pos_accreditation_number: settings.posAccreditationNumber,
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
-        pos_order_method_fees: posOrderMethodFees,
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: settings.posTerminalLocationBindingEnforced === true,
@@ -1049,7 +975,6 @@ export default function Settings() {
       posAccreditationNumber: '',
       posReceiptFooterMessage: '',
       posDiscountProfiles: [],
-      posOrderMethodFees: createDefaultOrderMethodFees(),
       posTerminalRegistry: [],
       posTerminalRegistryMode: 'warn',
       posTerminalLocationBindingEnforced: false,
@@ -1104,7 +1029,7 @@ export default function Settings() {
   const handleSyncSubscription = async () => {
     setIsSyncing(true);
     try {
-      const result = await paymentService.syncPayMongoSubscription();
+      await paymentService.syncPayMongoSubscription();
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
       toast.success("Subscription status updated from PayMongo.");
@@ -1890,57 +1815,11 @@ export default function Settings() {
                     )}
                   </div>
                 </div>
-                <div className="space-y-3 md:col-span-2">
-                  <Label>Order Method Fees</Label>
+                <div className="space-y-3 md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <Label>DGFY Convenience Fee Policy</Label>
                   <p className="text-xs text-slate-500">
-                    Configure additive service fees by order method. These are non-VAT fees and are applied after item discounts.
+                    Checkout fee editing is retired. POS and storefront now apply a mandatory non-overridable 1% DGFY convenience fee on gross item subtotal.
                   </p>
-                  <div className="space-y-2">
-                    {ORDER_METHOD_FEE_DEFINITIONS.map((method) => {
-                      const feeEntry = normalizeOrderMethodFees(settings.posOrderMethodFees)?.[method.key] || {
-                        enabled: false,
-                        amount: 0,
-                        label: method.defaultFeeLabel
-                      };
-
-                      return (
-                        <div
-                          key={`order-method-fee-${method.key}`}
-                          className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3"
-                        >
-                          <div className="md:col-span-3 space-y-1">
-                            <Label className="text-xs text-slate-500">{method.label}</Label>
-                            <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
-                              <Switch
-                                checked={feeEntry.enabled === true}
-                                onCheckedChange={(checked) => handleOrderMethodFeeChange(method.key, 'enabled', checked)}
-                              />
-                            </div>
-                          </div>
-                          <div className="md:col-span-4 space-y-1">
-                            <Label className="text-xs text-slate-500">Fee Amount (PHP)</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.0001"
-                              value={feeEntry.amount}
-                              onChange={(e) => handleOrderMethodFeeChange(method.key, 'amount', e.target.value)}
-                              disabled={!feeEntry.enabled}
-                            />
-                          </div>
-                          <div className="md:col-span-5 space-y-1">
-                            <Label className="text-xs text-slate-500">Fee Label</Label>
-                            <Input
-                              value={feeEntry.label}
-                              onChange={(e) => handleOrderMethodFeeChange(method.key, 'label', e.target.value)}
-                              placeholder={method.defaultFeeLabel}
-                              disabled={!feeEntry.enabled}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
                 <div className="space-y-3 md:col-span-2">
                   <div className="flex items-center justify-between">

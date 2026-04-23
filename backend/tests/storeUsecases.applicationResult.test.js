@@ -70,6 +70,37 @@ describe('store use-cases application result contract', () => {
         expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
     });
 
+    it('listStoreCatalog returns explicit location-invalid code when location_id is invalid', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                listStoreCatalog: jest.fn()
+            }
+        });
+
+        const result = await useCase({ query: { location_id: 'abc' } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.STORE_CATALOG_LOCATION_INVALID);
+        expect(result.error.statusCode).toBe(422);
+    });
+
+    it('listStoreCatalog returns explicit runtime code for unexpected repository failures', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                listStoreCatalog: jest.fn().mockRejectedValue(new Error('db blew up'))
+            }
+        });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.STORE_CATALOG_RUNTIME_ERROR);
+        expect(result.error.statusCode).toBe(500);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            catalog_error_type: 'runtime_failure'
+        }));
+    });
+
     it('listStoreLocations returns active locations with primary pointer', async () => {
         const useCase = buildListStoreLocationsUseCase({
             storeRepository: {
@@ -199,6 +230,117 @@ describe('store use-cases application result contract', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    });
+
+    it('storeCartQuote returns DGFY fee fields and total math for normal subtotal', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 1,
+                        name: 'Sample Item',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 60,
+                        unit_of_measure: 'pc',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 3,
+                    name: 'Main',
+                    address_line: 'Test',
+                    latitude: 14.5,
+                    longitude: 121.0,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' },
+                    { setting_key: 'pos_wait_time_minutes', setting_value: '25' }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 3,
+                order_method: 'delivery',
+                payment_type: 'cash',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                delivery_address: 'Address',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(Number(result.data.subtotal_amount)).toBeCloseTo(100, 4);
+        expect(Number(result.data.service_fee_amount)).toBeCloseTo(1, 4);
+        expect(result.data.service_fee_label).toBe('DGFY convenience fee');
+        expect(Number(result.data.delivery_fee)).toBeCloseTo(20, 4);
+        expect(Number(result.data.total_amount)).toBeCloseTo(121, 4);
+    });
+
+    it('storeCartQuote keeps deterministic DGFY fee label even when subtotal is zero', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 1,
+                        name: 'Free Sample',
+                        current_stock: 10,
+                        default_sale_price: 0,
+                        cost_per_unit: 0,
+                        unit_of_measure: 'pc',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 3,
+                    name: 'Main',
+                    address_line: 'Test',
+                    latitude: 14.5,
+                    longitude: 121.0,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_delivery_fee', setting_value: '0' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 3,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(Number(result.data.subtotal_amount)).toBeCloseTo(0, 4);
+        expect(Number(result.data.service_fee_amount)).toBeCloseTo(0, 4);
+        expect(result.data.service_fee_label).toBe('DGFY convenience fee');
+        expect(Number(result.data.total_amount)).toBeCloseTo(0, 4);
     });
 
     it('storeCartQuote blocks checkout when storefront is closed by POS open status', async () => {

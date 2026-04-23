@@ -15,6 +15,7 @@ import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 
@@ -32,52 +33,11 @@ const VAT_TYPE_LABEL = {
     vat_exempt: 'VAT Exempt',
     zero_rated: 'Zero Rated'
 };
-const ORDER_METHOD_FEE_LABELS = {
-    dine_in: 'Dine In Fee',
-    takeout: 'Takeout Fee',
-    pickup: 'Pickup Fee',
-    delivery: 'Delivery Fee',
-    online: 'Online Fee'
-};
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
+const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
-};
-const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
-const createDefaultOrderMethodFees = () => ORDER_METHOD_FEE_KEYS.reduce((acc, method) => {
-    acc[method] = {
-        enabled: false,
-        amount: 0,
-        label: ORDER_METHOD_FEE_LABELS[method]
-    };
-    return acc;
-}, {});
-const parseBoolean = (value) => value === true || value === 'true' || value === 1 || value === '1';
-const normalizeOrderMethodFees = (rawFees) => {
-    let parsed = rawFees;
-    if (typeof parsed === 'string') {
-        try {
-            parsed = JSON.parse(parsed);
-        } catch {
-            parsed = {};
-        }
-    }
-    const defaults = createDefaultOrderMethodFees();
-    if (!parsed || typeof parsed !== 'object') return defaults;
-
-    ORDER_METHOD_FEE_KEYS.forEach((method) => {
-        const entry = parsed?.[method];
-        if (!entry || typeof entry !== 'object') return;
-        const amount = Number(entry.amount);
-        defaults[method] = {
-            enabled: parseBoolean(entry.enabled),
-            amount: Number.isFinite(amount) ? Math.max(0, round4(amount)) : 0,
-            label: String(entry.label || '').trim() || ORDER_METHOD_FEE_LABELS[method]
-        };
-    });
-
-    return defaults;
 };
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
@@ -265,9 +225,6 @@ export default function POSCheckoutTerminal({
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
     const [discountProfiles, setDiscountProfiles] = useState([]);
-    const [orderMethodFees, setOrderMethodFees] = useState(createDefaultOrderMethodFees());
-    const [serviceFeeInput, setServiceFeeInput] = useState('');
-    const [serviceFeeEdited, setServiceFeeEdited] = useState(false);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [cart, setCart] = useState([]);
@@ -349,40 +306,7 @@ export default function POSCheckoutTerminal({
     }, []);
 
     const handleScrollPaneKeyDown = useCallback((event) => {
-        if (event.target !== event.currentTarget) return;
-        const node = event.currentTarget;
-        const lineStep = 64;
-        const pageStep = Math.max(120, Math.round(node.clientHeight * 0.8));
-
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            node.scrollBy({ top: lineStep, behavior: 'auto' });
-            return;
-        }
-        if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            node.scrollBy({ top: -lineStep, behavior: 'auto' });
-            return;
-        }
-        if (event.key === 'PageDown') {
-            event.preventDefault();
-            node.scrollBy({ top: pageStep, behavior: 'auto' });
-            return;
-        }
-        if (event.key === 'PageUp') {
-            event.preventDefault();
-            node.scrollBy({ top: -pageStep, behavior: 'auto' });
-            return;
-        }
-        if (event.key === 'Home') {
-            event.preventDefault();
-            node.scrollTo({ top: 0, behavior: 'auto' });
-            return;
-        }
-        if (event.key === 'End') {
-            event.preventDefault();
-            node.scrollTo({ top: node.scrollHeight, behavior: 'auto' });
-        }
+        handlePaneScrollKeyDown(event);
     }, []);
 
     const evaluatePaneScrollState = useCallback((node) => {
@@ -591,7 +515,6 @@ export default function POSCheckoutTerminal({
         if (sessionLocked) {
             setReceiptSettings({});
             setDiscountProfiles([]);
-            setOrderMethodFees(createDefaultOrderMethodFees());
             return;
         }
         try {
@@ -606,11 +529,9 @@ export default function POSCheckoutTerminal({
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
-            setOrderMethodFees(normalizeOrderMethodFees(allSettings?.pos_order_method_fees?.value));
         } catch {
             setReceiptSettings({});
             setDiscountProfiles([]);
-            setOrderMethodFees(createDefaultOrderMethodFees());
         }
     }, [sessionLocked]);
 
@@ -846,32 +767,16 @@ export default function POSCheckoutTerminal({
         [cartSubtotal, manualDiscountAmount, selectedDiscount]
     );
 
-    const currentMethodFeeConfig = useMemo(
-        () => orderMethodFees?.[orderMethod] || createDefaultOrderMethodFees()[orderMethod],
-        [orderMethodFees, orderMethod]
-    );
-
-    useEffect(() => {
-        if (currentMethodFeeConfig?.enabled) {
-            setServiceFeeInput(String(round4(currentMethodFeeConfig.amount)));
-        } else {
-            setServiceFeeInput('');
-        }
-        setServiceFeeEdited(false);
-    }, [orderMethod, currentMethodFeeConfig?.enabled, currentMethodFeeConfig?.amount]);
-
     useEffect(() => {
         if (selectedDiscountProfile && manualDiscountAmountInput) {
             setManualDiscountAmountInput('');
         }
     }, [manualDiscountAmountInput, selectedDiscountProfile]);
 
-    const serviceFeeAmount = useMemo(() => {
-        if (!currentMethodFeeConfig?.enabled) return 0;
-        const parsed = Number(serviceFeeInput);
-        if (!Number.isFinite(parsed)) return round4(currentMethodFeeConfig.amount);
-        return round4(Math.max(0, parsed));
-    }, [currentMethodFeeConfig, serviceFeeInput]);
+    const serviceFeeAmount = useMemo(
+        () => round4(Math.max(0, cartSubtotal) * DGFY_CONVENIENCE_FEE_RATE),
+        [cartSubtotal]
+    );
 
     const netItemsTotal = useMemo(
         () => round4(Math.max(0, cartSubtotal - calculatedDiscountAmount)),
@@ -1050,7 +955,6 @@ export default function POSCheckoutTerminal({
             order_method: orderMethod,
             payment_type: paymentType,
             payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
-            service_fee_amount: currentMethodFeeConfig?.enabled && serviceFeeEdited ? Number(serviceFeeAmount || 0) : undefined,
             discount_amount: Number(calculatedDiscountAmount || 0),
             discount_profile_name: selectedDiscount?.name || null,
             discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : null,
@@ -1068,7 +972,6 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
-            setServiceFeeEdited(false);
             toast.message(
                 `You are offline. Checkout queued locally and will auto-replay when connection is restored (${queuedCheckouts.length + 1} queued).`
             );
@@ -1087,7 +990,6 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
-            setServiceFeeEdited(false);
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
             }
@@ -1169,7 +1071,7 @@ export default function POSCheckoutTerminal({
                         Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
                     </p>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                        {normalizedTerminalId ? `Terminal ${normalizedTerminalId}` : 'No terminal selected'}
+                        {normalizedTerminalId ? 'Terminal DGFY' : 'No terminal selected'}
                     </span>
                 </div>
             </div>
@@ -1690,25 +1592,12 @@ export default function POSCheckoutTerminal({
                         )}
                     </label>
 
-                    {currentMethodFeeConfig?.enabled && (
-                        <label className="text-xs text-slate-500 block">
-                            {currentMethodFeeConfig.label || ORDER_METHOD_FEE_LABELS[orderMethod] || 'Service Fee'} (PHP)
-                            <Input
-                                type="number"
-                                min="0"
-                                step="0.0001"
-                                value={serviceFeeInput}
-                                onChange={(event) => {
-                                    setServiceFeeInput(event.target.value);
-                                    setServiceFeeEdited(true);
-                                }}
-                                className="mt-1"
-                            />
-                            <span className="mt-1 block text-[11px] text-slate-500">
-                                Configured default: PHP {money(currentMethodFeeConfig.amount)}.
-                            </span>
-                        </label>
-                    )}
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <p className="font-semibold text-slate-700">{DGFY_CONVENIENCE_FEE_LABEL} (1%)</p>
+                        <p className="mt-1">
+                            Auto-calculated from gross item subtotal: PHP {money(serviceFeeAmount)}.
+                        </p>
+                    </div>
                 </div>
 
                 <div className="space-y-3 mb-4">
@@ -1886,7 +1775,7 @@ export default function POSCheckoutTerminal({
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">
-                            {currentMethodFeeConfig?.label || ORDER_METHOD_FEE_LABELS[orderMethod] || 'Order Method Fee'}
+                            {DGFY_CONVENIENCE_FEE_LABEL} (1%)
                         </span>
                         <span className="font-medium text-slate-900">+ PHP {money(serviceFeeAmount)}</span>
                     </div>
@@ -1965,7 +1854,7 @@ export default function POSCheckoutTerminal({
                         <div className="flex items-center gap-2">
                             {normalizedTerminalId && (
                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                                    Terminal {normalizedTerminalId}
+                                    Terminal DGFY
                                 </span>
                             )}
                             <Button

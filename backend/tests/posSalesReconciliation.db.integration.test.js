@@ -630,17 +630,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       JSON.stringify(JSON.stringify([{ name: 'Double Encoded', percentage: 10, active: true }])),
       'string'
     );
-    await setSetting(
-      'pos_order_method_fees',
-      JSON.stringify(JSON.stringify({
-        dine_in: { enabled: false, amount: 0, label: 'Dine In Fee' },
-        takeout: { enabled: false, amount: 0, label: 'Takeout Fee' },
-        delivery: { enabled: true, amount: 25, label: 'Delivery Fee' },
-        online: { enabled: false, amount: 0, label: 'Online Fee' }
-      })),
-      'string'
-    );
-
     const checkout = await runInTenantContext(() => checkoutPosUseCase({
       userId: cashier.user_id,
       payload: {
@@ -655,20 +644,15 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     expect(checkout.success).toBe(true);
     expect(money4(checkout.data.transaction.discount_amount)).toBe(10);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(25);
+    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(1);
 
     const repairedDiscountSetting = await models.SystemSetting.findOne({ where: { setting_key: 'pos_discount_profiles' } });
-    const repairedFeeSetting = await models.SystemSetting.findOne({ where: { setting_key: 'pos_order_method_fees' } });
 
     expect(repairedDiscountSetting.data_type).toBe('json');
-    expect(repairedFeeSetting.data_type).toBe('json');
 
     const repairedDiscountValue = JSON.parse(repairedDiscountSetting.setting_value);
-    const repairedFeeValue = JSON.parse(repairedFeeSetting.setting_value);
     expect(Array.isArray(repairedDiscountValue)).toBe(true);
     expect(repairedDiscountValue[0].name).toBe('Double Encoded');
-    expect(repairedFeeValue.delivery.enabled).toBe(true);
-    expect(Number(repairedFeeValue.delivery.amount)).toBe(25);
   });
 
   itRuntimeReady('includes same-day records when date_from and date_to are equal (end-of-day inclusive)', async () => {
@@ -721,17 +705,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 56, cost_per_unit: 20 });
 
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
-    await setSetting(
-      'pos_order_method_fees',
-      JSON.stringify({
-        dine_in: { enabled: false, amount: 0, label: 'Dine In Fee' },
-        takeout: { enabled: false, amount: 0, label: 'Takeout Fee' },
-        delivery: { enabled: true, amount: 40, label: 'Delivery Fee' },
-        online: { enabled: false, amount: 0, label: 'Online Fee' }
-      }),
-      'json'
-    );
-
     const checkout = await runInTenantContext(() => checkoutPosUseCase({
       userId: cashier.user_id,
       payload: {
@@ -742,14 +715,14 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       }
     }));
     expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(40);
+    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0.56);
 
     const businessDate = todayInManila();
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
       businessDateInput: businessDate
     }));
     expect(zResult.success).toBe(true);
-    expect(money4(zResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(40);
+    expect(money4(zResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(0.56);
 
     const salesResult = await runInTenantContext(() => listSalesTransactionsUseCase({
       query: {
@@ -761,7 +734,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       userPermissions: ['reports:view']
     }));
     expect(salesResult.success).toBe(true);
-    expect(money4(salesResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(40);
+    expect(money4(salesResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(0.56);
   });
 
   itRuntimeReady('counts only financially recognized online orders in z-reading and unified sales', async () => {
@@ -821,7 +794,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       totalAmount: 150
     }));
 
-    const expectedRecognizedGross = money4(100 + 150);
+    const expectedRecognizedGross = money4(
+      Number(inStoreCheckout.data.transaction.total_amount) + 150
+    );
 
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
       businessDateInput: businessDate

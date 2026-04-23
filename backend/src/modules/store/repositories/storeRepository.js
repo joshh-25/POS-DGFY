@@ -55,7 +55,12 @@ const isMissingItemLocationStockSchemaError = (error) => {
     if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
         return true;
     }
-    if (code === 'ER_BAD_FIELD_ERROR' && message.includes('item_location_stocks')) {
+    if (code === 'ER_BAD_FIELD_ERROR' && (
+        message.includes('item_location_stocks')
+        || message.includes("Unknown column 'quantity_on_hand'")
+        || message.includes("Unknown column 'location_id'")
+        || message.includes("Unknown column 'item_id'")
+    )) {
         return true;
     }
     return false;

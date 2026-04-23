@@ -10,7 +10,10 @@ import {
   getPreferredDiscoveryLocationId,
   selectDiscoveryPinLocations
 } from './discoveryPresentation.js';
-import { normalizeStorefrontErrorMessage } from './storefrontErrorMessages.js';
+import {
+  classifyStoreCatalogError,
+  normalizeStorefrontErrorMessage
+} from './storefrontErrorMessages.js';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
@@ -20,6 +23,10 @@ const ORDER_METHOD_OPTIONS = [
   { value: 'dine_in', label: 'Dine In' },
   { value: 'takeout', label: 'Takeout' }
 ];
+const DGFY_BRAND_NAME = 'DGFY';
+const DGFY_ACRONYM = 'Discover Goods For You';
+const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
+const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const DISCOVERY_BADGE_TONE_STYLES = {
   teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
   blue: { color: '#1d4ed8', background: '#eff6ff', borderColor: '#bfdbfe' },
@@ -29,6 +36,7 @@ const DISCOVERY_BADGE_TONE_STYLES = {
 };
 
 const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
+const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toSlug = (v) => String(v || '').trim().toLowerCase();
 const TENANT_STORE_BASE_PATH = '/tenant-store';
 const storePath = (slug) => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}`;
@@ -323,6 +331,43 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   );
 }
 
+function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRefreshTenantPage }) {
+  const normalizedMode = String(mode || 'setup_pending').trim().toLowerCase();
+  const title = normalizedMode === 'search_on_empty'
+    ? 'No items are available to search yet'
+    : 'Storefront items are not set up yet';
+  const description = normalizedMode === 'search_on_empty'
+    ? `No catalog is published for this tenant yet, so search for "${searchQuery}" cannot return results.`
+    : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: '1px solid #cbd5e1',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg,#f8fafc 0%,#ffffff 100%)',
+        padding: 16
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{title}</div>
+      <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{description}</p>
+      <div style={{ marginTop: 10, fontSize: 13, color: '#0f766e', fontWeight: 700 }}>
+        Customer checkout will be available once at least one storefront item is enabled.
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshTenantPage}
+          style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
+        >
+          Check Again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const previousRouteSlugRef = useRef(routeSlug);
@@ -355,6 +400,7 @@ export function App() {
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState('');
+  const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
@@ -452,6 +498,7 @@ export function App() {
 
     setLoadingCatalog(true);
     setCatalogError('');
+    setCatalogErrorGuidance('');
     setStoreLocations([]);
     setPrimaryLocationId(null);
     setSelectedLocationId(null);
@@ -506,10 +553,12 @@ export function App() {
       const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug });
       setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
     } catch (error) {
+      const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
       setSelectedStore(null);
       setStoreLocations([]);
       setCatalog([]);
-      setCatalogError(error.message || 'Failed to load tenant storefront page.');
+      setCatalogError(normalizedError.message);
+      setCatalogErrorGuidance(normalizedError.guidance);
     } finally {
       setLoadingCatalog(false);
     }
@@ -568,6 +617,7 @@ export function App() {
       if (!isStorePage || !selectedStore?.slug) return;
       setLoadingCatalog(true);
       setCatalogError('');
+      setCatalogErrorGuidance('');
       try {
         const catalogQuery = selectedLocationId == null
           ? '/api/v1/store/catalog?limit=120'
@@ -577,8 +627,10 @@ export function App() {
         setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
       } catch (error) {
         if (cancelled) return;
+        const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant catalog for selected location.');
         setCatalog([]);
-        setCatalogError(error.message || 'Failed to load tenant catalog for selected location.');
+        setCatalogError(normalizedError.message);
+        setCatalogErrorGuidance(normalizedError.guidance);
       } finally {
         if (!cancelled) setLoadingCatalog(false);
       }
@@ -704,6 +756,7 @@ export function App() {
     setPreferredStoreLocationSelection(null);
     setCatalog([]);
     setCatalogError('');
+    setCatalogErrorGuidance('');
     setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
   };
@@ -899,16 +952,29 @@ export function App() {
   }, [storeLocations, selectedLocationId]);
   const filteredCatalog = useMemo(() => filterCatalogItems(catalog, catalogSearch), [catalog, catalogSearch]);
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
+  const catalogState = useMemo(() => {
+    if (loadingCatalog) return 'loading';
+    if (catalogError) return 'error';
+    if (catalog.length === 0 && hasCatalogSearchQuery) return 'empty_search_on_zero';
+    if (catalog.length === 0) return 'empty_setup';
+    if (hasCatalogSearchQuery && filteredCatalog.length === 0) return 'empty_no_match';
+    return 'ready';
+  }, [loadingCatalog, catalogError, catalog.length, hasCatalogSearchQuery, filteredCatalog.length]);
   const isDeliveryOrder = orderMethod === 'delivery';
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
   ), [cart]);
   const totalsForDisplay = useMemo(() => {
     const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
+    const serviceFee = quoteResult?.service_fee_amount != null
+      ? Number(quoteResult.service_fee_amount)
+      : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
-    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal + deliveryFee;
+    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal + deliveryFee + serviceFee;
     return {
       subtotal_amount: subtotal,
+      service_fee_amount: serviceFee,
+      service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
       delivery_fee: deliveryFee,
       vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
       vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
@@ -1206,7 +1272,7 @@ export function App() {
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 20, paddingBottom: isStorePage ? 120 : 24 }}>
         {!isStorePage && (
           <>
-            <h1 style={{ margin: '0 0 10px 0', fontSize: 42 }}>SKUpervisor General Store</h1>
+            <h1 style={{ margin: '0 0 10px 0', fontSize: 42 }}>{DGFY_BRAND_NAME} General Store</h1>
             <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: 22 }}>Discover nearby stores, browse menus, and place online orders.</p>
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
@@ -1473,13 +1539,16 @@ export function App() {
         {isStorePage && (
           <>
             <section style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" onClick={goDiscovery} style={{ borderRadius: 10, border: '1px solid #334155', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700 }}>? Back to General Store</button>
+                  <button type="button" onClick={goDiscovery} style={{ borderRadius: 10, border: '1px solid #334155', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700 }}>? Back to {DGFY_BRAND_NAME} General Store</button>
               <div style={{ color: '#64748b', fontSize: 13 }}>Tenant page: {routeSlug}</div>
             </section>
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                <h1 style={{ margin: 0, fontSize: 34 }}>{selectedStore?.tenant_name || 'Loading storefront...'}</h1>
+                    <h1 style={{ margin: 0, fontSize: 34 }}>{DGFY_BRAND_NAME}</h1>
+                    <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569' }}>
+                      {selectedStore?.tenant_name || 'Loading storefront...'}
+                    </p>
                 {buildStamp && (
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', background: '#f8fafc' }}>
                     Build {buildStamp}
@@ -1542,9 +1611,21 @@ export function App() {
                 </div>
               </div>
 
-              {loadingCatalog && <p style={{ color: '#475569' }}>Loading tenant catalog...</p>}
-              {!loadingCatalog && catalogError && <p style={{ color: '#b91c1c' }}>{catalogError}</p>}
-              {!loadingCatalog && !catalogError && (
+              {catalogState === 'loading' && <p style={{ color: '#475569' }}>Loading tenant catalog...</p>}
+              {catalogState === 'error' && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ margin: 0, color: '#b91c1c' }}>{catalogError}</p>
+                  {catalogErrorGuidance && <p style={{ margin: '8px 0 0 0', color: '#64748b', fontSize: 13 }}>{catalogErrorGuidance}</p>}
+                </div>
+              )}
+              {(catalogState === 'empty_setup' || catalogState === 'empty_search_on_zero') && (
+                <StoreCatalogEmptyState
+                  mode={catalogState === 'empty_search_on_zero' ? 'search_on_empty' : 'setup_pending'}
+                  searchQuery={catalogSearch.trim()}
+                  onRefreshTenantPage={() => openStoreBySlug(routeSlug)}
+                />
+              )}
+              {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginTop: 10 }}>
                   {filteredCatalog.map((item) => {
                     const itemId = Number(item.item_id);
@@ -1621,8 +1702,7 @@ export function App() {
                       </div>
                     );
                   })}
-                  {!hasCatalogSearchQuery && catalog.length === 0 && <p style={{ color: '#64748b' }}>No storefront-visible items configured for this tenant yet.</p>}
-                  {hasCatalogSearchQuery && catalog.length > 0 && filteredCatalog.length === 0 && (
+                  {catalogState === 'empty_no_match' && (
                     <p style={{ color: '#64748b' }}>
                       No catalog items matched &quot;{catalogSearch.trim()}&quot;.
                     </p>
@@ -1688,7 +1768,7 @@ export function App() {
             >
               <div style={{ padding: isDesktopCheckout ? '16px 18px 12px 18px' : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,.88)' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: 20 }}>Guest Checkout</div>
+                          <div style={{ fontWeight: 800, fontSize: 20 }}>{DGFY_BRAND_NAME} Checkout</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
                   <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
@@ -1877,6 +1957,10 @@ export function App() {
                               <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
                               <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>
                             </div>
@@ -1934,6 +2018,7 @@ export function App() {
                         )}
                         {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
                         {checkoutResult?.tracking_pin && <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>Order placed. Tracking PIN: <strong>{checkoutResult.tracking_pin}</strong></p>}
+                        <p style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>{DGFY_ACRONYM}</p>
                       </div>
                     </section>
                   </div>

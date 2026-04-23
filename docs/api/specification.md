@@ -1836,9 +1836,15 @@ Execute a POS checkout transaction (atomic). Creates:
 2. `pos_transaction_lines` with immutable VAT snapshots
 3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`)
 
+Route mapping note:
+- This spec uses module-relative paths (for example `/pos/checkouts`).
+- Public API path is `/api/v1/pos/checkouts` (plural).
+- `POST /api/v1/pos/checkout` (singular) is not the canonical route.
+
 Order-method fee policy (current contract):
-- Tenant config key: `pos_order_method_fees` (JSON matrix for `dine_in`, `takeout`, `pickup`, `delivery`; legacy `online` key is read-compatible only).
-- Optional payload field: `service_fee_amount` (cashier override).
+- Mandatory fixed policy: `service_fee_amount = round4(items_subtotal * 0.01)` (`DGFY convenience fee`).
+- `service_fee_amount` request field is accepted for backward payload compatibility but ignored at runtime.
+- `pos_order_method_fees` is deprecated and no longer used by checkout pricing logic.
 - Service fee is stored as immutable snapshots on transaction header:
   - `service_fee_amount`
   - `service_fee_label_snapshot`
@@ -1913,7 +1919,7 @@ Final Review documentary (tenant self-serve):
 1. `items_subtotal = sum(line qty * line sale_price)`
 2. `discount_amount = selected_discount_percentage * items_subtotal`
 3. `net_items_total = items_subtotal - discount_amount`
-4. `service_fee_amount = configured method fee or validated override`
+4. `service_fee_amount = round4(items_subtotal * 0.01)` (mandatory `DGFY convenience fee`)
 5. `total_amount = net_items_total + service_fee_amount`
 
 **VAT Rule**
@@ -2275,11 +2281,18 @@ Catalog rows include:
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
 - `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
 - Exact quantity remains server-side and is enforced during quote/checkout validation.
-- Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support, `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
+- Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.
 - Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+
+**Error Code Contract (Catalog Read)**
+- `error_code=STORE_CATALOG_LOCATION_INVALID` (`422`) when `location_id` is invalid.
+- `error_code=STORE_CATALOG_RUNTIME_ERROR` (`500`) for unexpected catalog runtime failures.
+- Compatibility fallback path (missing `item_location_stocks` table/columns) remains non-error and should still return `200`.
+- Storefront clients should map catalog error UX from `error_code` first (code-driven guidance), not message-substring heuristics.
+- Storefront catalog rendering should be deterministic by state (`loading`, `error`, `empty_setup`, `empty_search_on_zero`, `empty_no_match`, `ready`) to avoid blank states.
 
 ### GET /store/locations
 List active tenant fulfillment locations for a specific storefront tenant page.
@@ -2299,8 +2312,19 @@ Compute quote totals for guest or store-customer checkout.
 **Auth**: Optional store customer (`Store JWT`)  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 
+Route mapping note:
+- Public API path is `/api/v1/store/cart/quote`.
+
 **Validation Note**
 - When requested quantity exceeds current stock, response is `422` with machine-readable stock violation details in `errors`.
+
+**Pricing Contract**
+- Response totals now include:
+  - `service_fee_amount`
+  - `service_fee_label` (`DGFY convenience fee`, deterministic even when amount is `0`)
+- Quote formula:
+  - `service_fee_amount = round4(subtotal_amount * 0.01)`
+  - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
@@ -2308,9 +2332,19 @@ Create online-store order and return tracking metadata.
 **Auth**: Optional store customer (`Store JWT`)  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 
+Route mapping note:
+- Public API path is `/api/v1/store/checkout`.
+
 **Validation Note**
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
+
+**Persistence Contract**
+- Checkout persists service-fee snapshots from the same fixed policy as quote:
+  - `service_fee_amount`
+  - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
+  - `service_fee_method_snapshot` (order method for traceability)
+  - `service_fee_overridden=false`
 
 ### GET /store/track/:tracking_pin
 Track online-store order status for public users.
@@ -2338,7 +2372,7 @@ Track online-store order status for public users.
    - `pos_accreditation_number`
    - `pos_receipt_footer_message`
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
-   - `pos_order_method_fees` (JSON object keyed by method with `{enabled, amount, label}`)
+   - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
 5. Compliance lifecycle/profile is tenant-level (`tenants` + compliance module tables), not controlled by a strict-toggle setting.

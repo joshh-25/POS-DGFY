@@ -134,7 +134,7 @@ export default function TerminalPageLayout({
             <div className="border-b border-slate-200 bg-gradient-to-r from-white via-teal-50/70 to-white px-6 py-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">POS Terminal Workspace</h1>
+                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">DGFY Terminal Workspace</h1>
                         <p className="mt-1 text-base text-slate-700">{headerSubtitle}</p>
                         {!isOnline && (
                             <p className="mt-2 text-sm font-semibold text-amber-700">
@@ -149,7 +149,7 @@ export default function TerminalPageLayout({
                                 : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         }`}
                     >
-                        {locked ? 'Terminal Locked' : 'Terminal Active'}
+                        {locked ? 'DGFY Terminal Locked' : 'DGFY Terminal Active'}
                     </div>
                 </div>
             </div>
@@ -187,7 +187,7 @@ export default function TerminalPageLayout({
                 ))}
             </div>
             <div className="mx-4 mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                Terminal identity: <span className="font-semibold text-slate-900">{activeTerminalId || 'Select on unlock'}</span>
+                Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>
                 <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                     {isMsmeMode ? 'MSME Mode' : 'Manufacturing Mode'}
                 </span>

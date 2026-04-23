@@ -552,7 +552,7 @@ function SalesTodayWorkspace({ todayDashboard, terminalMeta, sectionId }) {
               <p className="text-sm font-semibold text-rose-600">- {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.discount_amount)}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">Service Fees</p>
+              <p className="text-xs text-slate-500">DGFY Convenience Fees</p>
               <p className="text-sm font-semibold text-slate-900">+ {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.service_fee_total)}</p>
             </div>
           </div>
@@ -608,10 +608,14 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
           <p className="text-xs text-slate-500">Active Discounts</p>
           <p className="text-sm font-semibold text-slate-900">{terminalMeta.activeDiscountCount}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs text-slate-500">Fee Methods Enabled</p>
-          <p className="text-sm font-semibold text-slate-900">{terminalMeta.enabledFeeMethods.length}</p>
-        </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">DGFY Global Fee Policy</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
+                  ? 'Active'
+                  : 'Inactive'}
+              </p>
+            </div>
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <p className="text-xs text-slate-500">Compliance</p>
           <p className="text-sm font-semibold text-emerald-700">Dual-mode policy</p>

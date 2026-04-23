@@ -143,11 +143,12 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       'VAT Exempt Sales',
       'Zero Rated Sales',
       'Discount',
-      'Order Method Fee',
+      'DGFY convenience fee',
       'Total',
       'Document context: non_fiscal',
       'Receipt contract version: 2026.04.08',
-      'Sequence control: invoice number is system-generated and immutable.'
+      'Sequence control: invoice number is system-generated and immutable.',
+      'Discover Goods For You'
     ];
 
     let cursor = -1;

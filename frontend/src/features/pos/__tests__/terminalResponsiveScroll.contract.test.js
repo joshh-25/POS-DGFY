@@ -49,8 +49,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('onKeyDown={handleScrollPaneKeyDown}');
     expect(posCheckoutContent).toContain('onScroll={syncCatalogPaneScrollState}');
     expect(posCheckoutContent).toContain('onScroll={syncCurrentSalePaneScrollState}');
-    expect(posCheckoutContent).toContain("if (event.key === 'PageDown')");
-    expect(posCheckoutContent).toContain("if (event.key === 'Home')");
+    expect(posCheckoutContent).toContain('handlePaneScrollKeyDown(event)');
     expect(posCheckoutContent).toContain('tabIndex={0}');
   });
 

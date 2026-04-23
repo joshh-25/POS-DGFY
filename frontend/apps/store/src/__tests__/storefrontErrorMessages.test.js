@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStorefrontErrorMessage } from '../storefrontErrorMessages.js';
+import {
+  classifyStoreCatalogError,
+  normalizeStorefrontErrorMessage
+} from '../storefrontErrorMessages.js';
 
 describe('storefront error message normalization', () => {
   it('normalizes network transport errors', () => {
@@ -35,5 +38,33 @@ describe('storefront error message normalization', () => {
       message: 'Selected location is currently closed and cannot accept orders'
     });
     expect(message).toContain('currently closed');
+  });
+
+  it('classifies 500 catalog errors as runtime issues (not setup guidance)', () => {
+    const result = classifyStoreCatalogError({
+      status: 500,
+      errorCode: 'STORE_CATALOG_RUNTIME_ERROR',
+      message: 'Failed to list storefront catalog'
+    });
+    expect(result.message).toContain('Failed to list storefront catalog');
+    expect(result.guidance).toContain('Server/runtime issue');
+  });
+
+  it('classifies location validation errors with branch guidance', () => {
+    const result = classifyStoreCatalogError({
+      status: 422,
+      errorCode: 'STORE_CATALOG_LOCATION_INVALID',
+      message: 'location_id must be a positive integer when provided'
+    });
+    expect(result.guidance).toContain('fulfillment location is invalid');
+  });
+
+  it('does not inject setup/runtime guidance when no explicit catalog code is present', () => {
+    const result = classifyStoreCatalogError({
+      status: 500,
+      errorCode: 'UNKNOWN_CODE',
+      message: 'Some uncategorized failure'
+    });
+    expect(result.guidance).toBe('');
   });
 });

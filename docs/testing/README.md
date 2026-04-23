@@ -34,6 +34,7 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 
 - `docs/testing/pos-e2e-uat-checklist.md`
 - Canonical readiness state: `docs/testing/pos-readiness-status.md`
+- Current release checklist: `docs/testing/release-go-no-go-checklist.md`
 - Latest execution evidence snapshot: `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
@@ -47,7 +48,9 @@ Historical note:
 - Early exploratory Phase 32 Gemini QA artifacts were archived to `docs/archive/testing/2026-02/`.
 - Legacy receive-token verification notes were archived to `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`.
 - Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
+- Dated release go/no-go snapshot was archived to `docs/archive/testing/2026-04/release-go-no-go-checklist-2026-04-21.md`.
 - Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
+- Latest fee/branding contract hardening evidence is recorded in section `3.14` of `docs/testing/pos-readiness-status.md`.
 
 ## Compliance Activation Readiness E2E
 
@@ -109,6 +112,19 @@ Before running manual UAT after backend changes:
 10. Verify storefront catalog location-scope compatibility path is fail-closed:
    - `GET /api/v1/store/catalog?limit=120&location_id=<active_location_id>` should return `200` for active tenants.
    - If tenant location-stock schema is not fully aligned yet, API must degrade to global availability computation (still `200`, never `500`).
+11. Verify tenant storefront empty-state UX is explicit when no sellable items are configured:
+   - Open `tenant-store/<slug>` for a tenant with zero storefront-visible sellable rows.
+   - Expect a clear setup-state panel (`Storefront items are not set up yet`) instead of a silent/blank catalog grid.
+12. Verify storefront search-on-empty state does not regress to blank content:
+   - On a tenant with zero catalog rows, enter any catalog search query.
+   - Expect explicit message (`No items are available to search yet`) and no blank/unstyled gap.
+13. Verify POS location-scoped catalog compatibility path is fail-closed:
+   - Use a tenant with temporary `item_location_stocks` table/column drift and call POS catalog reads with `location_id`.
+   - Expected behavior: fallback to global stock compatibility view (no `500`, no forced all-zero stock overlay).
+14. Verify `/store/catalog` explicit error codes for frontend guidance:
+   - Invalid `location_id` should return `422` + `error_code=STORE_CATALOG_LOCATION_INVALID`.
+   - Unexpected runtime failure should return `500` + `error_code=STORE_CATALOG_RUNTIME_ERROR`.
+   - Frontend guidance for catalog errors must be code-driven (not message substring heuristics).
 
 This prevents transient startup-side `500` errors caused by runtime schema `alter` operations.
 
@@ -160,9 +176,21 @@ Restore drill:
 
 Aggregate gate:
 1. `RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
+2. With local QA env file:
+   - `npm run gate:release:no-staging:qa-env`
 
 Output:
 1. `.tmp/release-gates/<sha>/release_verdict.json`
 
 Pass condition:
 1. `verdict` equals `pass` (or `bypassed` only with incident metadata).
+
+## Local Readiness Gate
+
+Use this local-only release readiness gate when you need deterministic project health evidence without remote QA dependency.
+
+Command:
+1. `npm run gate:release:local`
+
+Output:
+1. `.tmp/release-gates/<sha>/local_readiness.json`

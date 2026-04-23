@@ -5,6 +5,10 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { mapStoreUseCaseError } from './storeUseCaseError.js';
 import logger from '../../../config/logger.js';
 import {
+    computeDgfyConvenienceFee,
+    getDgfyConvenienceFeeLabel
+} from '../../shared/utils/dgfyConvenienceFee.js';
+import {
     generateStoreCancelProof,
     generateStoreToken,
     getStoreTokenConfig,
@@ -235,6 +239,9 @@ const serializeOrderBase = (order) => ({
     status_label: toStatusLabel(order?.fulfillment_status),
     status: order?.fulfillment_status,
     subtotal_amount: order?.subtotal_amount,
+    service_fee_amount: order?.service_fee_amount,
+    service_fee_label_snapshot: order?.service_fee_label_snapshot,
+    service_fee_method_snapshot: order?.service_fee_method_snapshot,
     delivery_fee: order?.delivery_fee,
     total_amount: order?.total_amount,
     outside_radius_flag: order?.outside_radius_flag,
@@ -720,7 +727,9 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
-    const totalAmount = round4(prepared.subtotalAmount + deliveryFee);
+    const serviceFeeAmount = computeDgfyConvenienceFee(prepared.subtotalAmount);
+    const serviceFeeLabel = getDgfyConvenienceFeeLabel();
+    const totalAmount = round4(prepared.subtotalAmount + deliveryFee + serviceFeeAmount);
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
         orderMethod,
         location,
@@ -735,6 +744,8 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
         estimated_wait_minutes: estimatedWaitMinutes,
         prepared,
         deliveryFee,
+        serviceFeeAmount,
+        serviceFeeLabel,
         totalAmount,
         outsideRadiusFlag,
         scheduledFor
@@ -825,7 +836,7 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                 : Number.parseInt(query.location_id, 10);
             if (query.location_id != null && (!Number.isInteger(requestedLocationId) || requestedLocationId <= 0)) {
                 throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
+                    DomainErrorCode.STORE_CATALOG_LOCATION_INVALID,
                     'location_id must be a positive integer when provided',
                     { statusCode: 422 }
                 );
@@ -850,7 +861,19 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                 }
             });
         } catch (error) {
-            return fail(mapStoreUseCaseError(error, 'Failed to list storefront catalog'));
+            if (error instanceof DomainError) {
+                return fail(error);
+            }
+            return fail(new DomainError(
+                DomainErrorCode.STORE_CATALOG_RUNTIME_ERROR,
+                'Failed to list storefront catalog',
+                {
+                    statusCode: 500,
+                    details: {
+                        catalog_error_type: 'runtime_failure'
+                    }
+                }
+            ));
         }
     };
 };
@@ -1230,6 +1253,8 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
             const resolved = await resolveCheckoutContext({ storeRepository, payload, storeCustomer });
             return ok({
                 subtotal_amount: resolved.prepared.subtotalAmount,
+                service_fee_amount: resolved.serviceFeeAmount,
+                service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
                 total_amount: resolved.totalAmount,
                 vatable_sales: resolved.prepared.vatableSales,
@@ -1381,9 +1406,9 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     discount_amount: 0,
                     discount_label_snapshot: null,
                     discount_rate_snapshot: null,
-                    service_fee_amount: 0,
-                    service_fee_label_snapshot: null,
-                    service_fee_method_snapshot: null,
+                    service_fee_amount: resolved.serviceFeeAmount,
+                    service_fee_label_snapshot: resolved.serviceFeeLabel,
+                    service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
                     service_fee_overridden: false,
                     total_amount: resolved.totalAmount,
                     status: 'completed',

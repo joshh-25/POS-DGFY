@@ -13,6 +13,10 @@ import {
 import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolveMovementLocation } from '../../../services/locationInventoryService.js';
+import {
+    computeDgfyConvenienceFee,
+    getDgfyConvenienceFeeLabel
+} from '../../shared/utils/dgfyConvenienceFee.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -21,7 +25,6 @@ const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
-const ORDER_METHOD_FEE_KEYS = [...ORDER_METHODS, 'online'];
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
@@ -43,21 +46,6 @@ const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     cancelled: [],
     rejected: []
 });
-const ORDER_METHOD_FEE_LABELS = {
-    dine_in: 'Dine In Fee',
-    takeout: 'Takeout Fee',
-    pickup: 'Pickup Fee',
-    delivery: 'Delivery Fee',
-    online: 'Online Fee'
-};
-const createDefaultOrderMethodFeeMatrix = () => ORDER_METHOD_FEE_KEYS.reduce((acc, method) => {
-    acc[method] = {
-        enabled: false,
-        amount: 0,
-        label: ORDER_METHOD_FEE_LABELS[method]
-    };
-    return acc;
-}, {});
 const CASH_EVENT_EFFECT = Object.freeze({
     cash_in: 1,
     opening_adjustment: 1,
@@ -879,70 +867,11 @@ const parseDiscountProfiles = (settings = {}) => {
         .filter((profile) => profile.active && profile.name.length > 0);
 };
 
-const parseOrderMethodFees = (settings = {}) => {
-    const raw = settings?.pos_order_method_fees?.value;
-    let parsed = raw;
-
-    if (typeof parsed === 'string') {
-        try {
-            parsed = JSON.parse(parsed);
-        } catch {
-            parsed = null;
-        }
-    }
-
-    if (!isPlainObject(parsed)) {
-        return createDefaultOrderMethodFeeMatrix();
-    }
-
-    const normalized = createDefaultOrderMethodFeeMatrix();
-    for (const method of ORDER_METHOD_FEE_KEYS) {
-        const entry = parsed?.[method];
-        if (!isPlainObject(entry)) {
-            continue;
-        }
-
-        const amount = Number(entry.amount);
-        normalized[method] = {
-            enabled: parseBooleanSetting(entry.enabled),
-            amount: Number.isFinite(amount) ? Math.max(0, round4(amount)) : 0,
-            label: String(entry.label || '').trim() || ORDER_METHOD_FEE_LABELS[method]
-        };
-    }
-
-    return normalized;
-};
-
-const resolveCheckoutServiceFee = ({ payload, settings }) => {
+const resolveCheckoutServiceFee = ({ payload, grossSubtotal }) => {
     const orderMethod = ORDER_METHODS.includes(payload?.order_method)
         ? payload.order_method
         : 'dine_in';
-    const feeMatrix = parseOrderMethodFees(settings);
-    const methodFee = feeMatrix[orderMethod] || createDefaultOrderMethodFeeMatrix()[orderMethod];
-    const hasOverride = payload?.service_fee_amount !== undefined && payload?.service_fee_amount !== null;
-    const overrideAmount = hasOverride ? Number(payload.service_fee_amount) : null;
-
-    if (hasOverride && (!Number.isFinite(overrideAmount) || overrideAmount < 0)) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'service_fee_amount must be a non-negative number',
-            { statusCode: 422 }
-        );
-    }
-
-    if (hasOverride && !methodFee.enabled && overrideAmount > 0) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            `Service fee override is not allowed for order method: ${orderMethod}`,
-            { statusCode: 422 }
-        );
-    }
-
-    let serviceFeeAmount = methodFee.enabled ? round4(methodFee.amount) : 0;
-    if (hasOverride) {
-        serviceFeeAmount = round4(overrideAmount);
-    }
-
+    const serviceFeeAmount = computeDgfyConvenienceFee(grossSubtotal);
     if (serviceFeeAmount <= 0) {
         return {
             serviceFeeAmount: 0,
@@ -954,9 +883,9 @@ const resolveCheckoutServiceFee = ({ payload, settings }) => {
 
     return {
         serviceFeeAmount,
-        serviceFeeLabelSnapshot: methodFee.label || ORDER_METHOD_FEE_LABELS[orderMethod],
+        serviceFeeLabelSnapshot: getDgfyConvenienceFeeLabel(),
         serviceFeeMethodSnapshot: orderMethod,
-        serviceFeeOverridden: Boolean(hasOverride)
+        serviceFeeOverridden: false
     };
 };
 
@@ -1169,7 +1098,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             location_id: requestedLocationId,
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
-            service_fee_amount: payload.service_fee_amount == null ? null : round4(payload.service_fee_amount),
+            service_fee_amount: null,
             discount_profile_name: String(payload.discount_profile_name || '').trim() || null,
             discount_rate: payload.discount_rate == null ? null : round4(payload.discount_rate),
             discount_amount: round4(payload.discount_amount || 0),
@@ -1491,7 +1420,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const netItemsTotal = round4(subtotalAmount - discountAmount);
             const serviceFeeResolution = resolveCheckoutServiceFee({
                 payload: { ...payload, order_method: normalizedOrderMethod },
-                settings
+                grossSubtotal: subtotalAmount
             });
             const serviceFeeAmount = round4(serviceFeeResolution.serviceFeeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount);

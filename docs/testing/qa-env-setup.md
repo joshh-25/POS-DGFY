@@ -46,3 +46,5 @@ Get current SHA:
 
 1. No production code or prod environment changes are required for this setup.
 2. Remote QA checks still require reachable QA infrastructure and valid credentials.
+3. You can run a local-only readiness gate (without QA SSH/API dependencies) via:
+   - `npm run gate:release:local`

@@ -258,4 +258,22 @@ describe('storefront discovery integration flow', () => {
     expect(params.get('latitude')).toBeNull();
     expect(params.get('longitude')).toBeNull();
   });
+
+  it('shows explicit tenant setup empty-state when catalog has no sellable items', async () => {
+    window.history.pushState({}, '', '/tenant-store/alpha');
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Storefront items are not set up yet')).toBeTruthy();
+    });
+    expect(screen.getByText(/Customer checkout will be available once at least one storefront item is enabled/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check Again' })).toBeTruthy();
+
+    await user.type(screen.getByPlaceholderText('Search items in this store catalog...'), 'milk');
+    await waitFor(() => {
+      expect(screen.getByText('No items are available to search yet')).toBeTruthy();
+    });
+  });
 });

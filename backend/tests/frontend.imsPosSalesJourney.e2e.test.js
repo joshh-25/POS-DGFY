@@ -470,7 +470,7 @@ const assertMsmeNavigationAndRouteGuard = async (page) => {
 
 const assertTerminalPaymentOptionsByMode = async (page, { msme }) => {
   await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: /POS Terminal Workspace/i }).waitFor({ timeout: 60000 });
+    await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
   await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
   await ensureShiftOpenForCheckout(page);
   await ensureCheckoutWorkspaceVisible(page);
@@ -1864,7 +1864,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
         const a11ySkuCode = `E2EA11Y-${Date.now()}`;
         await createSellableItemViaItemsPage(page, a11yItemName, a11ySkuCode);
         await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('heading', { name: /POS Terminal Workspace/i }).waitFor({ timeout: 60000 });
+    await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
         await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
         await ensureShiftOpenForCheckout(page);
         await checkoutAndOpenSalesReport(page, a11yItemName);

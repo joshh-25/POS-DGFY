@@ -1,6 +1,8 @@
 # Archive: Testing Artifacts (2026-02)
 
-This folder contains historical exploratory QA artifacts from February 2026, including the receive-token verification report.
+This folder contains historical exploratory QA/readiness artifacts from February 2026, including:
+1. receive-token verification report
+2. dated production readiness snapshot (`production-readiness-audit-2026-02-19.md`)
 
 Superseding active references:
 

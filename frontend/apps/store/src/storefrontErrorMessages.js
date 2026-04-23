@@ -33,6 +33,38 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
   return baseMessage;
 };
 
+export const classifyStoreCatalogError = (error, fallback = 'Failed to load tenant catalog.') => {
+  const baseMessage = String(error?.message || '').trim() || fallback;
+  const errorCode = String(error?.errorCode || '').trim().toUpperCase();
+
+  if (error?.isNetworkError) {
+    return {
+      message: 'Request failed before reaching API. Check store API proxy/CORS connectivity.',
+      guidance: 'Connectivity issue detected. Please retry after confirming the API and proxy are reachable.'
+    };
+  }
+
+  if (errorCode === 'STORE_CATALOG_RUNTIME_ERROR' || errorCode === 'INTERNAL_ERROR') {
+    return {
+      message: baseMessage,
+      guidance: 'Server/runtime issue while loading catalog. This is not the same as tenant item setup. Please retry or escalate with request details.'
+    };
+  }
+
+  if (errorCode === 'STORE_CATALOG_LOCATION_INVALID') {
+    return {
+      message: baseMessage,
+      guidance: 'Selected fulfillment location is invalid for this tenant. Refresh the tenant page and reselect a valid branch.'
+    };
+  }
+
+  return {
+    message: baseMessage,
+    guidance: ''
+  };
+};
+
 export default {
-  normalizeStorefrontErrorMessage
+  normalizeStorefrontErrorMessage,
+  classifyStoreCatalogError
 };

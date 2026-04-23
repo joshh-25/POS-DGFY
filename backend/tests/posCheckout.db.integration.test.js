@@ -394,24 +394,13 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(refreshedItem.current_stock)).toBeCloseTo(0, 6);
     });
 
-    it('applies method fee correctly without affecting VAT buckets and supports override snapshot', async () => {
+    it('applies fixed DGFY convenience fee correctly and ignores caller override snapshot', async () => {
         const cashier = await createCashier();
         const vatableItem = await createFinishedGood({
             vat_type: 'vatable',
             current_stock: 10,
             default_sale_price: 112
         });
-
-        await setSetting(
-            'pos_order_method_fees',
-            JSON.stringify({
-                dine_in: { enabled: false, amount: 0, label: 'Dine In Fee' },
-                takeout: { enabled: false, amount: 0, label: 'Takeout Fee' },
-                delivery: { enabled: true, amount: 50, label: 'Delivery Fee' },
-                online: { enabled: false, amount: 0, label: 'Online Fee' }
-            }),
-            'json'
-        );
 
         const idempotencyKey = `idem-method-fee-${crypto.randomUUID()}`;
         const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
@@ -437,11 +426,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             include: [{ model: models.PosTransactionLine, as: 'lines' }]
         });
         expect(Number(persistedTx.subtotal_amount)).toBeCloseTo(112, 4);
-        expect(Number(persistedTx.service_fee_amount)).toBeCloseTo(60, 4);
-        expect(persistedTx.service_fee_label_snapshot).toBe('Delivery Fee');
+        expect(Number(persistedTx.service_fee_amount)).toBeCloseTo(1.12, 4);
+        expect(persistedTx.service_fee_label_snapshot).toBe('DGFY convenience fee');
         expect(persistedTx.service_fee_method_snapshot).toBe('delivery');
-        expect(Boolean(persistedTx.service_fee_overridden)).toBe(true);
-        expect(Number(persistedTx.total_amount)).toBeCloseTo(172, 4);
+        expect(Boolean(persistedTx.service_fee_overridden)).toBe(false);
+        expect(Number(persistedTx.total_amount)).toBeCloseTo(113.12, 4);
 
         // Fee is non-VAT, so VAT buckets remain item-only.
         expect(Number(persistedTx.vatable_sales)).toBeCloseTo(100, 4);

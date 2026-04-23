@@ -221,10 +221,14 @@ export default function TerminalSidebarPanel({
             <span className="text-slate-600">Active Discounts</span>
             <span className="font-semibold text-slate-900">{terminalMeta.activeDiscountCount}</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Fee Methods Enabled</span>
-            <span className="font-semibold text-slate-900">{terminalMeta.enabledFeeMethods.length}</span>
-          </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">DGFY Global Fee Policy</span>
+                <span className="font-semibold text-slate-900">
+                  {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
+                    ? 'Active'
+                    : 'Inactive'}
+                </span>
+              </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-600">Compliance Policy</span>
             <span className="font-semibold text-emerald-700">Dual-mode</span>
@@ -631,7 +635,7 @@ export default function TerminalSidebarPanel({
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Service Fees</span>
+                <span className="text-slate-600">DGFY Convenience Fees</span>
                 <span className="font-semibold text-slate-900">
                   + {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.service_fee_total)}
                 </span>

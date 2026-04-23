@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-04-21
+Last updated: 2026-04-23
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -66,6 +66,20 @@ Overall status: in_progress
 - remediation writes per-shift provenance rows to `pos_shift_location_backfill_audit`
 - strict-binding activation is blocked when unresolved/low-confidence readiness remains
 - terminal setup context surfaces `location_binding_readiness` for operator visibility
+25. POS pane keyboard scrolling is centralized and directly unit-tested:
+- shared scroll key handler utility covers `ArrowUp/Down`, `PageUp/Down`, `Home/End`
+- contract coverage still enforces focus-target and independent scroll-zone behavior
+26. DGFY fee/branding rollout is active across POS + storefront:
+- mandatory fee policy is fixed at `1%` of gross subtotal (`DGFY convenience fee`)
+- POS checkout ignores caller `service_fee_amount` overrides at runtime
+- storefront quote and checkout persist deterministic DGFY fee label snapshots
+- receipt header keeps legal issuer prominence while preserving DGFY brand line and acronym footer
+27. Terminal fee-policy UX is explicit and no longer method-count based:
+- operational widgets now expose global policy state (`DGFY Global Fee Policy: Active/Inactive`)
+- legacy "Fee Methods Enabled" count semantics are retired from operator-facing summaries
+28. API route naming clarity is now explicit in docs:
+- canonical external routes are documented as `/api/v1/pos/checkouts`, `/api/v1/store/cart/quote`, `/api/v1/store/checkout`
+- singular `/api/v1/pos/checkout` is documented as non-canonical
 
 ## 3) Automated Gate Status (Latest)
 
@@ -204,6 +218,74 @@ Overall status: in_progress
    - Summary artifact: `logs/deploy/deploy_20260421_212450.summary.txt`
    - Public checks passed for IMS/POS/storefront/tenant-store and tenant-store asset integrity.
 
+### 3.11 Storefront and POS Compatibility/UX Polish Closure (2026-04-22)
+
+1. Root-cause closure expansion:
+   - Storefront catalog blank-state edge case identified when `catalog.length === 0` and catalog search query is non-empty.
+   - Catalog error helper copy previously suggested setup guidance for generic runtime errors.
+   - Adjacent POS repository location-stock path shared schema-drift risk for `item_location_stocks`.
+2. Implemented fixes:
+   - `frontend/apps/store/src/main.jsx` now uses deterministic catalog state rendering (`loading`, `error`, setup-empty, search-empty, no-match, ready) so no blank state is possible.
+   - `frontend/apps/store/src/storefrontErrorMessages.js` now classifies catalog load failures and separates runtime faults from setup guidance.
+   - `backend/src/modules/pos/repositories/posRepository.js` now applies the same table/column compatibility fallback policy for location-stock reads as storefront catalog.
+3. Regression coverage:
+   - `frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx`
+   - `frontend/apps/store/src/__tests__/storefrontErrorMessages.test.js`
+   - `backend/tests/posRepository.locationStockFallback.test.js`
+4. Verification evidence:
+   - `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js` -> PASS
+   - `npm --prefix backend test -- --runInBand --runTestsByPath tests/storeRepository.locationStockFallback.test.js tests/posRepository.locationStockFallback.test.js` -> PASS
+
+### 3.12 Storefront Catalog Explicit Error-Code Contract (2026-04-22)
+
+1. Contract hardening:
+   - Added explicit backend error codes for storefront catalog read failures:
+     - `STORE_CATALOG_LOCATION_INVALID` (`422`)
+     - `STORE_CATALOG_RUNTIME_ERROR` (`500`)
+2. Frontend hardening:
+   - Catalog error guidance now keys off `error_code` contract rather than message substring matching.
+3. Regression coverage:
+   - `backend/tests/storeUsecases.applicationResult.test.js` (catalog invalid location + runtime error code assertions)
+   - `frontend/apps/store/src/__tests__/storefrontErrorMessages.test.js` (code-driven classification assertions)
+4. Verification evidence:
+   - `npm --prefix backend test -- --runInBand --runTestsByPath tests/storeUsecases.applicationResult.test.js tests/storeRepository.locationStockFallback.test.js tests/posRepository.locationStockFallback.test.js` -> PASS
+   - `npm --prefix frontend test -- --run apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` -> PASS
+   - `npm run check:architecture` -> PASS
+   - `npm run lint:docs` -> PASS
+
+### 3.13 Scroll UX Assurance + Local Readiness Gate Automation (2026-04-23)
+
+1. Scroll behavior hardening:
+   - extracted pane keyboard-scroll handling to shared utility:
+     - `frontend/src/features/pos/utils/scrollKeyControls.js`
+   - added direct behavior tests:
+     - `frontend/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`
+   - updated scroll contract test to enforce utility wiring:
+     - `frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js`
+2. Local release-readiness automation:
+   - added `scripts/gate-release-local.js`
+   - added npm command `npm run gate:release:local`
+   - gate emits artifact:
+     - `.tmp/release-gates/<target_sha>/local_readiness.json`
+3. Verification evidence:
+   - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js` -> PASS
+
+### 3.14 DGFY Global Fee + Branding Contract Hardening (2026-04-23)
+
+1. Cross-surface policy hardening:
+   - storefront fee label is deterministic even when `service_fee_amount=0`
+   - receipt header now preserves legal issuer-first display with explicit DGFY brand line
+   - terminal summary cards now expose explicit global fee-policy state
+2. Regression coverage:
+   - `npm --prefix backend test -- --runTestsByPath tests/storeUsecases.applicationResult.test.js tests/posSalesReconciliation.db.integration.test.js` -> PASS
+   - `npm --prefix frontend test -- --run src/features/pos/__tests__/receiptContractConformance.contract.test.js src/features/pos/__tests__/terminalLocationScope.integration.test.jsx` -> PASS
+3. Quality + gate evidence:
+   - `npm --prefix frontend run lint -- Pages/Settings.jsx src/features/pos/components/TerminalOperationsWorkspace.jsx src/features/pos/components/TerminalSidebarPanel.jsx src/features/pos/components/ReceiptPrintView.jsx` -> PASS
+   - `npm run lint:docs` -> PASS
+   - `npm run check:architecture` -> PASS
+   - `npm run check:compliance` -> PASS
+   - `npm run gate:release:local` -> PASS
+
 ## 4) Canonical UAT Assets
 
 1. Checklist: `docs/testing/pos-e2e-uat-checklist.md`
@@ -211,6 +293,7 @@ Overall status: in_progress
 3. Evidence template: `docs/testing/pos-e2e-uat-evidence-template.md`
 4. Current run log: `docs/testing/pos-e2e-uat-run-2026-04-16.md`
 5. Canonical IMS to POS to Sales role journey: `docs/features/IMS_POS_SALES_UX_JOURNEY.md`
+6. Current release checklist: `docs/testing/release-go-no-go-checklist.md`
 
 ## 5) Update Rule
 

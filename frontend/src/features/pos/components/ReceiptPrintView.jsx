@@ -1,6 +1,9 @@
 import React from 'react';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+const DGFY_BRAND_NAME = 'DGFY';
+const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
+const DGFY_ACRONYM = 'Discover Goods For You';
 
 const parseTransactionMetadata = (value) => {
     if (!value) return {};
@@ -69,7 +72,10 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     return (
         <div className="bg-white border border-slate-200 rounded-xl p-4 print:border-none print:rounded-none print:p-0">
             <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3">
-                <p className="font-semibold text-slate-900">{businessSettings.pos_business_name || 'Digital Receipt'}</p>
+                <p className="font-semibold text-slate-900">{businessSettings.pos_business_name || DGFY_BRAND_NAME}</p>
+                {businessSettings.pos_business_name && (
+                    <p className="text-xs text-slate-600">Brand: {DGFY_BRAND_NAME}</p>
+                )}
                 {isFiscal && businessSettings.pos_tin_branch && (
                     <p className="text-xs text-slate-600">TIN/Branch: {businessSettings.pos_tin_branch}</p>
                 )}
@@ -139,7 +145,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 </div>
                 <div className="flex justify-between text-slate-600">
                     <span>
-                        {transaction.service_fee_label_snapshot || 'Order Method Fee'}
+                        {transaction.service_fee_label_snapshot || DGFY_CONVENIENCE_FEE_LABEL}
                         {transaction.service_fee_method_snapshot ? ` (${transaction.service_fee_method_snapshot})` : ''}
                     </span>
                     <span>{money(transaction.service_fee_amount)}</span>
@@ -156,6 +162,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 {businessSettings.pos_receipt_footer_message && (
                     <p>{businessSettings.pos_receipt_footer_message}</p>
                 )}
+                <p>{DGFY_ACRONYM}</p>
             </div>
         </div>
     );

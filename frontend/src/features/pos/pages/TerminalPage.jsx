@@ -435,17 +435,7 @@ export default function TerminalPage() {
         ? discountProfiles.filter((profile) => profile && profile.active !== false && String(profile.name || '').trim()).length
         : 0;
 
-      let methodFees = allSettings?.pos_order_method_fees?.value || {};
-      if (typeof methodFees === 'string') {
-        try {
-          methodFees = JSON.parse(methodFees);
-        } catch {
-          methodFees = {};
-        }
-      }
-      const enabledFeeMethods = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'].filter(
-        (method) => methodFees?.[method]?.enabled === true
-      );
+      const enabledFeeMethods = ['dgfy_global_1pct'];
 
       setTerminalRegistry(normalizedRegistry);
       setTerminalRegistryMode(normalizedRegistryMode);
