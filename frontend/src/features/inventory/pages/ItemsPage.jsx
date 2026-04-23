@@ -551,15 +551,10 @@ export default function Items() {
     // Non-authoritative UI fallback only. Primary readiness contract comes from backend
     // /pos/catalog-overrides payloads and gate decisions.
     const posConfig = resolvePosConfig(item);
-    const folderName = resolveItemFolderName(item);
-    const assignedFolder = folderName ? folderByName.get(folderName) : null;
     const defaultSalePrice = Number(item?.default_sale_price ?? 0);
     const currentStock = Number(item?.current_stock ?? 0);
     const checks = {
       pos_visible: posConfig.pos_visible !== false,
-      has_menu_image: Boolean(posConfig.pos_image_url),
-      has_folder_assignment: Boolean(folderName),
-      folder_visible_in_pos_filter: assignedFolder ? assignedFolder.show_in_pos_filter !== false : true,
       has_sale_price: Number.isFinite(defaultSalePrice) && defaultSalePrice > 0,
       stock_non_negative: Number.isFinite(currentStock) && currentStock >= 0,
       status_active: String(item?.status || '').toLowerCase() === 'active',
@@ -568,9 +563,6 @@ export default function Items() {
 
     const missingRequirements = [];
     if (!checks.pos_visible) missingRequirements.push({ code: 'POS_VISIBILITY_DISABLED', label: 'Enable POS visibility' });
-    if (!checks.has_menu_image) missingRequirements.push({ code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' });
-    if (!checks.has_folder_assignment) missingRequirements.push({ code: 'FOLDER_UNASSIGNED', label: 'Assign item folder' });
-    if (!checks.folder_visible_in_pos_filter) missingRequirements.push({ code: 'FOLDER_FILTER_HIDDEN', label: 'Enable folder in POS filters' });
     if (!checks.has_sale_price) missingRequirements.push({ code: 'SALE_PRICE_MISSING', label: 'Set a sale price' });
     if (!checks.stock_non_negative) missingRequirements.push({ code: 'STOCK_INVALID', label: 'Fix stock value' });
     if (!checks.status_active) missingRequirements.push({ code: 'ITEM_NOT_ACTIVE', label: 'Activate item' });
@@ -584,7 +576,7 @@ export default function Items() {
       checks,
       missing_requirements: missingRequirements
     };
-  }, [folderByName, resolveItemFolderName, resolvePosConfig]);
+  }, [resolvePosConfig]);
 
   const getPosReadinessForItem = useCallback((item) => {
     const existing = resolvePosConfig(item)?.pos_readiness;

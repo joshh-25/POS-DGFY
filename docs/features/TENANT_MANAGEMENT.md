@@ -183,5 +183,5 @@ Located at `/admin/tenants`.
 - **List View**: Filter by status (Pending, Active, etc.).
 - **Search/Filter**: Quickly find companies.
 - **Quick Actions**: Approve, Reject, Edit, Delete.
-- **Compliance Safety Guard**: `Force non-compliant` is available only when tenant `compliance_mode_state` is `compliant_pending` or `compliant_active`; unsupported states render a disabled action with an inline helper message.
+- **Compliance Safety Guard**: `Force non-compliant` is available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided `force_non_compliant_block_reason` to render disabled helper text.
 - **Stats**: Total tenants, active vs pending counts.

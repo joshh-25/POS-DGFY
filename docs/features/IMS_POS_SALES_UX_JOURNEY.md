@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-21
+last_reviewed: 2026-04-23
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -21,20 +21,22 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 1. Create or edit finished-goods item in `Items`.
 2. Configure POS requirements from item/product wizard sections (wizard-first flow) and resolve blockers:
    - POS visibility enabled
-   - POS menu image uploaded
-   - Folder assigned and folder `show_in_pos_filter` enabled
    - Sale price configured
    - Stock is non-negative
-3. If needed, use bulk POS setup for multi-item updates.
-4. Preview the item in Terminal via `Preview in Terminal`.
-5. Validate terminal identity at unlock (`Terminal ID`) and open shift.
-6. Monitor operational status rail:
+   - Item status is active
+3. Optional POS enhancements (recommended but non-blocking for POS visibility enable):
+   - POS menu image uploaded
+   - Folder assigned and folder `show_in_pos_filter` enabled for faster category navigation
+4. If needed, use bulk POS setup for multi-item updates.
+5. Preview the item in Terminal via `Preview in Terminal`.
+6. Validate terminal identity at unlock (`Terminal ID`) and open shift.
+7. Monitor operational status rail:
    - connectivity
    - queued offline operations
    - shift state
    - compliance state and reason code
-7. Review POS history records and hand off to Sales timeline (`Open in Sales Report`).
-8. Export Sales CSV with precheck confirmation and retain export metadata.
+8. Review POS history records and hand off to Sales timeline (`Open in Sales Report`).
+9. Export Sales CSV with precheck confirmation and retain export metadata.
 
 ## Readiness Gate Behavior
 1. Enabling `Show in POS` is readiness-gated.

@@ -148,24 +148,12 @@ const toPlain = (row) => (
 
 const buildPosReadiness = ({ item, override }) => {
     const payload = toPlain(item) || {};
-    const folder = payload.folder && typeof payload.folder === 'object'
-        ? payload.folder
-        : null;
-
     const currentStock = toNumber(payload.current_stock, 0);
     const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
-    const folderId = Number.parseInt(payload.folder_id, 10);
-    const hasFolderId = Number.isInteger(folderId) && folderId > 0;
-    const hasLegacyFolder = String(payload.product_folder || '').trim().length > 0;
-    const hasFolderAssignment = hasFolderId || hasLegacyFolder;
-    const folderFilterVisible = folder ? folder.show_in_pos_filter !== false : true;
     const status = String(payload.status || '').trim().toLowerCase();
 
     const checks = {
         pos_visible: resolveCatalogVisibility({ item: payload, override }) !== false,
-        has_menu_image: Boolean(override?.pos_image_url),
-        has_folder_assignment: hasFolderAssignment,
-        folder_visible_in_pos_filter: folderFilterVisible,
         has_sale_price: defaultSalePrice > 0,
         stock_non_negative: currentStock >= 0,
         status_active: status === 'active',
@@ -178,27 +166,6 @@ const buildPosReadiness = ({ item, override }) => {
             code: 'POS_VISIBILITY_DISABLED',
             label: 'Enable POS visibility',
             fix_hint: 'Turn on Show in POS Menu for this item.'
-        });
-    }
-    if (!checks.has_menu_image) {
-        missingRequirements.push({
-            code: 'POS_IMAGE_MISSING',
-            label: 'Upload POS menu image',
-            fix_hint: 'Add a POS menu image so cashiers can recognize the item quickly.'
-        });
-    }
-    if (!checks.has_folder_assignment) {
-        missingRequirements.push({
-            code: 'FOLDER_UNASSIGNED',
-            label: 'Assign item folder',
-            fix_hint: 'Assign the item to a folder to improve POS filter navigation.'
-        });
-    }
-    if (!checks.folder_visible_in_pos_filter) {
-        missingRequirements.push({
-            code: 'FOLDER_FILTER_HIDDEN',
-            label: 'Enable folder in POS filters',
-            fix_hint: 'Set folder show_in_pos_filter=true so the category appears in POS.'
         });
     }
     if (!checks.has_sale_price) {

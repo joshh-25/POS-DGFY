@@ -40,7 +40,29 @@ const COMPLIANCE_MODE_LABELS = {
     compliant_active: 'Compliant (Active)'
 };
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
-const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Allowed only for compliant_pending or compliant_active tenants.';
+const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active';
+
+const deriveForceNonCompliantEligibility = (tenant) => {
+    if (Object.prototype.hasOwnProperty.call(tenant || {}, 'can_force_non_compliant')) {
+        return {
+            allowed: tenant?.can_force_non_compliant === true,
+            reason: String(tenant?.force_non_compliant_block_reason || FORCE_NON_COMPLIANT_HELPER_TEXT).trim()
+        };
+    }
+
+    const modeState = String(tenant?.compliance_mode_state || '').trim();
+    if (FORCE_NON_COMPLIANT_ALLOWED_STATES.has(modeState)) {
+        return { allowed: true, reason: '' };
+    }
+    if (modeState === 'non_compliant_active') {
+        return { allowed: false, reason: 'Tenant is already in non_compliant_active mode.' };
+    }
+    if (!modeState) {
+        return { allowed: false, reason: 'Compliance mode has not been selected yet.' };
+    }
+
+    return { allowed: false, reason: FORCE_NON_COMPLIANT_HELPER_TEXT };
+};
 
 const COMPLIANCE_REVIEW_FILTERS = [
     { value: 'needs_review', label: 'Needs review' },
@@ -348,15 +370,9 @@ export default function TenantManager() {
 
     const handleForceNonCompliant = async (tenant) => {
         if (!tenant?.id) return;
-        const modeState = String(tenant.compliance_mode_state || '').trim();
-        if (modeState === 'non_compliant_active') {
-            toast.error('Tenant is already in non-compliant mode.');
-            return;
-        }
-        if (!FORCE_NON_COMPLIANT_ALLOWED_STATES.has(modeState)) {
-            toast.error(
-                `Force non-compliant is only allowed from compliant_pending or compliant_active. Current state: ${modeState || 'unselected'}.`
-            );
+        const eligibility = deriveForceNonCompliantEligibility(tenant);
+        if (!eligibility.allowed) {
+            toast.error(eligibility.reason || FORCE_NON_COMPLIANT_HELPER_TEXT);
             return;
         }
         const reason = prompt(`Force "${tenant.name}" back to non-compliant mode.\n\nReason (required):`);
@@ -909,21 +925,28 @@ export default function TenantManager() {
                                                     <ShieldCheck className="w-4 h-4 mr-1" />
                                                     Compliance
                                                 </Button>
-                                                <Button
-                                                    onClick={() => handleForceNonCompliant(tenant)}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    disabled={isProcessing || !FORCE_NON_COMPLIANT_ALLOWED_STATES.has(String(tenant.compliance_mode_state || '').trim())}
-                                                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                                                    title={FORCE_NON_COMPLIANT_HELPER_TEXT}
-                                                >
-                                                    Force non-compliant
-                                                </Button>
-                                                {!FORCE_NON_COMPLIANT_ALLOWED_STATES.has(String(tenant.compliance_mode_state || '').trim()) && (
-                                                    <p className="w-full text-[10px] text-slate-500">
-                                                        {FORCE_NON_COMPLIANT_HELPER_TEXT}
-                                                    </p>
-                                                )}
+                                                {(() => {
+                                                    const forceEligibility = deriveForceNonCompliantEligibility(tenant);
+                                                    return (
+                                                        <>
+                                                            <Button
+                                                                onClick={() => handleForceNonCompliant(tenant)}
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled={isProcessing || !forceEligibility.allowed}
+                                                                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                                                                title={forceEligibility.allowed ? 'Force non-compliant' : forceEligibility.reason}
+                                                            >
+                                                                Force non-compliant
+                                                            </Button>
+                                                            {!forceEligibility.allowed && (
+                                                                <p className="w-full text-[10px] text-slate-500">
+                                                                    {forceEligibility.reason}
+                                                                </p>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                                 <Button
                                                     onClick={() => openEditModal(tenant)}
                                                     variant="outline"

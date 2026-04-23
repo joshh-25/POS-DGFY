@@ -48,6 +48,8 @@ describe('TenantManager force non-compliant guardrails', () => {
           plan: 'standard',
           compliance_mode_state: null,
           compliance_mode_choice_required: true,
+          can_force_non_compliant: false,
+          force_non_compliant_block_reason: 'Compliance mode has not been selected yet.',
           created_at: '2026-04-20T00:00:00.000Z'
         },
         {
@@ -58,6 +60,8 @@ describe('TenantManager force non-compliant guardrails', () => {
           plan: 'standard',
           compliance_mode_state: 'compliant_active',
           compliance_mode_choice_required: false,
+          can_force_non_compliant: true,
+          force_non_compliant_block_reason: null,
           created_at: '2026-04-20T00:00:00.000Z'
         }
       ]
@@ -79,7 +83,7 @@ describe('TenantManager force non-compliant guardrails', () => {
     expect(forceButtons).toHaveLength(2);
     expect(forceButtons[0].hasAttribute('disabled')).toBe(true);
     expect(forceButtons[1].hasAttribute('disabled')).toBe(false);
-    expect(screen.getByText('Allowed only for compliant_pending or compliant_active tenants.')).toBeTruthy();
+    expect(screen.getByText('Compliance mode has not been selected yet.')).toBeTruthy();
   });
 
   it('submits force action for allowed compliant states with trimmed reason payload', async () => {
@@ -100,5 +104,33 @@ describe('TenantManager force non-compliant guardrails', () => {
     });
     expect(promptSpy).toHaveBeenCalled();
     promptSpy.mockRestore();
+  });
+
+  it('blocks force action when backend eligibility says false even if lifecycle appears compliant', async () => {
+    const user = userEvent.setup();
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [
+        {
+          id: 'server-blocked-tenant',
+          name: 'Server Blocked Retail',
+          admin_email: 'blocked@retail.test',
+          status: 'active',
+          plan: 'premium',
+          compliance_mode_state: 'compliant_active',
+          compliance_mode_choice_required: false,
+          can_force_non_compliant: false,
+          force_non_compliant_block_reason: 'Tenant force override is temporarily blocked by policy gate.'
+        }
+      ]
+    });
+
+    render(<TenantManager />);
+    const forceButton = await screen.findByRole('button', { name: /Force non-compliant/i });
+
+    expect(forceButton.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Tenant force override is temporarily blocked by policy gate.')).toBeTruthy();
+
+    await user.click(forceButton);
+    expect(mocks.adminServiceMock.forceTenantNonCompliant).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,8 @@ Overall status: in_progress
 1. IMS to POS handoff now includes guided POS readiness behavior:
 - item-level POS visibility and media controls are explicit
 - readiness blockers are surfaced before cashier flow handoff
+ - readiness blockers for enabling POS visibility are: `pos_visible`, valid `default_sale_price > 0`, non-negative stock, and active item status
+ - POS menu image and folder assignment/`show_in_pos_filter` are optional UX enhancements (non-blocking)
 2. POS catalog eligibility is item-level with explicit defaults:
 - override row present => use `pos_visible`
 - no override row =>

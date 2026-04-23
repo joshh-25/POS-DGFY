@@ -3136,11 +3136,20 @@ List all tenant registrations with their status.
       "admin_email": "admin@acme.com",
       "company_token": "token-acme-123",
       "status": "pending",
+      "compliance_mode_state": null,
+      "compliance_mode_choice_required": true,
+      "can_force_non_compliant": false,
+      "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
       "created_at": "2026-02-06T..."
     }
   ]
 }
 ```
+
+**Eligibility fields (server-computed)**
+- `can_force_non_compliant`: authoritative eligibility flag for admin `POST /admin/tenants/:id/force-non-compliant` action.
+- `force_non_compliant_block_reason`: human-readable reason when force action is blocked.
+- Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 
 ### POST /admin/tenants/:id/approve
 Approve a pending tenant registration and provision their isolated database.

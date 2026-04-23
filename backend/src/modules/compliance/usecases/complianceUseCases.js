@@ -1035,6 +1035,13 @@ export const buildForceNonCompliantModeUseCase = ({ complianceRepository, logger
             }
 
             if (tenant.compliance_mode_state === COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE) {
+                logger?.warn?.(`[Compliance][ForceNonCompliant] Blocked request ${JSON.stringify({
+                    tenant_id: tenantId,
+                    compliance_mode_state: tenant.compliance_mode_state || null,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    status_code: 409,
+                    reason_code: 'already_non_compliant_active'
+                })}`);
                 return fail(new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Tenant is already in non_compliant_active mode',
@@ -1043,6 +1050,13 @@ export const buildForceNonCompliantModeUseCase = ({ complianceRepository, logger
             }
 
             if (![COMPLIANCE_MODE_STATE.COMPLIANT_PENDING, COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE].includes(tenant.compliance_mode_state)) {
+                logger?.warn?.(`[Compliance][ForceNonCompliant] Blocked request ${JSON.stringify({
+                    tenant_id: tenantId,
+                    compliance_mode_state: tenant.compliance_mode_state || null,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id),
+                    status_code: 422,
+                    reason_code: 'invalid_source_mode_state'
+                })}`);
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Platform force non-compliant override is only allowed from compliant_pending or compliant_active',
@@ -1095,6 +1109,12 @@ export const buildForceNonCompliantModeUseCase = ({ complianceRepository, logger
                 }
 
                 await transaction.commit();
+                logger?.info?.(`[Compliance][ForceNonCompliant] Applied ${JSON.stringify({
+                    tenant_id: tenantId,
+                    previous_mode_state: tenant.compliance_mode_state || null,
+                    next_mode_state: updated.compliance_mode_state || null,
+                    actor_user_id: parsePositiveInt(actorUser?.user_id)
+                })}`);
                 return ok({
                     mode_state: updated.compliance_mode_state,
                     mode_choice_required: updated.compliance_mode_choice_required === true,

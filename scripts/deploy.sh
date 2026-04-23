@@ -37,6 +37,7 @@ AUTO_MODE="0"
 RUN_LEGACY_HOOKS="${DEPLOY_RUN_LEGACY_MAINTENANCE_HOOKS:-0}"
 DEEP_VERIFY="${DEPLOY_POST_DEPLOY_VERIFY:-0}"
 VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
+FRONTEND_ASSET_PARITY_STRICT="${DEPLOY_FRONTEND_ASSET_PARITY_STRICT:-1}"
 STRICT_LEGACY_AUDIT="${DEPLOY_STRICT_LEGACY_AUDIT:-0}"
 WINDOWS_LOCK_CLEANUP_MODE="${DEPLOY_WINDOWS_LOCK_CLEANUP:-auto}"
 WINDOWS_LOCK_CLEANUP_DELAY_SECONDS="${DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS:-2}"
@@ -88,6 +89,7 @@ while [[ $# -gt 0 ]]; do
             echo "  DEPLOY_RUN_BILLING_VERIFY=auto|0|1 (default auto)"
             echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
+            echo "  DEPLOY_FRONTEND_ASSET_PARITY_STRICT=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"
             echo "  DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter (default report)"
             echo "  DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1 (default 1)"
@@ -509,6 +511,20 @@ verify_tenant_store_asset_integrity() {
     return 0
 }
 
+run_frontend_asset_parity_checks() {
+    local ims_url="$1"
+    local pos_url="$2"
+    local tenant_store_url="$3"
+
+    local parity_script="$PROJECT_ROOT/scripts/check-frontend-asset-parity.js"
+    [[ -f "$parity_script" ]] || fatal "Frontend asset parity script missing: $parity_script"
+
+    log "Running frontend asset parity checks against public endpoints..."
+    node "$parity_script" --label "IMS" --local-index "$PROJECT_ROOT/dist-apps/skupervisor/index.html" --public-url "$ims_url"
+    node "$parity_script" --label "POS" --local-index "$PROJECT_ROOT/dist-apps/pos/index.html" --public-url "$pos_url"
+    node "$parity_script" --label "Tenant Store" --local-index "$PROJECT_ROOT/dist-apps/store/index.html" --public-url "$tenant_store_url"
+}
+
 # ---------------------------------------------------------------------------
 # Cleanup function — runs on both success and failure
 # ---------------------------------------------------------------------------
@@ -780,6 +796,11 @@ case "$DEPLOY_RUN_BILLING_VERIFY_MODE" in
         fatal "Invalid DEPLOY_RUN_BILLING_VERIFY='$DEPLOY_RUN_BILLING_VERIFY_RAW'. Use: auto | 0 | 1"
         ;;
 esac
+
+if [[ "$FRONTEND_ASSET_PARITY_STRICT" != "0" && "$FRONTEND_ASSET_PARITY_STRICT" != "1" ]]; then
+    warn "Invalid DEPLOY_FRONTEND_ASSET_PARITY_STRICT='$FRONTEND_ASSET_PARITY_STRICT'. Falling back to 1."
+    FRONTEND_ASSET_PARITY_STRICT="1"
+fi
 
 BILLING_CHECKS_ENABLED="0"
 if [[ "$DEPLOY_RUN_BILLING_VERIFY_MODE" == "1" ]]; then
@@ -1060,6 +1081,7 @@ IMS_PUBLIC_VERIFIED_URL=""
 POS_PUBLIC_VERIFIED_URL=""
 STOREFRONT_PUBLIC_VERIFIED_URL=""
 TENANT_STORE_PUBLIC_VERIFIED_URL=""
+FRONTEND_ASSET_PARITY_STATUS="not_checked"
 
 IMS_HEALTH_OVERRIDE="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
 POS_HEALTH_OVERRIDE="${DEPLOY_POS_HEALTH_URL:-}"
@@ -1138,8 +1160,19 @@ if [[ "$VERIFY_PUBLIC_ENDPOINTS" == "1" ]]; then
     probe_url_candidates "Public endpoint Storefront" STOREFRONT_PUBLIC_VERIFIED_URL 8 3 "${STOREFRONT_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Storefront ($STOREFRONT_PUBLIC_URL)."
     probe_url_candidates "Public endpoint Tenant Store" TENANT_STORE_PUBLIC_VERIFIED_URL 8 3 "${TENANT_STORE_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Tenant Store ($TENANT_STORE_PUBLIC_URL)."
     verify_tenant_store_asset_integrity "$TENANT_STORE_PUBLIC_VERIFIED_URL" || fatal "Tenant Store asset-integrity validation failed."
+
+    if run_frontend_asset_parity_checks "$IMS_PUBLIC_VERIFIED_URL" "$POS_PUBLIC_VERIFIED_URL" "$TENANT_STORE_PUBLIC_VERIFIED_URL"; then
+        FRONTEND_ASSET_PARITY_STATUS="pass"
+    else
+        if [[ "$FRONTEND_ASSET_PARITY_STRICT" == "1" ]]; then
+            fatal "Frontend asset parity checks failed (DEPLOY_FRONTEND_ASSET_PARITY_STRICT=1)."
+        fi
+        FRONTEND_ASSET_PARITY_STATUS="warn"
+        warn "Frontend asset parity checks failed, but deploy continues because DEPLOY_FRONTEND_ASSET_PARITY_STRICT=0."
+    fi
 else
     warn "Public endpoint checks disabled (DEPLOY_VERIFY_PUBLIC_ENDPOINTS=$VERIFY_PUBLIC_ENDPOINTS)."
+    FRONTEND_ASSET_PARITY_STATUS="skipped"
 fi
 
 if [[ "$BILLING_CHECKS_ENABLED" == "1" ]]; then
@@ -1206,6 +1239,7 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "pos_public_url=${POS_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "storefront_public_url=${STOREFRONT_PUBLIC_VERIFIED_URL:-not_checked}"
     echo "tenant_store_public_url=${TENANT_STORE_PUBLIC_VERIFIED_URL:-not_checked}"
+    echo "frontend_asset_parity_status=${FRONTEND_ASSET_PARITY_STATUS:-not_checked}"
     echo "tenant_schema_sync_report_file=${TENANT_SYNC_REPORT_FILE:-none}"
     echo "tenant_schema_sync_baseline_file=${TENANT_SYNC_BASELINE_FILE:-none}"
     echo "tenant_schema_sync_mode=${TENANT_SYNC_MODE:-report}"

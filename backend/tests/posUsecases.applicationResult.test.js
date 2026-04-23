@@ -153,8 +153,8 @@ describe('pos use-cases application result contract', () => {
                     ready: false,
                     state: 'needs_attention',
                     score: 75,
-                    checks: { pos_visible: true, has_menu_image: false },
-                    missing_requirements: [{ code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' }]
+                    checks: { pos_visible: true, has_sale_price: false },
+                    missing_requirements: [{ code: 'SALE_PRICE_MISSING', label: 'Set a sale price' }]
                 }
             }
         ]);
@@ -212,7 +212,7 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: {
                 ready: false,
                 missing_requirements: [
-                    { code: 'POS_IMAGE_MISSING', label: 'Upload POS menu image' }
+                    { code: 'SALE_PRICE_MISSING', label: 'Set a sale price' }
                 ]
             }
         });

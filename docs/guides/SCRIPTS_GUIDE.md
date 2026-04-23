@@ -33,6 +33,7 @@ What it does:
 16. Applies tenant schema sync regression gate against baseline
 17. Runs tenant index headroom audit in strict mode by default
 18. Reloads PM2 and runs runtime/public health checks
+19. Runs public frontend asset parity checks for IMS/POS/Tenant Store and fails by default on hash mismatch
 
 Important strict defaults:
 - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=1` by default (set `0` only for controlled exception windows)
@@ -57,6 +58,11 @@ DEPLOY_RUN_BILLING_VERIFY=auto|0|1
 - `auto` (default): run billing hooks only when `PAYMENTS_ENABLED=true`
 - `0`: force skip billing hooks
 - `1`: force run billing hooks
+
+Frontend asset parity controls:
+- `DEPLOY_FRONTEND_ASSET_PARITY_STRICT=1` (default)
+  - `1`: fail deployment when served public asset hashes do not match freshly built artifacts
+  - `0`: warn-only parity mode (incident/recovery use only)
 
 Optional flag:
 ```bash
@@ -117,6 +123,21 @@ Expected:
 ```text
 pubkeyauthentication yes
 ```
+
+## 2a. `scripts/check-frontend-asset-parity.js`
+Asset parity guardrail script used by deploy.
+
+Usage:
+```bash
+node scripts/check-frontend-asset-parity.js --label IMS --local-index dist-apps/skupervisor/index.html --public-url https://skupervisor.surebizcorp.com
+node scripts/check-frontend-asset-parity.js --label POS --local-index dist-apps/pos/index.html --public-url https://pos.surebizcorp.com
+node scripts/check-frontend-asset-parity.js --label "Tenant Store" --local-index dist-apps/store/index.html --public-url https://surebizcorp.com/tenant-store
+```
+
+Behavior:
+- Compares local built entry script/CSS/manifest basenames against served public HTML refs.
+- Returns non-zero on mismatch.
+- Designed to catch stale frontend bundles served after deploy.
 
 ## 3. `backend/scripts/repair-required-indexes.js`
 Self-heal script for required DB index contract.

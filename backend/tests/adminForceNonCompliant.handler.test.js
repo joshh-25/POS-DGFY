@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 const mockForceNonCompliantModeUseCase = jest.fn();
 const mockInvalidateTenantLookupCache = jest.fn();
 const mockSendUseCaseResult = jest.fn();
+const mockTrackProductUsageFromResult = jest.fn();
 
 const noopUseCase = jest.fn();
 
@@ -44,7 +45,7 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
-    trackProductUsageFromResult: jest.fn()
+    trackProductUsageFromResult: mockTrackProductUsageFromResult
 }));
 
 jest.unstable_mockModule('../src/config/paymentsFeature.js', () => ({
@@ -92,6 +93,11 @@ describe('adminForceNonCompliant handler', () => {
         await adminForceNonCompliant(req, res);
 
         expect(mockInvalidateTenantLookupCache).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+        expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'admin_force_non_compliant_attempted',
+            surface: 'admin_tenants',
+            action: 'force_non_compliant'
+        }));
         expect(mockSendUseCaseResult).toHaveBeenCalled();
     });
 
@@ -111,6 +117,11 @@ describe('adminForceNonCompliant handler', () => {
         await adminForceNonCompliant(req, res);
 
         expect(mockInvalidateTenantLookupCache).not.toHaveBeenCalled();
+        expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'admin_force_non_compliant_attempted',
+            surface: 'admin_tenants',
+            action: 'force_non_compliant'
+        }));
         expect(mockSendUseCaseResult).toHaveBeenCalled();
     });
 });

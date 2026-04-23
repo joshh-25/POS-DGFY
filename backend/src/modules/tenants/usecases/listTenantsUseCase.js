@@ -1,6 +1,56 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
+const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
+
+const toPlainTenant = (tenant) => {
+    if (!tenant) return {};
+    if (typeof tenant.get === 'function') {
+        return tenant.get({ plain: true });
+    }
+    return { ...tenant };
+};
+
+const buildForceNonCompliantEligibility = (tenant) => {
+    const modeState = String(tenant?.compliance_mode_state || '').trim();
+
+    if (modeState === 'non_compliant_active') {
+        return {
+            can_force_non_compliant: false,
+            force_non_compliant_block_reason: 'Tenant is already in non_compliant_active mode.'
+        };
+    }
+
+    if (FORCE_NON_COMPLIANT_ALLOWED_STATES.has(modeState)) {
+        return {
+            can_force_non_compliant: true,
+            force_non_compliant_block_reason: null
+        };
+    }
+
+    if (!modeState) {
+        return {
+            can_force_non_compliant: false,
+            force_non_compliant_block_reason: 'Compliance mode has not been selected yet.'
+        };
+    }
+
+    return {
+        can_force_non_compliant: false,
+        force_non_compliant_block_reason: 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active'
+    };
+};
+
+const enrichTenant = (tenant) => {
+    const baseTenant = toPlainTenant(tenant);
+    const eligibility = buildForceNonCompliantEligibility(baseTenant);
+
+    return {
+        ...baseTenant,
+        ...eligibility
+    };
+};
+
 export const buildListTenantsUseCase = ({ tenantAdminRepository, logger }) => {
     return async ({ status }) => {
         try {
@@ -10,11 +60,15 @@ export const buildListTenantsUseCase = ({ tenantAdminRepository, logger }) => {
             }
 
             const tenants = await tenantAdminRepository.listTenants(where);
+            const enrichedTenants = Array.isArray(tenants)
+                ? tenants.map(enrichTenant)
+                : [];
+
             return ok({
                 statusCode: 200,
                 payload: {
                     success: true,
-                    data: tenants
+                    data: enrichedTenants
                 }
             });
         } catch (error) {

@@ -105,6 +105,7 @@ What `deploy.sh` does:
   - `https://pos.surebizcorp.com`
   - `https://surebizcorp.com`
   - `https://surebizcorp.com/tenant-store`
+15. Verifies served frontend entry asset parity against freshly built artifacts for IMS, POS, and Tenant Store
 
 Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.log`
@@ -124,6 +125,11 @@ Tenant schema/index risk controls:
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
 - `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n>` (default: `5`)
+
+Frontend asset parity controls:
+- `DEPLOY_FRONTEND_ASSET_PARITY_STRICT=0|1` (default: `1`)
+  - `1`: fail deployment on public/local asset hash mismatch.
+  - `0`: log warning and continue (incident-only override).
 
 Windows lock cleanup controls:
 - `DEPLOY_WINDOWS_LOCK_CLEANUP=auto|0|1` (default: `auto`)
@@ -255,6 +261,14 @@ Do not use `pm2 restart all` as primary deployment strategy.
 - POS: `https://pos.surebizcorp.com`
 - Storefront: `https://surebizcorp.com`
 - Tenant Store: `https://surebizcorp.com/tenant-store`
+
+## Force Non-Compliant Observability
+Backend now emits structured log signatures for force-mode operations:
+- `"[Compliance][ForceNonCompliant] Blocked request {...}"` with `status_code` and `reason_code`
+- `"[Compliance][ForceNonCompliant] Applied {...}"` on successful downgrade
+
+Recommended alert:
+1. Trigger investigation when repeated `status_code:422` blocked events occur for this operation in a short window (UI/backend state drift signal).
 
 ## Multi-Location Production Smoke Contract
 Script: `scripts/verify-prod-multi-location.ps1`

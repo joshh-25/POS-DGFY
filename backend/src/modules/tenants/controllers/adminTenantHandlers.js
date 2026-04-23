@@ -435,12 +435,32 @@ export const adminResolveComplianceSecurityIncident = async (req, res) => {
  */
 export const adminForceNonCompliant = async (req, res) => {
     const payload = req.validatedData || req.body || {};
+    const actorUser = buildPlatformAdminActor(req);
     const result = await forceNonCompliantModeUseCase({
         tenantId: req.params?.id,
         reason: payload.reason,
         context: payload.context || {},
-        actorUser: buildPlatformAdminActor(req)
+        actorUser
     });
+
+    await trackProductUsageFromResult({
+        req,
+        user: actorUser,
+        eventType: 'admin_force_non_compliant_attempted',
+        surface: 'admin_tenants',
+        action: 'force_non_compliant',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            requested_reason_length: String(payload.reason || '').trim().length || 0
+        }),
+        failureMetadataResolver: (error) => ({
+            tenant_id: req.params?.id || null,
+            status_code: error?.statusCode || null,
+            error_code: error?.code || null
+        })
+    });
+
     if (result?.success) {
         invalidateTenantLookupCache({ tenantId: req.params?.id || null });
     }
