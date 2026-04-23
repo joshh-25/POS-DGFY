@@ -41,14 +41,21 @@ Acceptance:
 1. Regression fails in CI if FE and BE diverge on eligibility logic.
 
 ## Phase 3: Ops & Deploy Hardening (Priority 1)
-- [ ] Add deploy parity gate to verify latest frontend asset manifest/chunk hash is being served.
-- [ ] Add structured metric/log for force endpoint:
+- [x] Add deploy parity gate to verify latest frontend asset manifest/chunk hash is being served.
+- [x] Add structured metric/log for force endpoint:
   - `tenant_id`, `compliance_mode_state`, `status_code`, `error_code`
 - [ ] Add alert threshold for repeated `422` on force endpoint.
 
 Acceptance:
 1. Stale frontend bundle serving is detected during deploy.
 2. Repeated force failures trigger actionable alerting.
+
+Current status note (2026-04-23):
+1. Deploy parity gate is active in `scripts/deploy.sh` via `scripts/check-frontend-asset-parity.js`.
+2. Force endpoint emits structured blocked/applied signatures in compliance usecases:
+- `[Compliance][ForceNonCompliant] Blocked request {...}`
+- `[Compliance][ForceNonCompliant] Applied {...}`
+3. External alert threshold wiring for repeated `422` still pending ops-side implementation.
 
 ## Phase 4: Data Invariant Hygiene (Priority 1)
 - [ ] Add scheduled audit report for ambiguous compliance lifecycle (`NULL` mode state for active tenants).
@@ -57,4 +64,3 @@ Acceptance:
 Acceptance:
 1. Ambiguous lifecycle combinations are visible and trendable.
 2. Operators have deterministic remediation steps.
-

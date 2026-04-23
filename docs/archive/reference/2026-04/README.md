@@ -14,4 +14,4 @@ Superseding active references:
 2. Current archive policy:
 - `docs/archive/README.md`
 3. Current cleanup continuity log:
-- `docs/reference/CLEANUP_LOG_2026-04-14.md`
+- `docs/reference/CLEANUP_LOG_2026-04-23.md`

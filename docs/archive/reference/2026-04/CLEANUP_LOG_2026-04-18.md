@@ -24,7 +24,7 @@ After documentation updates, only verified generated/transient artifacts were re
    - Added operation rows for item-batch location filtering, report parity, movement export location dimensions, and SKU conflict hardening.
 5. `docs/features/multi-location-inventory/DECISION_LEDGER.md`
    - Added 2026-04-18 change-control entries for reporting/batch parity and SKU hardening.
-6. `docs/reference/WORKTREE_PRE_FLIGHT_AUDIT_2026-04-18.md`
+6. `docs/archive/reference/2026-04/WORKTREE_PRE_FLIGHT_AUDIT_2026-04-18.md`
    - Added full pre-flight audit of current changed files and root contract deltas.
 
 ## Cleanup Performed
