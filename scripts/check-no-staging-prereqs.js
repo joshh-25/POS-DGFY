@@ -7,7 +7,7 @@ const path = require('path');
 function runCapture(cmd, args) {
   const result = spawnSync(cmd, args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: false,
   });
   if (result.status !== 0) {
     return '';
@@ -16,11 +16,11 @@ function runCapture(cmd, args) {
 }
 
 function commandExists(command) {
-  const checker = process.platform === 'win32' ? 'where' : 'command';
-  const args = process.platform === 'win32' ? [command] : ['-v', command];
+  const checker = process.platform === 'win32' ? 'where' : 'which';
+  const args = [command];
   const result = spawnSync(checker, args, {
     stdio: 'ignore',
-    shell: process.platform === 'win32',
+    shell: false,
   });
   return result.status === 0;
 }
