@@ -3600,6 +3600,7 @@ Finalize onboarding if required readiness checks are satisfied.
 Track onboarding UX telemetry events without mutating onboarding checklist progress state.
 
 **Access**: Private (`master admin` only)
+**Rate limiting**: Tenant/user/event scoped limiter is applied to this route.
 
 **Request**
 ```json

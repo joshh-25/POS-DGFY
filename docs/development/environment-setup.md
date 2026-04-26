@@ -215,6 +215,7 @@ All frontend surfaces share the same backend API, while storefront tenant resolu
 ### Upload/Image Serving Contract (Important)
 
 - POS image overrides are served from backend static path: `/uploads/...`.
+- `backend/uploads` is runtime-generated and not source-controlled (except `backend/uploads/.gitkeep` scaffold).
 - Vite dev/preview must proxy both:
   - `/api` -> backend
   - `/uploads` -> backend

@@ -82,3 +82,7 @@ jspm_packages/
 .DS_Store
 Thumbs.db
 
+# Runtime uploads (generated at runtime; keep directory scaffold only)
+uploads/*
+!uploads/.gitkeep
+

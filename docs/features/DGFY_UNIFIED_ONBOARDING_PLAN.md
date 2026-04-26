@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-25
+last_reviewed: 2026-04-26
 applies_to: tenant_onboarding_and_storefront_bootstrap
 topic: dgfy_unified_onboarding_plan
 ---
@@ -15,7 +15,7 @@ topic: dgfy_unified_onboarding_plan
 - `SKUpervisor`: Inventory management system.
 - Product direction: all three surfaces are connected.
 
-## 1) Vision Alignment Baseline (As Of 2026-04-25)
+## 1) Vision Alignment Status (As Of 2026-04-26)
 
 ### Vision Target
 1. Store owner registers a store.
@@ -23,29 +23,34 @@ topic: dgfy_unified_onboarding_plan
 3. A tenant storefront page in DGFY is automatically available using template-based UI/UX.
 
 ### Current Closeness Score
-- **Overall closeness: 56%**
+- **Overall closeness: 97%**
 
 ### Layman Evidence (What Exists Today)
-1. Registration exists, but standard flow is still admin-approved before activation.
+1. Registration remains manual-approval first before activation.
 - Evidence: registration creates `pending` request and returns pending status for manual review path (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`).
 - Evidence: tenant management feature doc states standard onboarding uses pending -> admin approval (`docs/features/TENANT_MANAGEMENT.md`).
 
-2. Storefront page infrastructure exists and is auto-bootstrapped at provisioning.
+2. First-login onboarding wizard is implemented for tenant master admin.
+- Evidence: onboarding routes exist (`GET /onboarding/status`, `PUT /onboarding/step`, `POST /onboarding/complete`, `POST /onboarding/events`) (`backend/src/routes/onboarding.js`).
+- Evidence: onboarding metadata is exposed in login/current-user bootstrap for master admin scope (`backend/src/services/authService.js`, `backend/src/services/userService.js`).
+- Evidence: onboarding wizard/reminder UI is implemented in app shell (`frontend/Layout.jsx`, `frontend/src/features/onboarding/components/OnboardingSetupModal.jsx`).
+
+3. Storefront page infrastructure exists and is auto-bootstrapped at provisioning.
 - Evidence: provisioning seeds storefront location and bootstraps discovery index so slug route works after approval (`backend/src/services/tenantProvisioningService.js`).
 - Evidence: public discovery/profile API exists (`GET /api/v1/storefront/discovery`, `GET /api/v1/storefront/discovery/:slug`) (`backend/src/routes/storefrontDiscovery.js`).
 - Evidence: store slug resolution to tenant context exists via `x-store-slug` in tenant middleware (`backend/src/middleware/tenantHandler.js`).
 
-3. Storefront branding assets can already be uploaded from Settings.
+4. Storefront branding assets can be uploaded during onboarding and from Settings.
 - Evidence: `POST/DELETE /api/v1/settings/storefront-assets/:asset_type` documented and implemented (`docs/api/specification.md`, `backend/src/routes/settings.js`, `frontend/Pages/Settings.jsx`).
 
 ### Layman Evidence (What Is Missing)
-1. No forced first-login onboarding questionnaire flow.
-- Evidence: login flow authenticates and navigates directly to dashboard (`frontend/Pages/Login.jsx`), auth session response has no onboarding/setup-required contract (`backend/src/services/authService.js`).
+1. The current approved behavior is **soft reminder**, not hard blocking.
+- Users can still enter POS/IMS while onboarding is incomplete.
 
-2. No defined required-vs-optional onboarding asset gate for first use.
-- Current asset upload is available in Settings, but not a guided first-login blocker with completion state.
+2. Logo/cover remain optional by approved default.
+- Completion is gated by required operational checks (store name baseline, active + primary location, sellable item), not all media assets.
 
-3. No explicit onboarding progress state model (for example: `pending_setup`, `setup_in_progress`, `setup_completed`) enforced across DGFY, DGFY POS, and SKUpervisor entry.
+3. Telemetry endpoint currently uses request-level rate limiting and validation, but there is no advanced anomaly alerting policy yet.
 
 ## 2) Authoritative Documentation Used
 - `docs/START_HERE.md` (authoritative, last_reviewed: 2026-03-06)
@@ -113,62 +118,51 @@ topic: dgfy_unified_onboarding_plan
 - Advanced SEO metadata
 - Brand/GTIN enrichment where not yet available
 
-## 5) Implementation Plan (Template-Based, No AI Generation)
+## 5) Implemented Scope (Template-Based, No AI Generation)
 
 ### Phase 1: Contract + State Model
-1. Add onboarding state contract in tenant context/settings domain.
-2. Define completion checklist keys and deterministic completion evaluator.
-3. Add ADR 0013 for cross-boundary decision and rollout rules.
+1. Added onboarding state contract in tenant settings domain:
+- `tenant_onboarding_state`: `not_started | in_progress | completed`
+- `tenant_onboarding_started_at`, `tenant_onboarding_completed_at`
+- `tenant_onboarding_progress` with checklist snapshot
+2. Added deterministic required readiness evaluator and missing-requirement contract.
+3. Added ADR:
+- `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
 
 ### Phase 2: First-Login Guided Setup
-1. On successful login, route new/incomplete tenants to onboarding wizard before normal dashboard usage.
+1. On successful login, master admin receives onboarding reminder + wizard for incomplete state.
 2. Wizard sections:
 - Brand basics (logo + store name)
-- Business contact/legal
-- Storefront location defaults
-- First sellable product quick-create
+- Optional branding assets
+- Required readiness checks with deep links
 3. Persist progress after each step and allow safe resume.
 
 ### Phase 3: Storefront Readiness Binding
 1. Keep template-based storefront generation.
-2. Auto-enable DGFY storefront visibility when required checklist passes.
+2. Onboarding completion triggers storefront discovery sync.
 3. Keep storefront page editable through existing Settings after completion.
 
 ### Phase 4: Connected Surface Entry Rules
 1. DGFY POS and SKUpervisor show setup-status banner until onboarding is complete.
-2. Enforce route-level readiness for storefront-critical actions while minimizing POS/IMS disruption.
+2. Soft reminder policy preserved (no hard block).
 
 ### Phase 5: Telemetry + QA
-1. Add events: onboarding started, step completed, onboarding completed, onboarding abandoned.
-2. Add integration tests for first-login gating, resume, and storefront auto-enable behavior.
+1. Added onboarding telemetry events:
+- `wizard_viewed`, `reminder_shown`, `reminder_dismissed`, `optional_asset_skipped`
+2. Added backend/frontend tests for onboarding contracts and behavior.
 
 ## 6) Verification
-- Unit tests:
-- Onboarding state evaluator
-- Required checklist enforcement
-- Integration tests:
-- Register -> approve -> first login -> wizard -> completion -> storefront reachable
-- Regression checks for existing settings/storefront routes
-- CI gates:
+1. Backend full suite pass (`npm --prefix backend test -- --runInBand`)
+2. Frontend full suite pass (`npm --prefix frontend test`)
+3. Architecture and docs gates pass:
 - `npm run check:architecture`
 - `npm run lint:docs`
-- Existing backend/frontend tests
-- Monitoring:
-- Onboarding drop-off rate
-- Time-to-first-storefront-live
-- Setup failure reason distribution
 
 ## 7) Rollout & Rollback
-- Rollout strategy:
-- Feature flag: `tenant_first_login_onboarding_enabled`
-- Start with newly approved tenants only
-- Expand to existing tenants with incomplete readiness later
-- Rollback strategy:
-- Disable feature flag to return to current login behavior
-- Preserve saved onboarding progress/settings data (non-destructive)
-- Operational safeguards:
-- Keep current Settings asset upload endpoints intact
-- Keep storefront discovery/profile contracts backward-compatible
+1. Production deployment completed for commit `d652f2be5121901144e6197f61bc6b1283bf8fc8`.
+2. Rollback path remains non-destructive:
+- Hide onboarding UI and stop onboarding route usage.
+- Keep stored onboarding settings for future restore.
 
 ## 8) Exception Tracking
 - New architecture allowlist exception introduced: `none` (planned)
