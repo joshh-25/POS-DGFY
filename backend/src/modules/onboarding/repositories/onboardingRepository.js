@@ -82,6 +82,21 @@ const buildDefaultProgress = () => ({
   checklist_snapshot: normalizeChecklist({})
 });
 
+const modelHasColumn = (Model, columnName) => {
+  if (!Model || !Model.rawAttributes || !columnName) return false;
+  const attrs = Object.values(Model.rawAttributes);
+  return attrs.some((attr) => attr?.fieldName === columnName || attr?.field === columnName);
+};
+
+const buildSellableItemWhere = (Item) => {
+  const where = {};
+  if (modelHasColumn(Item, 'deleted_at')) where.deleted_at = null;
+  if (modelHasColumn(Item, 'status')) where.status = 'active';
+  if (modelHasColumn(Item, 'is_active')) where.is_active = true;
+  if (modelHasColumn(Item, 'pos_visible')) where.pos_visible = true;
+  return where;
+};
+
 const getSettingRows = async (SystemSetting, keys = [], { transaction = null } = {}) => {
   const rows = await SystemSetting.findAll({
     where: {
@@ -145,6 +160,8 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     fallbackBusinessName = String(row?.setting_value || '').trim();
   }
 
+  const sellableItemWhere = buildSellableItemWhere(Item);
+
   const [activeLocationCount, primaryActiveLocationCount, sellableItemCount] = await Promise.all([
     TenantLocation ? TenantLocation.count({
       where: { is_active: true },
@@ -155,12 +172,7 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
       ...(transaction ? { transaction } : {})
     }) : 0,
     Item ? Item.count({
-      where: {
-        deleted_at: null,
-        status: 'active',
-        is_active: true,
-        pos_visible: true
-      },
+      where: sellableItemWhere,
       ...(transaction ? { transaction } : {})
     }) : 0
   ]);
