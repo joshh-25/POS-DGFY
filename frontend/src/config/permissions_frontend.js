@@ -88,6 +88,7 @@ export const PERMISSIONS = {
             MANAGE_USERS: "users:manage",
             VIEW_SETTINGS: "settings:view",
             EDIT_SETTINGS: "settings:edit",
+            EDIT_STOREFRONT_BRANDING: "settings:storefront_branding_edit",
             VIEW_USERS: "users:view",
             DELETE_USERS: "users:delete",
             VIEW_AUDIT: "audit:view"
@@ -186,6 +187,7 @@ export const PERMISSION_GROUPS = {
             MANAGE_USERS: "users:manage",
             VIEW_SETTINGS: "settings:view",
             EDIT_SETTINGS: "settings:edit",
+            EDIT_STOREFRONT_BRANDING: "settings:storefront_branding_edit",
             VIEW_USERS: "users:view",
             DELETE_USERS: "users:delete",
             VIEW_AUDIT: "audit:view"

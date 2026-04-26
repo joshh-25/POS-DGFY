@@ -90,6 +90,7 @@ export default function TerminalPageLayout({
     handleLogin
 }) {
   const navigate = useNavigate();
+  const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const shiftOpen = Boolean(activeShiftId);
   const complianceBlocked = Boolean(complianceBlockerDetails);
@@ -130,7 +131,7 @@ export default function TerminalPageLayout({
   ];
 
     return (
-        <div className="min-h-screen min-h-[100dvh] bg-slate-100 flex flex-col">
+        <div className="h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-slate-100 flex flex-col">
             <div className="border-b border-slate-200 bg-gradient-to-r from-white via-teal-50/70 to-white px-6 py-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -187,7 +188,7 @@ export default function TerminalPageLayout({
                 ))}
             </div>
             <div className="mx-4 mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>
+                Terminal identity: <span className="font-semibold text-slate-900">{normalizedActiveTerminalId || 'Not selected'}</span>
                 <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                     {isMsmeMode ? 'MSME Mode' : 'Manufacturing Mode'}
                 </span>
@@ -339,10 +340,10 @@ export default function TerminalPageLayout({
                         : '2xl:grid-cols-[260px_minmax(0,1fr)_360px]'
                 }`}
             >
-                <div className="hidden xl:flex xl:min-h-0 xl:overflow-hidden">
+                <div className="hidden xl:flex xl:min-h-0 xl:max-h-[72dvh] xl:overflow-hidden">
                     <Suspense fallback={<div className="hidden xl:block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading POS navigation...</div>}>
                         <TerminalWorkspaceSidebar
-                            className="hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain"
+                            className="hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y"
                             showScrollZoneBadge
                             locked={locked}
                             isMsmeMode={isMsmeMode}
@@ -365,14 +366,13 @@ export default function TerminalPageLayout({
                 <div
                     id={TERMINAL_SECTION_IDS.checkoutWorkspace}
                     ref={workspacePaneRef}
-                    className={`transition xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+                    className={`transition xl:h-full xl:min-h-0 xl:max-h-[72dvh] xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
                 >
                     {isCheckoutWorkspaceMode && (
                         <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
                             <POSCheckoutTerminal
                                 sessionLocked={locked}
                                 isMsmeMode={isMsmeMode}
-                                layoutContext="embedded"
                                 canViewHistory={canViewPos}
                                 selectedLocationId={operatingLocationId}
                                 activeShiftId={activeShiftId}
@@ -446,7 +446,7 @@ export default function TerminalPageLayout({
                     )}
                 </div>
 
-                <div className="xl:min-h-0 xl:overflow-hidden xl:col-span-2 2xl:col-span-1">
+                <div className="xl:min-h-0 xl:max-h-[72dvh] xl:overflow-hidden xl:col-span-2 2xl:col-span-1">
                     <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading terminal controls...</div>}>
                         <TerminalSidebarPanel
                             className="flex xl:h-full xl:min-h-0"

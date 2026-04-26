@@ -7,13 +7,16 @@ import logger from '../config/logger.js';
 import { bumpStorefrontDiscoveryCacheVersion } from './storefrontDiscoveryCacheState.js';
 import { invalidateStorefrontDiscoverySharedSignatureCache } from './storefrontDiscoveryFreshnessService.js';
 import { isCatalogItemVisible } from '../modules/shared/utils/catalogVisibilityPolicy.js';
+import { normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'store_tenant_slug',
     'store_is_visible',
     'store_delivery_fee',
     'pos_open_status',
-    'pos_wait_time_minutes'
+    'pos_wait_time_minutes',
+    'storefront_cover_image_url',
+    'storefront_profile_image_url'
 ]);
 const SEARCH_SNAPSHOT_VERSION = 1;
 
@@ -60,6 +63,20 @@ const toSettingsMap = (rows = []) => {
         map[key] = row?.setting_value;
     });
     return map;
+};
+
+const sanitizeStorefrontAssetUrl = ({ tenant, key, rawValue }) => {
+    const raw = String(rawValue || '').trim();
+    const normalized = normalizeStorefrontAssetUrl(raw);
+    if (raw && !normalized) {
+        logger.warn('[StorefrontDiscoveryIndex] Sanitized unsafe storefront asset URL from tenant settings', {
+            event_type: 'security_signal',
+            signal_code: 'storefront_asset_setting_sanitized',
+            tenantId: tenant?.id || null,
+            setting_key: key
+        });
+    }
+    return normalized || null;
 };
 
 const isMissingPosCatalogOverrideTableError = (error) => {
@@ -307,6 +324,16 @@ const buildTenantSnapshot = async (tenant) => {
         supports_dine_in: location.supports_dine_in !== false,
         store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
         catalog_count: Number(catalogCount) || 0,
+        storefront_cover_image_url: sanitizeStorefrontAssetUrl({
+            tenant,
+            key: 'storefront_cover_image_url',
+            rawValue: settings.storefront_cover_image_url
+        }),
+        storefront_profile_image_url: sanitizeStorefrontAssetUrl({
+            tenant,
+            key: 'storefront_profile_image_url',
+            rawValue: settings.storefront_profile_image_url
+        }),
         active_location_snapshot: activeLocationSnapshot,
         item_search_snapshot: itemSearchSnapshot,
         search_snapshot_version: SEARCH_SNAPSHOT_VERSION,

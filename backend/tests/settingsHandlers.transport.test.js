@@ -6,6 +6,8 @@ const mockUpdateSettingsUseCase = jest.fn();
 const mockUpdateSettingByKeyUseCase = jest.fn();
 const mockResetSettingsToDefaultUseCase = jest.fn();
 const mockGetCompanyInfoUseCase = jest.fn();
+const mockUploadStorefrontAssetUseCase = jest.fn();
+const mockDeleteStorefrontAssetUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
@@ -14,7 +16,9 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   updateSettingsUseCase: mockUpdateSettingsUseCase,
   updateSettingByKeyUseCase: mockUpdateSettingByKeyUseCase,
   resetSettingsToDefaultUseCase: mockResetSettingsToDefaultUseCase,
-  getCompanyInfoUseCase: mockGetCompanyInfoUseCase
+  getCompanyInfoUseCase: mockGetCompanyInfoUseCase,
+  uploadStorefrontAssetUseCase: mockUploadStorefrontAssetUseCase,
+  deleteStorefrontAssetUseCase: mockDeleteStorefrontAssetUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
@@ -29,11 +33,15 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
 
 let getAllSettings;
 let getSettingByKey;
+let uploadStorefrontAsset;
+let deleteStorefrontAsset;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/settings/controllers/settingsHandlers.js');
   getAllSettings = mod.getAllSettings;
   getSettingByKey = mod.getSettingByKey;
+  uploadStorefrontAsset = mod.uploadStorefrontAsset;
+  deleteStorefrontAsset = mod.deleteStorefrontAsset;
 });
 
 const createRes = () => {
@@ -110,6 +118,65 @@ describe('settingsHandlers transport contracts', () => {
       eventType: 'setting_viewed',
       surface: 'settings',
       action: 'view_setting'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('uploadStorefrontAsset returns success payload', async () => {
+    mockUploadStorefrontAssetUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        asset_type: 'cover',
+        image_url: '/uploads/storefront-assets/tenant-a/cover-1.png'
+      }
+    });
+    const req = {
+      params: { asset_type: 'cover' },
+      file: { originalname: 'cover.png', mimetype: 'image/png', path: 'uploads/temp/cover.png' },
+      requestId: 'req-upload',
+      headers: { 'x-company-token': 'token-a' },
+      tenant: null
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await uploadStorefrontAsset(req, res, next);
+
+    expect(mockUploadStorefrontAssetUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      assetType: 'cover'
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      message: 'Storefront asset uploaded successfully',
+      data: expect.objectContaining({
+        asset_type: 'cover'
+      })
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('deleteStorefrontAsset returns validation failure payload', async () => {
+    mockDeleteStorefrontAssetUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'asset_type must be one of: cover, profile',
+        details: null,
+        statusCode: 422
+      }
+    });
+    const req = { params: { asset_type: 'invalid' }, requestId: 'req-delete', tenant: null };
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteStorefrontAsset(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      message: 'asset_type must be one of: cover, profile',
+      error_code: 'VALIDATION_FAILED'
     }));
     expect(next).not.toHaveBeenCalled();
   });

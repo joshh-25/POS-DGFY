@@ -19,6 +19,8 @@ When to use:
 - Tenant lifecycle and management constraints, including isolation and provisioning rules.
 6. `docs/features/multi-location-inventory/OPERATION_CONTRACT_MATRIX.md`
 - Operational contract matrix for location-scoped stock, POS read/write safety, and phased rollout controls.
+7. `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md`
+- Official baseline, gap assessment, and implementation plan for first-login onboarding that connects DGFY storefront, DGFY POS, and SKUpervisor.
 
 ## Usage Notes
 

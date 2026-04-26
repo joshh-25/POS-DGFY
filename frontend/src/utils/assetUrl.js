@@ -36,7 +36,9 @@ export const resolveAssetUrl = (value, options = {}) => {
   if (/^(data|blob):/i.test(raw)) return raw;
 
   try {
-    return new URL(raw).toString();
+    const parsed = new URL(raw);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return parsed.toString();
   } catch {
     if (!raw.startsWith('/')) return raw;
     return assetOrigin ? `${assetOrigin}${raw}` : raw;

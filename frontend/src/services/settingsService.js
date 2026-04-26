@@ -92,3 +92,17 @@ export const getCompanyInfo = async () => {
   const response = await api.get('/settings/company-info');
   return response.data.data;
 };
+
+export const uploadStorefrontAsset = async (assetType, file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  const response = await api.post(`/settings/storefront-assets/${encodeURIComponent(assetType)}`, formData);
+  invalidateSettingsCache();
+  return response.data.data;
+};
+
+export const deleteStorefrontAsset = async (assetType) => {
+  const response = await api.delete(`/settings/storefront-assets/${encodeURIComponent(assetType)}`);
+  invalidateSettingsCache();
+  return response.data.data;
+};

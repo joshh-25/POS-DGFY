@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { usePermission } from './src/hooks/usePermission'; // Created next
 import { createPageUrl } from './utils.js';
@@ -26,6 +26,8 @@ import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
+import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
+import { trackOnboardingEvent } from './src/services/onboardingService.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -65,6 +67,9 @@ export default function Layout({ children, currentPageName }) {
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
   const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+  const onboardingReminderTrackedRef = useRef(false);
 
   React.useEffect(() => {
     if (!loading) {
@@ -84,6 +89,40 @@ export default function Layout({ children, currentPageName }) {
       }
     };
     fetchUser();
+  }, [setGlobalCurrentUser]);
+
+  const onboarding = currentUser?.onboarding || null;
+  const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
+  const shouldShowOnboardingReminder = Boolean(
+    currentUser?.is_master_admin === true && onboardingState !== 'completed'
+  );
+
+  React.useEffect(() => {
+    if (!shouldShowOnboardingReminder) {
+      onboardingReminderTrackedRef.current = false;
+      return;
+    }
+
+    if (!onboardingReminderTrackedRef.current) {
+      onboardingReminderTrackedRef.current = true;
+      trackOnboardingEvent({
+        eventKey: 'reminder_shown',
+        metadata: { surface: 'layout' }
+      }).catch(() => {});
+    }
+
+    if (onboardingDismissedThisSession) return;
+    setOnboardingModalOpen(true);
+  }, [onboardingDismissedThisSession, shouldShowOnboardingReminder]);
+
+  const refreshCurrentUser = React.useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+      setGlobalCurrentUser(user);
+    } catch (error) {
+      console.warn('Failed to refresh user profile after onboarding action', error);
+    }
   }, [setGlobalCurrentUser]);
 
   // Filter nav items - only filter after permissions have loaded
@@ -194,6 +233,15 @@ export default function Layout({ children, currentPageName }) {
       <main className="app-main min-h-screen pt-16 lg:pt-0">
         <GracePeriodBanner />
         <div className="p-6 lg:p-8">
+          {shouldShowOnboardingReminder && (
+            <OnboardingReminderBanner
+              onboarding={onboarding}
+              onOpenWizard={() => {
+                setOnboardingDismissedThisSession(false);
+                setOnboardingModalOpen(true);
+              }}
+            />
+          )}
           {modeChangeNotice && (
             <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
               <p className="text-sm font-semibold text-sky-900">
@@ -223,6 +271,20 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
+      <OnboardingSetupModal
+        open={onboardingModalOpen && shouldShowOnboardingReminder}
+        onClose={() => {
+          setOnboardingModalOpen(false);
+          setOnboardingDismissedThisSession(true);
+          trackOnboardingEvent({
+            eventKey: 'reminder_dismissed',
+            metadata: { surface: 'layout' }
+          }).catch(() => {});
+        }}
+        onboarding={onboarding}
+        currentUser={currentUser}
+        onRefreshUser={refreshCurrentUser}
+      />
       <FeedbackWidget />
     </div>
   );

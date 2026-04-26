@@ -1,6 +1,7 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
+import { PERMISSIONS } from '../config/permissions.js';
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -232,6 +233,42 @@ export const checkPermission = (requiredPermission) => {
       required: requiredPermission
     });
   };
+};
+
+/**
+ * Storefront branding mutation guard.
+ * Allowed when request user is:
+ * - master admin, or
+ * - admin role, or
+ * - explicitly granted the storefront branding micropermission.
+ */
+export const checkStorefrontBrandingEditPermission = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  if (req.user.is_master_admin) {
+    return next();
+  }
+
+  const normalizedRole = String(req.user.role || '').trim().toLowerCase();
+  if (normalizedRole === 'admin') {
+    return next();
+  }
+
+  const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+  if (userPermissions.includes(PERMISSIONS.SYSTEM.actions.EDIT_STOREFRONT_BRANDING)) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'Access denied: Storefront branding edit permission required',
+    required: PERMISSIONS.SYSTEM.actions.EDIT_STOREFRONT_BRANDING
+  });
 };
 
 /**

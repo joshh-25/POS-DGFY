@@ -8,7 +8,9 @@ export {
   updateSettings,
   updateSettingByKey,
   resetSettingsToDefault,
-  getCompanyInfo
+  getCompanyInfo,
+  uploadStorefrontAsset,
+  deleteStorefrontAsset
 } from '../modules/settings/controllers/settingsHandlers.js';
 
 import {
@@ -17,7 +19,9 @@ import {
   updateSettings,
   updateSettingByKey,
   resetSettingsToDefault,
-  getCompanyInfo
+  getCompanyInfo,
+  uploadStorefrontAsset,
+  deleteStorefrontAsset
 } from '../modules/settings/controllers/settingsHandlers.js';
 
 export default {
@@ -26,5 +30,7 @@ export default {
   updateSettings,
   updateSettingByKey,
   resetSettingsToDefault,
-  getCompanyInfo
+  getCompanyInfo,
+  uploadStorefrontAsset,
+  deleteStorefrontAsset
 };

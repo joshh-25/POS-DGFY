@@ -118,8 +118,54 @@ const withApiOrigin = (url) => {
 
 const withAssetOrigin = (url) => {
   if (!url || typeof url !== 'string') return url;
-  if (!url.startsWith('/')) return url;
-  return assetOrigin ? `${assetOrigin}${url}` : url;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/')) {
+    return assetOrigin ? `${assetOrigin}${trimmed}` : trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
+const createStorePopupNode = (store = {}) => {
+  const container = document.createElement('div');
+  container.style.display = 'grid';
+  container.style.gap = '4px';
+
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.alignItems = 'center';
+  row.style.gap = '8px';
+
+  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
+  if (profileImageUrl) {
+    const img = document.createElement('img');
+    img.setAttribute('src', profileImageUrl);
+    img.setAttribute('alt', '');
+    img.style.width = '28px';
+    img.style.height = '28px';
+    img.style.borderRadius = '999px';
+    img.style.objectFit = 'cover';
+    img.style.border = '1px solid #d1d5db';
+    img.onerror = () => {
+      img.remove();
+    };
+    row.appendChild(img);
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
+  row.appendChild(title);
+  container.appendChild(row);
+
+  const address = document.createElement('div');
+  address.textContent = String(store?.address_line || '');
+  container.appendChild(address);
+
+  return container;
 };
 
 const requestJson = async (url, { method = 'GET', body, storeSlug } = {}) => {
@@ -234,7 +280,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
         ? markerKey === String(selectedKey)
         : store.is_primary_storefront === true;
       const marker = L.marker([lat, lng], { icon: pinIcon(highlighted) }).addTo(map);
-      marker.bindPopup(`<strong>${store.location_name || store.tenant_name || 'Store'}</strong><br/>${store.address_line || ''}`);
+      marker.bindPopup(createStorePopupNode(store));
       marker.on('click', () => onSelectStore(store));
       markersRef.current.push(marker);
       bounds.push([lat, lng]);
@@ -406,6 +452,7 @@ export function App() {
   const [cart, setCart] = useState([]);
   const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
+  const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
@@ -430,6 +477,17 @@ export function App() {
   ));
   const discoveryRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
+  const markBrandingImageError = useCallback((key) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return;
+    setBrandingImageErrors((previous) => {
+      if (previous.has(normalizedKey)) return previous;
+      const next = new Set(previous);
+      next.add(normalizedKey);
+      return next;
+    });
+  }, []);
+  const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
 
   const isStorePage = Boolean(routeSlug);
 
@@ -1374,6 +1432,8 @@ export function App() {
                     <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'list' ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                       {storesWithNearestBranch.map((store) => {
                         const storeSlug = toSlug(store?.slug);
+                        const storeProfileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
+                        const storeProfileImageKey = `discovery-profile:${storeSlug}:${storeProfileImageUrl}`;
                         const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
                         const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
                         const highlightedPin = storePins[0] || null;
@@ -1390,7 +1450,21 @@ export function App() {
                             style={{ textAlign: 'left', borderRadius: 14, border: '1px solid #d6e2e8', background: '#fff', padding: 14, cursor: 'pointer' }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                              <strong style={{ fontSize: 18 }}>{store.tenant_name}</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: 999, overflow: 'hidden', border: '1px solid #d1d5db', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {storeProfileImageUrl && !isBrandingImageBlocked(storeProfileImageKey) ? (
+                                    <img
+                                      src={storeProfileImageUrl}
+                                      alt={`${store.tenant_name} profile`}
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                      onError={() => markBrandingImageError(storeProfileImageKey)}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>ICON</span>
+                                  )}
+                                </div>
+                                <strong style={{ fontSize: 18 }}>{store.tenant_name}</strong>
+                              </div>
                               <span style={{ fontSize: 12, color: store.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700 }}>{store.storefront_open ? 'Open' : 'Closed'}</span>
                             </div>
                             {badges.length > 0 && (
@@ -1467,6 +1541,8 @@ export function App() {
                     <article style={{ border: '1px solid #dbeafe', borderRadius: 12, background: '#eff6ff', padding: 10 }}>
                       {(() => {
                         const highlightedSlug = toSlug(highlightedStore?.slug);
+                        const highlightedProfileImageUrl = withAssetOrigin(highlightedStore?.storefront_profile_image_url);
+                        const highlightedProfileImageKey = `highlighted-profile:${highlightedSlug}:${highlightedProfileImageUrl}`;
                         const highlightedPins = Array.isArray(discoveryPinsBySlug[highlightedSlug]) ? discoveryPinsBySlug[highlightedSlug] : [];
                         const highlightedBadges = getDiscoveryMatchBadges(highlightedStore, search.trim().length > 0);
                         const highlightedPreferredLocationId = getPreferredDiscoveryLocationId({
@@ -1476,7 +1552,21 @@ export function App() {
                         return (
                           <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <strong>{highlightedStore.tenant_name}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 999, overflow: 'hidden', border: '1px solid #d1d5db', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {highlightedProfileImageUrl && !isBrandingImageBlocked(highlightedProfileImageKey) ? (
+                              <img
+                                src={highlightedProfileImageUrl}
+                                alt={`${highlightedStore.tenant_name} profile`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={() => markBrandingImageError(highlightedProfileImageKey)}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>ICON</span>
+                            )}
+                          </div>
+                          <strong>{highlightedStore.tenant_name}</strong>
+                        </div>
                         <span style={{ color: highlightedStore.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700, fontSize: 12 }}>
                           {highlightedStore.storefront_open ? 'Open' : 'Closed'}
                         </span>
@@ -1544,19 +1634,61 @@ export function App() {
             </section>
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                    <h1 style={{ margin: 0, fontSize: 34 }}>{DGFY_BRAND_NAME}</h1>
-                    <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569' }}>
-                      {selectedStore?.tenant_name || 'Loading storefront...'}
-                    </p>
-                {buildStamp && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', background: '#f8fafc' }}>
-                    Build {buildStamp}
-                  </span>
+              {(() => {
+                const selectedSlug = toSlug(selectedStore?.slug || routeSlug);
+                const selectedCoverImageUrl = withAssetOrigin(selectedStore?.storefront_cover_image_url);
+                const selectedProfileImageUrl = withAssetOrigin(selectedStore?.storefront_profile_image_url);
+                const selectedCoverImageKey = `tenant-cover:${selectedSlug}:${selectedCoverImageUrl}`;
+                const selectedProfileImageKey = `tenant-profile:${selectedSlug}:${selectedProfileImageUrl}`;
+                const showCoverImage = Boolean(selectedCoverImageUrl) && !isBrandingImageBlocked(selectedCoverImageKey);
+                const showProfileImage = Boolean(selectedProfileImageUrl) && !isBrandingImageBlocked(selectedProfileImageKey);
+                return (
+              <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', minHeight: 180 }}>
+                {showCoverImage ? (
+                  <img
+                    src={selectedCoverImageUrl}
+                    alt={`${selectedStore?.tenant_name || 'Store'} cover`}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={() => markBrandingImageError(selectedCoverImageKey)}
+                  />
+                ) : (
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,#dbeafe,#ecfeff 60%,#f8fafc)' }} />
                 )}
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(15,23,42,0.12) 0%, rgba(15,23,42,0.56) 100%)' }} />
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end', minHeight: 180, padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 64, height: 64, borderRadius: 999, overflow: 'hidden', border: '3px solid #fff', background: '#e2e8f0', boxShadow: '0 8px 20px rgba(15,23,42,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {showProfileImage ? (
+                          <img
+                            src={selectedProfileImageUrl}
+                            alt={`${selectedStore?.tenant_name || 'Store'} profile`}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={() => markBrandingImageError(selectedProfileImageKey)}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: '#64748b' }}>ICON</span>
+                        )}
+                      </div>
+                      <div>
+                        <h1 style={{ margin: 0, fontSize: 30, color: '#fff' }}>{DGFY_BRAND_NAME}</h1>
+                        <p style={{ margin: '4px 0 0 0', fontSize: 14, color: '#e2e8f0' }}>
+                          {selectedStore?.tenant_name || 'Loading storefront...'}
+                        </p>
+                      </div>
+                    </div>
+                    {buildStamp && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc', border: '1px solid rgba(248,250,252,.5)', borderRadius: 999, padding: '4px 8px', background: 'rgba(15,23,42,.25)' }}>
+                        Build {buildStamp}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{selectedLocation?.address_line || selectedStore?.address_line || 'Tenant storefront page is loading or being configured.'}</p>
+                  {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} • {selectedStore.catalog_count} storefront item(s)</div>}
+                </div>
               </div>
-              <p style={{ margin: '8px 0 0 0', color: '#475569' }}>{selectedLocation?.address_line || selectedStore?.address_line || 'Tenant storefront page is loading or being configured.'}</p>
-              {selectedStore && <div style={{ marginTop: 8, color: '#0f766e', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} • {selectedStore.catalog_count} storefront item(s)</div>}
+                );
+              })()}
             </section>
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
@@ -1569,7 +1701,8 @@ export function App() {
                           ...location,
                           tenant_name: selectedStore.tenant_name,
                           marker_key: `loc-${location.location_id}`,
-                          location_name: location.name
+                          location_name: location.name,
+                          storefront_profile_image_url: selectedStore.storefront_profile_image_url || null
                         }))
                         : [selectedStore]
                     }

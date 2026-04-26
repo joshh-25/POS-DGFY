@@ -27,7 +27,10 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260422000001-add-compliance-downgrade-override-controls.cjs',
     '20260422000002-harden-compliance-downgrade-controls.cjs',
     '20260416000007-add-multi-location-inventory-ledger.cjs',
-    '20260416000008-backfill-user-location-grants.cjs'
+    '20260416000008-backfill-user-location-grants.cjs',
+    '20260424000001-add-storefront-branding-assets-to-discovery-index.cjs',
+    '20260424000002-harden-storefront-asset-settings-constraints.cjs',
+    '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -98,7 +101,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     tenant_locations: ['location_id', 'name', 'address_line', 'latitude', 'longitude', 'is_active', 'is_primary_storefront'],
     store_customers: ['customer_id', 'email', 'password_hash', 'name', 'is_active'],
     customer_addresses: ['address_id', 'customer_id', 'address_line', 'is_default'],
-    storefront_discovery_index: ['storefront_discovery_index_id', 'tenant_id', 'slug', 'is_visible', 'last_synced_at']
+    storefront_discovery_index: [
+        'storefront_discovery_index_id',
+        'tenant_id',
+        'slug',
+        'is_visible',
+        'storefront_cover_image_url',
+        'storefront_profile_image_url',
+        'last_synced_at'
+    ]
 });
 
 const REQUIRED_COLUMN_CONTRACTS = Object.freeze({

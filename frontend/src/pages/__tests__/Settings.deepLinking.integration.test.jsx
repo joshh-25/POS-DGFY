@@ -19,7 +19,9 @@ const mocks = vi.hoisted(() => ({
   settingsServiceMock: {
     getAllSettings: vi.fn(),
     getCompanyInfo: vi.fn(),
-    updateSettings: vi.fn()
+    updateSettings: vi.fn(),
+    uploadStorefrontAsset: vi.fn(),
+    deleteStorefrontAsset: vi.fn()
   },
   paymentServiceMock: {
     getPendingPlan: vi.fn(),
@@ -128,9 +130,14 @@ describe('Settings deep-linking and action wiring', () => {
     mocks.userServiceMock.updateProfile.mockResolvedValue({});
     mocks.userServiceMock.changePassword.mockResolvedValue({});
 
-    mocks.settingsServiceMock.getAllSettings.mockResolvedValue({});
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
+      storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' }
+    });
     mocks.settingsServiceMock.getCompanyInfo.mockResolvedValue({ company_token: 'TOKEN-123' });
     mocks.settingsServiceMock.updateSettings.mockResolvedValue({});
+    mocks.settingsServiceMock.uploadStorefrontAsset.mockResolvedValue({ image_url: '/uploads/storefront-assets/t1/new.png' });
+    mocks.settingsServiceMock.deleteStorefrontAsset.mockResolvedValue({ deleted: true });
 
     mocks.paymentServiceMock.getPendingPlan.mockResolvedValue({});
     mocks.paymentServiceMock.getBillingHistory.mockResolvedValue([]);
@@ -140,7 +147,13 @@ describe('Settings deep-linking and action wiring', () => {
     mocks.paymentServiceMock.setupPayMongoRecurring.mockResolvedValue({ checkoutLink: 'https://example.test/checkout' });
     mocks.paymentServiceMock.migrateToPayMongo.mockResolvedValue({});
 
-    mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValue({ rows: [], meta: {} });
+    mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValue({
+      rows: [
+        { location_id: 11, name: 'Main Branch', is_active: true, is_primary_storefront: true },
+        { location_id: 12, name: 'East Branch', is_active: true, is_primary_storefront: false }
+      ],
+      meta: {}
+    });
     mocks.tenantLocationServiceMock.createTenantLocation.mockResolvedValue({});
     mocks.tenantLocationServiceMock.updateTenantLocation.mockResolvedValue({});
     mocks.tenantLocationServiceMock.deactivateTenantLocation.mockResolvedValue({});
@@ -225,12 +238,129 @@ describe('Settings deep-linking and action wiring', () => {
     await user.click(screen.getByRole('button', { name: /POS Setup/i }));
     await user.click(screen.getByRole('button', { name: /Add Terminal/i }));
     expect(await screen.findByLabelText(/Remove terminal 1/i)).toBeTruthy();
+    expect(await screen.findByLabelText(/Terminal location 1/i)).toBeTruthy();
 
     await user.type(screen.getByPlaceholderText('Main Branch'), 'HQ Branch');
     await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Iloilo City');
     await user.click(screen.getByRole('button', { name: /Add Location/i }));
     await waitFor(() => {
       expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('persists terminal registry location_id in save payload', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=pos');
+    await screen.findByRole('button', { name: /POS Setup/i });
+
+    await user.click(screen.getByRole('button', { name: /Add Terminal/i }));
+    await user.type(screen.getByPlaceholderText('COUNTER-01'), 'COUNTER-01');
+
+    const terminalLocationSelect = await screen.findByLabelText(/Terminal location/i);
+    await user.selectOptions(terminalLocationSelect, '12');
+
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled();
+    });
+    const latestPayload = mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0] || {};
+    expect(Array.isArray(latestPayload.pos_terminal_registry)).toBe(true);
+    expect(latestPayload.pos_terminal_registry).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          terminal_id: 'COUNTER-01',
+          location_id: 12
+        })
+      ])
+    );
+  });
+
+  it('supports storefront cover/profile upload and remove actions', async () => {
+    const user = userEvent.setup();
+    renderSettings('/settings?tab=company');
+    await screen.findByRole('button', { name: /Company/i });
+
+    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    expect(fileInputs.length).toBeGreaterThanOrEqual(2);
+    const coverFile = new File(['cover'], 'cover.png', { type: 'image/png' });
+    await user.upload(fileInputs[0], coverFile);
+
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.uploadStorefrontAsset).toHaveBeenCalledWith('cover', expect.any(File));
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /^Remove$/i });
+    await user.click(removeButtons[0]);
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.deleteStorefrontAsset).toHaveBeenCalledWith('cover');
+    });
+  });
+
+  it('disables storefront branding uploads for non-admin users without micropermission', async () => {
+    mocks.storeState.currentUser = {
+      username: 'staff1',
+      email: 'staff1@example.com',
+      role: 'staff',
+      is_master_admin: false,
+      permissions: ['settings:view'],
+      company: {
+        plan: 'premium',
+        payment_method: 'paymongo',
+        subscription_status: 'active'
+      }
+    };
+    mocks.userServiceMock.getCurrentUser.mockResolvedValue(mocks.storeState.currentUser);
+
+    renderSettings('/settings?tab=company');
+    await screen.findByRole('button', { name: /Company/i });
+
+    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    expect(fileInputs.length).toBeGreaterThanOrEqual(2);
+    fileInputs.forEach((input) => {
+      expect(input.hasAttribute('disabled')).toBe(true);
+    });
+    expect(screen.getByText(/settings:storefront_branding_edit/i)).toBeTruthy();
+  });
+
+  it('allows storefront branding uploads for non-admin users with micropermission', async () => {
+    mocks.storeState.currentUser = {
+      username: 'manager1',
+      email: 'manager1@example.com',
+      role: 'manager',
+      is_master_admin: false,
+      permissions: ['settings:view', 'settings:storefront_branding_edit'],
+      company: {
+        plan: 'premium',
+        payment_method: 'paymongo',
+        subscription_status: 'active'
+      }
+    };
+    mocks.userServiceMock.getCurrentUser.mockResolvedValue(mocks.storeState.currentUser);
+
+    renderSettings('/settings?tab=company');
+    await screen.findByRole('button', { name: /Company/i });
+
+    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    expect(fileInputs.length).toBeGreaterThanOrEqual(2);
+    fileInputs.forEach((input) => {
+      expect(input.hasAttribute('disabled')).toBe(false);
+    });
+  });
+
+  it('reset clears local storefront media previews', async () => {
+    const user = userEvent.setup();
+    renderSettings('/settings?tab=company');
+    await screen.findByRole('button', { name: /Save Changes/i });
+    expect(screen.getByAltText('Storefront cover preview')).toBeTruthy();
+    expect(screen.getByAltText('Storefront profile preview')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /Reset/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No cover photo uploaded')).toBeTruthy();
+      expect(screen.getByText('No icon')).toBeTruthy();
     });
   });
 

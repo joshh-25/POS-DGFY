@@ -2210,6 +2210,39 @@ Return submission-ready compliance export bundle metadata and CSV file payloads 
 
 ## Storefront Discovery And Guest Store Endpoints
 
+### POST /settings/storefront-assets/:asset_type
+Upload or replace tenant storefront branding image from IMS Settings.
+
+**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)  
+**Request**: `multipart/form-data` with `image` file field  
+**Params**:
+- `asset_type`: `cover` or `profile`
+**Accepted image MIME types**:
+- `image/jpeg`
+- `image/png`
+- `image/gif`
+- `image/webp`
+- `image/bmp`
+- `image/avif`
+**Validation**:
+- Server enforces MIME allowlist and binary signature (magic-byte) validation.
+- Maximum upload size: `5 MB`.
+
+**Response Data**
+- `asset_type`
+- `image_url` (backend-relative `/uploads/...` path)
+
+### DELETE /settings/storefront-assets/:asset_type
+Remove tenant storefront branding image from IMS Settings.
+
+**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)  
+**Params**:
+- `asset_type`: `cover` or `profile`
+
+**Response Data**
+- `asset_type`
+- `deleted` (`true`)
+
 ### GET /storefront/discovery
 List publicly discoverable stores for list/grid/map storefront views.
 
@@ -2245,6 +2278,9 @@ List publicly discoverable stores for list/grid/map storefront views.
   - `matching_location_ids`
   - `nearest_matching_location_id`
 - Response also includes `applied_filters` with resolved values for `result_mode`, `stock_filter`, `pin_scope`, and `include_match_meta`.
+- Discovery rows also include optional tenant branding fields:
+  - `storefront_cover_image_url`
+  - `storefront_profile_image_url`
 
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.
@@ -2253,6 +2289,9 @@ Resolve one storefront profile by tenant slug for public storefront entry.
 **Tenant Context**: Not required
 
 **Security Note**: Discovery payloads do not expose `company_token`.
+Profile payload may include optional tenant branding fields:
+- `storefront_cover_image_url`
+- `storefront_profile_image_url`
 
 ### GET /store/catalog
 List tenant storefront catalog items (public read).
@@ -3513,3 +3552,79 @@ APP_URL=https://your-domain.com
 1. Enable 2-Factor Authentication on your Google account
 2. Generate an App Password at: https://myaccount.google.com/apppasswords
 3. Use the 16-character app password as `SMTP_PASS`
+
+## Tenant Onboarding Endpoints
+
+**Bootstrap ownership note**
+- Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
+- Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
+
+### GET /onboarding/status
+Get tenant onboarding status snapshot for the authenticated tenant master admin.
+
+**Access**: Private (`master admin` only)
+
+**Response Data**
+- `tenant_onboarding_state` (`not_started | in_progress | completed`)
+- `tenant_onboarding_started_at` (ISO string or `null`)
+- `tenant_onboarding_completed_at` (ISO string or `null`)
+- `tenant_onboarding_progress`:
+  - `step_payloads` (step-keyed object)
+  - `checklist_snapshot` (`required_total`, `completed_required_count`, `missing_requirements`, `is_ready`)
+
+### PUT /onboarding/step
+Persist onboarding progress for a step (idempotent).
+
+**Access**: Private (`master admin` only)
+
+**Request**
+```json
+{
+  "step_key": "business_profile",
+  "payload": {
+    "pos_business_name": "Acme Storefront"
+  }
+}
+```
+
+### POST /onboarding/complete
+Finalize onboarding if required readiness checks are satisfied.
+
+**Access**: Private (`master admin` only)
+
+**Behavior**
+- Returns `422` with `missing_requirements[]` if readiness is incomplete.
+- On success, sets onboarding state to `completed` and triggers storefront discovery sync.
+
+### POST /onboarding/events
+Track onboarding UX telemetry events without mutating onboarding checklist progress state.
+
+**Access**: Private (`master admin` only)
+
+**Request**
+```json
+{
+  "event_key": "reminder_shown",
+  "metadata": {
+    "surface": "layout"
+  }
+}
+```
+
+**Supported `event_key` values**
+- `wizard_viewed`
+- `reminder_shown`
+- `reminder_dismissed`
+- `optional_asset_skipped`
+
+**Response (202)**
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": true,
+    "event_key": "reminder_shown"
+  },
+  "message": "Onboarding event accepted"
+}
+```

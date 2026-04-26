@@ -128,6 +128,22 @@ npm run doctor:runtime
 
 Expected outcome: `status=healthy missing_migrations=0 missing_columns=0`.
 
+Storefront branding contract note:
+- Runtime doctor now validates discovery branding schema requirements:
+  - migration `20260424000001-add-storefront-branding-assets-to-discovery-index.cjs`
+  - migration `20260424000002-harden-storefront-asset-settings-constraints.cjs`
+  - migration `20260424000003-enforce-storefront-asset-settings-via-triggers.cjs`
+  - columns `storefront_discovery_index.storefront_cover_image_url` and `storefront_discovery_index.storefront_profile_image_url`
+- If storefront discovery fails with `Unknown column 'storefront_cover_image_url' in 'field list'`, run:
+
+```bash
+cd backend
+npm run migrate
+npm run doctor:runtime
+```
+
+Expected follow-up: storefront discovery endpoint returns HTTP `200` and runtime doctor returns `status=healthy`.
+
 Then verify key endpoints:
 
 1. `GET http://localhost:5000/health` -> `200`

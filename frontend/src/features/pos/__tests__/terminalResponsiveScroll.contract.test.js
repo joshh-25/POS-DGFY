@@ -37,7 +37,8 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('uses viewport-aware split-pane detection and truthful scroll affordances', () => {
     expect(posCheckoutContent).toContain("window.matchMedia('(min-width: 1536px)')");
-    expect(posCheckoutContent).toContain('const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;');
+    expect(posCheckoutContent).toContain('const hasSplitPaneScroll = isAtLeast2xlViewport;');
+    expect(posCheckoutContent).not.toContain('const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;');
     expect(posCheckoutContent).toContain("Scroll: Page (Catalog)");
     expect(posCheckoutContent).toContain("Scroll: Page (Current Sale)");
     expect(posCheckoutContent).toContain("Scroll tip: hover or focus inside each pane to scroll it independently.");

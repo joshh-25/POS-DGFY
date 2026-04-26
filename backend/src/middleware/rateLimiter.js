@@ -20,6 +20,8 @@ const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WIN
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
+const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
 
@@ -40,6 +42,7 @@ const rateLimitCounters = {
   store_auth: 0,
   store_tracking: 0,
   storefront_discovery: 0,
+  onboarding_events: 0,
   ai: 0,
   pos: 0,
   registration: 0,
@@ -129,6 +132,7 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
   if (path.includes('/storefront/discovery')) return 'storefront_discovery';
+  if (path.includes('/onboarding/events')) return 'onboarding_events';
   if (path.includes('/ai/')) return 'ai';
   if (path.includes('/pos/')) return 'pos';
   if (path.includes('/admin/tenants/register')) return 'registration';
@@ -482,6 +486,41 @@ export const storefrontDiscoveryLimiter = rateLimit({
   },
 });
 
+// Tenant onboarding telemetry limiter (master-admin authenticated surface).
+export const onboardingEventsLimiter = rateLimit({
+  windowMs: onboardingEventsWindowMs,
+  max: onboardingEventsMaxRequests,
+  message: createRateLimitError('Too many onboarding event requests. Please wait before retrying.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('onboarding_events'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || 'anonymous';
+    const eventKey = normalizeTrackingPin(req.body?.event_key || '');
+    return `onboarding_events:${tenantKey}:${userKey}:${eventKey || 'unknown-event'}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many onboarding event requests. Please wait before retrying.',
+      'onboarding_events',
+      'tenant_user_event_ip'
+    );
+    logRateLimitEvent(req, 'onboarding_events', response.retryAfterSeconds, 'tenant_user_event_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Strictest rate limiter for email lookup to prevent enumeration
 export const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -581,6 +620,7 @@ export default {
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,
+  onboardingEvents: onboardingEventsLimiter,
   lookup: lookupLimiter,
   registration: tenantRegistrationLimiter,
   pos: posLimiter,

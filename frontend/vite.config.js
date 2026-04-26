@@ -5,6 +5,11 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000'
+const securityHeaders = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -25,6 +30,7 @@ export default defineConfig({
   },
   server: {
     allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49', 'localhost'],
+    headers: securityHeaders,
     proxy: {
       '/api': {
         target: apiProxyTarget,
@@ -42,6 +48,7 @@ export default defineConfig({
     port: 5173,
     host: true,
     allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49', 'localhost'],
+    headers: securityHeaders,
     proxy: {
       '/api': {
         target: apiProxyTarget,

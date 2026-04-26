@@ -46,6 +46,10 @@ const DEFAULT_STOREFRONT_LOCATION = Object.freeze({
 });
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const ONBOARDING_STATE_SETTING_KEY = 'tenant_onboarding_state';
+const ONBOARDING_STARTED_AT_SETTING_KEY = 'tenant_onboarding_started_at';
+const ONBOARDING_COMPLETED_AT_SETTING_KEY = 'tenant_onboarding_completed_at';
+const ONBOARDING_PROGRESS_SETTING_KEY = 'tenant_onboarding_progress';
 
 const seedDefaultStorefrontLocation = async (tenantSequelize) => {
     const { getTenantModels } = await import('../utils/tenantModelFactory.js');
@@ -113,6 +117,79 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
         }
     );
     return normalizedWorkflowMode;
+};
+
+const seedDefaultOnboardingSettings = async (tenantSequelize) => {
+    const defaults = [
+        {
+            key: ONBOARDING_STATE_SETTING_KEY,
+            value: 'not_started',
+            dataType: 'string',
+            description: 'Tenant onboarding state (not_started | in_progress | completed)'
+        },
+        {
+            key: ONBOARDING_STARTED_AT_SETTING_KEY,
+            value: '',
+            dataType: 'string',
+            description: 'ISO timestamp for tenant onboarding start'
+        },
+        {
+            key: ONBOARDING_COMPLETED_AT_SETTING_KEY,
+            value: '',
+            dataType: 'string',
+            description: 'ISO timestamp for tenant onboarding completion'
+        },
+        {
+            key: ONBOARDING_PROGRESS_SETTING_KEY,
+            value: JSON.stringify({
+                step_payloads: {},
+                checklist_snapshot: {
+                    checklist: {
+                        store_name_ready: true,
+                        has_active_location: false,
+                        has_primary_storefront_location: false,
+                        has_sellable_item: false
+                    },
+                    required_keys: [
+                        'store_name_ready',
+                        'has_active_location',
+                        'has_primary_storefront_location',
+                        'has_sellable_item'
+                    ],
+                    required_total: 4,
+                    completed_required_count: 1,
+                    is_ready: false,
+                    missing_requirements: [
+                        'has_active_location',
+                        'has_primary_storefront_location',
+                        'has_sellable_item'
+                    ]
+                }
+            }),
+            dataType: 'json',
+            description: 'Tenant onboarding progress and checklist snapshot'
+        }
+    ];
+
+    for (const setting of defaults) {
+        await tenantSequelize.query(
+            `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+             VALUES (?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE
+               setting_value = VALUES(setting_value),
+               data_type = VALUES(data_type),
+               description = VALUES(description),
+               updated_at = NOW()`,
+            {
+                replacements: [
+                    setting.key,
+                    setting.value,
+                    setting.dataType,
+                    setting.description
+                ]
+            }
+        );
+    }
 };
 
 /**
@@ -260,6 +337,11 @@ export const provisionTenant = async (options) => {
             logger.info('[Provisioning] Workflow mode setting seeded', {
                 tenantId: uuid,
                 workflowMode: seededWorkflowMode
+            });
+
+            await seedDefaultOnboardingSettings(tenantSequelize);
+            logger.info('[Provisioning] Onboarding baseline settings seeded', {
+                tenantId: uuid
             });
 
             // 4.5 Seed a default primary storefront location so every active tenant

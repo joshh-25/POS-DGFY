@@ -90,6 +90,14 @@ describe('storefront primary location integration', () => {
     };
 
     beforeAll(async () => {
+        await landlordSequelize.query(`
+            ALTER TABLE storefront_discovery_index
+            ADD COLUMN IF NOT EXISTS storefront_cover_image_url VARCHAR(500) NULL
+        `);
+        await landlordSequelize.query(`
+            ALTER TABLE storefront_discovery_index
+            ADD COLUMN IF NOT EXISTS storefront_profile_image_url VARCHAR(500) NULL
+        `);
         await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
         runMigrationsForDb(dbName);
 
@@ -160,7 +168,9 @@ describe('storefront primary location integration', () => {
         const settingsResult = await runInTenantContext(() => updateSettingsUseCase({
             settingsData: {
                 store_tenant_slug: tenantSlug,
-                store_is_visible: true
+                store_is_visible: true,
+                storefront_cover_image_url: '/uploads/storefront-assets/test/cover.png',
+                storefront_profile_image_url: '/uploads/storefront-assets/test/profile.png'
             }
         }));
         expect(settingsResult.success).toBe(true);
@@ -176,6 +186,8 @@ describe('storefront primary location integration', () => {
         expect(initialProfile.status).toBe(200);
         expect(initialProfile.body.success).toBe(true);
         expect(Number(initialProfile.body.data.location_id)).toBe(Number(firstLocation.data.location_id));
+        expect(initialProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
+        expect(initialProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
 
         const promoteSecondLocation = await runInTenantContext(() => updateTenantLocationUseCase({
             locationId: secondLocation.data.location_id,
@@ -225,5 +237,17 @@ describe('storefront primary location integration', () => {
         expect(updatedProfile.body.success).toBe(true);
         expect(Number(updatedProfile.body.data.location_id)).toBe(Number(secondLocation.data.location_id));
         expect(updatedProfile.body.data.location_name).toBe('Branch 2');
+        expect(updatedProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
+        expect(updatedProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+
+        const discoveryList = await request(app)
+            .get('/api/v1/storefront/discovery');
+        expect(discoveryList.status).toBe(200);
+        const alphaRow = Array.isArray(discoveryList.body?.data?.stores)
+            ? discoveryList.body.data.stores.find((row) => String(row.slug || '') === tenantSlug)
+            : null;
+        expect(alphaRow).toBeTruthy();
+        expect(alphaRow.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
+        expect(alphaRow.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
     });
 });

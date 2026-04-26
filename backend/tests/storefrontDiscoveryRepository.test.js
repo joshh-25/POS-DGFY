@@ -49,6 +49,8 @@ const makeEntry = (overrides = {}) => ({
   supports_dine_in: true,
   store_delivery_fee: 25,
   catalog_count: 42,
+  storefront_cover_image_url: overrides.storefront_cover_image_url ?? '/uploads/storefront-assets/tenant-1/cover.png',
+  storefront_profile_image_url: overrides.storefront_profile_image_url ?? '/uploads/storefront-assets/tenant-1/profile.png',
   search_snapshot_version: overrides.search_snapshot_version ?? 1,
   active_location_snapshot: overrides.active_location_snapshot || [
     {
@@ -95,6 +97,37 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(reconcileMock).not.toHaveBeenCalled();
   });
 
+  it('falls back to legacy-safe attributes when storefront branding columns are missing', async () => {
+    const repository = await loadRepository();
+    findAllMock
+      .mockRejectedValueOnce({
+        code: 'ER_BAD_FIELD_ERROR',
+        message: "Unknown column 'storefront_cover_image_url' in 'field list'"
+      })
+      .mockResolvedValueOnce([
+        makeEntry({
+          tenant_id: 'tenant-1',
+          storefront_cover_image_url: '',
+          storefront_profile_image_url: ''
+        })
+      ]);
+
+    const result = await repository.listDiscovery({ limit: 10 });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].storefront_cover_image_url).toBeNull();
+    expect(result.rows[0].storefront_profile_image_url).toBeNull();
+    expect(findAllMock).toHaveBeenCalledTimes(2);
+    expect(findAllMock.mock.calls[1][0]).toEqual(expect.objectContaining({
+      attributes: expect.arrayContaining(['tenant_id', 'active_location_snapshot', 'item_search_snapshot'])
+    }));
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      '[StorefrontDiscovery] Legacy discovery-index schema detected; using temporary branding-column fallback',
+      expect.objectContaining({
+        operation: 'findAll_visible'
+      })
+    );
+  });
+
   it('triggers auto-repair reconciliation when index is empty', async () => {
     const repository = await loadRepository();
     findAllMock
@@ -123,6 +156,64 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       tenant_id: 'tenant-2',
       slug: 'bravo-store'
     }));
+  });
+
+  it('falls back on profile lookup when storefront branding columns are missing', async () => {
+    const repository = await loadRepository();
+    findOneMock
+      .mockRejectedValueOnce({
+        code: 'ER_BAD_FIELD_ERROR',
+        message: "Unknown column 'storefront_profile_image_url' in 'field list'"
+      })
+      .mockResolvedValueOnce(makeEntry({
+        tenant_id: 'tenant-2',
+        tenant_name: 'Bravo',
+        slug: 'bravo-store',
+        storefront_cover_image_url: '',
+        storefront_profile_image_url: ''
+      }));
+
+    const result = await repository.getStorefrontBySlug('bravo-store');
+    expect(result).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-2',
+      slug: 'bravo-store',
+      storefront_cover_image_url: null,
+      storefront_profile_image_url: null
+    }));
+    expect(findOneMock).toHaveBeenCalledTimes(2);
+    expect(findOneMock.mock.calls[1][0]).toEqual(expect.objectContaining({
+      attributes: expect.arrayContaining(['tenant_id', 'active_location_snapshot', 'item_search_snapshot'])
+    }));
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      '[StorefrontDiscovery] Legacy discovery-index schema detected; using temporary branding-column fallback',
+      expect.objectContaining({
+        operation: 'findOne_by_slug'
+      })
+    );
+  });
+
+  it('sanitizes unsafe storefront asset URLs coming from discovery index rows', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-unsafe',
+        storefront_cover_image_url: 'javascript:alert(1)',
+        storefront_profile_image_url: '/uploads/storefront-assets/tenant-unsafe/profile.png'
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ limit: 10 });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].storefront_cover_image_url).toBeNull();
+    expect(result.rows[0].storefront_profile_image_url).toBe('/uploads/storefront-assets/tenant-unsafe/profile.png');
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      '[StorefrontDiscoveryRepository] Sanitized unsafe storefront asset URL from discovery index row',
+      expect.objectContaining({
+        signal_code: 'storefront_asset_index_sanitized',
+        tenant_id: 'tenant-unsafe',
+        asset_type: 'cover'
+      })
+    );
   });
 
   it('uses union + badges by default when both store and item matches exist', async () => {

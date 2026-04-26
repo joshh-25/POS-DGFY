@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
@@ -78,7 +78,9 @@ describe('storefront discovery integration flow', () => {
           location_id: 11,
           address_line: 'Iloilo City',
           storefront_open: true,
-          catalog_count: 2
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
         });
       }
       return makeJsonResponse({});
@@ -154,6 +156,8 @@ describe('storefront discovery integration flow', () => {
               longitude: 122.56,
               catalog_count: 2,
               estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
               match_reasons: ['store', 'item'],
               matching_item_count: 1,
               matching_item_sample: ['Calamansi Juice'],
@@ -187,7 +191,9 @@ describe('storefront discovery integration flow', () => {
           location_id: 11,
           address_line: 'Iloilo City',
           storefront_open: true,
-          catalog_count: 2
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
         });
       }
       if (normalized.includes('/api/v1/store/catalog')) {
@@ -208,10 +214,79 @@ describe('storefront discovery integration flow', () => {
     const storeButtons = screen.getAllByRole('button', { name: /Alpha Foods/i });
     await user.click(storeButtons[0]);
     await waitFor(() => {
+      expect(screen.getByText('Tenant page: alpha')).toBeTruthy();
+    });
+    expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
+    expect(screen.getByAltText(/Alpha Foods cover/i)).toBeTruthy();
+    await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+  });
+
+  it('falls back to ICON placeholder when storefront profile image fails to load', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store']
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'in_stock_only',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
+    });
+
+    const profileImage = screen.getAllByAltText(/Alpha Foods profile/i)[0];
+    fireEvent.error(profileImage);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ICON').length).toBeGreaterThan(0);
     });
   });
 

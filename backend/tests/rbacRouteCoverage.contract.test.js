@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const posRoutesPath = path.resolve(__dirname, '../src/routes/pos.js');
 const complianceRoutesPath = path.resolve(__dirname, '../src/routes/compliance.js');
 const adminTenantRoutesPath = path.resolve(__dirname, '../src/routes/adminTenants.js');
+const settingsRoutesPath = path.resolve(__dirname, '../src/routes/settings.js');
 const rbacMatrixPath = path.resolve(__dirname, '../../docs/compliance/evidence/rbac-sensitive-action-matrix.md');
 
 const escapeRegexLiteral = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,13 +38,41 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
     let posRoutes = '';
     let complianceRoutes = '';
     let adminTenantRoutes = '';
+    let settingsRoutes = '';
     let rbacMatrix = '';
 
     beforeAll(() => {
         posRoutes = fs.readFileSync(posRoutesPath, 'utf8');
         complianceRoutes = fs.readFileSync(complianceRoutesPath, 'utf8');
         adminTenantRoutes = fs.readFileSync(adminTenantRoutesPath, 'utf8');
+        settingsRoutes = fs.readFileSync(settingsRoutesPath, 'utf8');
         rbacMatrix = fs.readFileSync(rbacMatrixPath, 'utf8');
+    });
+
+    it('guards storefront branding asset routes with dedicated storefront branding permission middleware', () => {
+        expectRouteContract({
+            source: settingsRoutes,
+            method: 'post',
+            routePath: '/storefront-assets/:asset_type',
+            requiredFragments: [
+                'authenticate',
+                'checkStorefrontBrandingEditPermission',
+                'validateStorefrontAssetTypeParam',
+                'storefrontAssetUpload.single(\'image\')',
+                'settingsController.uploadStorefrontAsset'
+            ]
+        });
+        expectRouteContract({
+            source: settingsRoutes,
+            method: 'delete',
+            routePath: '/storefront-assets/:asset_type',
+            requiredFragments: [
+                'authenticate',
+                'checkStorefrontBrandingEditPermission',
+                'validateStorefrontAssetTypeParam',
+                'settingsController.deleteStorefrontAsset'
+            ]
+        });
     });
 
     it('guards compliance activation and profile mutation routes with edit-settings permission', () => {

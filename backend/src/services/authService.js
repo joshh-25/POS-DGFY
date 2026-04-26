@@ -15,6 +15,7 @@ import dbStore from '../utils/dbStore.js';
 import * as cacheService from './cacheService.js';
 import * as landlordService from './landlordService.js';
 import logger from '../config/logger.js';
+import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -196,6 +197,21 @@ export const loginUser = async (email, password) => {
 
   // Calculate expires in seconds
   const expiresIn = 24 * 60 * 60; // 24 hours in seconds
+  let onboarding = null;
+  if (user.is_master_admin === true) {
+    try {
+      onboarding = await onboardingRepository.getStatus({
+        storeNameBaseline: dbStore.getStore()?.tenantName || ''
+      });
+    } catch (error) {
+      logger.warn('[AuthService] Failed to load onboarding status during login bootstrap', {
+        user_id: user.user_id || null,
+        tenant_id: dbStore.getStore()?.tenantId || null,
+        error: error.message
+      });
+      onboarding = null;
+    }
+  }
 
   return {
     user_id: user.user_id,
@@ -204,6 +220,7 @@ export const loginUser = async (email, password) => {
     role: user.role,
     permissions: user.permissions || [],
     is_master_admin: user.is_master_admin || false,
+    onboarding,
     token,
     refreshToken,
     expiresIn

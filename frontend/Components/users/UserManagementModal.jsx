@@ -43,7 +43,7 @@ const PERMISSION_TEMPLATES = {
       'stock:view', 'stock:adjust', 'batches:view', 'batches:edit',
       'reports:view',
       'ai:chat', 'ai:action',
-      'settings:view', 'settings:edit',
+      'settings:view', 'settings:edit', 'settings:storefront_branding_edit',
       'users:view', 'users:delete', 'audit:view'
     ]
   },

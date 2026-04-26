@@ -20,16 +20,16 @@ export const register = async (userData, companyToken) => {
 };
 
 export const login = async (credentials) => {
-  // Pass companyToken in header for the login request itself (to route to correct DB)
-  // OR pass it in body?
-  // Backend tenantHandler looks for header 'x-company-token'.
-
-  // We need to send it as a header for THIS request first.
-  const config = {
-    headers: {
-      'x-company-token': credentials.companyToken
+  const resolvedCompanyToken = String(
+    credentials?.companyToken || localStorage.getItem('companyToken') || ''
+  ).trim();
+  const config = resolvedCompanyToken
+    ? {
+      headers: {
+        'x-company-token': resolvedCompanyToken
+      }
     }
-  };
+    : {};
 
   const response = await api.post('/auth/login', {
     email: credentials.email,
@@ -40,8 +40,8 @@ export const login = async (credentials) => {
   localStorage.setItem('authToken', token);
   localStorage.setItem('refreshToken', refreshToken);
   // Store company token for future requests
-  if (credentials.companyToken) {
-    localStorage.setItem('companyToken', credentials.companyToken);
+  if (resolvedCompanyToken) {
+    localStorage.setItem('companyToken', resolvedCompanyToken);
   }
 
   // Dispatch custom event to notify PermissionContext to reload

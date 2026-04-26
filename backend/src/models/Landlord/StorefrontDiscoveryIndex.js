@@ -91,6 +91,14 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        storefront_cover_image_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
+        storefront_profile_image_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
         active_location_snapshot: {
             type: DataTypes.JSON,
             allowNull: true

@@ -1,8 +1,18 @@
 import express from 'express';
 import * as settingsController from '../controllers/settingsController.js';
-import { authenticate, checkPermission, requireMasterAdmin } from '../middleware/auth.js';
+import {
+  authenticate,
+  checkPermission,
+  checkStorefrontBrandingEditPermission,
+  requireMasterAdmin
+} from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { validateUpdateSettings, validateUpdateSingleSetting } from '../validators/settingsValidator.js';
+import { storefrontAssetUpload } from '../config/uploadConfig.js';
+import {
+  validateStorefrontAssetTypeParam,
+  validateUpdateSettings,
+  validateUpdateSingleSetting
+} from '../validators/settingsValidator.js';
 
 const router = express.Router();
 
@@ -51,6 +61,23 @@ router.put(
   checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   validateUpdateSingleSetting,
   settingsController.updateSettingByKey
+);
+
+router.post(
+  '/storefront-assets/:asset_type',
+  authenticate,
+  checkStorefrontBrandingEditPermission,
+  validateStorefrontAssetTypeParam,
+  storefrontAssetUpload.single('image'),
+  settingsController.uploadStorefrontAsset
+);
+
+router.delete(
+  '/storefront-assets/:asset_type',
+  authenticate,
+  checkStorefrontBrandingEditPermission,
+  validateStorefrontAssetTypeParam,
+  settingsController.deleteStorefrontAsset
 );
 
 /**

@@ -4,6 +4,7 @@ import { getStorefrontDiscoveryCacheVersion } from '../../../services/storefront
 import { getStorefrontDiscoverySharedSignature } from '../../../services/storefrontDiscoveryFreshnessService.js';
 import logger from '../../../config/logger.js';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
+import { normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
 let cache = {
@@ -14,6 +15,27 @@ let cache = {
 };
 let emptyAutoRepairInFlight = false;
 const SUPPORTED_SEARCH_SNAPSHOT_VERSION = 1;
+const LEGACY_SCHEMA_SAFE_ATTRIBUTES = Object.freeze([
+    'tenant_id',
+    'tenant_name',
+    'slug',
+    'storefront_open',
+    'location_id',
+    'location_name',
+    'address_line',
+    'latitude',
+    'longitude',
+    'delivery_radius_km',
+    'estimated_wait_minutes',
+    'supports_delivery',
+    'supports_pickup',
+    'supports_dine_in',
+    'store_delivery_fee',
+    'catalog_count',
+    'active_location_snapshot',
+    'item_search_snapshot',
+    'search_snapshot_version'
+]);
 
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
 const shouldAutoRepairEmptyIndex = () => process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY !== 'false';
@@ -77,6 +99,69 @@ const resolveIncludeMatchMeta = (query = {}) => {
     return true;
 };
 
+const sanitizeStorefrontAssetUrlFromIndex = ({ rawValue, tenantId, assetType }) => {
+    const raw = String(rawValue || '').trim();
+    const normalized = normalizeStorefrontAssetUrl(raw);
+    if (raw && !normalized) {
+        logger.warn('[StorefrontDiscoveryRepository] Sanitized unsafe storefront asset URL from discovery index row', {
+            event_type: 'security_signal',
+            signal_code: 'storefront_asset_index_sanitized',
+            tenant_id: tenantId || null,
+            asset_type: assetType
+        });
+    }
+    return normalized || null;
+};
+
+const getSqlErrorCode = (error) => String(
+    error?.original?.code
+    || error?.parent?.code
+    || error?.code
+    || ''
+).trim();
+
+const getSqlErrorMessage = (error) => String(
+    error?.original?.sqlMessage
+    || error?.parent?.sqlMessage
+    || error?.original?.message
+    || error?.parent?.message
+    || error?.message
+    || ''
+);
+
+const isMissingStorefrontBrandingColumnError = (error) => {
+    const code = getSqlErrorCode(error);
+    if (code !== 'ER_BAD_FIELD_ERROR') return false;
+    const message = getSqlErrorMessage(error);
+    return (
+        message.includes("Unknown column 'storefront_cover_image_url'")
+        || message.includes("Unknown column 'storefront_profile_image_url'")
+    );
+};
+
+const queryDiscoveryIndexWithLegacyFallback = async ({
+    findFn,
+    queryOptions,
+    operation
+}) => {
+    try {
+        return await findFn(queryOptions);
+    } catch (error) {
+        if (!isMissingStorefrontBrandingColumnError(error)) {
+            throw error;
+        }
+        logger.warn('[StorefrontDiscovery] Legacy discovery-index schema detected; using temporary branding-column fallback', {
+            operation,
+            error: getSqlErrorMessage(error),
+            fallback_attributes: LEGACY_SCHEMA_SAFE_ATTRIBUTES
+        });
+        return findFn({
+            ...queryOptions,
+            attributes: LEGACY_SCHEMA_SAFE_ATTRIBUTES
+        });
+    }
+};
+
 const toPlainEntry = (row) => ({
     tenant_id: row.tenant_id,
     tenant_name: row.tenant_name,
@@ -94,6 +179,16 @@ const toPlainEntry = (row) => ({
     supports_dine_in: row.supports_dine_in !== false,
     store_delivery_fee: toNumber(row.store_delivery_fee, 0),
     catalog_count: toNumber(row.catalog_count, 0),
+    storefront_cover_image_url: sanitizeStorefrontAssetUrlFromIndex({
+        rawValue: row.storefront_cover_image_url,
+        tenantId: row.tenant_id,
+        assetType: 'cover'
+    }),
+    storefront_profile_image_url: sanitizeStorefrontAssetUrlFromIndex({
+        rawValue: row.storefront_profile_image_url,
+        tenantId: row.tenant_id,
+        assetType: 'profile'
+    }),
     active_location_snapshot: parseJsonArray(row.active_location_snapshot),
     item_search_snapshot: parseJsonArray(row.item_search_snapshot),
     search_snapshot_version: toNumber(row.search_snapshot_version, 0)
@@ -129,22 +224,25 @@ const loadAllEntries = async () => {
         return cache.entries;
     }
 
-    let rows = await StorefrontDiscoveryIndex.findAll({
+    const baseFindAllOptions = {
         where: { is_visible: true },
         order: [
             ['storefront_open', 'DESC'],
             ['tenant_name', 'ASC']
         ]
+    };
+    let rows = await queryDiscoveryIndexWithLegacyFallback({
+        findFn: StorefrontDiscoveryIndex.findAll.bind(StorefrontDiscoveryIndex),
+        queryOptions: baseFindAllOptions,
+        operation: 'findAll_visible'
     });
 
     if ((!rows || rows.length === 0) && shouldAutoRepairEmptyIndex()) {
         await warmIndexOnEmpty();
-        rows = await StorefrontDiscoveryIndex.findAll({
-            where: { is_visible: true },
-            order: [
-                ['storefront_open', 'DESC'],
-                ['tenant_name', 'ASC']
-            ]
+        rows = await queryDiscoveryIndexWithLegacyFallback({
+            findFn: StorefrontDiscoveryIndex.findAll.bind(StorefrontDiscoveryIndex),
+            queryOptions: baseFindAllOptions,
+            operation: 'findAll_visible_after_repair'
         });
     }
 
@@ -462,11 +560,15 @@ export const storefrontDiscoveryRepository = {
         const normalizedSlug = normalizeSlug(slug);
         if (!normalizedSlug) return null;
 
-        const row = await StorefrontDiscoveryIndex.findOne({
+        const row = await queryDiscoveryIndexWithLegacyFallback({
+            findFn: StorefrontDiscoveryIndex.findOne.bind(StorefrontDiscoveryIndex),
+            queryOptions: {
             where: {
                 slug: normalizedSlug,
                 is_visible: true
             }
+            },
+            operation: 'findOne_by_slug'
         });
 
         if (!row) return null;

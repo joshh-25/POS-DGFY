@@ -7,6 +7,8 @@ import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { ROLE_HIERARCHY, USER_ROLES, isAdminLikeRole } from '../config/userRoles.js';
 import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
+import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
+import logger from '../config/logger.js';
 
 const findVisibleUserById = async (User, userId, queryOptions = {}) => {
   const { where = {}, ...rest } = queryOptions;
@@ -38,6 +40,21 @@ export const getCurrentUser = async (userId) => {
   }
 
   const { tenantPlan, tenantSubscriptionStatus, tenantGracePeriodEnd, tenantPaymentMethod } = dbStore.getStore() || {};
+  let onboarding = null;
+  if (user.is_master_admin === true) {
+    try {
+      onboarding = await onboardingRepository.getStatus({
+        storeNameBaseline: dbStore.getStore()?.tenantName || ''
+      });
+    } catch (error) {
+      logger.warn('[UserService] Failed to load onboarding status for current user profile', {
+        user_id: user.user_id || null,
+        tenant_id: dbStore.getStore()?.tenantId || null,
+        error: error.message
+      });
+      onboarding = null;
+    }
+  }
 
   return {
     user_id: user.user_id,
@@ -54,7 +71,8 @@ export const getCurrentUser = async (userId) => {
       subscription_status: tenantSubscriptionStatus || 'active',
       grace_period_end: tenantGracePeriodEnd || null,
       payment_method: tenantPaymentMethod || 'manual'
-    }
+    },
+    onboarding
   };
 };
 

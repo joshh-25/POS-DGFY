@@ -5,7 +5,9 @@ import {
   updateSettingsUseCase,
   updateSettingByKeyUseCase,
   resetSettingsToDefaultUseCase,
-  getCompanyInfoUseCase
+  getCompanyInfoUseCase,
+  uploadStorefrontAssetUseCase,
+  deleteStorefrontAssetUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -103,7 +105,7 @@ export const getSettingByKey = async (req, res, next) => {
 /**
  * @route   PUT /api/v1/settings
  * @desc    Update multiple settings at once
- * @access  Private (Manager/Admin only)
+ * @access  Private (Master Admin, Admin role, or settings:storefront_branding_edit)
  */
 export const updateSettings = async (req, res, next) => {
   try {
@@ -164,7 +166,7 @@ export const updateSettings = async (req, res, next) => {
 /**
  * @route   PUT /api/v1/settings/:key
  * @desc    Update a single setting by key
- * @access  Private (Manager/Admin only)
+ * @access  Private (Master Admin, Admin role, or settings:storefront_branding_edit)
  */
 export const updateSettingByKey = async (req, res, next) => {
   try {
@@ -280,11 +282,114 @@ export const getCompanyInfo = async (req, res, next) => {
   }
 };
 
+/**
+ * @route   POST /api/v1/settings/storefront-assets/:asset_type
+ * @desc    Upload/replace storefront cover/profile asset
+ * @access  Private (Master Admin, Admin role, or settings:storefront_branding_edit)
+ */
+export const uploadStorefrontAsset = async (req, res, next) => {
+  try {
+    const result = await uploadStorefrontAssetUseCase({
+      assetType: req.params.asset_type,
+      file: req.file
+    });
+    if (result?.success) {
+      invalidateTenantCache(req);
+    }
+    if (result?.ok && req.tenant?.id) {
+      const syncResult = await syncStorefrontDiscoveryWithReliability({
+        tenantId: req.tenant.id,
+        source: 'settings_storefront_asset_upload',
+        requestId: requestId(req, res)
+      }).catch((error) => {
+        logger.warn('[SettingsHandlers] Storefront discovery reliability runner failed after uploadStorefrontAsset', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          error: error?.message || 'unknown_error'
+        });
+        return null;
+      });
+      if (syncResult && syncResult.ok !== true) {
+        logger.warn('[SettingsHandlers] Storefront discovery index remained degraded after uploadStorefrontAsset retries', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          attempts: syncResult?.attempts || 0,
+          errors: syncResult?.errors || []
+        });
+      }
+    }
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront asset uploaded successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   DELETE /api/v1/settings/storefront-assets/:asset_type
+ * @desc    Remove storefront cover/profile asset
+ * @access  Private (Master Admin, Admin role, or settings:storefront_branding_edit)
+ */
+export const deleteStorefrontAsset = async (req, res, next) => {
+  try {
+    const result = await deleteStorefrontAssetUseCase({
+      assetType: req.params.asset_type
+    });
+    if (result?.success) {
+      invalidateTenantCache(req);
+    }
+    if (result?.ok && req.tenant?.id) {
+      const syncResult = await syncStorefrontDiscoveryWithReliability({
+        tenantId: req.tenant.id,
+        source: 'settings_storefront_asset_delete',
+        requestId: requestId(req, res)
+      }).catch((error) => {
+        logger.warn('[SettingsHandlers] Storefront discovery reliability runner failed after deleteStorefrontAsset', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          error: error?.message || 'unknown_error'
+        });
+        return null;
+      });
+      if (syncResult && syncResult.ok !== true) {
+        logger.warn('[SettingsHandlers] Storefront discovery index remained degraded after deleteStorefrontAsset retries', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          attempts: syncResult?.attempts || 0,
+          errors: syncResult?.errors || []
+        });
+      }
+    }
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront asset removed successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getAllSettings,
   getSettingByKey,
   updateSettings,
   updateSettingByKey,
   resetSettingsToDefault,
-  getCompanyInfo
+  getCompanyInfo,
+  uploadStorefrontAsset,
+  deleteStorefrontAsset
 };

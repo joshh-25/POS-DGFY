@@ -127,4 +127,138 @@ describe('settings use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(422);
     expect(updateSettings).not.toHaveBeenCalled();
   });
+
+  it('updateSettings auto-assigns missing active terminal locations from primary location on strict-enable transition', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 2 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_location_binding_enforced: { value: false }
+        }),
+        getActivePrimaryTenantLocation: jest.fn().mockResolvedValue({ location_id: 11 }),
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: true,
+          unresolved_count: 0,
+          low_confidence_count: 0
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_terminal_location_binding_enforced: true,
+        pos_terminal_registry: [
+          { terminal_id: 'COUNTER-01', label: 'Counter', is_active: true, is_default: true, location_id: null },
+          { terminal_id: 'COUNTER-02', label: 'Counter 2', is_active: false, is_default: false, location_id: null }
+        ]
+      },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      pos_terminal_registry: expect.arrayContaining([
+        expect.objectContaining({ terminal_id: 'COUNTER-01', location_id: 11 }),
+        expect.objectContaining({ terminal_id: 'COUNTER-02', location_id: null })
+      ])
+    }));
+  });
+
+  it('updateSettings rejects strict-enable auto-assignment when no primary location exists', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_location_binding_enforced: { value: false },
+          pos_terminal_registry: { value: [{ terminal_id: 'COUNTER-01', is_active: true, location_id: null }] }
+        }),
+        getActivePrimaryTenantLocation: jest.fn().mockResolvedValue(null),
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: true,
+          unresolved_count: 0,
+          low_confidence_count: 0
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { pos_terminal_location_binding_enforced: true },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey auto-assigns terminal registry once when strict binding transitions on', async () => {
+    const updateSettingByKey = jest.fn();
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 2 });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettings,
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_location_binding_enforced: { value: false },
+          pos_terminal_registry: {
+            value: [{ terminal_id: 'COUNTER-01', label: 'Counter', is_active: true, is_default: true, location_id: null }]
+          }
+        }),
+        getActivePrimaryTenantLocation: jest.fn().mockResolvedValue({ location_id: 5 }),
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: true,
+          unresolved_count: 0,
+          low_confidence_count: 0
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'pos_terminal_location_binding_enforced',
+      value: true,
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      pos_terminal_location_binding_enforced: true,
+      pos_terminal_registry: expect.arrayContaining([
+        expect.objectContaining({ terminal_id: 'COUNTER-01', location_id: 5 })
+      ])
+    }));
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey leaves registry unchanged when strict binding is already enabled', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({ setting_key: 'pos_terminal_location_binding_enforced', value: true });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_location_binding_enforced: { value: true },
+          pos_terminal_registry: {
+            value: [{ terminal_id: 'COUNTER-01', is_active: true, is_default: true, location_id: null }]
+          }
+        }),
+        getPosLocationBindingReadinessSummary: jest.fn().mockResolvedValue({
+          ready_for_strict_mode: true,
+          unresolved_count: 0,
+          low_confidence_count: 0
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'pos_terminal_location_binding_enforced',
+      value: true,
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledTimes(1);
+    expect(updateSettingByKey).toHaveBeenCalledWith('pos_terminal_location_binding_enforced', true);
+  });
 });

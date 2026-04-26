@@ -12,7 +12,8 @@ const requiredAuthMockExports = [
     'requirePremium',
     'requireMasterAdmin',
     'authenticateAdmin',
-    'invalidateUserAuthCache'
+    'invalidateUserAuthCache',
+    'checkStorefrontBrandingEditPermission'
 ];
 
 const buildAuthModuleMock = () => {
@@ -25,7 +26,8 @@ const buildAuthModuleMock = () => {
         requirePremium: (req, res, next) => next(),
         requireMasterAdmin: (req, res, next) => next(),
         authenticateAdmin: (req, res, next) => next(),
-        invalidateUserAuthCache: mockInvalidateUserAuthCache
+        invalidateUserAuthCache: mockInvalidateUserAuthCache,
+        checkStorefrontBrandingEditPermission: (req, res, next) => next()
     };
 
     for (const exportName of requiredAuthMockExports) {

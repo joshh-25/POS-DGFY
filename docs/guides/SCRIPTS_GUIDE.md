@@ -156,7 +156,32 @@ Behavior:
   - `QA_SSH_HOST`
   - `ssh` command availability
   - `powershell`/`pwsh` availability (used by QA gate wrapper scripts)
-  - QA deploy summary source availability (local file or SSH-fetch path)
+- QA deploy summary source availability (local file or SSH-fetch path)
+
+## 2c. Runtime Schema Doctor (`npm run doctor:runtime`)
+Use this before storefront/IMS/POS manual verification and after backend restart/deploy.
+
+Usage:
+```bash
+cd backend
+npm run doctor:runtime
+```
+
+Behavior:
+- Verifies required migrations are applied (`SequelizeMeta` contract).
+- Verifies required runtime columns exist for guarded tables.
+- Returns `status=degraded` with explicit missing migrations/columns when schema drift exists.
+
+Storefront branding drift indicator:
+- If doctor reports missing April 24 storefront branding migrations or missing
+  `storefront_discovery_index.storefront_cover_image_url` / `storefront_profile_image_url`,
+  storefront discovery can fail with `Unknown column ... in 'field list'`.
+- Remediation:
+```bash
+cd backend
+npm run migrate
+npm run doctor:runtime
+```
 
 ## 3. `backend/scripts/repair-required-indexes.js`
 Self-heal script for required DB index contract.

@@ -4,6 +4,7 @@ import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
+const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile']);
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -152,6 +153,12 @@ const posTerminalRegistrySchema = Joi.array()
     'array.max': 'A maximum of 40 terminal registry entries is allowed',
     'any.invalid': '{{#message}}'
   });
+const storefrontAssetUrlSchema = Joi.string().trim().max(500).pattern(/^$|^\/uploads\/storefront-assets\/[A-Za-z0-9/_\-.]+$/).optional().messages({
+  'string.pattern.base': 'Storefront asset URL must be empty or a backend-relative /uploads/storefront-assets path'
+});
+const storefrontAssetPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).optional().messages({
+  'string.pattern.base': 'Storefront asset path must be empty or a storefront-assets relative path'
+});
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
@@ -197,6 +204,10 @@ export const updateSettingsSchema = Joi.object({
   store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').optional().messages({
     'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
   }),
+  storefront_cover_image_url: storefrontAssetUrlSchema,
+  storefront_cover_image_path: storefrontAssetPathSchema,
+  storefront_profile_image_url: storefrontAssetUrlSchema,
+  storefront_profile_image_path: storefrontAssetPathSchema,
   store_is_visible: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
@@ -311,6 +322,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').messages({
       'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
     }),
+    storefront_cover_image_url: storefrontAssetUrlSchema,
+    storefront_cover_image_path: storefrontAssetPathSchema,
+    storefront_profile_image_url: storefrontAssetUrlSchema,
+    storefront_profile_image_path: storefrontAssetPathSchema,
     store_is_visible: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),
@@ -354,5 +369,23 @@ export const validateUpdateSingleSetting = (req, res, next) => {
   }
 
   req.validatedData = value;
+  next();
+};
+
+export const validateStorefrontAssetTypeParam = (req, res, next) => {
+  const assetType = String(req?.params?.asset_type || '').trim().toLowerCase();
+  if (!STOREFRONT_ASSET_TYPES.has(assetType)) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{
+        field: 'asset_type',
+        message: 'asset_type must be one of: cover, profile'
+      }],
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.params.asset_type = assetType;
   next();
 };

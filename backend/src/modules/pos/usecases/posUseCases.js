@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import path from 'path';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -17,6 +16,10 @@ import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
+import {
+    SAFE_IMAGE_MIME_TYPES,
+    validateImageUploadFile
+} from '../../shared/utils/imageUploadValidation.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -55,25 +58,7 @@ const CASH_EVENT_EFFECT = Object.freeze({
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
-const POS_CATALOG_IMAGE_ALLOWED_MIME_TYPES = new Set([
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/bmp',
-    'image/svg+xml',
-    'image/avif'
-]);
-const POS_CATALOG_IMAGE_ALLOWED_EXTENSIONS = new Set([
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.svg',
-    '.avif'
-]);
+const POS_CATALOG_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
@@ -746,16 +731,6 @@ const enforceTerminalHomeLocationPolicy = ({
     }
 
     return normalizedTargetLocationId;
-};
-
-const isSupportedPosCatalogImageFile = (file = {}) => {
-    const mimetype = String(file?.mimetype || '').trim().toLowerCase();
-    if (POS_CATALOG_IMAGE_ALLOWED_MIME_TYPES.has(mimetype)) {
-        return true;
-    }
-
-    const ext = String(path.extname(file?.originalname || '') || '').toLowerCase();
-    return POS_CATALOG_IMAGE_ALLOWED_EXTENSIONS.has(ext);
 };
 
 const normalizeOnlineFulfillmentStatus = (value) => {
@@ -2026,7 +2001,19 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                 );
             }
 
-            if (!isSupportedPosCatalogImageFile(file)) {
+            const fileValidation = await validateImageUploadFile({
+                file,
+                allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
+                maxBytes: POS_CATALOG_IMAGE_MAX_BYTES
+            });
+            if (!fileValidation.ok) {
+                logger.warn('[PosUseCases] Rejected POS catalog image upload due to file validation failure', {
+                    event_type: 'security_signal',
+                    signal_code: 'pos_catalog_image_upload_rejected',
+                    reason: fileValidation.reason,
+                    reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null,
+                    original_name: String(file?.originalname || '').slice(0, 180) || null
+                });
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Only image files are allowed for POS catalog uploads.',

@@ -14,11 +14,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = false, caption = '' }) => (
+const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = false, caption = '', testId = '' }) => (
   <button
     type="button"
     onClick={onClick}
     disabled={disabled}
+    data-testid={testId || undefined}
     className={`w-full rounded-xl border px-3 py-2 text-left transition ${
       active
         ? 'border-teal-300 bg-teal-50 text-teal-800'
@@ -114,6 +115,7 @@ export default function TerminalWorkspaceSidebar({
         <NavButton
           label="History"
           icon={History}
+          testId="pos-nav-history"
           active={currentViewMode === 'history'}
           onClick={() => onSelectViewMode('history')}
           disabled={locked || !canViewPos}

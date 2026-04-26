@@ -58,20 +58,13 @@ export default function TerminalLockDrawer({
             />
           </div>
           <div className="space-y-1">
-            <Label>Company Token (Optional)</Label>
-            <Input
-              value={formData.companyToken}
-              onChange={(event) => setFormData((prev) => ({ ...prev, companyToken: event.target.value }))}
-              placeholder="Auto-lookup runs when left blank"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Terminal ID</Label>
+            <Label>{registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID (Optional)'}</Label>
             {registryEnforced ? (
               <>
                 <select
                   value={formData.terminalId || ''}
                   onChange={(event) => setFormData((prev) => ({ ...prev, terminalId: event.target.value }))}
+                  required
                   className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                 >
                   <option value="">Select configured terminal</option>
@@ -82,7 +75,7 @@ export default function TerminalLockDrawer({
                   ))}
                 </select>
                 <p className="text-xs text-slate-500">
-                  Terminal choices are managed by admin in Settings &gt; POS Setup &gt; Terminal Registry.
+                  Required in enforce mode. Terminal choices are managed by admin in Settings &gt; POS Setup &gt; Terminal Registry.
                 </p>
               </>
             ) : (
@@ -101,7 +94,7 @@ export default function TerminalLockDrawer({
                 </datalist>
                 <p className="text-xs text-slate-500">
                   {terminalRegistryMode === 'warn'
-                    ? 'Warn mode: unregistered IDs are allowed but flagged with policy warnings.'
+                    ? 'Warn mode: terminal ID is optional at unlock. Unregistered IDs are allowed but flagged with policy warnings.'
                     : 'Select the active device/counter identity before opening shifts and checkout.'}
                 </p>
               </>

@@ -5,6 +5,7 @@ describe('auth middleware module export contract', () => {
         const requiredExports = [
             'authenticate',
             'checkPermission',
+            'checkStorefrontBrandingEditPermission',
             'requirePremium',
             'requireMasterAdmin',
             'authenticateAdmin',

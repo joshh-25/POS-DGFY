@@ -27,7 +27,10 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260422000001-add-compliance-downgrade-override-controls.cjs' },
         { name: '20260422000002-harden-compliance-downgrade-controls.cjs' },
         { name: '20260416000007-add-multi-location-inventory-ledger.cjs' },
-        { name: '20260416000008-backfill-user-location-grants.cjs' }
+        { name: '20260416000008-backfill-user-location-grants.cjs' },
+        { name: '20260424000001-add-storefront-branding-assets-to-discovery-index.cjs' },
+        { name: '20260424000002-harden-storefront-asset-settings-constraints.cjs' },
+        { name: '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -199,6 +202,8 @@ const buildHealthySequelizeMock = () => ({
                     tenant_id: {},
                     slug: {},
                     is_visible: {},
+                    storefront_cover_image_url: {},
+                    storefront_profile_image_url: {},
                     last_synced_at: {}
                 }
             };

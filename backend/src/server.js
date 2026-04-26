@@ -587,7 +587,15 @@ app.get('/metrics', (req, res) => {
 });
 
 // Static uploads (POS catalog images and other generated assets).
-app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
+  setHeaders: (res, filePath) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (String(filePath || '').toLowerCase().endsWith('.svg')) {
+      // Legacy SVG uploads are served as plain text to avoid inline script execution.
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+  }
+}));
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
 app.use(tenantHandler);
@@ -618,6 +626,7 @@ import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 import complianceRoutes from './routes/compliance.js';
+import onboardingRoutes from './routes/onboarding.js';
 
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
@@ -648,6 +657,7 @@ app.use('/api/v1/admin/tenants', adminTenantRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

@@ -53,3 +53,18 @@ Adopt indexed, metadata-rich discovery with backward-compatible defaults:
 1. API-level rollback can disable metadata emission (`include_match_meta=false`) while preserving base row payload.
 2. Runtime fallback can continue using existing index row fields even if new snapshot fields are temporarily stale.
 3. Any future destructive schema cleanup for discovery snapshots must be handled in a separate, explicitly approved ADR/migration phase.
+
+## Addendum (2026-04-24): Tenant Branding Asset Fields
+Cross-boundary additive extension approved for storefront branding media:
+
+1. Tenant-wide storefront cover/profile assets are managed via Settings write endpoints and persisted as settings keys.
+2. Landlord `storefront_discovery_index` materializes branding URLs (`storefront_cover_image_url`, `storefront_profile_image_url`) during sync.
+3. Public discovery list and slug-profile responses may include these two branding fields as optional additive properties.
+4. Checkout, quote, tracking, and discovery filter semantics remain unchanged.
+
+## Addendum (2026-04-24): Branding Asset Hardening
+Operational hardening for branding asset safety was applied without public contract changes:
+
+1. Settings/POS image uploads now require both MIME allowlist and binary signature validation.
+2. Storefront asset settings/index reads sanitize non-canonical values and emit security-signal logs.
+3. Legacy SVG files under `/uploads` are served with `text/plain` response type to prevent script execution.

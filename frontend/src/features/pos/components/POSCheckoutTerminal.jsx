@@ -192,7 +192,6 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
 export default function POSCheckoutTerminal({
     sessionLocked = false,
     isMsmeMode = false,
-    layoutContext = 'standalone',
     canViewHistory = true,
     selectedLocationId = null,
     activeShiftId = null,
@@ -261,23 +260,25 @@ export default function POSCheckoutTerminal({
         atTop: true,
         atBottom: true
     });
-    const isEmbeddedLayout = layoutContext === 'embedded';
     const [isAtLeast2xlViewport, setIsAtLeast2xlViewport] = useState(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
         return window.matchMedia('(min-width: 1536px)').matches;
     });
-    const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;
-    const shellClassName = isEmbeddedLayout ? 'flex h-full min-h-0 flex-col gap-5' : 'space-y-5';
-    const checkoutGridClassName = isEmbeddedLayout
+    const hasSplitPaneScroll = isAtLeast2xlViewport;
+    const shellClassName = hasSplitPaneScroll ? 'flex h-full min-h-0 flex-col gap-5' : 'space-y-5';
+    const checkoutGridClassName = hasSplitPaneScroll
         ? 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6 h-full min-h-0'
         : 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';
-    const checkoutPaneClassName = isEmbeddedLayout ? '2xl:max-h-none' : '2xl:max-h-[70dvh]';
+    const checkoutPaneClassName = hasSplitPaneScroll ? '2xl:max-h-[72dvh]' : '2xl:max-h-[70dvh]';
     const splitPaneScrollClassName = hasSplitPaneScroll
-        ? 'h-full overflow-y-auto pr-1 2xl:overscroll-contain'
+        ? 'h-full overflow-y-auto pr-1'
         : 'pr-1';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
+    const terminalIdentityLabel = normalizedTerminalId
+        ? `Terminal ${normalizedTerminalId}`
+        : 'No terminal selected';
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -1071,7 +1072,7 @@ export default function POSCheckoutTerminal({
                         Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
                     </p>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                        {normalizedTerminalId ? 'Terminal DGFY' : 'No terminal selected'}
+                        {terminalIdentityLabel}
                     </span>
                 </div>
             </div>
@@ -1115,6 +1116,7 @@ export default function POSCheckoutTerminal({
                             <Button
                                 type="button"
                                 variant="outline"
+                                data-testid="pos-history-open-sales-report"
                                 onClick={() => openInSalesReport()}
                             >
                                 Open in Sales Report
@@ -1263,6 +1265,7 @@ export default function POSCheckoutTerminal({
                                                             type="button"
                                                             size="sm"
                                                             variant="ghost"
+                                                            data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
                                                             onClick={(event) => {
                                                                 event.stopPropagation();
                                                                 openInSalesReport(row);
@@ -1313,7 +1316,22 @@ export default function POSCheckoutTerminal({
                     Scroll tip: hover or focus inside each pane to scroll it independently.
                 </p>
             )}
-            <section className={`2xl:col-span-8 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
+            <section className={`2xl:col-span-8 h-full bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
+                <div className="relative flex-1 min-h-0">
+                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atTop && (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
+                    )}
+                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atBottom && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
+                    )}
+                    <div
+                        ref={catalogScrollRef}
+                        className={splitPaneScrollClassName}
+                        tabIndex={0}
+                        aria-label="POS catalog scroll area"
+                        onKeyDown={handleScrollPaneKeyDown}
+                        onScroll={syncCatalogPaneScrollState}
+                    >
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
                     <div>
                         <h2 className="text-xl font-bold text-slate-900">POS Catalog</h2>
@@ -1409,22 +1427,6 @@ export default function POSCheckoutTerminal({
                         </p>
                     )}
                 </div>
-
-                <div className="relative flex-1 min-h-0">
-                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atTop && (
-                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
-                    )}
-                    {hasSplitPaneScroll && catalogPaneScrollState.canScroll && !catalogPaneScrollState.atBottom && (
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent" />
-                    )}
-                    <div
-                        ref={catalogScrollRef}
-                        className={splitPaneScrollClassName}
-                        tabIndex={0}
-                        aria-label="POS catalog scroll area"
-                        onKeyDown={handleScrollPaneKeyDown}
-                        onScroll={syncCatalogPaneScrollState}
-                    >
                 {catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
@@ -1534,14 +1536,7 @@ export default function POSCheckoutTerminal({
                 </div>
             </section>
 
-            <section className={`2xl:col-span-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
-                <h2 className="text-xl font-bold text-slate-900 mb-1">Current Sale</h2>
-                <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
-                <div className="mb-2 flex justify-end">
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        {hasSplitPaneScroll ? 'Scroll Zone: Current Sale' : 'Scroll: Page (Current Sale)'}
-                    </span>
-                </div>
+            <section className={`2xl:col-span-4 h-full bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
                 <div className="relative flex-1 min-h-0">
                     {hasSplitPaneScroll && currentSalePaneScrollState.canScroll && !currentSalePaneScrollState.atTop && (
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent" />
@@ -1557,6 +1552,13 @@ export default function POSCheckoutTerminal({
                         onKeyDown={handleScrollPaneKeyDown}
                         onScroll={syncCurrentSalePaneScrollState}
                     >
+                <h2 className="text-xl font-bold text-slate-900 mb-1">Current Sale</h2>
+                <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
+                <div className="mb-2 flex justify-end">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        {hasSplitPaneScroll ? 'Scroll Zone: Current Sale' : 'Scroll: Page (Current Sale)'}
+                    </span>
+                </div>
                 <div className="space-y-3 mb-4">
                     <label className="text-xs text-slate-500 block">
                         Order Method
@@ -1854,13 +1856,14 @@ export default function POSCheckoutTerminal({
                         <div className="flex items-center gap-2">
                             {normalizedTerminalId && (
                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                                    Terminal DGFY
+                                    {terminalIdentityLabel}
                                 </span>
                             )}
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                data-testid="pos-receipt-open-sales-report"
                                 disabled={!lastReceipt}
                                 onClick={() => openInSalesReport(lastReceipt)}
                             >

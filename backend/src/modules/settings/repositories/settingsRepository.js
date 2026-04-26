@@ -4,6 +4,10 @@ import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
 import logger from '../../../config/logger.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    normalizeStorefrontAssetPath,
+    normalizeStorefrontAssetUrl
+} from '../../shared/utils/storefrontAssetPolicy.js';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -168,17 +172,35 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'ops_workflow_mode') {
         return normalizeWorkflowMode(value);
     }
+    if (settingKey === 'storefront_cover_image_url' || settingKey === 'storefront_profile_image_url') {
+        return normalizeStorefrontAssetUrl(value);
+    }
+    if (settingKey === 'storefront_cover_image_path' || settingKey === 'storefront_profile_image_path') {
+        return normalizeStorefrontAssetPath(value);
+    }
     return value;
 };
 
 const POS_JSON_SETTING_KEYS = new Set(['pos_discount_profiles', 'pos_order_method_fees', 'pos_terminal_registry']);
+const STOREFRONT_ASSET_SETTING_KEYS = new Set([
+    'storefront_cover_image_url',
+    'storefront_profile_image_url',
+    'storefront_cover_image_path',
+    'storefront_profile_image_path'
+]);
 
-const shouldRepairPosJsonSetting = (setting, parsedValue) => {
-    if (!POS_JSON_SETTING_KEYS.has(setting.setting_key)) return false;
-    if (setting.data_type !== 'json') return true;
-
-    const expectedSerialized = JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue));
-    return setting.setting_value !== expectedSerialized;
+const shouldRepairNormalizedSetting = (setting, parsedValue) => {
+    if (POS_JSON_SETTING_KEYS.has(setting.setting_key)) {
+        if (setting.data_type !== 'json') return true;
+        const expectedSerialized = JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue));
+        return setting.setting_value !== expectedSerialized;
+    }
+    if (STOREFRONT_ASSET_SETTING_KEYS.has(setting.setting_key)) {
+        if (setting.data_type !== 'string') return true;
+        const expectedValue = String(normalizeValueForSettingKey(setting.setting_key, parsedValue) || '');
+        return String(setting.setting_value || '') !== expectedValue;
+    }
+    return false;
 };
 
 const parseSettingValue = (setting) => {
@@ -279,11 +301,20 @@ export const settingsRepository = {
                 updated_at: setting.updated_at
             };
 
-            if (shouldRepairPosJsonSetting(setting, parsedValue)) {
+            if (shouldRepairNormalizedSetting(setting, parsedValue)) {
+                const normalizedValue = normalizeValueForSettingKey(setting.setting_key, parsedValue);
+                const isJsonSetting = POS_JSON_SETTING_KEYS.has(setting.setting_key);
+                if (STOREFRONT_ASSET_SETTING_KEYS.has(setting.setting_key)) {
+                    logger.warn('[SettingsRepository] Sanitized storefront asset setting to canonical safe value', {
+                        event_type: 'security_signal',
+                        signal_code: 'storefront_asset_setting_sanitized',
+                        setting_key: setting.setting_key
+                    });
+                }
                 repairPromises.push(
                     setting.update({
-                        data_type: 'json',
-                        setting_value: JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue))
+                        data_type: isJsonSetting ? 'json' : 'string',
+                        setting_value: isJsonSetting ? JSON.stringify(normalizedValue) : String(normalizedValue || '')
                     }).catch((error) => {
                         logger.warn(`[SettingsRepository] Failed to repair malformed setting ${setting.setting_key}: ${error.message}`);
                     })
@@ -310,11 +341,20 @@ export const settingsRepository = {
         const parsedValue = parseSettingValue(setting);
 
         let repaired = false;
-        if (shouldRepairPosJsonSetting(setting, parsedValue)) {
+        if (shouldRepairNormalizedSetting(setting, parsedValue)) {
             try {
+                const normalizedValue = normalizeValueForSettingKey(setting.setting_key, parsedValue);
+                const isJsonSetting = POS_JSON_SETTING_KEYS.has(setting.setting_key);
+                if (STOREFRONT_ASSET_SETTING_KEYS.has(setting.setting_key)) {
+                    logger.warn('[SettingsRepository] Sanitized storefront asset setting to canonical safe value', {
+                        event_type: 'security_signal',
+                        signal_code: 'storefront_asset_setting_sanitized',
+                        setting_key: setting.setting_key
+                    });
+                }
                 await setting.update({
-                    data_type: 'json',
-                    setting_value: JSON.stringify(normalizeValueForSettingKey(setting.setting_key, parsedValue))
+                    data_type: isJsonSetting ? 'json' : 'string',
+                    setting_value: isJsonSetting ? JSON.stringify(normalizedValue) : String(normalizedValue || '')
                 });
                 repaired = true;
             } catch (error) {
@@ -326,10 +366,39 @@ export const settingsRepository = {
             setting_id: setting.setting_id,
             setting_key: setting.setting_key,
             value: parsedValue,
-            data_type: repaired ? 'json' : setting.data_type,
+            data_type: repaired
+                ? (POS_JSON_SETTING_KEYS.has(setting.setting_key) ? 'json' : 'string')
+                : setting.data_type,
             description: setting.description,
             updated_at: setting.updated_at
         };
+    },
+    async getSettingsByKeys(keys = []) {
+        const normalizedKeys = Array.isArray(keys)
+            ? keys.map((key) => String(key || '').trim()).filter(Boolean)
+            : [];
+        if (normalizedKeys.length === 0) return {};
+
+        const SystemSetting = dbStore.get('SystemSetting');
+        const rows = await SystemSetting.findAll({
+            where: {
+                setting_key: { [Op.in]: normalizedKeys }
+            }
+        });
+
+        const result = {};
+        rows.forEach((row) => {
+            const parsedValue = parseSettingValue(row);
+            result[row.setting_key] = {
+                setting_id: row.setting_id,
+                setting_key: row.setting_key,
+                value: parsedValue,
+                data_type: row.data_type,
+                description: row.description,
+                updated_at: row.updated_at
+            };
+        });
+        return result;
     },
     async updateSettings(settingsData) {
         const SystemSetting = dbStore.get('SystemSetting');
@@ -443,6 +512,23 @@ export const settingsRepository = {
     },
     async applyThresholdSettings() {
         return applyThresholdSettingsInternal();
+    },
+    async getActivePrimaryTenantLocation(options = {}) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        if (!TenantLocation) return null;
+
+        const row = await TenantLocation.findOne({
+            where: {
+                is_active: true,
+                is_primary_storefront: true
+            },
+            attributes: ['location_id', 'name', 'is_active', 'is_primary_storefront'],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction
+                ? options.transaction.LOCK.UPDATE
+                : undefined
+        });
+        return row && typeof row.toJSON === 'function' ? row.toJSON() : row;
     },
     async getPosLocationBindingReadinessSummary(options = {}) {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');

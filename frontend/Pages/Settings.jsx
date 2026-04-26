@@ -49,6 +49,7 @@ import {
   getWorkflowModeLabel,
   normalizeWorkflowMode
 } from '../src/features/settings/workflowMode.js';
+import resolveAssetUrl from '../src/utils/assetUrl.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -203,7 +204,28 @@ const normalizeDiscountProfiles = (rawProfiles) => {
   return parsed.map(sanitizeDiscountProfile);
 };
 
+const normalizeUserPermissions = (rawPermissions) => {
+  if (Array.isArray(rawPermissions)) {
+    return rawPermissions.map((permission) => String(permission || '').trim()).filter(Boolean);
+  }
+  if (typeof rawPermissions === 'string') {
+    try {
+      const parsed = JSON.parse(rawPermissions);
+      if (Array.isArray(parsed)) {
+        return parsed.map((permission) => String(permission || '').trim()).filter(Boolean);
+      }
+    } catch {
+      return rawPermissions
+        .split(',')
+        .map((permission) => String(permission || '').trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+};
+
 export default function Settings() {
+  const settingsBuildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim() || 'dev';
   const location = useLocation();
   const navigate = useNavigate();
   const subscriptionFeaturesEnabled = subscriptionsEnabled();
@@ -274,6 +296,35 @@ export default function Settings() {
   const [locationSaving, setLocationSaving] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
+  const [storefrontAssets, setStorefrontAssets] = useState({
+    cover: '',
+    profile: ''
+  });
+  const [assetUploadingType, setAssetUploadingType] = useState('');
+  const [assetDeletingType, setAssetDeletingType] = useState('');
+  const normalizedCurrentUserPermissions = useMemo(
+    () => normalizeUserPermissions(currentUser?.permissions),
+    [currentUser?.permissions]
+  );
+  const terminalLocationOptions = useMemo(
+    () => (Array.isArray(tenantLocations) ? tenantLocations : [])
+      .filter((location) => location?.is_active !== false)
+      .sort((left, right) => {
+        if (left?.is_primary_storefront === true && right?.is_primary_storefront !== true) return -1;
+        if (right?.is_primary_storefront === true && left?.is_primary_storefront !== true) return 1;
+        return String(left?.name || '').localeCompare(String(right?.name || ''));
+      }),
+    [tenantLocations]
+  );
+  const canEditStorefrontBranding = useMemo(() => {
+    if (currentUser?.is_master_admin === true) {
+      return true;
+    }
+    if (String(currentUser?.role || '').trim().toLowerCase() === 'admin') {
+      return true;
+    }
+    return normalizedCurrentUserPermissions.includes('settings:storefront_branding_edit');
+  }, [currentUser?.is_master_admin, currentUser?.role, normalizedCurrentUserPermissions]);
 
   const setSettingsTab = useCallback((nextTab, { replace = false, preserveHash = true } = {}) => {
     const resolvedTab = resolveSettingsTab(nextTab, { subscriptionEnabled: subscriptionFeaturesEnabled });
@@ -362,6 +413,10 @@ export default function Settings() {
           storeIsVisible: systemSettings.store_is_visible?.value ?? true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15
+        });
+        setStorefrontAssets({
+          cover: String(systemSettings.storefront_cover_image_url?.value || ''),
+          profile: String(systemSettings.storefront_profile_image_url?.value || '')
         });
         setPersistedWorkflowMode(normalizedWorkflowMode);
 
@@ -523,7 +578,9 @@ export default function Settings() {
       };
       entries[index] = {
         ...existing,
-        [key]: key === 'terminal_id' ? sanitizeTerminalRegistryId(value) : value
+        [key]: key === 'terminal_id'
+          ? sanitizeTerminalRegistryId(value)
+          : (key === 'location_id' ? toPositiveInt(value) : value)
       };
 
       if (key === 'is_active' && value === false && entries[index].is_default === true) {
@@ -946,6 +1003,39 @@ export default function Settings() {
     }
   };
 
+  const handleUploadStorefrontAsset = async (assetType, file) => {
+    if (!file) return;
+    setAssetUploadingType(assetType);
+    try {
+      const result = await settingsService.uploadStorefrontAsset(assetType, file);
+      setStorefrontAssets((prev) => ({
+        ...prev,
+        [assetType]: String(result?.image_url || '')
+      }));
+      toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} updated.`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || `Failed to upload ${assetType} image`);
+    } finally {
+      setAssetUploadingType('');
+    }
+  };
+
+  const handleDeleteStorefrontAsset = async (assetType) => {
+    setAssetDeletingType(assetType);
+    try {
+      await settingsService.deleteStorefrontAsset(assetType);
+      setStorefrontAssets((prev) => ({
+        ...prev,
+        [assetType]: ''
+      }));
+      toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} removed.`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || `Failed to remove ${assetType} image`);
+    } finally {
+      setAssetDeletingType('');
+    }
+  };
+
   const handleReset = () => {
     // Reset profile to current user data
     if (currentUser) {
@@ -986,6 +1076,10 @@ export default function Settings() {
       storeIsVisible: true,
       posOpenStatus: true,
       posWaitTimeMinutes: 15
+    });
+    setStorefrontAssets({
+      cover: '',
+      profile: ''
     });
     resetLocationForm();
     toast.success("Settings reset to defaults");
@@ -1097,6 +1191,89 @@ export default function Settings() {
   const storefrontSyncCheckedAtCopy = storefrontSyncHealth?.last_checked_at
     ? new Date(storefrontSyncHealth.last_checked_at).toLocaleString()
     : 'No sync health event yet';
+  const coverPreviewUrl = resolveAssetUrl(storefrontAssets.cover);
+  const profilePreviewUrl = resolveAssetUrl(storefrontAssets.profile);
+  const storefrontBrandingMediaControls = (
+    <div className="space-y-2">
+      <Label>Storefront Cover + Profile Media</Label>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100 h-32 md:h-40">
+          {coverPreviewUrl ? (
+            <img src={coverPreviewUrl} alt="Storefront cover preview" className="h-full w-full object-cover" />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center text-xs text-slate-500 font-medium">
+              No cover photo uploaded
+            </div>
+          )}
+          <div className="absolute -bottom-8 left-4 h-16 w-16 md:h-20 md:w-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow">
+            {profilePreviewUrl ? (
+              <img src={profilePreviewUrl} alt="Storefront profile preview" className="h-full w-full object-cover" />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-[10px] md:text-xs text-slate-500 font-semibold">
+                No icon
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="pt-8 grid md:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">Cover photo</p>
+            <div className="flex gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={!canEditStorefrontBranding || assetUploadingType === 'cover' || assetDeletingType === 'cover'}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  handleUploadStorefrontAsset('cover', file);
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canEditStorefrontBranding || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'}
+                onClick={() => handleDeleteStorefrontAsset('cover')}
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">Profile icon</p>
+            <div className="flex gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={!canEditStorefrontBranding || assetUploadingType === 'profile' || assetDeletingType === 'profile'}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  handleUploadStorefrontAsset('profile', file);
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canEditStorefrontBranding || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'}
+                onClick={() => handleDeleteStorefrontAsset('profile')}
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Images auto-fit with center-crop for consistent desktop/mobile layout and appear on storefront discovery + tenant page.
+        </p>
+        {!canEditStorefrontBranding && (
+          <p className="text-xs text-amber-700">
+            Only Admin or Master Admin can edit storefront branding unless user has the <code>settings:storefront_branding_edit</code> micropermission.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -1105,6 +1282,7 @@ export default function Settings() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
           <p className="text-slate-500 mt-1">Configure your workspace and profile</p>
+          <p className="text-xs text-slate-400 mt-1">Build {settingsBuildStamp}</p>
         </div>
         <div className="flex gap-3">
           {currentTab !== 'compliance' ? (
@@ -1145,6 +1323,9 @@ export default function Settings() {
                 Profile Settings
               </CardTitle>
               <CardDescription>Manage your account security</CardDescription>
+              <p className="text-xs text-slate-500">
+                Storefront cover/profile image uploads are in <span className="font-semibold">Company</span> tab under <span className="font-semibold">Storefront Branding</span>.
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
@@ -1262,6 +1443,21 @@ export default function Settings() {
               </CardContent>
             </Card>
           )}
+
+          <Card id="storefront-branding-settings">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Storefront Branding
+              </CardTitle>
+              <CardDescription>
+                Upload cover photo and profile icon used in storefront discovery cards, map popups, and tenant storefront page header.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {storefrontBrandingMediaControls}
+            </CardContent>
+          </Card>
 
           <Card id="business-mode-settings">
             <CardHeader>
@@ -1720,6 +1916,9 @@ export default function Settings() {
                   <p className="text-xs text-slate-500">
                     Managed list of terminal identities used in POS unlock and shift-open flows.
                   </p>
+                  <p className="text-xs text-slate-500">
+                    Assign each active terminal to a store location. When strict binding is enabled, active terminals without a location are auto-assigned to the primary location during save.
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-slate-200 rounded-lg p-3 bg-slate-50">
                     <div className="md:col-span-5 space-y-1">
                       <Label className="text-xs text-slate-500">Terminal Registry Mode</Label>
@@ -1766,7 +1965,7 @@ export default function Settings() {
                             placeholder="COUNTER-01"
                           />
                         </div>
-                        <div className="md:col-span-4 space-y-1">
+                        <div className="md:col-span-3 space-y-1">
                           <Label className="text-xs text-slate-500">Label</Label>
                           <Input
                             value={terminal.label || ''}
@@ -1774,7 +1973,23 @@ export default function Settings() {
                             placeholder="Front Counter"
                           />
                         </div>
-                        <div className="md:col-span-2 space-y-1">
+                        <div className="md:col-span-3 space-y-1">
+                          <Label className="text-xs text-slate-500">Location</Label>
+                          <select
+                            aria-label={`Terminal location ${terminal.terminal_id || index + 1}`}
+                            value={terminal.location_id || ''}
+                            onChange={(event) => handleTerminalRegistryChange(index, 'location_id', event.target.value)}
+                            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                          >
+                            <option value="">Unassigned</option>
+                            {terminalLocationOptions.map((location) => (
+                              <option key={`terminal-location-${location.location_id}`} value={location.location_id}>
+                                {location.name}{location.is_primary_storefront === true ? ' (Primary)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-1 space-y-1">
                           <Label className="text-xs text-slate-500">Active</Label>
                           <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
                             <Switch
@@ -1783,7 +1998,7 @@ export default function Settings() {
                             />
                           </div>
                         </div>
-                        <div className="md:col-span-2 space-y-1">
+                        <div className="md:col-span-1 space-y-1">
                           <Label className="text-xs text-slate-500">Default</Label>
                           <div className="h-10 flex items-center px-2 border border-slate-200 rounded-lg">
                             <Switch

@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { SAFE_IMAGE_MIME_TYPES } from '../modules/shared/utils/imageUploadValidation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,3 +61,22 @@ export const upload = multer({
     limits: limits,
     fileFilter: fileFilter
 });
+
+const buildStrictImageUpload = ({ maxBytes = 5 * 1024 * 1024, maxFiles = 1 } = {}) => multer({
+    storage,
+    limits: {
+        fileSize: maxBytes,
+        files: maxFiles
+    },
+    fileFilter: (req, file, cb) => {
+        const mime = String(file?.mimetype || '').trim().toLowerCase();
+        if (SAFE_IMAGE_MIME_TYPES.includes(mime)) {
+            cb(null, true);
+            return;
+        }
+        cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file?.fieldname || 'image'), false);
+    }
+});
+
+export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
+export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });

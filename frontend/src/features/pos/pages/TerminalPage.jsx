@@ -206,6 +206,14 @@ const lookupCompanyToken = async (email) => {
   const tenant = response?.data?.data;
   return tenant?.company_token || null;
 };
+const isCompanyTokenResolutionError = (error) => {
+  const status = Number(error?.response?.status || 0);
+  const message = String(error?.response?.data?.message || '').toLowerCase();
+  if (status === 404) {
+    return message.includes('company token') || message.includes('tenant');
+  }
+  return status === 400 && message.includes('company token');
+};
 
 const parseUserPermissions = (user) => {
   if (!user) return [];
@@ -283,7 +291,6 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    companyToken: '',
     terminalId: readStoredTerminalId()
   });
 
@@ -390,6 +397,11 @@ export default function TerminalPage() {
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
+  const onboardingState = String(terminalUser?.onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
+  const onboardingProgress = terminalUser?.onboarding?.tenant_onboarding_progress?.checklist_snapshot || null;
+  const showOnboardingReminder = !locked && terminalUser?.is_master_admin === true && onboardingState !== 'completed';
+  const onboardingCompletedCount = Number(onboardingProgress?.completed_required_count || 0);
+  const onboardingRequiredTotal = Number(onboardingProgress?.required_total || 0);
 
   const enqueueTerminalOperationIntent = useCallback((entry, source = 'manual') => {
     const intentId = String(entry?.intent_id || '').trim();
@@ -1028,7 +1040,6 @@ export default function TerminalPage() {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
-    const manualToken = String(formData.companyToken || '').trim();
     const selectedTerminalId = sanitizeTerminalId(formData.terminalId);
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
@@ -1036,8 +1047,8 @@ export default function TerminalPage() {
       toast.error('Email and password are required.');
       return;
     }
-    if (!selectedTerminalId) {
-      toast.error('Terminal ID is required before unlocking.');
+    if (registryEnforced && !selectedTerminalId) {
+      toast.error('Terminal ID is required when registry enforcement is enabled.');
       return;
     }
     if (registryEnforced && !registryEntry) {
@@ -1050,19 +1061,37 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      let companyToken = manualToken;
-      if (!companyToken) {
-        companyToken = await lookupCompanyToken(email);
+      let resolvedCompanyToken = String(
+        (typeof window !== 'undefined' ? window.localStorage.getItem('companyToken') : '') || ''
+      ).trim();
+      if (!resolvedCompanyToken) {
+        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
+        if (!resolvedCompanyToken) {
+          toast.error('Unable to resolve company token for this account.');
+          return;
+        }
+      }
+      try {
+        await loginWithCredentials({ email, password, companyToken: resolvedCompanyToken });
+      } catch (error) {
+        if (isCompanyTokenResolutionError(error)) {
+          resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
+          if (!resolvedCompanyToken) {
+            toast.error('Unable to resolve company token for this account.');
+            return;
+          }
+          await loginWithCredentials({ email, password, companyToken: resolvedCompanyToken });
+        } else {
+          throw error;
+        }
       }
 
-      if (!companyToken) {
-        toast.error('Company token is required. Enter it manually if lookup fails.');
-        return;
-      }
-
-      await loginWithCredentials({ email, password, companyToken });
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+        if (selectedTerminalId) {
+          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+        } else {
+          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+        }
       }
       setActiveTerminalId(selectedTerminalId);
       await hydrateUser();
@@ -1072,7 +1101,7 @@ export default function TerminalPage() {
         refreshComplianceGate()
       ]);
       setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
-      toast.success(`Terminal unlocked (${selectedTerminalId}).`);
+      toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Unable to sign in to terminal.');
     } finally {
@@ -1522,87 +1551,94 @@ export default function TerminalPage() {
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
-      <TerminalPageLayout
-        locked={locked}
-        isOnline={isOnline}
-        activeTerminalId={activeTerminalId}
-        terminalIdOptions={terminalIdOptions}
-        terminalRegistry={activeTerminalRegistry}
-        terminalRegistryMode={terminalRegistryMode}
-        registryEnforced={registryEnforced}
-        headerSubtitle={headerSubtitle}
-        mobileNavOpen={mobileNavOpen}
-        setMobileNavOpen={setMobileNavOpen}
-        isDesktopWide={isDesktopWide}
-        canViewPos={canViewPos}
-        canAdjustCashDrawer={canAdjustCashDrawer}
-        canCloseDay={canCloseDay}
-        terminalUser={terminalUser}
-        posViewMode={posViewMode}
-        isMsmeMode={isMsmeMode}
-        shiftState={shiftState}
-        incomingOrdersState={incomingOrdersState}
-        locationsState={locationsState}
-        operatingLocationId={operatingLocationId}
-        queueLocationScopeId={queueLocationScopeId}
-        handleSelectViewMode={handleSelectViewMode}
-        handleLock={handleLock}
-        setDrawerOpen={setDrawerOpen}
-        effectiveSidebarCollapsed={effectiveSidebarCollapsed}
-        isCheckoutWorkspaceMode={isCheckoutWorkspaceMode}
-        isOperationsWorkspaceMode={isOperationsWorkspaceMode}
-        TERMINAL_SECTION_IDS={TERMINAL_SECTION_IDS}
-        workspacePaneRef={workspacePaneRef}
-        canTransactPos={canTransactPos}
-        terminalMeta={terminalMeta}
-        todayDashboard={todayDashboard}
-        openShiftForm={openShiftForm}
-        setOpenShiftForm={setOpenShiftForm}
-        cashEventForm={cashEventForm}
-        setCashEventForm={setCashEventForm}
-        closeShiftForm={closeShiftForm}
-        setCloseShiftForm={setCloseShiftForm}
-        shiftActionLoading={shiftActionLoading}
-        handleOpenShift={handleOpenShift}
-        canSwitchPosLocation={canSwitchPosLocation}
-        handleSwitchShiftLocation={handleSwitchShiftLocation}
-        handleRecordCashEvent={handleRecordCashEvent}
-        handleCloseShift={handleCloseShift}
-        refreshOperationalContext={refreshOperationalContext}
-        setOperatingLocationId={setOperatingLocationId}
-        setQueueLocationScopeId={setQueueLocationScopeId}
-        incomingOrderActionState={incomingOrderActionState}
-        handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
-        handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-        handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
-        incomingReceiptOpeningId={incomingReceiptOpeningId}
-        incomingHistoryOpeningId={incomingHistoryOpeningId}
-        refreshIncomingOrders={refreshIncomingOrders}
-        setSidebarCollapsed={setSidebarCollapsed}
-        activeShiftId={activeShiftId}
-        checkoutBlockedReason={checkoutBlockedReason}
-        complianceBlockerDetails={complianceBlockerDetails}
-        queuedTerminalOperationCount={queuedTerminalOperations.length}
-        replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
-        handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
-        handleCheckoutCompleted={handleCheckoutCompleted}
-        setPosViewMode={setPosViewMode}
-        modeChangeNotice={modeChangeNotice}
-        dismissModeChangeNotice={dismissModeChangeNotice}
-        receiptRequestId={receiptRequestId}
-        setReceiptRequestId={setReceiptRequestId}
-        setIncomingReceiptOpeningId={setIncomingReceiptOpeningId}
-        historyRequestQuery={historyRequestQuery}
-        setHistoryRequestQuery={setHistoryRequestQuery}
-        setIncomingHistoryOpeningId={setIncomingHistoryOpeningId}
-        catalogSearchPrefill={catalogSearchPrefill}
-        onCatalogSearchHydrated={handleCatalogSearchHydrated}
-        drawerOpen={drawerOpen}
-        formData={formData}
-        setFormData={setFormData}
-        submitting={submitting}
-        handleLogin={handleLogin}
-      />
+      <>
+        {showOnboardingReminder && (
+          <div className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            Tenant onboarding is incomplete ({onboardingCompletedCount}/{onboardingRequiredTotal} required checks). Continue in Settings.
+          </div>
+        )}
+        <TerminalPageLayout
+          locked={locked}
+          isOnline={isOnline}
+          activeTerminalId={activeTerminalId}
+          terminalIdOptions={terminalIdOptions}
+          terminalRegistry={activeTerminalRegistry}
+          terminalRegistryMode={terminalRegistryMode}
+          registryEnforced={registryEnforced}
+          headerSubtitle={headerSubtitle}
+          mobileNavOpen={mobileNavOpen}
+          setMobileNavOpen={setMobileNavOpen}
+          isDesktopWide={isDesktopWide}
+          canViewPos={canViewPos}
+          canAdjustCashDrawer={canAdjustCashDrawer}
+          canCloseDay={canCloseDay}
+          terminalUser={terminalUser}
+          posViewMode={posViewMode}
+          isMsmeMode={isMsmeMode}
+          shiftState={shiftState}
+          incomingOrdersState={incomingOrdersState}
+          locationsState={locationsState}
+          operatingLocationId={operatingLocationId}
+          queueLocationScopeId={queueLocationScopeId}
+          handleSelectViewMode={handleSelectViewMode}
+          handleLock={handleLock}
+          setDrawerOpen={setDrawerOpen}
+          effectiveSidebarCollapsed={effectiveSidebarCollapsed}
+          isCheckoutWorkspaceMode={isCheckoutWorkspaceMode}
+          isOperationsWorkspaceMode={isOperationsWorkspaceMode}
+          TERMINAL_SECTION_IDS={TERMINAL_SECTION_IDS}
+          workspacePaneRef={workspacePaneRef}
+          canTransactPos={canTransactPos}
+          terminalMeta={terminalMeta}
+          todayDashboard={todayDashboard}
+          openShiftForm={openShiftForm}
+          setOpenShiftForm={setOpenShiftForm}
+          cashEventForm={cashEventForm}
+          setCashEventForm={setCashEventForm}
+          closeShiftForm={closeShiftForm}
+          setCloseShiftForm={setCloseShiftForm}
+          shiftActionLoading={shiftActionLoading}
+          handleOpenShift={handleOpenShift}
+          canSwitchPosLocation={canSwitchPosLocation}
+          handleSwitchShiftLocation={handleSwitchShiftLocation}
+          handleRecordCashEvent={handleRecordCashEvent}
+          handleCloseShift={handleCloseShift}
+          refreshOperationalContext={refreshOperationalContext}
+          setOperatingLocationId={setOperatingLocationId}
+          setQueueLocationScopeId={setQueueLocationScopeId}
+          incomingOrderActionState={incomingOrderActionState}
+          handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+          handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
+          incomingReceiptOpeningId={incomingReceiptOpeningId}
+          incomingHistoryOpeningId={incomingHistoryOpeningId}
+          refreshIncomingOrders={refreshIncomingOrders}
+          setSidebarCollapsed={setSidebarCollapsed}
+          activeShiftId={activeShiftId}
+          checkoutBlockedReason={checkoutBlockedReason}
+          complianceBlockerDetails={complianceBlockerDetails}
+          queuedTerminalOperationCount={queuedTerminalOperations.length}
+          replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
+          handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
+          handleCheckoutCompleted={handleCheckoutCompleted}
+          setPosViewMode={setPosViewMode}
+          modeChangeNotice={modeChangeNotice}
+          dismissModeChangeNotice={dismissModeChangeNotice}
+          receiptRequestId={receiptRequestId}
+          setReceiptRequestId={setReceiptRequestId}
+          setIncomingReceiptOpeningId={setIncomingReceiptOpeningId}
+          historyRequestQuery={historyRequestQuery}
+          setHistoryRequestQuery={setHistoryRequestQuery}
+          setIncomingHistoryOpeningId={setIncomingHistoryOpeningId}
+          catalogSearchPrefill={catalogSearchPrefill}
+          onCatalogSearchHydrated={handleCatalogSearchHydrated}
+          drawerOpen={drawerOpen}
+          formData={formData}
+          setFormData={setFormData}
+          submitting={submitting}
+          handleLogin={handleLogin}
+        />
+      </>
     </Suspense>
   );
 }

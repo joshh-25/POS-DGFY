@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 
 const mockGetCompanyInfoUseCase = jest.fn();
+const mockUploadStorefrontAssetUseCase = jest.fn();
+const mockDeleteStorefrontAssetUseCase = jest.fn();
 const mockGetStore = jest.fn();
 
 jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
@@ -9,7 +11,9 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   updateSettingsUseCase: jest.fn(),
   updateSettingByKeyUseCase: jest.fn(),
   resetSettingsToDefaultUseCase: jest.fn(),
-  getCompanyInfoUseCase: mockGetCompanyInfoUseCase
+  getCompanyInfoUseCase: mockGetCompanyInfoUseCase,
+  uploadStorefrontAssetUseCase: mockUploadStorefrontAssetUseCase,
+  deleteStorefrontAssetUseCase: mockDeleteStorefrontAssetUseCase
 }));
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({

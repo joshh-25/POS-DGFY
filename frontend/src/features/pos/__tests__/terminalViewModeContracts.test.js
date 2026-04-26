@@ -164,25 +164,38 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('registryEnforced');
     expect(terminalPageContent).toContain('terminalId: readStoredTerminalId()');
     expect(terminalLockDrawerContent).toContain('Terminal ID');
+    expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
+    expect(terminalLockDrawerContent).toContain("registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID (Optional)'");
     expect(terminalLockDrawerContent).toContain('registryEnforced ?');
     expect(terminalLockDrawerContent).toContain('Select configured terminal');
     expect(terminalLockDrawerContent).toContain('list="terminal-id-options"');
+    expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
+    expect(terminalPageLayoutContent).toContain("normalizedActiveTerminalId || 'Not selected'");
+    expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
+    expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');
+    expect(posCheckoutTerminalContent).toContain('`Terminal ${normalizedTerminalId}`');
     expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
   });
 
   it('supports history/receipt handoff into unified sales report with preserved query params', () => {
     expect(posCheckoutTerminalContent).toContain('openInSalesReport');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-history-open-sales-report"');
+    expect(posCheckoutTerminalContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
     expect(posCheckoutTerminalContent).toContain('navigate(`/sales');
   });
 
+  it('exposes deterministic sidebar test hook for history mode switching', () => {
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-history"');
+    expect(terminalWorkspaceSidebarContent).toContain('data-testid={testId || undefined}');
+  });
+
   it('uses adaptive responsive layout primitives and avoids hard-coded viewport math', () => {
     expect(terminalPageLayoutContent).toContain('min-h-[100dvh]');
     expect(terminalPageLayoutContent).toContain("2xl:grid-cols-[260px_minmax(0,1fr)_360px]");
-    expect(terminalPageLayoutContent).toContain('layoutContext="embedded"');
-    expect(posCheckoutTerminalContent).toContain("layoutContext = 'standalone'");
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
     expect(posCheckoutTerminalContent).toContain('splitPaneScrollClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');

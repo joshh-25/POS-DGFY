@@ -1,6 +1,7 @@
 export const SettingsRepositoryContract = Object.freeze([
     'getAllSettings',
     'getSettingByKey',
+    'getSettingsByKeys',
     'updateSettings',
     'updateSettingByKey',
     'resetSettingsToDefault',

@@ -7,10 +7,14 @@ import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
+import {
+    POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY,
+    POS_TERMINAL_REGISTRY_KEY,
+    buildStrictBindingTransitionPatch,
+    assertStrictBindingReadiness
+} from './posTerminalLocationBindingPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
-const POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY = 'pos_terminal_location_binding_enforced';
-const POS_LOCATION_BINDING_REASON_CODE = 'POS_LOCATION_BINDING_READINESS_REQUIRED';
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -44,6 +48,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
 
         try {
             let normalizedValue = value;
+            let strictBindingRegistryPatch = null;
             if (key === WORKFLOW_MODE_SETTING_KEY) {
                 if (!isWorkflowMode(value)) {
                     return fail(new DomainError(
@@ -64,24 +69,14 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
             if (
                 key === POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY
                 && normalizedValue === true
-                && typeof settingsRepository?.getPosLocationBindingReadinessSummary === 'function'
             ) {
-                const readinessSummary = await settingsRepository.getPosLocationBindingReadinessSummary();
-                const unresolvedCount = Number.parseInt(readinessSummary?.unresolved_count || 0, 10) || 0;
-                const lowConfidenceCount = Number.parseInt(readinessSummary?.low_confidence_count || 0, 10) || 0;
-                if (unresolvedCount > 0 || lowConfidenceCount > 0 || readinessSummary?.ready_for_strict_mode === false) {
-                    return fail(new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'Strict POS location binding cannot be enabled until location backfill readiness is complete.',
-                        {
-                            statusCode: 422,
-                            details: {
-                                reason_code: POS_LOCATION_BINDING_REASON_CODE,
-                                location_binding_readiness: readinessSummary || null
-                            }
-                        }
-                    ));
-                }
+                const { strictBindingTransitioningOn, patchedRegistry } = await buildStrictBindingTransitionPatch({
+                    settingsRepository
+                });
+                strictBindingRegistryPatch = strictBindingTransitioningOn ? patchedRegistry : null;
+            }
+            if (key === POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY && normalizedValue === true) {
+                await assertStrictBindingReadiness({ settingsRepository });
             }
 
             const tenant = getTenantComplianceSnapshot();
@@ -99,6 +94,22 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                 if (!complianceResult.success) {
                     return complianceResult;
                 }
+            }
+
+            if (strictBindingRegistryPatch) {
+                if (typeof settingsRepository?.updateSettings === 'function') {
+                    await settingsRepository.updateSettings({
+                        [POS_TERMINAL_REGISTRY_KEY]: strictBindingRegistryPatch,
+                        [key]: normalizedValue
+                    });
+                    if (typeof settingsRepository?.getSettingByKey === 'function') {
+                        const setting = await settingsRepository.getSettingByKey(key);
+                        return ok(setting);
+                    }
+                    return ok({ setting_key: key, value: normalizedValue });
+                }
+
+                await settingsRepository.updateSettingByKey(POS_TERMINAL_REGISTRY_KEY, strictBindingRegistryPatch);
             }
 
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
