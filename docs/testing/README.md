@@ -134,6 +134,12 @@ Use this for pre-deploy and post-deploy production validation of multi-location 
 
 Command:
 1. `npm run gate:release:prod-contracts`
+2. `npm run gate:release:prod-contracts:env` (loads `.env.prod.local` first)
+
+Recommended local setup:
+1. `cp .env.prod.local.example .env.prod.local`
+2. Set `PROD_COMPANY_TOKEN` to the current active production tenant token.
+3. Run `npm run gate:release:prod-contracts:env`.
 
 Script:
 1. `scripts/verify-prod-multi-location.ps1`
@@ -144,6 +150,9 @@ Environment variables:
 3. `PROD_PASSWORD` (default `Admin123!`)
 4. `PROD_AUTH_JWT` (optional, recommended during repeated runs to avoid auth rate limits)
 5. `PROD_VERIFY_OUTPUT` (optional output JSON file path)
+
+Operational note:
+1. If the production tenant token has been rotated away from `token-original`, `PROD_COMPANY_TOKEN` must be set or the gate will fail with `TENANT_TOKEN_INVALID`.
 
 Required pass checks:
 1. `/items/{id}` detail contains `item_location_stocks`.

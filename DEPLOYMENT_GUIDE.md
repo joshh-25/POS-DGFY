@@ -52,11 +52,19 @@ cp .env.qa.local.example .env.qa.local
 # fill values, then load them into your shell before deploy/gates
 ```
 
+Recommended local setup for production contract gate inputs:
+```bash
+cp .env.prod.local.example .env.prod.local
+# set PROD_COMPANY_TOKEN to active production tenant token
+```
+
 Production release contract gate (run before and after deploy):
 ```bash
 # Optional: avoid auth/login lockouts by reusing an active JWT session
 # export PROD_AUTH_JWT="<valid_jwt>"
 npm run gate:release:prod-contracts
+# or load .env.prod.local first, then run the same gate
+npm run gate:release:prod-contracts:env
 ```
 
 This command will:
@@ -293,6 +301,9 @@ Supported environment variables:
 3. `PROD_PASSWORD` (default `Admin123!`)
 4. `PROD_AUTH_JWT` (optional; bypasses login to avoid rate limits)
 5. `PROD_VERIFY_OUTPUT` (optional output JSON path; default `.tmp/prod-multi-location-check.result.json`)
+
+Operational note:
+1. `token-original` is a legacy fallback only. If the production tenant token has rotated, set `PROD_COMPANY_TOKEN` explicitly (or use `npm run gate:release:prod-contracts:env`) to avoid `TENANT_TOKEN_INVALID` false negatives.
 
 Pass criteria:
 1. Item detail payload includes `item_location_stocks`.

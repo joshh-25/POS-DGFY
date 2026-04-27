@@ -23,6 +23,11 @@ Use this checklist for every production rollout.
   ```
 - [ ] Production multi-location contract smoke gate is green:
   ```bash
+  # one-time local setup
+  # cp .env.prod.local.example .env.prod.local
+  # set PROD_COMPANY_TOKEN to active production tenant token
+  npm run gate:release:prod-contracts:env
+  # or run directly if env is already exported in shell
   # Prefer cached JWT to avoid auth rate limits:
   # export PROD_AUTH_JWT="<valid_jwt>"
   npm run gate:release:prod-contracts
@@ -109,6 +114,8 @@ bash scripts/deploy-remote.sh
 - [ ] Login and critical flows work
 - [ ] Re-run production multi-location contract smoke gate:
   ```bash
+  npm run gate:release:prod-contracts:env
+  # or run directly if env is already exported in shell
   # Use fresh token or cached JWT from active session
   npm run gate:release:prod-contracts
   ```

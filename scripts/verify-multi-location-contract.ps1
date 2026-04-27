@@ -32,7 +32,9 @@ $baseUrl = $baseUrl.TrimEnd('/')
 $apiBase = if ($baseUrl -match '/api/v1$') { $baseUrl } else { "$baseUrl/api/v1" }
 
 $companyToken = [Environment]::GetEnvironmentVariable($tokenVar)
-if ([string]::IsNullOrWhiteSpace($companyToken)) { $companyToken = 'token-original' }
+$companyTokenProvided = -not [string]::IsNullOrWhiteSpace($companyToken)
+$companyTokenSource = if ($companyTokenProvided) { 'env' } else { 'default_token_original' }
+if (-not $companyTokenProvided) { $companyToken = 'token-original' }
 
 $email = [Environment]::GetEnvironmentVariable($emailVar)
 if ([string]::IsNullOrWhiteSpace($email)) { $email = 'admin@test.com' }
@@ -58,6 +60,8 @@ function Add-Result([string]$name, [bool]$ok, [string]$detail) {
   $status = if ($ok) { 'PASS' } else { 'FAIL' }
   Write-Host ("[{0}] {1} :: {2}" -f $status, $name, $detail)
 }
+
+Add-Result 'auth.company_token_source' $true ("source={0}" -f $companyTokenSource)
 
 function Get-Json($url, $method='GET', $headers=$null, $body=$null) {
   if ($body -ne $null) {
@@ -167,6 +171,9 @@ try {
 
 } catch {
   $msg = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
+  if ((-not $companyTokenProvided) -and ($msg -match 'TENANT_TOKEN_INVALID')) {
+    $msg = "$msg Hint: $tokenVar is unset and default token-original was used. Set $tokenVar to the active tenant token or run npm run gate:release:prod-contracts:env."
+  }
   Add-Result 'script.unhandled_error' $false $msg
 } finally {
   try {

@@ -538,6 +538,14 @@ powershell -ExecutionPolicy Bypass -File scripts/verify-multi-location-contract.
 Wrappers:
 - `scripts/verify-prod-multi-location.ps1`
 - `scripts/verify-qa-multi-location.ps1`
+- `scripts/run-prod-contract-gate.ps1` (loads `.env.prod.local` then runs prod contract gate)
+
+Recommended production usage:
+```bash
+cp .env.prod.local.example .env.prod.local
+# set PROD_COMPANY_TOKEN to active production tenant token
+npm run gate:release:prod-contracts:env
+```
 
 ## 18. `scripts/run-qa-rollback-drill.ps1`
 Rollback drill automation for QA with simulation-by-default mode.

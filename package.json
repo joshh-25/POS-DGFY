@@ -57,6 +57,7 @@
     "gate:release:no-staging:preflight": "node scripts/check-no-staging-prereqs.js",
     "gate:release:no-staging": "node scripts/gate-release-no-staging.js",
     "gate:release:no-staging:qa-env": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-release-gate.ps1",
+    "gate:release:prod-contracts:env": "powershell -ExecutionPolicy Bypass -File scripts/run-prod-contract-gate.ps1",
     "gate:release:local": "node scripts/gate-release-local.js",
     "verify:release-verdict": "node scripts/verify-release-verdict.js"
   },
