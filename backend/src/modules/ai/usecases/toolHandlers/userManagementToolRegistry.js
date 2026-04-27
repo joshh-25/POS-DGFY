@@ -72,6 +72,15 @@ const buildGetAvailablePermissions = ({ permissions }) => {
     };
 };
 
+const buildInviteAcceptanceUrl = ({ appUrl, invitationToken, companyToken }) => {
+    const params = new URLSearchParams({ token: invitationToken });
+    const normalizedCompanyToken = String(companyToken || '').trim();
+    if (normalizedCompanyToken) {
+        params.set('company', normalizedCompanyToken);
+    }
+    return `${appUrl}/accept-invite?${params.toString()}`;
+};
+
 export const buildUserManagementToolRegistry = ({
     userService,
     tempFileService,
@@ -213,10 +222,16 @@ export const buildUserManagementToolRegistry = ({
 
             if (!result.email_sent && result.invitation_token) {
                 const appUrl = appUrlProvider();
+                const companyToken = String(result.company_token || companyTokenProvider() || '').trim() || null;
+                const acceptUrl = buildInviteAcceptanceUrl({
+                    appUrl,
+                    invitationToken: result.invitation_token,
+                    companyToken
+                });
                 response.details['Invitation Token'] = result.invitation_token;
-                response.details['Accept URL'] = `${appUrl}/accept-invite?token=${result.invitation_token}`;
+                response.details['Accept URL'] = acceptUrl;
                 response.invitation.token = result.invitation_token;
-                response.message += `\n\n**Manual Invitation Link:**\n${appUrl}/accept-invite?token=${result.invitation_token}`;
+                response.message += `\n\n**Manual Invitation Link:**\n${acceptUrl}`;
             }
 
             return response;

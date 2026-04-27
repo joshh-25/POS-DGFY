@@ -16,6 +16,7 @@ import * as cacheService from './cacheService.js';
 import * as landlordService from './landlordService.js';
 import logger from '../config/logger.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
+import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -51,6 +52,60 @@ const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
+const normalizePermissionArray = (rawPermissions) => {
+  let normalized = rawPermissions;
+
+  if (typeof normalized === 'string') {
+    try {
+      normalized = JSON.parse(normalized);
+    } catch {
+      normalized = [];
+    }
+  }
+
+  if (!Array.isArray(normalized)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      normalized
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter(Boolean)
+    )
+  );
+};
+
+const resolveEffectivePermissionsForUser = (user) => {
+  const normalizedRole = String(user?.role || 'staff').trim().toLowerCase();
+  const parsedPermissions = normalizePermissionArray(user?.permissions);
+  if (parsedPermissions.length > 0) {
+    return parsedPermissions;
+  }
+
+  const roleDefaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
+  return Array.isArray(roleDefaults) ? [...roleDefaults] : [];
+};
+
+const resolveTenantIdForToken = (user, explicitTenantId = null) => {
+  const normalizedExplicit = String(explicitTenantId || '').trim();
+  if (normalizedExplicit) {
+    return normalizedExplicit;
+  }
+
+  const normalizedUserTenant = String(user?.tenant_id || '').trim();
+  if (normalizedUserTenant) {
+    return normalizedUserTenant;
+  }
+
+  const normalizedStoreTenant = String(dbStore.getStore()?.tenantId || '').trim();
+  if (normalizedStoreTenant && normalizedStoreTenant !== 'default') {
+    return normalizedStoreTenant;
+  }
+
+  return null;
+};
+
 const getBlacklistFailureMode = () => {
   const configuredMode = (process.env.AUTH_BLACKLIST_FAILURE_MODE || '').trim().toLowerCase();
 
@@ -65,6 +120,58 @@ const getBlacklistFailureMode = () => {
   return process.env.NODE_ENV === 'production' ? 'fail_closed' : 'fail_open';
 };
 
+const requireTenantAuthContext = ({ operation = 'authentication' } = {}) => {
+  const store = dbStore.getStore() || {};
+  const tenantId = store?.tenantId;
+
+  if (tenantId && tenantId !== 'default') {
+    return store;
+  }
+
+  const contextFailure = String(store?.tenantContextFailure || '').trim().toLowerCase();
+  const resolvedTenantStatus = String(store?.resolvedTenantStatus || '').trim().toLowerCase();
+
+  const error = new Error('Company token is required for authentication.');
+  error.statusCode = 400;
+  error.details = {
+    operation,
+    tenant_context_failure: contextFailure || 'missing_tenant_context',
+    resolved_tenant_status: resolvedTenantStatus || null
+  };
+
+  if (contextFailure === 'invalid_token') {
+    error.statusCode = 404;
+    error.message = 'Invalid company token.';
+    throw error;
+  }
+
+  if (contextFailure === 'db_unavailable' && resolvedTenantStatus === 'pending') {
+    error.statusCode = 403;
+    error.message = 'Tenant is pending approval and is not yet provisioned for login/registration.';
+    throw error;
+  }
+
+  if (contextFailure === 'db_unavailable' && resolvedTenantStatus === 'rejected') {
+    error.statusCode = 403;
+    error.message = 'Tenant registration has been rejected. Please re-submit registration for review.';
+    throw error;
+  }
+
+  if (contextFailure === 'db_unavailable' && resolvedTenantStatus === 'inactive') {
+    error.statusCode = 403;
+    error.message = 'Tenant account is inactive. Contact support or request reactivation.';
+    throw error;
+  }
+
+  if (contextFailure === 'db_unavailable') {
+    error.statusCode = 503;
+    error.message = 'Tenant database is unavailable. Please try again later.';
+    throw error;
+  }
+
+  throw error;
+};
+
 export const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(password, salt);
@@ -74,21 +181,25 @@ export const comparePassword = async (password, hashedPassword) => {
   return await bcrypt.compare(password, hashedPassword);
 };
 
-export const generateToken = (user) => {
+export const generateToken = (user, options = {}) => {
+  const resolvedTenantId = resolveTenantIdForToken(user, options?.tenantId);
   const payload = {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
-    role: user.role
+    role: user.role,
+    ...(resolvedTenantId ? { tenant_id: resolvedTenantId } : {})
   };
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 };
 
-export const generateRefreshToken = (user) => {
+export const generateRefreshToken = (user, options = {}) => {
+  const resolvedTenantId = resolveTenantIdForToken(user, options?.tenantId);
   const payload = {
     user_id: user.user_id,
     type: 'refresh',
-    jti: randomUUID()
+    jti: randomUUID(),
+    ...(resolvedTenantId ? { tenant_id: resolvedTenantId } : {})
   };
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
 };
@@ -102,9 +213,11 @@ export const verifyRefreshToken = (token) => {
 };
 
 export const registerUser = async (userData) => {
+  await requireTenantAuthContext({ operation: 'auth.register' });
   const { username, email, password } = userData;
   // Always create new users as 'staff' - only admins can change roles via User Management
   const role = 'staff';
+  const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[role] || [];
 
   // Check if user already exists
   const User = dbStore.get('User');
@@ -129,6 +242,7 @@ export const registerUser = async (userData) => {
     email,
     password_hash,
     role,
+    permissions: defaultPermissions,
     is_active: true
   });
 
@@ -150,12 +264,19 @@ export const registerUser = async (userData) => {
     username: user.username,
     email: user.email,
     role: user.role,
-    permissions: user.permissions || [],
+    permissions: resolveEffectivePermissionsForUser(user),
     is_master_admin: user.is_master_admin || false
   };
 };
 
 export const loginUser = async (email, password) => {
+  const tenantStore = await requireTenantAuthContext({ operation: 'auth.login' });
+  const tenantId = String(tenantStore?.tenantId || '').trim();
+  if (!tenantId || tenantId === 'default') {
+    const error = new Error('Tenant context is required to issue login tokens.');
+    error.statusCode = 400;
+    throw error;
+  }
   // Find user by email
   const User = dbStore.get('User');
   const user = await User.findOne({ where: { email } });
@@ -189,8 +310,8 @@ export const loginUser = async (email, password) => {
   }
 
   // Generate tokens
-  const token = generateToken(user);
-  const refreshToken = generateRefreshToken(user);
+  const token = generateToken(user, { tenantId });
+  const refreshToken = generateRefreshToken(user, { tenantId });
 
   // Update last login
   await user.update({ last_login: new Date() });
@@ -218,7 +339,7 @@ export const loginUser = async (email, password) => {
     username: user.username,
     email: user.email,
     role: user.role,
-    permissions: user.permissions || [],
+    permissions: resolveEffectivePermissionsForUser(user),
     is_master_admin: user.is_master_admin || false,
     onboarding,
     token,
@@ -229,6 +350,13 @@ export const loginUser = async (email, password) => {
 
 export const refreshUserToken = async (refreshToken) => {
   try {
+    const tenantStore = await requireTenantAuthContext({ operation: 'auth.refresh_token' });
+    const tenantId = String(tenantStore?.tenantId || '').trim();
+    if (!tenantId || tenantId === 'default') {
+      const contextError = new Error('Tenant context is required to refresh tokens.');
+      contextError.statusCode = 400;
+      throw contextError;
+    }
     // 1. Check if token is blacklisted (Reuse Detection)
     const isBlacklisted = await isTokenBlacklisted(refreshToken);
     if (isBlacklisted) {
@@ -249,6 +377,19 @@ export const refreshUserToken = async (refreshToken) => {
       throw error;
     }
 
+    const tokenTenantId = String(decoded?.tenant_id || '').trim();
+    if (!tokenTenantId) {
+      const error = new Error('Invalid refresh token tenant binding');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    if (tokenTenantId !== tenantId) {
+      const error = new Error('Refresh token tenant mismatch');
+      error.statusCode = 401;
+      throw error;
+    }
+
     // 3. Find user
     const User = dbStore.get('User');
     const user = await User.findByPk(decoded.user_id);
@@ -260,8 +401,8 @@ export const refreshUserToken = async (refreshToken) => {
     }
 
     // 4. Generate NEW access token and NEW refresh token
-    const token = generateToken(user);
-    const newRefreshToken = generateRefreshToken(user);
+    const token = generateToken(user, { tenantId });
+    const newRefreshToken = generateRefreshToken(user, { tenantId });
     const expiresIn = 24 * 60 * 60; // 24 hours in seconds
 
     // 5. Blacklist the OLD refresh token immediately

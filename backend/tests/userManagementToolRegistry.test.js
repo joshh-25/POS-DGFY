@@ -116,6 +116,31 @@ describe('userManagementToolRegistry', () => {
     expect(result.message).toContain('Manual Invitation Link');
   });
 
+  it('create_user_invitation appends company token to manual link when available', async () => {
+    const registry = buildUserManagementToolRegistry({
+      userService: {
+        createUserInvitation: jest.fn().mockResolvedValue({
+          user_id: 15,
+          expires_at: '2026-03-11T00:00:00.000Z',
+          email_sent: false,
+          invitation_token: 'tok_abc123'
+        })
+      },
+      tempFileService: {},
+      logger: { error: jest.fn() },
+      permissions: {},
+      appUrlProvider: () => 'https://app.example.test',
+      companyTokenProvider: () => 'token-tenant-xyz'
+    });
+
+    const result = await registry.create_user_invitation({
+      args: { email: 'new.user@example.com', role: 'staff' },
+      user: { user_id: 1 }
+    });
+
+    expect(result.details['Accept URL']).toBe('https://app.example.test/accept-invite?token=tok_abc123&company=token-tenant-xyz');
+  });
+
   it('import_users_csv rejects invalid roles before running import', async () => {
     const importUsersFromCSV = jest.fn();
 

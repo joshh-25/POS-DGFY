@@ -13,6 +13,61 @@ const tenantCache = new Map(); // token -> { tenant, expiresAt }
 const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
 const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments|compliance|settings)\b/i;
 const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
+const STRICT_AUTH_ROUTE_PATTERN = /^\/api\/v1\/auth\/(register|login|refresh-token|logout|validate-invite|accept-invite)\b/i;
+
+const DEFAULT_TENANT_CONTEXT = Object.freeze({
+    tenantId: 'default',
+    tenantName: 'SKU-Inventory-Manager (Default)'
+});
+
+const runDefaultTenantContext = (next, context = {}) => dbStore.run({
+    ...DEFAULT_TENANT_CONTEXT,
+    ...context
+}, next);
+
+const sendTenantContextError = (res, statusCode, message, errorCode) => (
+    res.status(statusCode).json({
+        success: false,
+        data: null,
+        message,
+        error_code: errorCode,
+        timestamp: new Date().toISOString()
+    })
+);
+
+const resolveStrictAuthDbFailure = (tenantStatus) => {
+    const normalizedStatus = String(tenantStatus || '').trim().toLowerCase();
+
+    if (normalizedStatus === 'pending') {
+        return {
+            statusCode: 403,
+            message: 'Tenant is pending approval and is not yet provisioned for login/registration.',
+            errorCode: 'TENANT_PENDING_APPROVAL'
+        };
+    }
+
+    if (normalizedStatus === 'rejected') {
+        return {
+            statusCode: 403,
+            message: 'Tenant registration has been rejected. Please re-submit registration for review.',
+            errorCode: 'TENANT_REJECTED'
+        };
+    }
+
+    if (normalizedStatus === 'inactive') {
+        return {
+            statusCode: 403,
+            message: 'Tenant account is inactive. Contact support or request reactivation.',
+            errorCode: 'TENANT_INACTIVE'
+        };
+    }
+
+    return {
+        statusCode: 503,
+        message: 'Tenant database is unavailable. Please try again later.',
+        errorCode: 'TENANT_DB_UNAVAILABLE'
+    };
+};
 
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
@@ -35,6 +90,7 @@ export const tenantHandler = async (req, res, next) => {
     try {
         const path = req.path || '';
         const isPublicWebhookRoute = path === '/api/v1/payments/webhook';
+        const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
 
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
@@ -68,10 +124,18 @@ export const tenantHandler = async (req, res, next) => {
             } else {
                 logger.debug('[TenantHandler] No company token for webhook route (expected).');
             }
-            return dbStore.run({
-                tenantId: 'default',
-                tenantName: 'SKU-Inventory-Manager (Default)'
-            }, next);
+            if (isStrictAuthRoute) {
+                return sendTenantContextError(
+                    res,
+                    400,
+                    'Company token is required for authentication.',
+                    'TENANT_TOKEN_REQUIRED'
+                );
+            }
+
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'missing_token'
+            });
         }
 
         // 2. Resolve Tenant (with in-memory cache to avoid a DB hit on every request)
@@ -90,20 +154,38 @@ export const tenantHandler = async (req, res, next) => {
             }
         } catch (lookupError) {
             logger.error(`[TenantHandler] Tenant lookup failed for token ${companyToken}: ${lookupError.message}`);
-            return dbStore.run({
-                tenantId: 'default',
-                tenantName: 'SKU-Inventory-Manager (Default)'
-            }, next);
+            if (isStrictAuthRoute) {
+                return sendTenantContextError(
+                    res,
+                    503,
+                    'Tenant lookup is currently unavailable. Please try again.',
+                    'TENANT_LOOKUP_UNAVAILABLE'
+                );
+            }
+
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'lookup_error',
+                tenantTokenAttempted: companyToken
+            });
         }
 
         if (!tenant) {
             logger.warn(`Invalid Company Token provided: ${companyToken}. Falling back to default context.`);
             // Instead of blocking with 404, we fall back to default context.
             // This allows endpoints like /logout or /health to still work even with a stale token.
-            return dbStore.run({
-                tenantId: 'default',
-                tenantName: 'SKU-Inventory-Manager (Default)'
-            }, next);
+            if (isStrictAuthRoute) {
+                return sendTenantContextError(
+                    res,
+                    404,
+                    'Invalid company token.',
+                    'TENANT_TOKEN_INVALID'
+                );
+            }
+
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'invalid_token',
+                tenantTokenAttempted: companyToken
+            });
         }
 
         logger.debug(`[TenantHandler] Found tenant: ${tenant.name} (${tenant.id})`);
@@ -119,10 +201,22 @@ export const tenantHandler = async (req, res, next) => {
             sequelizeInstance = await tenantConnector.getConnection(tenant);
         } catch {
             logger.warn(`[TenantHandler] Could not connect to tenant DB for ${tenant.name} (${tenant.status}). Falling back to default context.`);
-            return dbStore.run({
-                tenantId: 'default',
-                tenantName: 'SKU-Inventory-Manager (Default)'
-            }, next);
+            if (isStrictAuthRoute) {
+                const failure = resolveStrictAuthDbFailure(tenant.status);
+                return sendTenantContextError(
+                    res,
+                    failure.statusCode,
+                    failure.message,
+                    failure.errorCode
+                );
+            }
+
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'db_unavailable',
+                tenantTokenAttempted: companyToken,
+                resolvedTenantId: tenant.id || null,
+                resolvedTenantStatus: tenant.status || null
+            });
         }
 
         // 4. Bind Models (Factory Logic)

@@ -255,7 +255,9 @@ export const validateToken = async (req, res, next) => {
           success: true,
           data: {
             company_name: result.data.name,
-            tenant_id: result.data.id
+            tenant_id: result.data.id,
+            status: result.data.status || null,
+            rejection_reason: result.data.rejection_reason || null
           },
           message: 'Token is valid',
           timestamp: timestamp()

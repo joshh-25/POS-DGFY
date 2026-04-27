@@ -7,6 +7,7 @@ import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
 import { normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
+import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
 // Strict allowlist pattern for all tenant database names.
 // Guards every DDL path against invalid or maliciously crafted identifiers.
@@ -325,11 +326,12 @@ export const provisionTenant = async (options) => {
 
             // 4. Seed Admin User
             logger.info(`[Provisioning] Seeding Admin User...`);
+            const adminDefaultPermissions = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.admin || []);
             await tenantSequelize.query(
-                `INSERT INTO users (username, email, password_hash, role, is_active, is_master_admin, created_at, updated_at)
-                 VALUES (?, ?, ?, 'admin', 1, 1, NOW(), NOW())`,
+                `INSERT INTO users (username, email, password_hash, role, is_active, is_master_admin, permissions, created_at, updated_at)
+                 VALUES (?, ?, ?, 'admin', 1, 1, ?, NOW(), NOW())`,
                 {
-                    replacements: ['Admin', email, passwordHash]
+                    replacements: ['Admin', email, passwordHash, adminDefaultPermissions]
                 }
             );
 

@@ -21,15 +21,18 @@ export const register = async (userData, companyToken) => {
 
 export const login = async (credentials) => {
   const resolvedCompanyToken = String(
-    credentials?.companyToken || localStorage.getItem('companyToken') || ''
+    credentials?.companyToken || ''
   ).trim();
-  const config = resolvedCompanyToken
-    ? {
-      headers: {
-        'x-company-token': resolvedCompanyToken
-      }
+  if (!resolvedCompanyToken) {
+    const error = new Error('Company token is required for login.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const config = {
+    headers: {
+      'x-company-token': resolvedCompanyToken
     }
-    : {};
+  };
 
   const response = await api.post('/auth/login', {
     email: credentials.email,

@@ -10,6 +10,46 @@ import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import logger from '../config/logger.js';
 
+const normalizePermissionArray = (rawPermissions) => {
+  let normalized = rawPermissions;
+
+  if (typeof normalized === 'string') {
+    try {
+      normalized = JSON.parse(normalized);
+    } catch {
+      normalized = [];
+    }
+  }
+
+  if (!Array.isArray(normalized)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      normalized
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter(Boolean)
+    )
+  );
+};
+
+const resolveEffectivePermissions = (user) => {
+  const parsedPermissions = normalizePermissionArray(user?.permissions);
+  if (parsedPermissions.length > 0) {
+    return parsedPermissions;
+  }
+
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
+  return Array.isArray(defaults) ? [...defaults] : [];
+};
+
+const hasPermission = (user, permission) => {
+  const effectivePermissions = resolveEffectivePermissions(user);
+  return effectivePermissions.includes(permission);
+};
+
 const findVisibleUserById = async (User, userId, queryOptions = {}) => {
   const { where = {}, ...rest } = queryOptions;
   return User.findOne({
@@ -64,7 +104,7 @@ export const getCurrentUser = async (userId) => {
     is_active: user.is_active,
     last_login: user.last_login,
     created_at: user.created_at,
-    permissions: user.permissions || [],
+    permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin,
     company: {
       plan: tenantPlan || 'standard',
@@ -213,7 +253,7 @@ export const getAllUsers = async () => {
     is_active: user.is_active,
     last_login: user.last_login,
     created_at: user.created_at,
-    permissions: user.permissions || [],
+    permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin
   }));
 };
@@ -246,7 +286,7 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   }
 
   // Check admin has users:manage permission (unless Master Admin)
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -318,7 +358,7 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   }
 
   // Check admin has users:manage permission (unless Master Admin)
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -494,7 +534,7 @@ export const getUserLocationGrants = async (adminUserId, targetUserId, options =
     throw notFoundError('Target user not found');
   }
 
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -572,7 +612,7 @@ export const updateUserLocationGrants = async (adminUserId, targetUserId, locati
     throw notFoundError('Target user not found');
   }
 
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -695,7 +735,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   }
 
   // Check admin has users:manage permission (unless Master Admin)
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -735,6 +775,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   // Get tenant name for email
   const store = dbStore.getStore();
   const tenantName = store?.tenantName || 'SKU Inventory Manager';
+  const tenantToken = String(store?.tenantToken || '').trim() || null;
 
   // Send invitation email (if email service is configured)
   let emailSent = false;
@@ -745,7 +786,8 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
         inviterName: adminUser.username,
         role,
         invitationToken,
-        tenantName
+        tenantName,
+        companyToken: tenantToken
       });
       emailSent = true;
     } catch (emailError) {
@@ -761,7 +803,8 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     invitation_status: 'pending',
     expires_at: expiresAt,
     email_sent: emailSent,
-    invitation_token: emailSent ? undefined : invitationToken // Only return token if email failed
+    invitation_token: emailSent ? undefined : invitationToken, // Only return token if email failed
+    company_token: tenantToken || undefined
   };
 };
 
@@ -866,7 +909,8 @@ export const validateInvitationToken = async (token) => {
   return {
     email: user.email,
     role: user.role,
-    expires_at: user.invitation_expires_at
+    expires_at: user.invitation_expires_at,
+    tenantName: dbStore.getStore()?.tenantName || null
   };
 };
 
@@ -901,7 +945,7 @@ export const updateUserPermissionsAI = async (adminUserId, targetUserId, permiss
   }
 
   // Check admin has users:manage permission (unless Master Admin)
-  if (!adminUser.is_master_admin && !adminUser.permissions?.includes('users:manage')) {
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
 
@@ -951,7 +995,7 @@ export const getUsersForExport = async () => {
     email: u.email,
     role: u.role,
     is_active: u.is_active ? 'Yes' : 'No',
-    permission_count: u.permissions?.length || 0,
+    permission_count: resolveEffectivePermissions(u).length,
     is_master_admin: u.is_master_admin ? 'Yes' : 'No',
     created_at: u.created_at ? new Date(u.created_at).toISOString().split('T')[0] : '',
     last_login: u.last_login ? new Date(u.last_login).toISOString().split('T')[0] : 'Never'

@@ -1,7 +1,7 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
-import { PERMISSIONS } from '../config/permissions.js';
+import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -24,13 +24,66 @@ const shouldBypassSubscriptionGate = (req) => {
   return req.baseUrl === '/api/v1/payments' && SUBSCRIPTION_GATE_BYPASS_ROUTES.has(routeKey);
 };
 
-export const invalidateUserAuthCache = ({ companyToken, userId } = {}) => {
+const normalizePermissionArray = (rawPermissions) => {
+  let normalized = rawPermissions;
+
+  if (typeof normalized === 'string') {
+    try {
+      normalized = JSON.parse(normalized);
+    } catch {
+      normalized = [];
+    }
+  }
+
+  if (!Array.isArray(normalized)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      normalized
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter(Boolean)
+    )
+  );
+};
+
+const resolveEffectivePermissions = (user) => {
+  const parsedPermissions = normalizePermissionArray(user?.permissions);
+  if (parsedPermissions.length > 0) {
+    return parsedPermissions;
+  }
+
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
+  return Array.isArray(defaults) ? [...defaults] : [];
+};
+
+export const invalidateUserAuthCache = ({ companyToken, tenantId, userId } = {}) => {
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedCompanyToken = String(companyToken || '').trim();
+
   // Targeted eviction whenever possible to keep perf benefits of short-lived cache.
   if (userId != null) {
-    if (companyToken) {
-      _userCache.delete(`${companyToken}:${userId}`);
+    if (normalizedTenantId) {
+      _userCache.delete(`${normalizedTenantId}:${userId}`);
+    }
+    if (normalizedCompanyToken) {
+      _userCache.delete(`${normalizedCompanyToken}:${userId}`);
+    }
+
+    // Current cache keys are tenantId:userId. When only companyToken is available,
+    // fall back to user-id sweep to avoid stale auth state.
+    if (!normalizedTenantId) {
+      for (const key of _userCache.keys()) {
+        if (key.endsWith(`:${userId}`)) {
+          _userCache.delete(key);
+        }
+      }
       return;
     }
+
+    // Keep backward-compatible suffix sweep for mixed key shapes during rollout.
     for (const key of _userCache.keys()) {
       if (key.endsWith(`:${userId}`)) {
         _userCache.delete(key);
@@ -39,10 +92,14 @@ export const invalidateUserAuthCache = ({ companyToken, userId } = {}) => {
     return;
   }
 
-  if (companyToken) {
-    const prefix = `${companyToken}:`;
+  if (normalizedTenantId || normalizedCompanyToken) {
+    const prefixes = [
+      normalizedTenantId ? `${normalizedTenantId}:` : null,
+      normalizedCompanyToken ? `${normalizedCompanyToken}:` : null
+    ].filter(Boolean);
+
     for (const key of _userCache.keys()) {
-      if (key.startsWith(prefix)) {
+      if (prefixes.some((prefix) => key.startsWith(prefix))) {
         _userCache.delete(key);
       }
     }
@@ -106,8 +163,41 @@ export const authenticate = async (req, res, next) => {
     // Find user — check cache first to avoid a DB hit on every request.
     // Cache key includes the company token so tenants with the same numeric user_id
     // don't cross-contaminate each other (user_id=1 is very common across tenants).
-    const companyToken = req.headers['x-company-token'] || 'default';
-    const cacheKey = `${companyToken}:${decoded.user_id}`;
+    const tenantContext = dbStore.getStore();
+    if (!tenantContext || tenantContext.tenantId === 'default') {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'Valid tenant context is required for authenticated requests.',
+        error_code: 'TENANT_CONTEXT_REQUIRED',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const contextTenantId = String(req?.tenant?.id || tenantContext?.tenantId || '').trim();
+    const tokenTenantId = String(decoded?.tenant_id || '').trim();
+
+    if (!tokenTenantId) {
+      return res.status(401).json({
+        success: false,
+        data: null,
+        message: 'Token is missing tenant binding.',
+        error_code: 'TENANT_BINDING_REQUIRED',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (!contextTenantId || tokenTenantId !== contextTenantId) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        message: 'Token tenant binding does not match request tenant context.',
+        error_code: 'TENANT_BINDING_MISMATCH',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const cacheKey = `${contextTenantId}:${decoded.user_id}`;
     const cached = _userCache.get(cacheKey);
     let user;
     if (cached && cached.expiresAt > Date.now()) {
@@ -195,8 +285,9 @@ export const authenticate = async (req, res, next) => {
       username: user.username,
       email: user.email,
       role: user.role,
-      permissions: user.permissions || [],
-      is_master_admin: user.is_master_admin
+      permissions: resolveEffectivePermissions(user),
+      is_master_admin: user.is_master_admin,
+      tenant_id: contextTenantId
     };
 
     next();
@@ -408,3 +499,4 @@ export const requirePremium = (req, res, next) => {
 
   return next();
 };
+

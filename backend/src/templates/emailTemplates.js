@@ -13,6 +13,7 @@
  * @param {string} params.invitationToken - The unique token for the invitation
  * @param {string} params.appUrl - The base URL of the application
  * @param {string} params.tenantName - Company/tenant name
+ * @param {string} [params.companyToken] - Company token for tenant-bound invite acceptance
  * @param {string} params.expiresIn - Human-readable expiry time (e.g., "7 days")
  * @returns {string} HTML email content
  */
@@ -24,8 +25,12 @@ const appendUtm = (url, campaign) => {
   return `${url}${separator}utm_source=email&utm_medium=transactional&utm_campaign=${campaign}`;
 };
 
-export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl }) => {
-  const inviteUrlRaw = `${appUrl}/accept-invite?token=${invitationToken}`;
+export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl, companyToken }) => {
+  const inviteQuery = new URLSearchParams({
+    token: invitationToken,
+    ...(companyToken ? { company: companyToken } : {})
+  });
+  const inviteUrlRaw = `${appUrl}/accept-invite?${inviteQuery.toString()}`;
   const inviteUrl = appendUtm(inviteUrlRaw, 'user_invitation');
 
   // Role-specific colors

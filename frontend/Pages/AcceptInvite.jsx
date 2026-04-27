@@ -4,7 +4,7 @@ import api from '../src/services/api.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield } from 'lucide-react';
+import { CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield } from 'lucide-react';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -12,6 +12,10 @@ export default function AcceptInvite() {
 
   // Get token from URL query param
   const tokenFromUrl = searchParams.get('token') || '';
+  const companyTokenFromUrl =
+    searchParams.get('company') ||
+    searchParams.get('companyToken') ||
+    '';
 
   const [formData, setFormData] = useState({
     username: '',
@@ -38,11 +42,22 @@ export default function AcceptInvite() {
         return;
       }
 
+      if (!companyTokenFromUrl) {
+        setTokenValid(false);
+        setTokenError('This invitation link is missing company information. Ask your administrator to resend the invitation.');
+        setIsValidatingToken(false);
+        return;
+      }
+
       setIsValidatingToken(true);
       setTokenError('');
 
       try {
-        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`);
+        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`, {
+          headers: {
+            'x-company-token': companyTokenFromUrl
+          }
+        });
         setInvitationData(response.data.data);
         setTokenValid(true);
       } catch (err) {
@@ -59,7 +74,7 @@ export default function AcceptInvite() {
     };
 
     validateToken();
-  }, [tokenFromUrl]);
+  }, [tokenFromUrl, companyTokenFromUrl]);
 
   // Password validation rules
   const passwordValidations = {
@@ -83,6 +98,11 @@ export default function AcceptInvite() {
       return;
     }
 
+    if (!companyTokenFromUrl) {
+      setError('Missing company token in invitation link. Ask your administrator to resend the invitation.');
+      return;
+    }
+
     // Validate password strength
     if (!isPasswordValid) {
       setError('Password does not meet security requirements');
@@ -92,10 +112,14 @@ export default function AcceptInvite() {
     setIsLoading(true);
 
     try {
-      const response = await api.post('/auth/accept-invite', {
+      await api.post('/auth/accept-invite', {
         token: tokenFromUrl,
         username: formData.username,
         password: formData.password
+      }, {
+        headers: {
+          'x-company-token': companyTokenFromUrl
+        }
       });
 
       // Redirect to login

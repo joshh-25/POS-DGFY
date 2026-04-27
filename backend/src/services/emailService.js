@@ -110,16 +110,16 @@ export const sendEmail = async ({ to, subject, html, text }) => {
  * @param {string} params.role - Role being assigned (staff/manager/admin)
  * @param {string} params.invitationToken - Unique invitation token
  * @param {string} params.tenantName - Company/tenant name
+ * @param {string} [params.companyToken] - Company token for tenant-bound invite acceptance
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendInvitationEmail = async ({ email, inviterName, role, invitationToken, tenantName }) => {
+export const sendInvitationEmail = async ({ email, inviterName, role, invitationToken, tenantName, companyToken }) => {
   const appUrl = getAppUrl();
-  const inviteUrl = `${appUrl}/accept-invite?token=${invitationToken}`;
-
   const html = getInvitationTemplate({
     inviterName,
     role: role.charAt(0).toUpperCase() + role.slice(1), // Capitalize role
-    inviteUrl,
+    invitationToken,
+    companyToken,
     tenantName,
     expiresIn: '7 days',
     appUrl

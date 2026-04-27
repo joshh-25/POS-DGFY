@@ -161,6 +161,7 @@ export const updateUserRole = async (req, res, next) => {
     });
 
     invalidateUserAuthCache({
+      tenantId: req.tenant?.id || null,
       companyToken: req.headers['x-company-token'] || null,
       userId: Number.parseInt(req.params.user_id, 10) || null
     });
@@ -191,6 +192,7 @@ export const updateUserStatus = async (req, res, next) => {
     });
 
     invalidateUserAuthCache({
+      tenantId: req.tenant?.id || null,
       companyToken: req.headers['x-company-token'] || null,
       userId: Number.parseInt(req.params.user_id, 10) || null
     });
@@ -222,6 +224,7 @@ export const updateUserPermissions = async (req, res, next) => {
     });
 
     invalidateUserAuthCache({
+      tenantId: req.tenant?.id || null,
       companyToken: req.headers['x-company-token'] || null,
       userId: Number.parseInt(req.params.user_id, 10) || null
     });
@@ -274,6 +277,7 @@ export const updateUserLocationGrants = async (req, res, next) => {
     });
 
     invalidateUserAuthCache({
+      tenantId: req.tenant?.id || null,
       companyToken: req.headers['x-company-token'] || null,
       userId: Number.parseInt(req.params.user_id, 10) || null
     });

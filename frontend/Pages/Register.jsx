@@ -46,7 +46,25 @@ export default function Register() {
 
       try {
         const response = await api.get(`/auth/validate-token/${formData.companyToken}`);
-        setCompanyName(response.data.data.company_name);
+        const tenantData = response?.data?.data || {};
+        const resolvedStatus = String(tenantData?.status || '').trim().toLowerCase();
+
+        if (resolvedStatus && resolvedStatus !== 'active') {
+          setCompanyName(tenantData.company_name || '');
+          setTokenValid(false);
+          if (resolvedStatus === 'pending') {
+            setTokenError('This company is pending approval. You can register users after activation.');
+          } else if (resolvedStatus === 'rejected') {
+            setTokenError('This company registration was rejected. Ask your company owner to re-submit registration.');
+          } else if (resolvedStatus === 'inactive') {
+            setTokenError('This company is inactive. Contact your administrator for reactivation.');
+          } else {
+            setTokenError('This company token is not currently eligible for user registration.');
+          }
+          return;
+        }
+
+        setCompanyName(tenantData.company_name);
         setTokenValid(true);
       } catch (err) {
         setTokenValid(false);
