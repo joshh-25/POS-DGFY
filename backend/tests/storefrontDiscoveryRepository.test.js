@@ -5,6 +5,8 @@ const findOneMock = jest.fn();
 const reconcileMock = jest.fn();
 const loggerInfoMock = jest.fn();
 const loggerWarnMock = jest.fn();
+const getStorefrontDiscoveryCacheVersionMock = jest.fn(() => 1);
+const getStorefrontDiscoverySharedSignatureMock = jest.fn(async () => '1:1');
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
   StorefrontDiscoveryIndex: {
@@ -15,6 +17,14 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 
 jest.unstable_mockModule('../src/services/storefrontDiscoveryIndexService.js', () => ({
   reconcileStorefrontDiscoveryIndex: reconcileMock
+}));
+
+jest.unstable_mockModule('../src/services/storefrontDiscoveryCacheState.js', () => ({
+  getStorefrontDiscoveryCacheVersion: getStorefrontDiscoveryCacheVersionMock
+}));
+
+jest.unstable_mockModule('../src/services/storefrontDiscoveryFreshnessService.js', () => ({
+  getStorefrontDiscoverySharedSignature: getStorefrontDiscoverySharedSignatureMock
 }));
 
 jest.unstable_mockModule('../src/config/logger.js', () => ({
@@ -73,6 +83,8 @@ const makeEntry = (overrides = {}) => ({
 describe('storefrontDiscoveryRepository (index-backed search + metadata)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getStorefrontDiscoveryCacheVersionMock.mockReturnValue(1);
+    getStorefrontDiscoverySharedSignatureMock.mockResolvedValue('1:1');
     findOneMock.mockResolvedValue({
       row_count: 1,
       last_updated_at: '2026-03-31T00:00:00.000Z'

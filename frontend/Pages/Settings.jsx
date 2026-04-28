@@ -47,7 +47,9 @@ import { broadcastWorkflowModeChange } from '../src/features/settings/WorkflowMo
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
-  normalizeWorkflowMode
+  normalizeWorkflowMode,
+  WORKFLOW_MODE_LABELS,
+  WORKFLOW_MODE_VALUES
 } from '../src/features/settings/workflowMode.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 
@@ -1466,7 +1468,7 @@ export default function Settings() {
                 Business Mode
               </CardTitle>
               <CardDescription>
-                Manufacturing keeps full IMS/POS surfaces; MSME simplifies IMS + POS while preserving existing data.
+                Template mode controls presets and navigation behavior. Manufacturing-family modes keep full IMS/POS surfaces, while Simple (MSME) keeps streamlined flows.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1478,8 +1480,9 @@ export default function Settings() {
                   onChange={(event) => handleChange('opsWorkflowMode', normalizeWorkflowMode(event.target.value))}
                   disabled={currentUser?.is_master_admin !== true}
                 >
-                  <option value="manufacturing">Manufacturing (Full)</option>
-                  <option value="msme">MSME (Simplified)</option>
+                  {WORKFLOW_MODE_VALUES.map((mode) => (
+                    <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
+                  ))}
                 </select>
               </div>
               <p className="text-xs text-slate-600">

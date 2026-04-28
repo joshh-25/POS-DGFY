@@ -7,7 +7,12 @@ import { createItem, updateItem } from './itemService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getAllSettingsUseCase } from '../modules/settings/index.js';
 import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
-import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
+import {
+    DEFAULT_WORKFLOW_MODE,
+    normalizeWorkflowMode,
+    resolveWorkflowModeFamily,
+    resolveWorkflowTemplateMode
+} from '../modules/shared/constants/workflowModes.js';
 
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
@@ -311,6 +316,8 @@ const resolveTenantWorkflowMode = async () => {
     return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
 };
 
+const resolveTenantTemplateWorkflowMode = (workflowMode) => resolveWorkflowTemplateMode(workflowMode);
+
 const normalizeTemplateWorkflowMode = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     if (VALID_TEMPLATE_WORKFLOW_MODES.includes(normalized)) {
@@ -453,9 +460,14 @@ const inferTemplateMetadataFromRows = (rows = []) => {
     };
 };
 
-const buildWorkflowMismatchMessage = ({ templateWorkflowMode, tenantWorkflowMode }) => (
-    `Template workflow mode '${templateWorkflowMode}' does not match tenant workflow mode '${tenantWorkflowMode}'. `
-    + `Download the '${tenantWorkflowMode}' CSV template and try again.`
+const buildWorkflowMismatchMessage = ({
+    templateWorkflowMode,
+    tenantWorkflowMode,
+    tenantWorkflowModeFamily,
+    tenantTemplateWorkflowMode
+}) => (
+    `Template workflow mode '${templateWorkflowMode}' is not compatible with tenant workflow mode '${tenantWorkflowMode}' `
+    + `(mode family '${tenantWorkflowModeFamily}'). Download the '${tenantTemplateWorkflowMode}' CSV template and try again.`
 );
 
 /**
@@ -479,6 +491,8 @@ export const previewImport = async (csvContent) => {
     const templateMetadata = resolveTemplateMetadataFromRecords(headers, records);
     const templateWorkflowMode = templateMetadata.workflowMode;
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
+    const tenantWorkflowModeFamily = resolveWorkflowModeFamily(tenantWorkflowMode);
+    const tenantTemplateWorkflowMode = resolveTenantTemplateWorkflowMode(tenantWorkflowMode);
 
     if (!templateMetadata.signatureValid) {
         return {
@@ -488,20 +502,29 @@ export const previewImport = async (csvContent) => {
                 code: 'TEMPLATE_SIGNATURE_INVALID',
                 reason: templateMetadata.reason,
                 template_workflow_mode: templateWorkflowMode,
-                tenant_workflow_mode: tenantWorkflowMode
+                tenant_workflow_mode: tenantWorkflowMode,
+                tenant_workflow_mode_family: tenantWorkflowModeFamily,
+                tenant_template_workflow_mode: tenantTemplateWorkflowMode
             }
         };
     }
 
-    if (templateWorkflowMode !== tenantWorkflowMode) {
+    if (templateWorkflowMode !== tenantTemplateWorkflowMode) {
         return {
             success: false,
-            error: buildWorkflowMismatchMessage({ templateWorkflowMode, tenantWorkflowMode }),
+            error: buildWorkflowMismatchMessage({
+                templateWorkflowMode,
+                tenantWorkflowMode,
+                tenantWorkflowModeFamily,
+                tenantTemplateWorkflowMode
+            }),
             details: {
                 code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
                 template_workflow_mode: templateWorkflowMode,
                 tenant_workflow_mode: tenantWorkflowMode,
-                remediation: `Use the ${tenantWorkflowMode} CSV template for this tenant before importing.`
+                tenant_workflow_mode_family: tenantWorkflowModeFamily,
+                tenant_template_workflow_mode: tenantTemplateWorkflowMode,
+                remediation: `Use the ${tenantTemplateWorkflowMode} CSV template for this tenant before importing.`
             }
         };
     }
@@ -589,6 +612,8 @@ export const previewImport = async (csvContent) => {
         templateType,
         templateWorkflowMode,
         tenantWorkflowMode,
+        tenantWorkflowModeFamily,
+        tenantTemplateWorkflowMode,
         templateSchemaVersion: templateMetadata.schemaVersion || null,
         totalRows: records.length,
         validRows: validCount,
@@ -621,6 +646,8 @@ export const confirmImport = async (rows, userId) => {
     const templateMetadata = inferTemplateMetadataFromRows(rows);
     const templateWorkflowMode = templateMetadata.workflowMode;
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
+    const tenantWorkflowModeFamily = resolveWorkflowModeFamily(tenantWorkflowMode);
+    const tenantTemplateWorkflowMode = resolveTenantTemplateWorkflowMode(tenantWorkflowMode);
     if (!templateMetadata.signatureValid) {
         return {
             success: false,
@@ -629,20 +656,29 @@ export const confirmImport = async (rows, userId) => {
                 code: 'TEMPLATE_SIGNATURE_INVALID',
                 reason: templateMetadata.reason,
                 template_workflow_mode: templateWorkflowMode,
-                tenant_workflow_mode: tenantWorkflowMode
+                tenant_workflow_mode: tenantWorkflowMode,
+                tenant_workflow_mode_family: tenantWorkflowModeFamily,
+                tenant_template_workflow_mode: tenantTemplateWorkflowMode
             }
         };
     }
 
-    if (templateWorkflowMode !== tenantWorkflowMode) {
+    if (templateWorkflowMode !== tenantTemplateWorkflowMode) {
         return {
             success: false,
-            error: buildWorkflowMismatchMessage({ templateWorkflowMode, tenantWorkflowMode }),
+            error: buildWorkflowMismatchMessage({
+                templateWorkflowMode,
+                tenantWorkflowMode,
+                tenantWorkflowModeFamily,
+                tenantTemplateWorkflowMode
+            }),
             details: {
                 code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
                 template_workflow_mode: templateWorkflowMode,
                 tenant_workflow_mode: tenantWorkflowMode,
-                remediation: `Use the ${tenantWorkflowMode} CSV template for this tenant before importing.`
+                tenant_workflow_mode_family: tenantWorkflowModeFamily,
+                tenant_template_workflow_mode: tenantTemplateWorkflowMode,
+                remediation: `Use the ${tenantTemplateWorkflowMode} CSV template for this tenant before importing.`
             }
         };
     }
@@ -1128,6 +1164,13 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
     const normalizedMode = normalizeTemplateWorkflowMode(workflowMode);
     if (normalizedMode) return normalizedMode;
 
+    const hasWorkflowModeInput = workflowMode !== undefined
+        && workflowMode !== null
+        && String(workflowMode).trim() !== '';
+    if (hasWorkflowModeInput) {
+        return resolveWorkflowTemplateMode(workflowMode);
+    }
+
     // Backwards compatibility:
     // legacy callers that only pass `type` map to manufacturing templates.
     if (templateType) {
@@ -1139,8 +1182,8 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
 
 const getTemplateCompatibilityNote = (workflowMode) => (
     workflowMode === 'msme'
-        ? 'This CSV template is for MSME mode only. It will be rejected in manufacturing mode.'
-        : 'This CSV template is for manufacturing mode only. It will be rejected in MSME mode.'
+        ? 'This CSV template is for Simple (MSME) mode family only. It will be rejected for manufacturing-family modes.'
+        : 'This CSV template is for manufacturing-family modes only. It will be rejected for Simple (MSME) mode.'
 );
 
 const appendTemplateMarkersToRows = (rows, workflowMode) => {

@@ -13,6 +13,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import { toast } from 'sonner';
 
 // Import step components
@@ -46,7 +47,7 @@ const STEPS = [
   { id: 13, name: 'Review', component: SummaryStep },
 ];
 
-const defaultProductData = {
+const BASE_PRODUCT_DATA = {
   category: 'product',
   product_type: 'finished_goods',
   vat_type: 'vatable',
@@ -77,6 +78,14 @@ const defaultProductData = {
   fifo_enabled: true
 };
 
+const buildDefaultProductData = (templateDefaults = {}) => ({
+  ...BASE_PRODUCT_DATA,
+  unit_of_measure: templateDefaults.unit_of_measure || BASE_PRODUCT_DATA.unit_of_measure,
+  vat_type: templateDefaults.vat_type || BASE_PRODUCT_DATA.vat_type,
+  max_capacity: Number(templateDefaults.max_capacity ?? BASE_PRODUCT_DATA.max_capacity),
+  fifo_enabled: templateDefaults.fifo_enabled !== false
+});
+
 export default function ProductCreateWizard({
   open,
   onClose,
@@ -84,6 +93,7 @@ export default function ProductCreateWizard({
   onSaveDraft,
   items,
   product,
+  workflowMode = 'manufacturing',
   posConfig = null,
   onTogglePosVisibility,
   onUploadPosImage,
@@ -92,7 +102,11 @@ export default function ProductCreateWizard({
 }) {
   const [step, setStep] = useState(1);
   const [initialStep, setInitialStep] = useState(1);
-  const [productData, setProductData] = useState(defaultProductData);
+  const modeProductDefaults = useMemo(
+    () => resolveBusinessModeProductDefaults(workflowMode),
+    [workflowMode]
+  );
+  const [productData, setProductData] = useState(buildDefaultProductData(modeProductDefaults));
   const [initialProductData, setInitialProductData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -170,7 +184,7 @@ export default function ProductCreateWizard({
         ? stockByLocation.get(initialLocationId)
         : (activeLocations.length > 1 ? 0 : parseNumberField(product.current_stock, 0));
       const loadedData = {
-        ...defaultProductData,
+        ...buildDefaultProductData(modeProductDefaults),
         ...product,
         // Parse numeric fields
         batch_size: parseNumberFieldOrNull(product.batch_size),
@@ -178,7 +192,7 @@ export default function ProductCreateWizard({
         processing_loss: parseNumberField(product.processing_loss, 0),
         current_stock: initialLocationStock,
         location_id: initialLocationId,
-        max_capacity: parseNumberField(product.max_capacity, 1000),
+        max_capacity: parseNumberField(product.max_capacity, Number(modeProductDefaults.max_capacity ?? 1000)),
         min_threshold: parseNumberField(product.min_threshold, 0),
         purchase_allowance: parseNumberField(product.purchase_allowance, 0),
         cost_per_unit: parseNumberField(product.cost_per_unit, 0),
@@ -225,7 +239,7 @@ export default function ProductCreateWizard({
     } else if (!product && open) {
       // Reset for new product
       const nextDefaultData = {
-        ...defaultProductData,
+        ...buildDefaultProductData(modeProductDefaults),
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : ''
       };
       setProductData(nextDefaultData);
@@ -237,7 +251,7 @@ export default function ProductCreateWizard({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
     }
-  }, [product, open, activeLocations]);
+  }, [modeProductDefaults, product, open, activeLocations]);
 
   useEffect(() => {
     if (!open || skuManuallyEdited) return;
@@ -322,7 +336,7 @@ export default function ProductCreateWizard({
   const resetWizard = () => {
     setStep(1);
     setInitialStep(1);
-    setProductData({ ...defaultProductData });
+    setProductData({ ...buildDefaultProductData(modeProductDefaults) });
     setInitialProductData(null);
     setStockBaseline(0);
     setIsDirty(false);

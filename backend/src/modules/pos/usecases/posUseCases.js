@@ -242,10 +242,20 @@ const findOperationReplayEntry = async ({
         throw buildReplayBlockedError(existing.response_payload || {});
     }
 
+    const responsePayload = existing.response_payload && typeof existing.response_payload === 'object'
+        ? existing.response_payload
+        : {};
+    const existingIdempotency = responsePayload.idempotency && typeof responsePayload.idempotency === 'object'
+        ? responsePayload.idempotency
+        : {};
+
     return {
-        ...(existing.response_payload && typeof existing.response_payload === 'object'
-            ? existing.response_payload
-            : {}),
+        ...responsePayload,
+        idempotency: {
+            ...existingIdempotency,
+            outcome: 'idempotent_replay',
+            idempotent_replay: true
+        },
         idempotent_replay: true,
         replay_outcome: 'idempotent_replay'
     };
@@ -748,7 +758,17 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             `Invalid fulfillment transition: ${currentStatus} -> ${nextStatus}`,
-            { statusCode: 409 }
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'ORDER_STATUS_TRANSITION_INVALID',
+                        current_status: currentStatus,
+                        requested_status: nextStatus,
+                        allowed_next_statuses: allowedStatuses
+                    }
+                }
+            }
         );
     }
 
@@ -756,7 +776,17 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             'Only delivery orders can transition to out_for_delivery',
-            { statusCode: 409 }
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'ORDER_METHOD_DELIVERY_REQUIRED',
+                        current_status: currentStatus,
+                        requested_status: nextStatus,
+                        order_method: orderMethod
+                    }
+                }
+            }
         );
     }
 
@@ -764,7 +794,17 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             'Delivery orders must transition to out_for_delivery instead of ready_for_pickup',
-            { statusCode: 409 }
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'ORDER_METHOD_PICKUP_REQUIRED',
+                        current_status: currentStatus,
+                        requested_status: nextStatus,
+                        order_method: orderMethod
+                    }
+                }
+            }
         );
     }
 };
@@ -3050,6 +3090,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
                 nextStatus: targetStatus,
                 orderMethod: existing.order_method
             });
+            const mutationTimestamp = new Date();
 
             if (
                 currentStatus !== 'completed'
@@ -3077,7 +3118,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             }
             if (currentStatus === 'placed' && (targetStatus === 'confirmed' || targetStatus === 'rejected')) {
                 updatePayload.accepted_by = actingUserId;
-                updatePayload.accepted_at = new Date();
+                updatePayload.accepted_at = mutationTimestamp;
             }
 
             await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {
@@ -3090,7 +3131,20 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
 
             await transaction.commit();
             const replayPayload = {
-                order: toSerializable(updated)
+                order: toSerializable(updated),
+                status_transition: {
+                    current_status: currentStatus,
+                    requested_status: targetStatus,
+                    order_method: existing.order_method || null,
+                    applied_by: actingUserId,
+                    applied_at: mutationTimestamp.toISOString()
+                },
+                idempotency: {
+                    key: idempotencyKey || null,
+                    request_fingerprint: replayRequestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
             };
             await persistOperationReplay({
                 posRepository,

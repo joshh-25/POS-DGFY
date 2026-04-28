@@ -9,7 +9,11 @@ import { searchByMeaning, syncItemEmbedding } from '../../../services/embeddingS
 import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
-import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    DEFAULT_WORKFLOW_MODE,
+    normalizeWorkflowMode,
+    resolveWorkflowModeFamily
+} from '../../shared/constants/workflowModes.js';
 import {
     getItemCostMetrics,
     getItemsCostMetrics,
@@ -137,13 +141,13 @@ const getCurrentWorkflowMode = async () => {
 };
 
 const getPurchasableCategoriesForWorkflow = (workflowMode) => (
-    workflowMode === 'msme'
+    resolveWorkflowModeFamily(workflowMode) === 'msme'
         ? MSME_PURCHASABLE_CATEGORIES
         : MANUFACTURING_PURCHASABLE_CATEGORIES
 );
 
 const assertMsmePricingRequirements = ({ workflowMode, status, costPerUnit, defaultSalePrice }) => {
-    if (workflowMode !== 'msme') return;
+    if (resolveWorkflowModeFamily(workflowMode) !== 'msme') return;
     if (String(status || '').toLowerCase() === 'draft') return;
 
     if (costPerUnit === null || costPerUnit === undefined || costPerUnit === '') {

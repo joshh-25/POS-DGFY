@@ -1,5 +1,9 @@
 import { Package, Beaker, Box, Factory, Wrench } from 'lucide-react';
-import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import {
+    DEFAULT_WORKFLOW_MODE,
+    normalizeWorkflowMode,
+    resolveWorkflowModeFamily
+} from '@/src/features/settings/workflowMode.js';
 
 /**
  * Category Constants - Single Source of Truth for Frontend
@@ -143,7 +147,7 @@ export const isManufactured = (item) => {
 export const isPurchasable = (item, workflowModeOrOptions = DEFAULT_WORKFLOW_MODE) => {
     if (!item) return false;
     const workflowMode = resolveWorkflowMode(workflowModeOrOptions);
-    const categories = workflowMode === 'msme'
+    const categories = resolveWorkflowModeFamily(workflowMode) === 'msme'
         ? [CATEGORIES.RAW_MATERIAL, CATEGORIES.PACKAGING, CATEGORIES.SUPPLIES, CATEGORIES.PRODUCT]
         : [CATEGORIES.RAW_MATERIAL, CATEGORIES.PACKAGING, CATEGORIES.SUPPLIES];
 

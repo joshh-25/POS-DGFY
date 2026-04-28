@@ -2,7 +2,11 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
-import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    isWorkflowMode,
+    normalizeWorkflowMode,
+    WORKFLOW_MODE_VALUES
+} from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
@@ -25,7 +29,7 @@ const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     if (!isWorkflowMode(requestedMode)) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            `ops_workflow_mode must be one of: manufacturing, msme`,
+            `ops_workflow_mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`,
             { statusCode: 422 }
         );
     }

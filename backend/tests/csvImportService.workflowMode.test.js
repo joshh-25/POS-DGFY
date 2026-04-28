@@ -87,7 +87,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
     const result = await previewImport(csvWithMode('manufacturing'));
 
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/does not match tenant workflow mode/i);
+    expect(result.error).toMatch(/not compatible with tenant workflow mode/i);
     expect(result.details).toMatchObject({
       code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
       template_workflow_mode: 'manufacturing',
@@ -101,7 +101,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
     const result = await previewImport(csvWithMode('msme'));
 
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/does not match tenant workflow mode/i);
+    expect(result.error).toMatch(/not compatible with tenant workflow mode/i);
     expect(result.details).toMatchObject({
       code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
       template_workflow_mode: 'msme',

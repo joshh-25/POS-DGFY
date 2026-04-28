@@ -151,6 +151,18 @@ topic: dgfy_unified_onboarding_plan
 - `wizard_viewed`, `reminder_shown`, `reminder_dismissed`, `optional_asset_skipped`
 2. Added backend/frontend tests for onboarding contracts and behavior.
 
+## 10) Questionnaire + Classifier Addendum (MVP Advisory Tier)
+1. Added onboarding questionnaire step key: `business_classification`.
+2. Questionnaire payload is normalized and persisted under onboarding step payloads.
+3. Deterministic advisory classifier output is persisted/exposed as `tenant_onboarding_progress.classification_snapshot` with:
+- `visibility_mode` (`ghost | catalog | inquiry | transaction`)
+- `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
+- `workflow_mode_recommendation` (`msme | manufacturing`)
+- `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
+4. Classifier output is advisory-only in MVP (no hard API gating, no compliance lifecycle mutation, no workflow mode auto-write).
+5. Added classifier telemetry event keys:
+- `classifier_viewed`, `classifier_saved`, `classifier_skipped`
+
 ## 6) Verification
 1. Backend full suite pass (`npm --prefix backend test -- --runInBand`)
 2. Frontend full suite pass (`npm --prefix frontend test`)

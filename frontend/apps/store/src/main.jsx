@@ -761,7 +761,11 @@ export function App() {
         .catch(() => {});
       if ('caches' in window) {
         caches.keys()
-          .then((keys) => Promise.all(keys.filter((k) => k.startsWith('sku-store-shell-')).map((k) => caches.delete(k))))
+          .then((keys) => Promise.all(
+            keys
+              .filter((k) => k.startsWith('sku-store-shell-') || k.startsWith('sku-store-runtime-'))
+              .map((k) => caches.delete(k))
+          ))
           .catch(() => {});
       }
       return;

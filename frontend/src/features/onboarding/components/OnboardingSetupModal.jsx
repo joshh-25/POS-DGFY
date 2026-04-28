@@ -3,12 +3,54 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { completeOnboarding, saveOnboardingStep, trackOnboardingEvent } from '@/services/onboardingService.js';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { WORKFLOW_MODE_LABELS } from '@/src/features/settings/workflowMode.js';
 
 const WIZARD_STEPS = Object.freeze([
   'business_profile',
   'brand_assets',
+  'business_classification',
   'readiness'
 ]);
+
+const VISIBILITY_OPTIONS = Object.freeze([
+  { value: 'ghost', label: 'Ghost listing (map presence only)' },
+  { value: 'catalog', label: 'Catalog mode (listings only)' },
+  { value: 'inquiry', label: 'Inquiry mode (lead generation)' },
+  { value: 'transaction', label: 'Transaction mode (online ordering)' }
+]);
+
+const OFFERING_OPTIONS = Object.freeze([
+  { value: 'physical_product', label: 'Physical products' },
+  { value: 'time_service', label: 'Time-based services' },
+  { value: 'ticketed_seat', label: 'Ticketed seats' },
+  { value: 'capacity_slot', label: 'Capacity slots' },
+  { value: 'rental', label: 'Rentals' }
+]);
+
+const ORDER_MODE_OPTIONS = Object.freeze([
+  { value: 'walk_in', label: 'Walk-in' },
+  { value: 'pre_order', label: 'Pre-order' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'realtime', label: 'Real-time' }
+]);
+
+const FULFILLMENT_OPTIONS = Object.freeze([
+  { value: 'pickup', label: 'Pickup' },
+  { value: 'own_delivery', label: 'Own delivery' },
+  { value: 'platform_delivery', label: 'Platform delivery' },
+  { value: 'on_site_service', label: 'On-site service' }
+]);
+
+const tierLabelMap = Object.freeze({
+  tier_0: 'Tier 0 (Ghost Listing)',
+  tier_1: 'Tier 1 (Catalog Mode)',
+  tier_2: 'Tier 2 (Inquiry Mode)',
+  tier_3: 'Tier 3 (Transaction Mode)'
+});
+
+const workflowLabelMap = Object.freeze(Object.fromEntries(
+  Object.entries(WORKFLOW_MODE_LABELS).map(([key, label]) => [key, `${label} template recommendation`])
+));
 
 const getProgress = (onboarding) => {
   const snapshot = onboarding?.tenant_onboarding_progress?.checklist_snapshot;
@@ -43,6 +85,88 @@ const deriveDisplayName = ({ onboarding, currentUser }) => {
   ).trim();
   if (payloadName) return payloadName;
   return String(currentUser?.company?.name || '').trim();
+};
+
+const normalizeList = (value) => Array.isArray(value) ? value.filter(Boolean) : [];
+
+const deriveClassificationPayload = (onboarding) => {
+  const existing = onboarding?.tenant_onboarding_progress?.step_payloads?.business_classification;
+  if (!existing || typeof existing !== 'object') {
+    return {
+      identity: { industry_tags: [] },
+      legitimacy: { registration_status: 'informal', requires_official_receipt: false },
+      location_presence: { operation_type: 'fixed', branch_count: 1, radius_visibility: 'approximate' },
+      operations_staff: { pos_user_count: 1, needs_rbac: false },
+      product_service: { offering_types: [] },
+      order_booking: { order_modes: ['walk_in'], fulfillment_methods: ['pickup'] },
+      online_visibility: { mode: 'catalog' },
+      payment_configuration: { accepted_in_store_payments: ['cash'], accepts_online_payments: false, payout_destination: 'bank_transfer', settlement_preference: 'daily' },
+      branding: { branding_level: 'basic', has_custom_domain: false },
+      customer_interaction: { preferred_channels: ['sms'], tracks_customer_data: false },
+      growth_intent: { growth_goals: [], estimated_monthly_sales: 0 }
+    };
+  }
+
+  return {
+    identity: {
+      official_name: String(existing?.identity?.official_name || '').trim(),
+      display_name: String(existing?.identity?.display_name || '').trim(),
+      industry_tags: normalizeList(existing?.identity?.industry_tags)
+    },
+    legitimacy: {
+      registration_status: String(existing?.legitimacy?.registration_status || 'informal').trim().toLowerCase(),
+      requires_official_receipt: Boolean(existing?.legitimacy?.requires_official_receipt)
+    },
+    location_presence: {
+      operation_type: String(existing?.location_presence?.operation_type || 'fixed').trim().toLowerCase(),
+      branch_count: Number(existing?.location_presence?.branch_count || 1),
+      radius_visibility: String(existing?.location_presence?.radius_visibility || 'approximate').trim().toLowerCase()
+    },
+    operations_staff: {
+      pos_user_count: Number(existing?.operations_staff?.pos_user_count || 1),
+      needs_rbac: Boolean(existing?.operations_staff?.needs_rbac)
+    },
+    product_service: {
+      offering_types: normalizeList(existing?.product_service?.offering_types)
+    },
+    order_booking: {
+      order_modes: normalizeList(existing?.order_booking?.order_modes),
+      fulfillment_methods: normalizeList(existing?.order_booking?.fulfillment_methods)
+    },
+    online_visibility: {
+      mode: String(existing?.online_visibility?.mode || 'catalog').trim().toLowerCase()
+    },
+    payment_configuration: {
+      accepted_in_store_payments: normalizeList(existing?.payment_configuration?.accepted_in_store_payments),
+      accepts_online_payments: Boolean(existing?.payment_configuration?.accepts_online_payments),
+      payout_destination: String(existing?.payment_configuration?.payout_destination || 'bank_transfer').trim().toLowerCase(),
+      settlement_preference: String(existing?.payment_configuration?.settlement_preference || 'daily').trim().toLowerCase()
+    },
+    branding: {
+      branding_level: String(existing?.branding?.branding_level || 'basic').trim().toLowerCase(),
+      has_custom_domain: Boolean(existing?.branding?.has_custom_domain)
+    },
+    customer_interaction: {
+      preferred_channels: normalizeList(existing?.customer_interaction?.preferred_channels),
+      tracks_customer_data: Boolean(existing?.customer_interaction?.tracks_customer_data)
+    },
+    growth_intent: {
+      growth_goals: normalizeList(existing?.growth_intent?.growth_goals),
+      estimated_monthly_sales: Number(existing?.growth_intent?.estimated_monthly_sales || 0)
+    }
+  };
+};
+
+const deriveClassificationSnapshot = (onboarding) => (
+  onboarding?.tenant_onboarding_progress?.classification_snapshot || null
+);
+
+const toggleListOption = (currentList, optionValue) => {
+  const current = Array.isArray(currentList) ? currentList : [];
+  if (current.includes(optionValue)) {
+    return current.filter((entry) => entry !== optionValue);
+  }
+  return [...current, optionValue];
 };
 
 export function OnboardingReminderBanner({ onboarding, onOpenWizard }) {
@@ -87,13 +211,19 @@ export default function OnboardingSetupModal({
   const [logoFile, setLogoFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [classificationForm, setClassificationForm] = useState(deriveClassificationPayload(onboarding));
+  const [classificationSnapshot, setClassificationSnapshot] = useState(deriveClassificationSnapshot(onboarding));
 
   const progress = useMemo(() => getProgress(onboarding), [onboarding]);
   const lastTrackedOpenRef = useRef(false);
+  const lastClassifierViewTrackedRef = useRef(false);
+  const initializedForOpenRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       lastTrackedOpenRef.current = false;
+      lastClassifierViewTrackedRef.current = false;
+      initializedForOpenRef.current = false;
       return;
     }
     if (!lastTrackedOpenRef.current) {
@@ -103,13 +233,30 @@ export default function OnboardingSetupModal({
         metadata: { surface: 'modal' }
       }).catch(() => {});
     }
-    setDisplayName(deriveDisplayName({ onboarding, currentUser }));
-    setCurrentStepIndex(0);
+
+    if (!initializedForOpenRef.current) {
+      setDisplayName(deriveDisplayName({ onboarding, currentUser }));
+      setClassificationForm(deriveClassificationPayload(onboarding));
+      setClassificationSnapshot(deriveClassificationSnapshot(onboarding));
+      setCurrentStepIndex(0);
+      initializedForOpenRef.current = true;
+    }
   }, [open, onboarding, currentUser]);
+
+  const step = WIZARD_STEPS[currentStepIndex] || WIZARD_STEPS[0];
+
+  useEffect(() => {
+    if (step !== 'business_classification') return;
+    if (lastClassifierViewTrackedRef.current) return;
+    lastClassifierViewTrackedRef.current = true;
+    trackOnboardingEvent({
+      eventKey: 'classifier_viewed',
+      metadata: { surface: 'modal' }
+    }).catch(() => {});
+  }, [step]);
 
   if (!open) return null;
 
-  const step = WIZARD_STEPS[currentStepIndex] || WIZARD_STEPS[0];
   const canGoBack = currentStepIndex > 0;
   const canGoNext = currentStepIndex < WIZARD_STEPS.length - 1;
 
@@ -185,6 +332,59 @@ export default function OnboardingSetupModal({
       goToNextStep();
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to record optional assets skip.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveClassification = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        ...classificationForm,
+        location_presence: {
+          ...classificationForm.location_presence,
+          branch_count: Number(classificationForm.location_presence?.branch_count || 0)
+        },
+        operations_staff: {
+          ...classificationForm.operations_staff,
+          pos_user_count: Number(classificationForm.operations_staff?.pos_user_count || 0)
+        },
+        growth_intent: {
+          ...classificationForm.growth_intent,
+          estimated_monthly_sales: Number(classificationForm.growth_intent?.estimated_monthly_sales || 0)
+        }
+      };
+      const data = await saveOnboardingStep({
+        stepKey: 'business_classification',
+        payload
+      });
+      setClassificationSnapshot(data?.tenant_onboarding_progress?.classification_snapshot || null);
+      await trackOnboardingEvent({
+        eventKey: 'classifier_saved',
+        metadata: { surface: 'modal' }
+      });
+      toast.success('Business classification saved.');
+      await onRefreshUser?.();
+      goToNextStep();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to save business classification step.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSkipClassification = async () => {
+    setSaving(true);
+    try {
+      await trackOnboardingEvent({
+        eventKey: 'classifier_skipped',
+        metadata: { surface: 'modal' }
+      });
+      toast.success('Classification skipped for now.');
+      goToNextStep();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to skip classification step.');
     } finally {
       setSaving(false);
     }
@@ -305,7 +505,17 @@ export default function OnboardingSetupModal({
 
           {step === 'readiness' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">3) Required Readiness Checks</h3>
+              <h3 className="text-sm font-semibold text-slate-900">4) Required Readiness Checks</h3>
+              {classificationSnapshot && (
+                <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <p>
+                    Advisory tier: <span className="font-semibold">{tierLabelMap[classificationSnapshot.monetization_tier] || classificationSnapshot.monetization_tier || 'Unknown'}</span>
+                  </p>
+                  <p className="mt-1">
+                    Workflow recommendation: <span className="font-semibold">{workflowLabelMap[classificationSnapshot.business_mode_template_recommendation] || workflowLabelMap[classificationSnapshot.workflow_mode_recommendation] || classificationSnapshot.business_mode_template_recommendation || classificationSnapshot.workflow_mode_recommendation || 'Unknown'}</span>
+                  </p>
+                </div>
+              )}
               <ul className="mt-2 space-y-1 text-xs text-slate-700">
                 {(progress.missing_requirements || []).length === 0 ? (
                   <li className="font-semibold text-emerald-700">All required checks are currently satisfied.</li>
@@ -329,6 +539,240 @@ export default function OnboardingSetupModal({
                   className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                 >
                   Complete Onboarding
+                </button>
+              </div>
+            </section>
+          )}
+
+          {step === 'business_classification' && (
+            <section className="rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">3) Business Classification (Advisory)</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                This questionnaire configures advisory visibility/tier/workflow insights only. It does not gate access.
+              </p>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-slate-700">
+                  Registration status
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.legitimacy.registration_status}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      legitimacy: {
+                        ...prev.legitimacy,
+                        registration_status: event.target.value
+                      }
+                    }))}
+                  >
+                    <option value="registered">Registered</option>
+                    <option value="partial">Partially Registered</option>
+                    <option value="informal">Informal</option>
+                  </select>
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  Visibility mode
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.online_visibility.mode}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      online_visibility: {
+                        ...prev.online_visibility,
+                        mode: event.target.value
+                      }
+                    }))}
+                  >
+                    {VISIBILITY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  Number of branches
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.location_presence.branch_count}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      location_presence: {
+                        ...prev.location_presence,
+                        branch_count: event.target.value
+                      }
+                    }))}
+                  />
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  POS users/staff count
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.operations_staff.pos_user_count}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      operations_staff: {
+                        ...prev.operations_staff,
+                        pos_user_count: event.target.value
+                      }
+                    }))}
+                  />
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  Estimated monthly sales
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.growth_intent.estimated_monthly_sales}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      growth_intent: {
+                        ...prev.growth_intent,
+                        estimated_monthly_sales: event.target.value
+                      }
+                    }))}
+                  />
+                </label>
+
+                <label className="mt-5 inline-flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={classificationForm.legitimacy.requires_official_receipt}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      legitimacy: {
+                        ...prev.legitimacy,
+                        requires_official_receipt: event.target.checked
+                      }
+                    }))}
+                  />
+                  Requires official receipts
+                </label>
+
+                <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={classificationForm.operations_staff.needs_rbac}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      operations_staff: {
+                        ...prev.operations_staff,
+                        needs_rbac: event.target.checked
+                      }
+                    }))}
+                  />
+                  Needs role-based access controls
+                </label>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-slate-700">Offering types</p>
+                  <div className="mt-1 space-y-1">
+                    {OFFERING_OPTIONS.map((option) => (
+                      <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={classificationForm.product_service.offering_types.includes(option.value)}
+                          onChange={() => setClassificationForm((prev) => ({
+                            ...prev,
+                            product_service: {
+                              ...prev.product_service,
+                              offering_types: toggleListOption(prev.product_service.offering_types, option.value)
+                            }
+                          }))}
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-slate-700">Order modes</p>
+                  <div className="mt-1 space-y-1">
+                    {ORDER_MODE_OPTIONS.map((option) => (
+                      <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={classificationForm.order_booking.order_modes.includes(option.value)}
+                          onChange={() => setClassificationForm((prev) => ({
+                            ...prev,
+                            order_booking: {
+                              ...prev.order_booking,
+                              order_modes: toggleListOption(prev.order_booking.order_modes, option.value)
+                            }
+                          }))}
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-xs font-medium text-slate-700">Fulfillment methods</p>
+                <div className="mt-1 grid gap-1 sm:grid-cols-2">
+                  {FULFILLMENT_OPTIONS.map((option) => (
+                    <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={classificationForm.order_booking.fulfillment_methods.includes(option.value)}
+                        onChange={() => setClassificationForm((prev) => ({
+                          ...prev,
+                          order_booking: {
+                            ...prev.order_booking,
+                            fulfillment_methods: toggleListOption(prev.order_booking.fulfillment_methods, option.value)
+                          }
+                        }))}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {classificationSnapshot && (
+                <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                  <p>
+                    Current advisory tier: <span className="font-semibold">{tierLabelMap[classificationSnapshot.monetization_tier] || classificationSnapshot.monetization_tier}</span>
+                  </p>
+                  <p className="mt-1">
+                    Visibility: <span className="font-semibold">{classificationSnapshot.visibility_mode}</span>
+                  </p>
+                  <p className="mt-1">
+                    Workflow recommendation: <span className="font-semibold">{workflowLabelMap[classificationSnapshot.business_mode_template_recommendation] || workflowLabelMap[classificationSnapshot.workflow_mode_recommendation] || classificationSnapshot.business_mode_template_recommendation || classificationSnapshot.workflow_mode_recommendation}</span>
+                  </p>
+                  <p className="mt-1">
+                    Compliance hint: <span className="font-semibold">{classificationSnapshot.compliance_path_hint}</span>
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveClassification}
+                  disabled={saving}
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  Save and Continue
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkipClassification}
+                  disabled={saving}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                >
+                  Skip for Now
                 </button>
               </div>
             </section>

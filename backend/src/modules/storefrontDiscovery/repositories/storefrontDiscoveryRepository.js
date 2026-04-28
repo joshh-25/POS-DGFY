@@ -3,10 +3,26 @@ import { reconcileStorefrontDiscoveryIndex } from '../../../services/storefrontD
 import { getStorefrontDiscoveryCacheVersion } from '../../../services/storefrontDiscoveryCacheState.js';
 import { getStorefrontDiscoverySharedSignature } from '../../../services/storefrontDiscoveryFreshnessService.js';
 import logger from '../../../config/logger.js';
+import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
+import { createHash } from 'crypto';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
+const DISCOVERY_REDIS_CACHE_TTL_SECONDS = Math.max(
+    5,
+    Number.parseInt(process.env.STOREFRONT_DISCOVERY_REDIS_CACHE_TTL_SECONDS || '20', 10) || 20
+);
+const DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS = Math.max(
+    10,
+    Number.parseInt(process.env.STOREFRONT_DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS || '30', 10) || 30
+);
+const DISCOVERY_REDIS_CACHE_ENABLED = (() => {
+    const raw = String(process.env.STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED || '').trim().toLowerCase();
+    if (raw === 'true' || raw === '1' || raw === 'on') return true;
+    if (raw === 'false' || raw === '0' || raw === 'off') return false;
+    return process.env.NODE_ENV !== 'test';
+})();
 let cache = {
     expiresAt: 0,
     entries: [],
@@ -97,6 +113,87 @@ const resolveIncludeMatchMeta = (query = {}) => {
     const raw = normalizeSearchText(query.include_match_meta);
     if (raw === 'false' || raw === '0' || raw === 'no') return false;
     return true;
+};
+
+const toGeoBucket = ({ latitude, longitude } = {}) => {
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'na';
+    const latBucket = Math.round(lat * 20) / 20;
+    const lngBucket = Math.round(lng * 20) / 20;
+    return `${latBucket.toFixed(2)}:${lngBucket.toFixed(2)}`;
+};
+
+const normalizeDiscoveryQueryForCacheKey = (query = {}) => {
+    const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, Number.parseInt(query.limit, 10) || 20));
+    const search = normalizeSearchText(query.search);
+    const resultMode = resolveResultMode(query);
+    const stockFilter = resolveStockFilter(query, Boolean(search));
+    const pinScope = resolvePinScope(query, Number.isFinite(Number(query.latitude)) && Number.isFinite(Number(query.longitude)));
+    const includeMatchMeta = resolveIncludeMatchMeta(query);
+    const tenantScope = normalizeSearchText(query.tenant_id || query.tenant || 'all') || 'all';
+    const geoBucket = toGeoBucket({
+        latitude: query.latitude,
+        longitude: query.longitude
+    });
+
+    return {
+        page,
+        limit,
+        search,
+        result_mode: resultMode,
+        stock_filter: stockFilter,
+        pin_scope: pinScope,
+        include_match_meta: includeMatchMeta,
+        tenant_scope: tenantScope,
+        geo_bucket: geoBucket
+    };
+};
+
+const buildDiscoveryQueryCacheKey = ({ query = {}, version = 0, signature = '0:0' } = {}) => {
+    const canonicalQuery = normalizeDiscoveryQueryForCacheKey(query);
+    const digest = createHash('sha1').update(JSON.stringify(canonicalQuery)).digest('hex');
+    return `storefront:discovery:list:v3:${version}:${signature}:${digest}`;
+};
+
+const buildDiscoveryProfileCacheKey = ({ slug = '', signature = '0:0' } = {}) => {
+    const normalizedSlug = normalizeSlug(slug);
+    return `storefront:discovery:profile:v2:${signature}:${normalizedSlug}`;
+};
+
+const readRedisCacheEntry = async (key) => {
+    if (!DISCOVERY_REDIS_CACHE_ENABLED) return null;
+    if (!isRedisConnected()) return null;
+    const client = getRedisClient();
+    if (!client || !key) return null;
+    try {
+        const raw = await client.get(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (error) {
+        logger.warn('[StorefrontDiscovery] Redis cache read failed', {
+            key,
+            error: error?.message || 'unknown_error'
+        });
+        return null;
+    }
+};
+
+const writeRedisCacheEntry = async (key, value, ttlSeconds) => {
+    if (!DISCOVERY_REDIS_CACHE_ENABLED) return;
+    if (!isRedisConnected()) return;
+    const client = getRedisClient();
+    if (!client || !key) return;
+    try {
+        await client.setEx(key, ttlSeconds, JSON.stringify(value));
+    } catch (error) {
+        logger.warn('[StorefrontDiscovery] Redis cache write failed', {
+            key,
+            error: error?.message || 'unknown_error'
+        });
+    }
 };
 
 const sanitizeStorefrontAssetUrlFromIndex = ({ rawValue, tenantId, assetType }) => {
@@ -211,10 +308,12 @@ const warmIndexOnEmpty = async () => {
     }
 };
 
-const loadAllEntries = async () => {
+const loadAllEntries = async ({ cacheVersion = null, cacheSignature = null } = {}) => {
     const now = Date.now();
-    const version = getStorefrontDiscoveryCacheVersion();
-    const signature = await getStorefrontDiscoverySharedSignature();
+    const version = Number.isInteger(Number(cacheVersion))
+        ? Number(cacheVersion)
+        : getStorefrontDiscoveryCacheVersion();
+    const signature = String(cacheSignature || '').trim() || await getStorefrontDiscoverySharedSignature();
     if (
         cache.expiresAt > now
         && Array.isArray(cache.entries)
@@ -552,13 +651,40 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
 
 export const storefrontDiscoveryRepository = {
     async listDiscovery(query = {}) {
-        const entries = await loadAllEntries();
-        return applyDiscoveryQuery(entries, query);
+        const version = getStorefrontDiscoveryCacheVersion();
+        const signature = await getStorefrontDiscoverySharedSignature();
+        const cacheKey = buildDiscoveryQueryCacheKey({ query, version, signature });
+        const cached = await readRedisCacheEntry(cacheKey);
+        if (
+            cached
+            && Array.isArray(cached?.rows)
+            && cached?.pagination
+            && cached?.applied_filters
+        ) {
+            return cached;
+        }
+
+        const entries = await loadAllEntries({
+            cacheVersion: version,
+            cacheSignature: signature
+        });
+        const result = await applyDiscoveryQuery(entries, query);
+        await writeRedisCacheEntry(cacheKey, result, DISCOVERY_REDIS_CACHE_TTL_SECONDS);
+        return result;
     },
 
     async getStorefrontBySlug(slug) {
         const normalizedSlug = normalizeSlug(slug);
         if (!normalizedSlug) return null;
+        const signature = await getStorefrontDiscoverySharedSignature();
+        const cacheKey = buildDiscoveryProfileCacheKey({
+            slug: normalizedSlug,
+            signature
+        });
+        const cached = await readRedisCacheEntry(cacheKey);
+        if (cached && typeof cached === 'object') {
+            return cached;
+        }
 
         const row = await queryDiscoveryIndexWithLegacyFallback({
             findFn: StorefrontDiscoveryIndex.findOne.bind(StorefrontDiscoveryIndex),
@@ -574,6 +700,7 @@ export const storefrontDiscoveryRepository = {
         if (!row) return null;
         const entry = toPlainEntry(row);
         if (!Number.isFinite(entry.latitude) || !Number.isFinite(entry.longitude)) return null;
+        await writeRedisCacheEntry(cacheKey, entry, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
         return entry;
     }
 };

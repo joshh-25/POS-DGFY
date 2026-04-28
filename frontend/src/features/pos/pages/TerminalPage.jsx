@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useStat
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
+  createPosCheckout,
   fetchIncomingOnlineOrders,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
@@ -18,6 +19,22 @@ import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
+import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
+import {
+  TERMINAL_QUEUE_STATUS,
+  enqueueTerminalOperationIntent as persistTerminalOperationIntent,
+  getReplayCandidateEntries,
+  getTerminalOperationQueueSummary,
+  hydrateTerminalOperationQueueStore,
+  listTerminalOperationQueueEntries,
+  markTerminalOperationFailedManualResolution,
+  markTerminalOperationQueued,
+  markTerminalOperationReplayed,
+  markTerminalOperationReplaying,
+  markTerminalOperationResolved,
+  markTerminalOperationRetryScheduled,
+  pruneTerminalOperationHistory
+} from '../services/terminalOperationQueueStore.js';
 
 const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout'));
 
@@ -26,6 +43,9 @@ const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 const DEFAULT_TERMINAL_ID_OPTIONS = ['COUNTER-01', 'COUNTER-02', 'KIOSK-01'];
 const TERMINAL_REGISTRY_MODES = new Set(['warn', 'enforce']);
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
+const QUEUE_HISTORY_LIMIT = 250;
+const TERMINAL_OPERATION_MAX_RETRIES = 5;
+const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
@@ -34,9 +54,10 @@ const OPERATIONS_VIEW_MODES = [
   'cash_drawer',
   'close_shift',
   'sales_today',
-  'terminal_setup'
+  'terminal_setup',
+  'sync_queue'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'sync_queue'];
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -45,10 +66,9 @@ const TERMINAL_SECTION_IDS = {
   closeShift: 'pos-section-close-shift',
   locationScope: 'pos-section-location-scope',
   incomingOrders: 'pos-section-incoming-orders',
-  salesToday: 'pos-section-sales-today'
+  salesToday: 'pos-section-sales-today',
+  syncQueue: 'pos-section-sync-queue'
 };
-const TERMINAL_OPERATION_QUEUE_KEY = 'pos_terminal_operation_queue_v1';
-const MAX_TERMINAL_OPERATION_QUEUE_SIZE = 120;
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const DEFAULT_COMPLIANCE_ACTION_TARGET = '/settings?tab=compliance';
 const COMPLIANCE_REASON_LABELS = Object.freeze({
@@ -166,39 +186,22 @@ const readStoredTerminalId = () => {
   return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
 };
 
-const readTerminalOperationQueue = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(TERMINAL_OPERATION_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((entry) => entry && typeof entry === 'object');
-  } catch {
-    return [];
-  }
-};
-
-const writeTerminalOperationQueue = (queueEntries = []) => {
-  if (typeof window === 'undefined') return [];
-  const safeEntries = Array.isArray(queueEntries)
-    ? queueEntries.slice(-MAX_TERMINAL_OPERATION_QUEUE_SIZE)
-    : [];
-  window.localStorage.setItem(TERMINAL_OPERATION_QUEUE_KEY, JSON.stringify(safeEntries));
-  return safeEntries;
-};
-
-const removeTerminalOperationIntentById = (intentId) => {
-  if (!intentId) return readTerminalOperationQueue();
-  const queue = readTerminalOperationQueue();
-  const next = queue.filter((entry) => String(entry?.intent_id || '') !== String(intentId));
-  return writeTerminalOperationQueue(next);
-};
-
 const isRetryableTerminalOperationError = (error) => {
   if (!error?.response) return true;
   const status = Number(error?.response?.status || 0);
   return RETRYABLE_TERMINAL_OPERATION_STATUS_CODES.has(status);
+};
+
+const resolveTerminalOperationErrorDetails = (error) => ({
+  message: String(error?.response?.data?.message || error?.message || 'Operation replay failed').trim(),
+  code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
+  status: Number(error?.response?.status || 0) || undefined
+});
+
+const computeRetryBackoffMs = (attemptCount = 1) => {
+  const baseMs = 1500;
+  const jitterMs = Math.floor(Math.random() * 250);
+  return Math.min(90_000, (baseMs * (2 ** Math.max(0, attemptCount - 1))) + jitterMs);
 };
 
 const lookupCompanyToken = async (email) => {
@@ -345,7 +348,17 @@ export default function TerminalPage() {
     const params = new URLSearchParams(window.location.search);
     return String(params.get('catalog_search') || '').trim();
   });
-  const [queuedTerminalOperations, setQueuedTerminalOperations] = useState(() => readTerminalOperationQueue());
+  const [queuedTerminalOperations, setQueuedTerminalOperations] = useState([]);
+  const [queueStatusFilter, setQueueStatusFilter] = useState('all');
+  const [queueSummary, setQueueSummary] = useState({
+    total: 0,
+    pending: 0,
+    blocked: 0,
+    [TERMINAL_QUEUE_STATUS.QUEUED]: 0,
+    [TERMINAL_QUEUE_STATUS.REPLAYING]: 0,
+    [TERMINAL_QUEUE_STATUS.REPLAYED]: 0,
+    [TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED]: 0
+  });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState('checkout');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -357,7 +370,15 @@ export default function TerminalPage() {
     return window.innerWidth >= 1280;
   });
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
-  const activeOperationsViewModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
+  const modePosDefaults = useMemo(
+    () => resolveBusinessModePosDefaults(workflowMode),
+    [workflowMode]
+  );
+  const activeOperationsViewModes = useMemo(() => {
+    const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
+    if (modePosDefaults.show_online_queue !== false) return baseModes;
+    return baseModes.filter((mode) => !['incoming_queue', 'location_scope'].includes(mode));
+  }, [isMsmeMode, modePosDefaults.show_online_queue]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -403,23 +424,41 @@ export default function TerminalPage() {
   const onboardingCompletedCount = Number(onboardingProgress?.completed_required_count || 0);
   const onboardingRequiredTotal = Number(onboardingProgress?.required_total || 0);
 
-  const enqueueTerminalOperationIntent = useCallback((entry, source = 'manual') => {
-    const intentId = String(entry?.intent_id || '').trim();
-    if (!intentId) return;
-
-    const queueEntry = {
-      intent_id: intentId,
-      operation: String(entry?.operation || '').trim() || 'unknown',
-      payload: entry?.payload && typeof entry.payload === 'object' ? entry.payload : {},
-      shift_id: entry?.shift_id || null,
-      pos_transaction_id: entry?.pos_transaction_id || null,
-      queued_at: new Date().toISOString(),
-      source
-    };
-
-    const queue = writeTerminalOperationQueue([...readTerminalOperationQueue(), queueEntry]);
-    setQueuedTerminalOperations(queue);
+  const refreshTerminalOperationQueue = useCallback(async ({ keepResolved = true } = {}) => {
+    const entries = await listTerminalOperationQueueEntries({
+      includeResolved: keepResolved,
+      limit: QUEUE_HISTORY_LIMIT
+    });
+    const summary = await getTerminalOperationQueueSummary();
+    setQueuedTerminalOperations(entries);
+    setQueueSummary(summary);
   }, []);
+
+  const requestBackgroundQueueReplay = useCallback(async () => {
+    if (typeof window === 'undefined') return false;
+    if (!('serviceWorker' in navigator)) return false;
+    const registration = await navigator.serviceWorker.ready.catch(() => null);
+    if (!registration || !('sync' in registration)) return false;
+    try {
+      await registration.sync.register('pos-terminal-operation-replay');
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const enqueueTerminalOperationIntent = useCallback(async (entry, source = 'manual') => {
+    const intentId = String(entry?.intent_id || entry?.payload?.idempotency_key || '').trim();
+    if (!intentId) return null;
+    await persistTerminalOperationIntent({
+      ...entry,
+      intent_id: intentId
+    }, source);
+    await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
+    await refreshTerminalOperationQueue();
+    await requestBackgroundQueueReplay();
+    return intentId;
+  }, [refreshTerminalOperationQueue, requestBackgroundQueueReplay]);
 
   const hydrateTerminalMeta = useCallback(async () => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
@@ -709,14 +748,16 @@ export default function TerminalPage() {
     }
   }, [canViewPos, locked, queueLocationScopeId]);
 
-  const replayQueuedTerminalOperations = useCallback(async ({ toastIfEmpty = false } = {}) => {
-    if (locked || !isOnline || replayingQueueRef.current) {
-      return;
-    }
+  const replayQueuedTerminalOperations = useCallback(async ({
+    toastIfEmpty = false,
+    force = false
+  } = {}) => {
+    if (locked || replayingQueueRef.current) return;
+    if (!force && !isOnline) return;
 
-    const queue = readTerminalOperationQueue();
-    if (!Array.isArray(queue) || queue.length === 0) {
-      setQueuedTerminalOperations([]);
+    const candidates = await getReplayCandidateEntries({ limit: TERMINAL_OPERATION_REPLAY_BATCH_SIZE });
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      await refreshTerminalOperationQueue();
       if (toastIfEmpty) {
         toast.message('No queued terminal operations to replay.');
       }
@@ -726,76 +767,89 @@ export default function TerminalPage() {
     replayingQueueRef.current = true;
     setReplayingQueuedTerminalOperations(true);
     let replayedCount = 0;
-    let removedUnrecoverableCount = 0;
-    let blockedByNetwork = false;
+    let retryScheduledCount = 0;
+    let failedManualCount = 0;
     let shouldRefreshOperational = false;
     let shouldRefreshIncoming = false;
 
     try {
-      for (const entry of queue) {
-        const payload = entry?.payload && typeof entry.payload === 'object' ? entry.payload : {};
-        const intentId = String(entry?.intent_id || payload?.idempotency_key || '').trim();
-        const operation = String(entry?.operation || '').trim();
+      for (const candidate of candidates) {
+        const intentId = String(candidate?.intent_id || '').trim();
+        const operation = String(candidate?.operation || '').trim();
+        const payload = candidate?.payload && typeof candidate.payload === 'object'
+          ? candidate.payload
+          : {};
 
         if (!intentId || !operation) {
-          removeTerminalOperationIntentById(intentId);
-          removedUnrecoverableCount += 1;
+          await markTerminalOperationFailedManualResolution(intentId, {
+            error: {
+              message: 'Queued operation is malformed and requires manual resolution.',
+              code: 'POS_QUEUE_MALFORMED_ENTRY'
+            }
+          });
+          failedManualCount += 1;
           continue;
         }
 
+        await markTerminalOperationReplaying(intentId);
         try {
           if (operation === 'shift_open') {
             await openTerminalShift(payload);
             shouldRefreshOperational = true;
           } else if (operation === 'cash_event') {
-            const shiftId = Number.parseInt(entry?.shift_id || payload?.shift_id, 10);
+            const shiftId = Number.parseInt(candidate?.shift_id || payload?.shift_id, 10);
             if (!Number.isInteger(shiftId) || shiftId <= 0) {
-              removeTerminalOperationIntentById(intentId);
-              removedUnrecoverableCount += 1;
-              continue;
+              throw new Error('Missing shift_id for queued cash event replay.');
             }
             await recordCashDrawerEvent(shiftId, payload);
             shouldRefreshOperational = true;
           } else if (operation === 'shift_close') {
-            const shiftId = Number.parseInt(entry?.shift_id || payload?.shift_id, 10);
+            const shiftId = Number.parseInt(candidate?.shift_id || payload?.shift_id, 10);
             if (!Number.isInteger(shiftId) || shiftId <= 0) {
-              removeTerminalOperationIntentById(intentId);
-              removedUnrecoverableCount += 1;
-              continue;
+              throw new Error('Missing shift_id for queued shift-close replay.');
             }
             await closeTerminalShift(shiftId, payload);
             shouldRefreshOperational = true;
           } else if (operation === 'order_status_update') {
-            const transactionId = Number.parseInt(entry?.pos_transaction_id || payload?.pos_transaction_id, 10);
+            const transactionId = Number.parseInt(candidate?.pos_transaction_id || payload?.pos_transaction_id, 10);
             if (!Number.isInteger(transactionId) || transactionId <= 0) {
-              removeTerminalOperationIntentById(intentId);
-              removedUnrecoverableCount += 1;
-              continue;
+              throw new Error('Missing pos_transaction_id for queued order-status replay.');
             }
             await updateOnlineOrderStatus(transactionId, payload);
             shouldRefreshIncoming = true;
+          } else if (operation === 'checkout') {
+            await createPosCheckout(payload);
+            shouldRefreshOperational = true;
           } else {
-            removeTerminalOperationIntentById(intentId);
-            removedUnrecoverableCount += 1;
-            continue;
+            throw new Error(`Unsupported queued operation '${operation}'.`);
           }
 
-          removeTerminalOperationIntentById(intentId);
+          await markTerminalOperationReplayed(intentId);
           replayedCount += 1;
         } catch (error) {
+          const errorDetails = resolveTerminalOperationErrorDetails(error);
           if (!isRetryableTerminalOperationError(error)) {
-            removeTerminalOperationIntentById(intentId);
-            removedUnrecoverableCount += 1;
+            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
+            failedManualCount += 1;
             continue;
           }
 
-          blockedByNetwork = true;
-          break;
+          const nextAttemptCount = (Number(candidate?.attempt_count) || 0) + 1;
+          if (nextAttemptCount >= TERMINAL_OPERATION_MAX_RETRIES) {
+            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
+            failedManualCount += 1;
+            continue;
+          }
+
+          const nextRetryAt = Date.now() + computeRetryBackoffMs(nextAttemptCount);
+          await markTerminalOperationRetryScheduled(intentId, {
+            attemptCount: nextAttemptCount,
+            nextRetryAt,
+            error: errorDetails
+          });
+          retryScheduledCount += 1;
         }
       }
-
-      const nextQueue = readTerminalOperationQueue();
-      setQueuedTerminalOperations(nextQueue);
 
       if (shouldRefreshOperational) {
         await refreshOperationalContext();
@@ -804,26 +858,66 @@ export default function TerminalPage() {
         await refreshIncomingOrders({ silent: true });
       }
 
+      await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
+      await refreshTerminalOperationQueue();
+
       if (replayedCount > 0) {
         toast.success(`${replayedCount} queued terminal operation${replayedCount === 1 ? '' : 's'} replayed.`);
-      } else if (toastIfEmpty && !blockedByNetwork) {
+      } else if (toastIfEmpty && retryScheduledCount === 0 && failedManualCount === 0) {
         toast.message('No queued terminal operations were replayed.');
       }
 
-      if (removedUnrecoverableCount > 0) {
-        toast.warning(
-          `${removedUnrecoverableCount} queued terminal operation${removedUnrecoverableCount === 1 ? '' : 's'} were removed due to non-retryable errors.`
+      if (retryScheduledCount > 0) {
+        toast.message(
+          `${retryScheduledCount} queued terminal operation${retryScheduledCount === 1 ? '' : 's'} scheduled for retry.`
         );
+        await requestBackgroundQueueReplay();
       }
 
-      if (blockedByNetwork && replayedCount === 0) {
-        toast.message('Queued terminal operations are still waiting for connectivity.');
+      if (failedManualCount > 0) {
+        toast.warning(
+          `${failedManualCount} queued terminal operation${failedManualCount === 1 ? '' : 's'} require manual resolution.`
+        );
       }
     } finally {
       setReplayingQueuedTerminalOperations(false);
       replayingQueueRef.current = false;
     }
-  }, [isOnline, locked, refreshIncomingOrders, refreshOperationalContext]);
+  }, [
+    isOnline,
+    locked,
+    refreshIncomingOrders,
+    refreshOperationalContext,
+    refreshTerminalOperationQueue,
+    requestBackgroundQueueReplay
+  ]);
+
+  const filteredQueueEntries = useMemo(() => {
+    if (queueStatusFilter === 'all') return queuedTerminalOperations;
+    return queuedTerminalOperations.filter((entry) => String(entry?.status || '') === queueStatusFilter);
+  }, [queueStatusFilter, queuedTerminalOperations]);
+
+  const handleRetryQueuedOperation = useCallback(async (intentId) => {
+    const normalizedIntentId = String(intentId || '').trim();
+    if (!normalizedIntentId) return;
+    await markTerminalOperationQueued(normalizedIntentId, { preserveAttempts: true });
+    await refreshTerminalOperationQueue();
+    if (isOnline) {
+      await replayQueuedTerminalOperations({ force: true });
+      return;
+    }
+    await requestBackgroundQueueReplay();
+    toast.message('Queued operation set back to queued. It will replay when connectivity returns.');
+  }, [isOnline, refreshTerminalOperationQueue, replayQueuedTerminalOperations, requestBackgroundQueueReplay]);
+
+  const handleResolveQueuedOperation = useCallback(async (intentId) => {
+    const normalizedIntentId = String(intentId || '').trim();
+    if (!normalizedIntentId) return;
+    await markTerminalOperationResolved(normalizedIntentId);
+    await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
+    await refreshTerminalOperationQueue();
+    toast.success('Queued operation marked as manually resolved.');
+  }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async () => {
     const token = localStorage.getItem('authToken');
@@ -1172,9 +1266,10 @@ export default function TerminalPage() {
     };
 
     if (!isOnline) {
-      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      await enqueueTerminalOperationIntent(queueEntry, 'offline');
+      const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(
-        `You are offline. Shift-open action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+        `You are offline. Shift-open action was queued and will replay automatically (${pendingCount} queued).`
       );
       return;
     }
@@ -1187,9 +1282,10 @@ export default function TerminalPage() {
       await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
-        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        const pendingCount = Number(queueSummary.pending || 0) + 1;
         toast.message(
-          `Shift-open action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+          `Shift-open action queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
         toast.error(error?.response?.data?.message || 'Failed to open terminal shift.');
@@ -1273,9 +1369,10 @@ export default function TerminalPage() {
     };
 
     if (!isOnline) {
-      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      await enqueueTerminalOperationIntent(queueEntry, 'offline');
+      const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(
-        `You are offline. Cash drawer action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+        `You are offline. Cash drawer action was queued and will replay automatically (${pendingCount} queued).`
       );
       return;
     }
@@ -1288,9 +1385,10 @@ export default function TerminalPage() {
       await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
-        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        const pendingCount = Number(queueSummary.pending || 0) + 1;
         toast.message(
-          `Cash drawer action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+          `Cash drawer action queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
         toast.error(error?.response?.data?.message || 'Failed to record cash drawer event.');
@@ -1331,9 +1429,10 @@ export default function TerminalPage() {
     };
 
     if (!isOnline) {
-      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      await enqueueTerminalOperationIntent(queueEntry, 'offline');
+      const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(
-        `You are offline. Shift-close action was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+        `You are offline. Shift-close action was queued and will replay automatically (${pendingCount} queued).`
       );
       return;
     }
@@ -1346,9 +1445,10 @@ export default function TerminalPage() {
       await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
-        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        const pendingCount = Number(queueSummary.pending || 0) + 1;
         toast.message(
-          `Shift-close action queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+          `Shift-close action queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
         toast.error(error?.response?.data?.message || 'Failed to close shift.');
@@ -1383,9 +1483,10 @@ export default function TerminalPage() {
     };
 
     if (!isOnline) {
-      enqueueTerminalOperationIntent(queueEntry, 'offline');
+      await enqueueTerminalOperationIntent(queueEntry, 'offline');
+      const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(
-        `You are offline. Order status update was queued and will replay automatically (${queuedTerminalOperations.length + 1} queued).`
+        `You are offline. Order status update was queued and will replay automatically (${pendingCount} queued).`
       );
       return;
     }
@@ -1397,9 +1498,10 @@ export default function TerminalPage() {
       await refreshIncomingOrders({ silent: true });
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
-        enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        const pendingCount = Number(queueSummary.pending || 0) + 1;
         toast.message(
-          `Order status update queued after connectivity issue (${queuedTerminalOperations.length + 1} queued).`
+          `Order status update queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
         toast.error(error?.response?.data?.message || 'Failed to update online order status.');
@@ -1505,27 +1607,78 @@ export default function TerminalPage() {
   }, [isDesktopWide]);
 
   useEffect(() => {
-    const handleOnline = () => {
+    let active = true;
+    const bootstrapQueueStore = async () => {
+      await hydrateTerminalOperationQueueStore();
+      await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
+      if (!active) return;
+      await refreshTerminalOperationQueue();
+    };
+    bootstrapQueueStore();
+    return () => {
+      active = false;
+    };
+  }, [refreshTerminalOperationQueue]);
+
+  useEffect(() => {
+    const handleOnline = async () => {
       setIsOnline(true);
-      setQueuedTerminalOperations(readTerminalOperationQueue());
+      await refreshTerminalOperationQueue();
+      await replayQueuedTerminalOperations({ force: true });
     };
     const handleOffline = () => setIsOnline(false);
+    const handleServiceWorkerMessage = async (event) => {
+      const eventType = String(event?.data?.type || '').trim();
+      if (eventType !== 'pos-terminal-replay-requested') return;
+      await replayQueuedTerminalOperations({ force: true });
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    }
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      }
     };
-  }, []);
+  }, [refreshTerminalOperationQueue, replayQueuedTerminalOperations]);
 
   useEffect(() => {
-    setQueuedTerminalOperations(readTerminalOperationQueue());
-  }, [locked]);
+    if (locked) return;
+    refreshTerminalOperationQueue();
+  }, [locked, refreshTerminalOperationQueue]);
 
   useEffect(() => {
-    if (!isOnline || locked || queuedTerminalOperations.length === 0) return;
+    if (!isOnline || locked || Number(queueSummary.pending || 0) === 0) return;
     replayQueuedTerminalOperations();
-  }, [isOnline, locked, queuedTerminalOperations.length, replayQueuedTerminalOperations]);
+  }, [isOnline, locked, queueSummary.pending, replayQueuedTerminalOperations]);
+
+  useEffect(() => {
+    if (!isOnline || locked || replayingQueuedTerminalOperations) return undefined;
+    const nextRetryAtMs = queuedTerminalOperations
+      .filter((entry) => String(entry?.status || '') === TERMINAL_QUEUE_STATUS.QUEUED)
+      .map((entry) => new Date(entry?.next_retry_at || 0).getTime())
+      .filter((retryAt) => Number.isFinite(retryAt) && retryAt > Date.now())
+      .sort((left, right) => left - right)[0];
+    if (!Number.isFinite(nextRetryAtMs) || nextRetryAtMs <= 0) return undefined;
+
+    const waitMs = Math.max(300, nextRetryAtMs - Date.now());
+    const timer = window.setTimeout(() => {
+      replayQueuedTerminalOperations();
+    }, waitMs);
+    return () => window.clearTimeout(timer);
+  }, [
+    isOnline,
+    locked,
+    queuedTerminalOperations,
+    replayingQueuedTerminalOperations,
+    replayQueuedTerminalOperations
+  ]);
 
   useEffect(() => {
     if (posViewMode === 'history' && !canViewPos) {
@@ -1617,9 +1770,16 @@ export default function TerminalPage() {
           activeShiftId={activeShiftId}
           checkoutBlockedReason={checkoutBlockedReason}
           complianceBlockerDetails={complianceBlockerDetails}
-          queuedTerminalOperationCount={queuedTerminalOperations.length}
+          queuedTerminalOperationCount={queueSummary.pending}
+          queuedTerminalBlockedCount={queueSummary.blocked}
+          queuedTerminalOperations={filteredQueueEntries}
+          queueStatusFilter={queueStatusFilter}
+          setQueueStatusFilter={setQueueStatusFilter}
+          queueSummary={queueSummary}
           replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
           handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
+          handleRetryQueuedOperation={handleRetryQueuedOperation}
+          handleResolveQueuedOperation={handleResolveQueuedOperation}
           handleCheckoutCompleted={handleCheckoutCompleted}
           setPosViewMode={setPosViewMode}
           modeChangeNotice={modeChangeNotice}

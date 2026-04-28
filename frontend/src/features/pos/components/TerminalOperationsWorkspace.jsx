@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
   Banknote,
   CheckCircle2,
   MapPinned,
+  RefreshCcw,
   Receipt,
   ShieldCheck,
   Store,
@@ -54,6 +56,11 @@ const MODE_META = {
     icon: CheckCircle2,
     title: 'Terminal Setup Context',
     subtitle: 'Inspect setup and compliance context used by the active POS terminal.'
+  },
+  sync_queue: {
+    icon: RefreshCcw,
+    title: 'Sync Queue Console',
+    subtitle: 'Review offline intents, retry blocked entries, and mark resolved outcomes.'
   }
 };
 
@@ -73,6 +80,28 @@ const parseDeliveryCoords = (order = {}) => {
     latitude: lat,
     longitude: lng
   };
+};
+
+const QUEUE_STATUS_LABELS = {
+  queued: 'Queued',
+  replaying: 'Replaying',
+  replayed: 'Replayed',
+  failed_manual_resolution_required: 'Manual Resolution Required'
+};
+
+const QUEUE_STATUS_CLASSES = {
+  queued: 'border-sky-200 bg-sky-50 text-sky-800',
+  replaying: 'border-indigo-200 bg-indigo-50 text-indigo-800',
+  replayed: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  failed_manual_resolution_required: 'border-rose-200 bg-rose-50 text-rose-800'
+};
+
+const QUEUE_OPERATION_LABELS = {
+  checkout: 'Checkout',
+  shift_open: 'Shift Open',
+  shift_close: 'Shift Close',
+  cash_event: 'Cash Drawer Event',
+  order_status_update: 'Order Status Update'
 };
 
 function WorkspaceShell({ icon: Icon, title, subtitle, children, terminalUser, locked }) {
@@ -279,6 +308,152 @@ function LocationScopeWorkspace({
             </Button>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function SyncQueueWorkspace({
+  queuedTerminalOperations = [],
+  queueStatusFilter = 'all',
+  setQueueStatusFilter = () => {},
+  queueSummary = {},
+  replayingQueuedTerminalOperations = false,
+  handleReplayQueuedTerminalOperations = () => {},
+  handleRetryQueuedOperation = () => {},
+  handleResolveQueuedOperation = () => {},
+  isOnline = true,
+  locked = false,
+  sectionId
+}) {
+  const entries = Array.isArray(queuedTerminalOperations) ? queuedTerminalOperations : [];
+  const pendingCount = Number(queueSummary?.pending || 0);
+  const blockedCount = Number(queueSummary?.blocked || 0);
+  const totalCount = Number(queueSummary?.total || entries.length);
+
+  return (
+    <div id={sectionId} className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Total</p>
+            <p className="text-sm font-semibold text-slate-900">{totalCount}</p>
+          </div>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5">
+            <p className="text-[11px] uppercase tracking-wide text-sky-700">Pending</p>
+            <p className="text-sm font-semibold text-sky-900">{pendingCount}</p>
+          </div>
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5">
+            <p className="text-[11px] uppercase tracking-wide text-rose-700">Blocked</p>
+            <p className="text-sm font-semibold text-rose-900">{blockedCount}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-700">Replayed</p>
+            <p className="text-sm font-semibold text-emerald-900">{Number(queueSummary?.replayed || 0)}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Filter</Label>
+            <select
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
+              value={queueStatusFilter}
+              onChange={(event) => setQueueStatusFilter(event.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="queued">Queued</option>
+              <option value="replaying">Replaying</option>
+              <option value="replayed">Replayed</option>
+              <option value="failed_manual_resolution_required">Manual resolution</option>
+            </select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleReplayQueuedTerminalOperations({ toastIfEmpty: true })}
+            disabled={!isOnline || replayingQueuedTerminalOperations || locked}
+          >
+            {replayingQueuedTerminalOperations ? 'Replaying...' : 'Replay queued'}
+          </Button>
+        </div>
+        {!isOnline && (
+          <p className="mt-2 text-xs text-amber-700">
+            Offline mode detected. Replays will resume automatically once connectivity returns.
+          </p>
+        )}
+      </div>
+
+      {entries.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+          No queue entries for this filter.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry) => {
+            const statusKey = String(entry?.status || '').trim() || 'queued';
+            const lastError = entry?.last_error && typeof entry.last_error === 'object' ? entry.last_error : null;
+            const canRetry = statusKey === 'failed_manual_resolution_required' || statusKey === 'queued';
+            const canResolve = statusKey === 'failed_manual_resolution_required';
+            const operationLabel = QUEUE_OPERATION_LABELS[entry?.operation] || entry?.operation || 'Unknown operation';
+            return (
+              <div key={entry.intent_id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{operationLabel}</p>
+                    <p className="text-xs text-slate-500">Intent: {entry.intent_id}</p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${QUEUE_STATUS_CLASSES[statusKey] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                    {QUEUE_STATUS_LABELS[statusKey] || statusKey}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-600 md:grid-cols-2">
+                  <p>Queued: <span className="font-semibold text-slate-900">{parseIsoDateTime(entry?.queued_at)}</span></p>
+                  <p>Updated: <span className="font-semibold text-slate-900">{parseIsoDateTime(entry?.updated_at)}</span></p>
+                  <p>Attempts: <span className="font-semibold text-slate-900">{Number(entry?.attempt_count || 0)}</span></p>
+                  <p>Next retry: <span className="font-semibold text-slate-900">{entry?.next_retry_at ? parseIsoDateTime(entry.next_retry_at) : '-'}</span></p>
+                </div>
+                {lastError?.message ? (
+                  <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-800">
+                    <div className="flex items-center gap-1 font-semibold">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Last error
+                    </div>
+                    <p className="mt-1">{lastError.message}</p>
+                    {(lastError.code || lastError.status) && (
+                      <p className="mt-1 text-[11px]">
+                        {lastError.code ? `Code: ${lastError.code}` : ''}{lastError.code && lastError.status ? ' | ' : ''}{lastError.status ? `HTTP: ${lastError.status}` : ''}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canRetry && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={locked}
+                      onClick={() => handleRetryQueuedOperation(entry.intent_id)}
+                    >
+                      Retry now
+                    </Button>
+                  )}
+                  {canResolve && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={locked}
+                      onClick={() => handleResolveQueuedOperation(entry.intent_id)}
+                    >
+                      Mark resolved
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -684,6 +859,15 @@ export default function TerminalOperationsWorkspace({
   handleOpenIncomingOrderHistory = () => {},
   incomingHistoryOpeningId = null,
   refreshIncomingOrders = () => {},
+  queuedTerminalOperations = [],
+  queueStatusFilter = 'all',
+  setQueueStatusFilter = () => {},
+  queueSummary = {},
+  replayingQueuedTerminalOperations = false,
+  handleReplayQueuedTerminalOperations = () => {},
+  handleRetryQueuedOperation = () => {},
+  handleResolveQueuedOperation = () => {},
+  isOnline = true,
   sectionIds = {}
 }) {
   const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
@@ -789,6 +973,22 @@ export default function TerminalOperationsWorkspace({
           sectionId={sectionIds.terminalSetup}
         />
       );
+    case 'sync_queue':
+      return (
+        <SyncQueueWorkspace
+          queuedTerminalOperations={queuedTerminalOperations}
+          queueStatusFilter={queueStatusFilter}
+          setQueueStatusFilter={setQueueStatusFilter}
+          queueSummary={queueSummary}
+          replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
+          handleReplayQueuedTerminalOperations={handleReplayQueuedTerminalOperations}
+          handleRetryQueuedOperation={handleRetryQueuedOperation}
+          handleResolveQueuedOperation={handleResolveQueuedOperation}
+          isOnline={isOnline}
+          locked={locked}
+          sectionId={sectionIds.syncQueue}
+        />
+      );
     default:
       return (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -815,8 +1015,17 @@ export default function TerminalOperationsWorkspace({
     handleRecordCashEvent,
     incomingOrderActionState,
     incomingOrdersState,
+    isOnline,
     locationsState,
     locked,
+    queuedTerminalOperations,
+    queueStatusFilter,
+    queueSummary,
+    replayingQueuedTerminalOperations,
+    handleReplayQueuedTerminalOperations,
+    handleRetryQueuedOperation,
+    handleResolveQueuedOperation,
+    setQueueStatusFilter,
     operatingLocationId,
     openShiftForm,
     queueLocationScopeId,
@@ -828,6 +1037,7 @@ export default function TerminalOperationsWorkspace({
     sectionIds.incomingOrders,
     sectionIds.locationScope,
     sectionIds.salesToday,
+    sectionIds.syncQueue,
     sectionIds.terminalSetup,
     setOperatingLocationId,
     setQueueLocationScopeId,

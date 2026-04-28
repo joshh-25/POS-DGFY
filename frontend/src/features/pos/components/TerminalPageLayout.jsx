@@ -69,8 +69,15 @@ export default function TerminalPageLayout({
     checkoutBlockedReason,
     complianceBlockerDetails,
     queuedTerminalOperationCount,
+    queuedTerminalBlockedCount = 0,
+    queuedTerminalOperations = [],
+    queueStatusFilter = 'all',
+    setQueueStatusFilter = () => {},
+    queueSummary = {},
     replayingQueuedTerminalOperations,
     handleReplayQueuedTerminalOperations,
+    handleRetryQueuedOperation = () => {},
+    handleResolveQueuedOperation = () => {},
     handleCheckoutCompleted,
     setPosViewMode,
     modeChangeNotice = null,
@@ -92,6 +99,8 @@ export default function TerminalPageLayout({
   const navigate = useNavigate();
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
   const queueCount = Number(queuedTerminalOperationCount || 0);
+  const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
+  const queueTotalCount = Number(queueSummary?.total || queueCount + blockedQueueCount);
   const shiftOpen = Boolean(activeShiftId);
   const complianceBlocked = Boolean(complianceBlockerDetails);
   const shiftLocationLabel = String(
@@ -108,8 +117,12 @@ export default function TerminalPageLayout({
     },
     {
       label: 'Queued Ops',
-      value: replayingQueuedTerminalOperations ? `Replaying (${queueCount})` : `${queueCount}`,
-      tone: queueCount > 0 ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-slate-200 bg-slate-50 text-slate-700'
+      value: replayingQueuedTerminalOperations
+        ? `Replaying (${queueCount})`
+        : `${queueCount}${blockedQueueCount > 0 ? ` / ${blockedQueueCount} blocked` : ''}`,
+      tone: blockedQueueCount > 0
+        ? 'border-rose-200 bg-rose-50 text-rose-800'
+        : (queueCount > 0 ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-slate-200 bg-slate-50 text-slate-700')
     },
     {
       label: 'Shift',
@@ -266,25 +279,35 @@ export default function TerminalPageLayout({
                 </div>
             )}
 
-            {(Number(queuedTerminalOperationCount) > 0 || replayingQueuedTerminalOperations) && (
+            {(Number(queueTotalCount) > 0 || replayingQueuedTerminalOperations) && (
                 <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                             <p className="text-sm font-semibold text-sky-900">
-                                Offline operation queue: {queuedTerminalOperationCount}
+                                Offline operation queue: {queueCount} pending
+                                {blockedQueueCount > 0 ? ` / ${blockedQueueCount} manual-resolution` : ''}
                             </p>
                             <p className="mt-1 text-xs text-sky-800">
-                                Shift and online-order actions captured while offline are safely replayed with idempotency keys.
+                                Use Sync Queue to review errors, retry blocked intents, and mark resolved outcomes.
                             </p>
                         </div>
-                        <button
-                            type="button"
-                            className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-900 disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={() => handleReplayQueuedTerminalOperations({ toastIfEmpty: true })}
-                            disabled={replayingQueuedTerminalOperations || !isOnline}
-                        >
-                            {replayingQueuedTerminalOperations ? 'Replaying...' : 'Replay queued operations'}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-900"
+                                onClick={() => handleSelectViewMode('sync_queue')}
+                            >
+                                Open Sync Queue
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => handleReplayQueuedTerminalOperations({ toastIfEmpty: true })}
+                                disabled={replayingQueuedTerminalOperations || !isOnline}
+                            >
+                                {replayingQueuedTerminalOperations ? 'Replaying...' : 'Replay queued operations'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -318,6 +341,7 @@ export default function TerminalPageLayout({
                                 incomingOrdersState={incomingOrdersState}
                                 locationsState={locationsState}
                                 queueLocationScopeId={queueLocationScopeId}
+                                queueSummary={queueSummary}
                                 onSelectViewMode={handleSelectViewMode}
                                 onUnlock={() => {
                                     setDrawerOpen(true);
@@ -356,6 +380,7 @@ export default function TerminalPageLayout({
                             incomingOrdersState={incomingOrdersState}
                             locationsState={locationsState}
                             queueLocationScopeId={queueLocationScopeId}
+                            queueSummary={queueSummary}
                             onSelectViewMode={handleSelectViewMode}
                             onUnlock={() => setDrawerOpen(true)}
                             onLock={handleLock}
@@ -374,6 +399,7 @@ export default function TerminalPageLayout({
                                 sessionLocked={locked}
                                 isMsmeMode={isMsmeMode}
                                 canViewHistory={canViewPos}
+                                queueReplayManagedExternally
                                 selectedLocationId={operatingLocationId}
                                 activeShiftId={activeShiftId}
                                 terminalId={activeTerminalId}
@@ -438,6 +464,15 @@ export default function TerminalPageLayout({
                                 incomingReceiptOpeningId={incomingReceiptOpeningId}
                                 incomingHistoryOpeningId={incomingHistoryOpeningId}
                                 refreshIncomingOrders={refreshIncomingOrders}
+                                queuedTerminalOperations={queuedTerminalOperations}
+                                queueStatusFilter={queueStatusFilter}
+                                setQueueStatusFilter={setQueueStatusFilter}
+                                queueSummary={queueSummary}
+                                replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
+                                handleReplayQueuedTerminalOperations={handleReplayQueuedTerminalOperations}
+                                handleRetryQueuedOperation={handleRetryQueuedOperation}
+                                handleResolveQueuedOperation={handleResolveQueuedOperation}
+                                isOnline={isOnline}
                                 handleLock={handleLock}
                                 setDrawerOpen={setDrawerOpen}
                                 sectionIds={TERMINAL_SECTION_IDS}

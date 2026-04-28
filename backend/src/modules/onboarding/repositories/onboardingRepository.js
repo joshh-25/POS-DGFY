@@ -1,5 +1,6 @@
 import dbStore from '../../../utils/dbStore.js';
 import { assertOnboardingRepositoryContract } from '../contracts/onboardingRepository.contract.js';
+import { buildBusinessClassificationSnapshot } from '../domain/businessClassification.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
@@ -70,16 +71,31 @@ const normalizeProgress = (rawValue = {}) => {
   const stepPayloads = normalized.step_payloads && typeof normalized.step_payloads === 'object'
     ? normalized.step_payloads
     : {};
+  const rawClassificationPayload = stepPayloads.business_classification && typeof stepPayloads.business_classification === 'object'
+    ? stepPayloads.business_classification
+    : {};
+  const fallbackClassificationSnapshot = buildBusinessClassificationSnapshot(rawClassificationPayload);
+  const classificationSnapshot = normalized.classification_snapshot && typeof normalized.classification_snapshot === 'object'
+    ? {
+      ...fallbackClassificationSnapshot,
+      ...normalized.classification_snapshot,
+      payload: normalized.classification_snapshot.payload && typeof normalized.classification_snapshot.payload === 'object'
+        ? normalized.classification_snapshot.payload
+        : fallbackClassificationSnapshot.payload
+    }
+    : fallbackClassificationSnapshot;
 
   return {
     step_payloads: stepPayloads,
-    checklist_snapshot: normalizeChecklist(normalized.checklist_snapshot?.checklist || {})
+    checklist_snapshot: normalizeChecklist(normalized.checklist_snapshot?.checklist || {}),
+    classification_snapshot: classificationSnapshot
   };
 };
 
 const buildDefaultProgress = () => ({
   step_payloads: {},
-  checklist_snapshot: normalizeChecklist({})
+  checklist_snapshot: normalizeChecklist({}),
+  classification_snapshot: buildBusinessClassificationSnapshot({})
 });
 
 const modelHasColumn = (Model, columnName) => {
@@ -217,7 +233,12 @@ const toResponsePayload = ({ state, startedAt, completedAt, progress, checklist 
   tenant_onboarding_completed_at: completedAt,
   tenant_onboarding_progress: {
     ...progress,
-    checklist_snapshot: checklist
+    checklist_snapshot: checklist,
+    classification_snapshot: buildBusinessClassificationSnapshot(
+      progress?.step_payloads?.business_classification && typeof progress.step_payloads.business_classification === 'object'
+        ? progress.step_payloads.business_classification
+        : {}
+    )
   }
 });
 
@@ -293,6 +314,11 @@ export const onboardingRepository = {
           ...progress.step_payloads,
           [safeStepKey]: normalizedPayload
         },
+        classification_snapshot: buildBusinessClassificationSnapshot(
+          safeStepKey === 'business_classification'
+            ? normalizedPayload
+            : (progress.step_payloads?.business_classification || {})
+        ),
         checklist_snapshot: checklist
       };
       validatePayloadSizes({ nextProgress });

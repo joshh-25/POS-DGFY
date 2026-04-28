@@ -25,7 +25,10 @@ const ONBOARDING_EVENT_MAP = Object.freeze({
   wizard_viewed: 'tenant_onboarding_wizard_viewed',
   reminder_shown: 'tenant_onboarding_reminder_shown',
   reminder_dismissed: 'tenant_onboarding_reminder_dismissed',
-  optional_asset_skipped: 'tenant_onboarding_optional_asset_skipped'
+  optional_asset_skipped: 'tenant_onboarding_optional_asset_skipped',
+  classifier_viewed: 'tenant_onboarding_classifier_viewed',
+  classifier_saved: 'tenant_onboarding_classifier_saved',
+  classifier_skipped: 'tenant_onboarding_classifier_skipped'
 });
 
 export const getOnboardingStatus = async (req, res, next) => {

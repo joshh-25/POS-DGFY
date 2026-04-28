@@ -127,4 +127,29 @@ describe('onboardingHandlers transport contracts', () => {
     }));
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('maps classifier telemetry event keys to onboarding telemetry event types', async () => {
+    const req = {
+      user: { user_id: 11, is_master_admin: true },
+      tenant: { id: 100, name: 'Tenant Delta' },
+      validatedData: {
+        event_key: 'classifier_saved',
+        metadata: { surface: 'modal' }
+      },
+      requestId: 'req-onboarding-event-classifier'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await trackOnboardingEvent(req, res, next);
+
+    expect(mockTrackProductUsageEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'tenant_onboarding_classifier_saved',
+      metadata: expect.objectContaining({
+        event_key: 'classifier_saved'
+      })
+    }));
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(next).not.toHaveBeenCalled();
+  });
 });

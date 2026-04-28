@@ -1,6 +1,10 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapCsvUseCaseError } from './csvUseCaseError.js';
+import {
+  isWorkflowMode,
+  WORKFLOW_MODE_VALUES
+} from '../../shared/constants/workflowModes.js';
 
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
@@ -112,13 +116,12 @@ export const buildGetItemsTemplateHeadersUseCase = ({ csvImportService }) => {
       return failWithValidation(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
     }
 
-    const validWorkflowModes = ['manufacturing', 'msme'];
     if (
       workflowMode !== undefined
-      && !validWorkflowModes.includes(String(workflowMode).trim().toLowerCase())
+      && !isWorkflowMode(workflowMode)
     ) {
       return failWithValidation(
-        `Invalid workflow_mode. Must be one of: ${validWorkflowModes.join(', ')}`
+        `Invalid workflow_mode. Must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
       );
     }
 

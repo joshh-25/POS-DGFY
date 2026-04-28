@@ -10,6 +10,17 @@ describe('onboardingValidator schemas', () => {
     expect(value.error).toBeUndefined();
   });
 
+  it('accepts business_classification step key', () => {
+    const value = onboardingStepSchema.validate({
+      step_key: 'business_classification',
+      payload: {
+        online_visibility: { mode: 'transaction' }
+      }
+    });
+
+    expect(value.error).toBeUndefined();
+  });
+
   it('rejects unknown onboarding step keys', () => {
     const value = onboardingStepSchema.validate({
       step_key: 'unexpected_step',
@@ -30,5 +41,14 @@ describe('onboardingValidator schemas', () => {
 
     expect(value.error).toBeDefined();
     expect(value.error.message).toMatch(/metadata exceeds size limit/i);
+  });
+
+  it('accepts classifier event keys', () => {
+    const value = onboardingEventSchema.validate({
+      event_key: 'classifier_saved',
+      metadata: { surface: 'modal' }
+    });
+
+    expect(value.error).toBeUndefined();
   });
 });

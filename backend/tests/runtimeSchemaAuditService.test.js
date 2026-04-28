@@ -30,7 +30,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260416000008-backfill-user-location-grants.cjs' },
         { name: '20260424000001-add-storefront-branding-assets-to-discovery-index.cjs' },
         { name: '20260424000002-harden-storefront-asset-settings-constraints.cjs' },
-        { name: '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs' }
+        { name: '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs' },
+        { name: '20260427000001-add-storefront-pos-read-path-indexes.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {

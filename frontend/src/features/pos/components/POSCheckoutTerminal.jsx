@@ -11,6 +11,17 @@ import {
     fetchPosTransactions,
     fetchPosTransactionById
 } from '../services/posService';
+import {
+    TERMINAL_QUEUE_STATUS,
+    enqueueTerminalOperationIntent,
+    getReplayCandidateEntries,
+    hydrateTerminalOperationQueueStore,
+    listTerminalOperationQueueEntries,
+    markTerminalOperationFailedManualResolution,
+    markTerminalOperationReplayed,
+    markTerminalOperationReplaying,
+    markTerminalOperationRetryScheduled
+} from '../services/terminalOperationQueueStore.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
@@ -117,35 +128,31 @@ const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, uni
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
 
-const CHECKOUT_INTENT_QUEUE_KEY = 'pos_checkout_intent_queue_v1';
-const MAX_CHECKOUT_INTENT_QUEUE_SIZE = 200;
+const CHECKOUT_QUEUE_OPERATION = 'checkout';
+const CHECKOUT_QUEUE_MAX_RETRIES = 5;
+const CHECKOUT_REPLAY_BATCH_SIZE = 20;
+const RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const CHECKOUT_RETRY_BACKOFF_BASE_MS = 1500;
 
-const readCheckoutIntentQueue = () => {
-    if (typeof window === 'undefined' || !window.localStorage) return [];
-    try {
-        const raw = window.localStorage.getItem(CHECKOUT_INTENT_QUEUE_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
+const isCheckoutQueueEntry = (entry) => (
+    String(entry?.operation || '').trim() === CHECKOUT_QUEUE_OPERATION
+);
+
+const isRetryableCheckoutReplayError = (error) => {
+    if (!error?.response) return true;
+    const status = Number(error?.response?.status || 0);
+    return RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES.has(status);
 };
 
-const writeCheckoutIntentQueue = (queueEntries = []) => {
-    if (typeof window === 'undefined' || !window.localStorage) return [];
-    const safeEntries = Array.isArray(queueEntries)
-        ? queueEntries.slice(-MAX_CHECKOUT_INTENT_QUEUE_SIZE)
-        : [];
-    window.localStorage.setItem(CHECKOUT_INTENT_QUEUE_KEY, JSON.stringify(safeEntries));
-    return safeEntries;
-};
+const resolveCheckoutReplayErrorDetails = (error) => ({
+    message: String(error?.response?.data?.message || error?.message || 'Checkout replay failed').trim(),
+    code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
+    status: Number(error?.response?.status || 0) || undefined
+});
 
-const removeCheckoutIntentById = (intentId) => {
-    const queue = readCheckoutIntentQueue();
-    const next = queue.filter((entry) => String(entry?.intent_id || '') !== String(intentId || ''));
-    writeCheckoutIntentQueue(next);
-    return next;
+const computeCheckoutReplayBackoffMs = (attemptCount = 1) => {
+    const jitterMs = Math.floor(Math.random() * 250);
+    return Math.min(90_000, (CHECKOUT_RETRY_BACKOFF_BASE_MS * (2 ** Math.max(0, attemptCount - 1))) + jitterMs);
 };
 
 const createIdempotencyKey = () => {
@@ -193,6 +200,7 @@ export default function POSCheckoutTerminal({
     sessionLocked = false,
     isMsmeMode = false,
     canViewHistory = true,
+    queueReplayManagedExternally = false,
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',
@@ -279,6 +287,17 @@ export default function POSCheckoutTerminal({
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
+    const queuedCheckoutPendingCount = useMemo(() => (
+        queuedCheckouts.filter((entry) => (
+            String(entry?.status || '') === TERMINAL_QUEUE_STATUS.QUEUED
+            || String(entry?.status || '') === TERMINAL_QUEUE_STATUS.REPLAYING
+        )).length
+    ), [queuedCheckouts]);
+    const queuedCheckoutBlockedCount = useMemo(() => (
+        queuedCheckouts.filter((entry) => (
+            String(entry?.status || '') === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
+        )).length
+    ), [queuedCheckouts]);
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -360,21 +379,37 @@ export default function POSCheckoutTerminal({
         return () => window.removeEventListener('resize', handleResize);
     }, [cart.length, currentViewMode, hasSplitPaneScroll, syncCurrentSalePaneScrollState]);
 
-    const syncQueuedCheckoutsState = useCallback(() => {
-        setQueuedCheckouts(readCheckoutIntentQueue());
+    const syncQueuedCheckoutsState = useCallback(async () => {
+        const rows = await listTerminalOperationQueueEntries({
+            includeResolved: false,
+            statuses: [
+                TERMINAL_QUEUE_STATUS.QUEUED,
+                TERMINAL_QUEUE_STATUS.REPLAYING,
+                TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
+            ]
+        });
+        const checkoutRows = (Array.isArray(rows) ? rows : []).filter((entry) => isCheckoutQueueEntry(entry));
+        setQueuedCheckouts(checkoutRows);
     }, []);
 
-    const enqueueCheckoutIntent = useCallback((payload, source = 'unknown') => {
-        const entry = {
-            intent_id: payload?.idempotency_key || createIdempotencyKey(),
-            payload,
-            queued_at: new Date().toISOString(),
+    const enqueueCheckoutIntent = useCallback(async (payload, source = 'unknown') => {
+        const idempotencyKey = String(payload?.idempotency_key || createIdempotencyKey()).trim();
+        if (!idempotencyKey) return null;
+        const nowIso = new Date().toISOString();
+        const entry = await enqueueTerminalOperationIntent({
+            intent_id: idempotencyKey,
+            operation: CHECKOUT_QUEUE_OPERATION,
+            payload: {
+                ...payload,
+                idempotency_key: idempotencyKey
+            },
+            queued_at: nowIso,
+            updated_at: nowIso,
             source
-        };
-        const queue = writeCheckoutIntentQueue([...readCheckoutIntentQueue(), entry]);
-        setQueuedCheckouts(queue);
+        }, source);
+        await syncQueuedCheckoutsState();
         return entry;
-    }, []);
+    }, [syncQueuedCheckoutsState]);
 
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
@@ -415,54 +450,74 @@ export default function POSCheckoutTerminal({
         if (checkoutBlockedReason) return;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
-        const queue = readCheckoutIntentQueue();
-        if (!Array.isArray(queue) || queue.length === 0) {
+        const candidates = (await getReplayCandidateEntries({ limit: CHECKOUT_REPLAY_BATCH_SIZE }))
+            .filter((entry) => isCheckoutQueueEntry(entry));
+        if (!Array.isArray(candidates) || candidates.length === 0) {
+            await syncQueuedCheckoutsState();
             if (toastIfEmpty) {
                 toast.message('No queued checkouts to replay.');
             }
-            setQueuedCheckouts([]);
             return;
         }
 
         setReplayingQueuedCheckouts(true);
         let replayedCount = 0;
-        let removedUnrecoverableCount = 0;
+        let retryScheduledCount = 0;
+        let failedManualCount = 0;
 
-        for (const entry of queue) {
-            const payload = entry?.payload;
-            const intentId = entry?.intent_id || payload?.idempotency_key;
-            if (!payload?.idempotency_key || !intentId) {
-                removedUnrecoverableCount += 1;
-                removeCheckoutIntentById(intentId);
-                continue;
-            }
-
-            try {
-                const data = await createPosCheckout(payload);
-                replayedCount += 1;
-                setLastReceipt(data?.transaction || null);
-                setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
-                if (typeof onCheckoutCompleted === 'function') {
-                    onCheckoutCompleted(data?.transaction || null);
-                }
-                removeCheckoutIntentById(intentId);
-            } catch (error) {
-                if (!error?.response) {
-                    break;
-                }
-
-                const statusCode = Number(error?.response?.status || 0);
-                if (statusCode >= 500 || statusCode === 429) {
+        try {
+            for (const entry of candidates) {
+                const payload = entry?.payload && typeof entry.payload === 'object' ? entry.payload : {};
+                const intentId = String(entry?.intent_id || payload?.idempotency_key || '').trim();
+                if (!payload?.idempotency_key || !intentId) {
+                    failedManualCount += 1;
+                    await markTerminalOperationFailedManualResolution(intentId, {
+                        error: {
+                            message: 'Queued checkout payload is malformed and requires manual resolution.',
+                            code: 'POS_CHECKOUT_QUEUE_MALFORMED_ENTRY'
+                        }
+                    });
                     continue;
                 }
 
-                removedUnrecoverableCount += 1;
-                removeCheckoutIntentById(intentId);
+                try {
+                    await markTerminalOperationReplaying(intentId);
+                    const data = await createPosCheckout(payload);
+                    replayedCount += 1;
+                    setLastReceipt(data?.transaction || null);
+                    setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
+                    if (typeof onCheckoutCompleted === 'function') {
+                        onCheckoutCompleted(data?.transaction || null);
+                    }
+                    await markTerminalOperationReplayed(intentId);
+                } catch (error) {
+                    const errorDetails = resolveCheckoutReplayErrorDetails(error);
+                    if (isRetryableCheckoutReplayError(error)) {
+                        const nextAttemptCount = (Number(entry?.attempt_count) || 0) + 1;
+                        if (nextAttemptCount < CHECKOUT_QUEUE_MAX_RETRIES) {
+                            const nextRetryAt = Date.now() + computeCheckoutReplayBackoffMs(nextAttemptCount);
+                            await markTerminalOperationRetryScheduled(intentId, {
+                                attemptCount: nextAttemptCount,
+                                nextRetryAt,
+                                error: errorDetails
+                            });
+                            retryScheduledCount += 1;
+                            continue;
+                        }
+                    }
+
+                    await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
+                    failedManualCount += 1;
+                    if (!error?.response) {
+                        continue;
+                    }
+                }
             }
+        } finally {
+            setReplayingQueuedCheckouts(false);
         }
 
-        syncQueuedCheckoutsState();
-        setReplayingQueuedCheckouts(false);
+        await syncQueuedCheckoutsState();
 
         if (replayedCount > 0) {
             toast.success(`${replayedCount} queued checkout${replayedCount === 1 ? '' : 's'} replayed successfully.`);
@@ -471,9 +526,15 @@ export default function POSCheckoutTerminal({
             toast.message('No queued checkouts were replayed.');
         }
 
-        if (removedUnrecoverableCount > 0) {
+        if (retryScheduledCount > 0) {
+            toast.message(
+                `${retryScheduledCount} queued checkout${retryScheduledCount === 1 ? '' : 's'} scheduled for retry.`
+            );
+        }
+
+        if (failedManualCount > 0) {
             toast.error(
-                `${removedUnrecoverableCount} queued checkout${removedUnrecoverableCount === 1 ? '' : 's'} were removed due to non-retryable validation/policy errors.`
+                `${failedManualCount} queued checkout${failedManualCount === 1 ? '' : 's'} require manual resolution in Sync Queue.`
             );
         }
     }, [
@@ -684,25 +745,34 @@ export default function POSCheckoutTerminal({
     }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
 
     useEffect(() => {
-        syncQueuedCheckoutsState();
+        let active = true;
+        const bootstrapQueueStore = async () => {
+            await hydrateTerminalOperationQueueStore();
+            if (!active) return;
+            await syncQueuedCheckoutsState();
+        };
+        bootstrapQueueStore();
+        return () => {
+            active = false;
+        };
     }, [syncQueuedCheckoutsState]);
 
     useEffect(() => {
-        if (sessionLocked) return undefined;
+        if (sessionLocked || queueReplayManagedExternally) return undefined;
 
         const handleOnline = () => {
-            replayQueuedCheckouts();
+            replayQueuedCheckouts().catch(() => {});
         };
 
         if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
-            replayQueuedCheckouts();
+            replayQueuedCheckouts().catch(() => {});
         }
 
         window.addEventListener('online', handleOnline);
         return () => {
             window.removeEventListener('online', handleOnline);
         };
-    }, [replayQueuedCheckouts, sessionLocked]);
+    }, [queueReplayManagedExternally, replayQueuedCheckouts, sessionLocked]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;
@@ -968,18 +1038,29 @@ export default function POSCheckoutTerminal({
             }))
         };
 
-        const queueCheckoutIntentLocally = (source) => {
-            enqueueCheckoutIntent(payload, source);
+        const queueCheckoutIntentLocally = async (source) => {
+            await enqueueCheckoutIntent(payload, source);
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
+            const refreshedQueue = await listTerminalOperationQueueEntries({
+                includeResolved: false,
+                statuses: [
+                    TERMINAL_QUEUE_STATUS.QUEUED,
+                    TERMINAL_QUEUE_STATUS.REPLAYING,
+                    TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
+                ]
+            });
+            const nextQueueCount = (Array.isArray(refreshedQueue) ? refreshedQueue : [])
+                .filter((entry) => isCheckoutQueueEntry(entry))
+                .length;
             toast.message(
-                `You are offline. Checkout queued locally and will auto-replay when connection is restored (${queuedCheckouts.length + 1} queued).`
+                `You are offline. Checkout queued locally and will auto-replay when connection is restored (${nextQueueCount} queued).`
             );
         };
 
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            queueCheckoutIntentLocally('offline_preflight');
+            await queueCheckoutIntentLocally('offline_preflight');
             return;
         }
 
@@ -1002,12 +1083,15 @@ export default function POSCheckoutTerminal({
             if (data?.terminal_identity_policy?.warning?.message) {
                 toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
             }
-            removeCheckoutIntentById(payload.idempotency_key);
-            syncQueuedCheckoutsState();
+            await markTerminalOperationReplayed(payload.idempotency_key, {
+                resolution_source: 'network_success',
+                resolution_note: 'Checkout completed while online'
+            });
+            await syncQueuedCheckoutsState();
             loadCatalog();
         } catch (error) {
             if (!error?.response) {
-                queueCheckoutIntentLocally('network_failure');
+                await queueCheckoutIntentLocally('network_failure');
                 return;
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
@@ -1081,20 +1165,27 @@ export default function POSCheckoutTerminal({
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-amber-900">
-                            Queued checkouts: {queuedCheckouts.length}
+                            Queued checkouts: {queuedCheckoutPendingCount}
+                            {queuedCheckoutBlockedCount > 0 ? ` / ${queuedCheckoutBlockedCount} manual-resolution` : ''}
                         </p>
                         <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={replayingQueuedCheckouts || (typeof navigator !== 'undefined' && navigator.onLine === false)}
+                            disabled={
+                                queueReplayManagedExternally
+                                || replayingQueuedCheckouts
+                                || (typeof navigator !== 'undefined' && navigator.onLine === false)
+                            }
                             onClick={() => replayQueuedCheckouts({ toastIfEmpty: true })}
                         >
-                            {replayingQueuedCheckouts ? 'Replaying...' : 'Replay queued checkouts'}
+                            {queueReplayManagedExternally
+                                ? 'Replay in Sync Queue'
+                                : (replayingQueuedCheckouts ? 'Replaying...' : 'Replay queued checkouts')}
                         </Button>
                     </div>
                     <p className="text-xs text-amber-800">
-                        Offline-safe checkout queue stores pending intents locally and replays with idempotency keys when the terminal reconnects.
+                        Offline-safe checkout queue uses durable replay statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) with idempotent retry safety.
                     </p>
                 </div>
             )}

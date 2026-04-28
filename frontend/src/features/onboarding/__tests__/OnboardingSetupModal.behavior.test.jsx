@@ -91,7 +91,7 @@ describe('OnboardingSetupModal behavior', () => {
     expect(screen.getByLabelText(/POS business display name/i).value).toBe('Seeded Name');
   });
 
-  it('saves business profile step then allows skipping optional assets', async () => {
+  it('saves business profile step then proceeds through optional assets and classification', async () => {
     const user = userEvent.setup();
     renderModal();
 
@@ -114,7 +114,20 @@ describe('OnboardingSetupModal behavior', () => {
         eventKey: 'optional_asset_skipped',
         metadata: { surface: 'modal' }
       });
-      expect(screen.getByText(/3\) Required Readiness Checks/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Business Classification \(Advisory\)/i)).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    await waitFor(() => {
+      expect(mocks.onboardingServiceMock.saveOnboardingStep).toHaveBeenCalledWith(expect.objectContaining({
+        stepKey: 'business_classification'
+      }));
+      expect(mocks.onboardingServiceMock.trackOnboardingEvent).toHaveBeenCalledWith({
+        eventKey: 'classifier_saved',
+        metadata: { surface: 'modal' }
+      });
+      expect(screen.getByText(/4\) Required Readiness Checks/i)).toBeTruthy();
     });
   });
 });

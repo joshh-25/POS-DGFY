@@ -10,6 +10,7 @@ import {
   Settings2,
   Receipt,
   ShoppingCart,
+  RefreshCcw,
   Truck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,7 @@ export default function TerminalWorkspaceSidebar({
   incomingOrdersState = { orders: [] },
   locationsState = { locations: [] },
   queueLocationScopeId = null,
+  queueSummary = {},
   onSelectViewMode = () => {},
   onUnlock = () => {},
   onLock = () => {}
@@ -62,6 +64,8 @@ export default function TerminalWorkspaceSidebar({
   const showIncomingQueue = !isMsmeMode;
   const showLocationScope = !isMsmeMode;
   const showAdvancedOps = !isMsmeMode;
+  const pendingQueueCount = Number(queueSummary?.pending || 0);
+  const blockedQueueCount = Number(queueSummary?.blocked || 0);
 
   return (
     <aside
@@ -131,9 +135,9 @@ export default function TerminalWorkspaceSidebar({
         />
       </div>
 
-      {showLocationScope && (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secondary Actions</p>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secondary Actions</p>
+        {showLocationScope && (
           <NavButton
             label={`Location Scope: ${selectedLocationName}`}
             icon={MapPinned}
@@ -146,8 +150,16 @@ export default function TerminalWorkspaceSidebar({
                 : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location')
             }
           />
-        </div>
-      )}
+        )}
+        <NavButton
+          label={`Sync Queue (${pendingQueueCount}${blockedQueueCount > 0 ? `/${blockedQueueCount}` : ''})`}
+          icon={RefreshCcw}
+          active={currentViewMode === 'sync_queue'}
+          onClick={() => onSelectViewMode('sync_queue')}
+          disabled={locked}
+          caption={locked ? 'Unlock terminal to continue' : 'Replay, retry, and resolve offline terminal intents'}
+        />
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
         {showAdvancedOps && (

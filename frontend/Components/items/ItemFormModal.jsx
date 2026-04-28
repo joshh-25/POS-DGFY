@@ -27,6 +27,7 @@ import { createSupplier, getSuppliers } from '@/src/services/supplierService.js'
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -172,6 +173,7 @@ export default function ItemFormModal({
   onSaveDraft,
   folders = [],
   existingItems = [],
+  workflowMode = 'manufacturing',
   msmeMode = false,
   createPreset = MSME_ITEM_PRESET.INVENTORY_ONLY,
   posConfig = null,
@@ -221,6 +223,10 @@ export default function ItemFormModal({
   });
   const [msmeOriginalCategory, setMsmeOriginalCategory] = useState(null);
   const [msmeCategoryTouched, setMsmeCategoryTouched] = useState(false);
+  const modeItemDefaults = useMemo(
+    () => resolveBusinessModeItemDefaults(workflowMode),
+    [workflowMode]
+  );
   const { locations, loading: loadingLocations } = useLocations();
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
@@ -304,11 +310,11 @@ export default function ItemFormModal({
         category: initialCategory,
         product_type: initialCategory === MSME_CATEGORY_VALUES.PRODUCT ? 'finished_goods' : (item.product_type || null),
         description: item.description || '',
-        unit_of_measure: item.unit_of_measure || 'kg',
+        unit_of_measure: item.unit_of_measure || modeItemDefaults.unit_of_measure || 'kg',
         cost_per_unit: parseNum(item.cost_per_unit, 0),
         default_sale_price: parseNum(item.default_sale_price, 0),
-        vat_type: item.vat_type || 'vatable',
-        max_capacity: parseNum(item.max_capacity, 0),
+        vat_type: item.vat_type || modeItemDefaults.vat_type || 'vatable',
+        max_capacity: parseNum(item.max_capacity, Number(modeItemDefaults.max_capacity || 0)),
         current_stock: initialLocationStock,
         location_id: initialLocationId,
         min_threshold: parseNum(item.min_threshold, 0),
@@ -387,19 +393,19 @@ export default function ItemFormModal({
       let initialData = {
         sku_code: '',
         name: '',
-        category: 'raw_material',
-        product_type: null,
+        category: modeItemDefaults.category || 'raw_material',
+        product_type: modeItemDefaults.product_type ?? null,
         description: '',
-        unit_of_measure: 'kg',
+        unit_of_measure: modeItemDefaults.unit_of_measure || 'kg',
         cost_per_unit: 0,
         default_sale_price: 0,
-        vat_type: 'vatable',
-        max_capacity: 0,
+        vat_type: modeItemDefaults.vat_type || 'vatable',
+        max_capacity: Number(modeItemDefaults.max_capacity || 0),
         current_stock: 0,
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
         min_threshold: 0,
         purchase_allowance: 0,
-        fifo_enabled: true,
+        fifo_enabled: modeItemDefaults.fifo_enabled !== false,
         shelf_life_days: '',
         opened_shelf_life_days: '',
         product_folder: '',
@@ -445,7 +451,7 @@ export default function ItemFormModal({
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
     }
-  }, [createPreset, item, msmeMode, open, activeLocations]);
+  }, [createPreset, item, modeItemDefaults, msmeMode, open, activeLocations]);
 
   // Track dirty state
   useEffect(() => {
@@ -1480,4 +1486,3 @@ export default function ItemFormModal({
     </>
   );
 }
-

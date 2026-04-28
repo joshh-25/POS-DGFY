@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-04-21
+last_reviewed: 2026-04-28
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -51,7 +51,7 @@ Start here for all planning and implementation work:
 - Compliance activation readiness browser E2E guidance is maintained in `docs/testing/README.md`.
 
 ## Current Behavior Notes
-1. Tenant workflow mode (`manufacturing` vs `msme`) is governed by ADR 0008 and is independent from compliance lifecycle.
+1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008 and ADR 0014.
 2. POS setup is wizard-first; item cards no longer host single-item POS setup widgets.
 3. POS visibility enablement is readiness-gated with deterministic denial metadata for unresolved requirements.
 4. Final Review documentary readiness is tenant self-serve in Settings > Compliance; repo submission docs are reference artifacts, not tenant input.
@@ -61,6 +61,9 @@ Start here for all planning and implementation work:
 8. Weighted average cost valuation is additive and exposed across inventory, purchasing, dashboard, and reporting flows (ADR 0010).
 9. Production release policy is no-staging hard-gated by QA evidence (`docs/ops/NO_STAGING_RELEASE_STANDARD.md`) before deploy.
 10. POS terminal location safety now includes audited shift-location remediation and strict-binding readiness guardrails before enabling `pos_terminal_location_binding_enforced=true`.
+11. POS offline operations (including checkout replay) use a durable queue contract with explicit statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) and operator-facing Sync Queue controls.
+12. Storefront discovery/catalog read endpoints now publish explicit HTTP cache contracts while checkout/mutation flows remain `no-store`.
+11. Tenant first-login onboarding now supports advisory business classification (`business_classification`) with deterministic snapshot outputs (`visibility_mode`, `monetization_tier`, `workflow_mode_recommendation`, `compliance_path_hint`) while keeping readiness completion gates unchanged.
 
 ## Rules
 1. Use authoritative docs first.

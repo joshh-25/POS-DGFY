@@ -94,7 +94,9 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
             setStep(2);
         } else {
             if (result?.details?.code === 'WORKFLOW_MODE_TEMPLATE_MISMATCH') {
-                const expectedMode = result?.details?.tenant_workflow_mode || workflowMode;
+                const expectedMode = result?.details?.tenant_template_workflow_mode
+                    || result?.details?.tenant_workflow_mode
+                    || workflowMode;
                 const expectedLabel = getWorkflowModeLabel(expectedMode);
                 toast.error(`${result.error} Expected template: ${expectedLabel}.`);
                 return;

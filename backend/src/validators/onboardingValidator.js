@@ -4,6 +4,7 @@ import validateSchema from '../middleware/validateSchema.js';
 const ONBOARDING_STEP_KEYS = Object.freeze([
   'business_profile',
   'brand_assets',
+  'business_classification',
   'readiness'
 ]);
 const MAX_EVENT_METADATA_BYTES = 8 * 1024;
@@ -18,7 +19,10 @@ export const onboardingEventSchema = Joi.object({
     'wizard_viewed',
     'reminder_shown',
     'reminder_dismissed',
-    'optional_asset_skipped'
+    'optional_asset_skipped',
+    'classifier_viewed',
+    'classifier_saved',
+    'classifier_skipped'
   ).required(),
   metadata: Joi.object().unknown(true).default({}).custom((value, helpers) => {
     try {

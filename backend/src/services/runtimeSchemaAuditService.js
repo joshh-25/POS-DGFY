@@ -30,7 +30,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260416000008-backfill-user-location-grants.cjs',
     '20260424000001-add-storefront-branding-assets-to-discovery-index.cjs',
     '20260424000002-harden-storefront-asset-settings-constraints.cjs',
-    '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs'
+    '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs',
+    '20260427000001-add-storefront-pos-read-path-indexes.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({

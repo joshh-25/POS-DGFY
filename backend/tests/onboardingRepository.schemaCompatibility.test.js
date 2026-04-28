@@ -57,4 +57,66 @@ describe('onboardingRepository schema compatibility', () => {
     expect(where.is_active).toBeUndefined();
     expect(where.pos_visible).toBeUndefined();
   });
+
+  it('derives deterministic advisory classification snapshot from business_classification payload', async () => {
+    const progress = {
+      step_payloads: {
+        business_classification: {
+          legitimacy: {
+            registration_status: 'registered',
+            requires_official_receipt: true
+          },
+          location_presence: {
+            branch_count: 3
+          },
+          operations_staff: {
+            pos_user_count: 10,
+            needs_rbac: true
+          },
+          order_booking: {
+            order_modes: ['scheduled'],
+            fulfillment_methods: ['platform_delivery']
+          },
+          online_visibility: {
+            mode: 'transaction'
+          },
+          growth_intent: {
+            estimated_monthly_sales: 500000
+          }
+        }
+      }
+    };
+    const SystemSetting = {
+      findAll: jest.fn().mockResolvedValue([
+        {
+          setting_key: 'tenant_onboarding_progress',
+          setting_value: JSON.stringify(progress)
+        }
+      ]),
+      findOne: jest.fn().mockResolvedValue(null)
+    };
+    const TenantLocation = {
+      count: jest.fn().mockResolvedValue(1)
+    };
+    const Item = {
+      rawAttributes: {
+        item_id: { fieldName: 'item_id', field: 'item_id' }
+      },
+      count: jest.fn().mockResolvedValue(1)
+    };
+
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'SystemSetting') return SystemSetting;
+      if (name === 'TenantLocation') return TenantLocation;
+      if (name === 'Item') return Item;
+      return null;
+    });
+
+    const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
+    const snapshot = result.tenant_onboarding_progress.classification_snapshot;
+    expect(snapshot.visibility_mode).toBe('transaction');
+    expect(snapshot.monetization_tier).toBe('tier_3');
+    expect(snapshot.workflow_mode_recommendation).toBe('manufacturing');
+    expect(snapshot.compliance_path_hint).toBe('regulated_ready');
+  });
 });

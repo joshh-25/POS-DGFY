@@ -4,7 +4,8 @@ import { toValidDate, extendOneCalendarMonth } from './tenantBillingDateUtils.js
 import { createBillingFunnelTracker } from '../../../services/billingFunnelTelemetryService.js';
 import {
     isWorkflowMode,
-    normalizeWorkflowMode
+    normalizeWorkflowMode,
+    WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
@@ -116,7 +117,7 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'workflowMode must be either manufacturing or msme.',
+                    `workflowMode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`,
                     { statusCode: 400 }
                 ));
             }

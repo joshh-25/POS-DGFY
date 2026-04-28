@@ -136,8 +136,12 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('persists offline checkout intents and exposes replay affordance', () => {
-    expect(posCheckoutTerminalContent).toContain('const CHECKOUT_INTENT_QUEUE_KEY = \'pos_checkout_intent_queue_v1\';');
-    expect(posCheckoutTerminalContent).toContain('queueCheckoutIntentLocally');
+    expect(posCheckoutTerminalContent).toContain('CHECKOUT_QUEUE_OPERATION = \'checkout\'');
+    expect(posCheckoutTerminalContent).toContain('enqueueTerminalOperationIntent');
+    expect(posCheckoutTerminalContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
+    expect(terminalPageContent).toContain("operation === 'checkout'");
+    expect(terminalPageLayoutContent).toContain('queueReplayManagedExternally');
+    expect(terminalOperationsWorkspaceContent).toContain("checkout: 'Checkout'");
     expect(posCheckoutTerminalContent).toContain('Replay queued checkouts');
     expect(posCheckoutTerminalContent).toContain('idempotency_key');
   });

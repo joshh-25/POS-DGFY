@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-04-23
+Last updated: 2026-04-28
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -46,7 +46,8 @@ Overall status: in_progress
 - malformed hash targets fail safely without blocking page actions
 - final-review `Fix now` targets remain scrollable in `compliant_active`
 16. Workflow-mode-aware UX is active:
-- tenant workflow mode (`manufacturing`/`msme`) remains independent from compliance lifecycle
+- tenant workflow mode now supports expanded template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`)
+- runtime route/wizard compatibility remains family-safe (`manufacturing`/`msme`) and independent from compliance lifecycle
 - MSME uses simplified inventory/POS surfaces while preserving manufacturing data
 17. Single-item POS setup is wizard-first:
 - item cards are compact and do not host single-item POS setup widgets
@@ -82,6 +83,10 @@ Overall status: in_progress
 28. API route naming clarity is now explicit in docs:
 - canonical external routes are documented as `/api/v1/pos/checkouts`, `/api/v1/store/cart/quote`, `/api/v1/store/checkout`
 - singular `/api/v1/pos/checkout` is documented as non-canonical
+29. POS checkout offline replay now uses the same durable sync contract as other terminal operations:
+- queue storage: IndexedDB-first with fallback compatibility path
+- statuses: `queued`, `replaying`, `replayed`, `failed_manual_resolution_required`
+- replay ownership in terminal workspace mode is centralized to prevent duplicate replay loops
 
 ## 3) Automated Gate Status (Latest)
 

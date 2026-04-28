@@ -9,6 +9,24 @@ import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowMod
 import { Toaster } from '@/components/ui/sonner';
 import '../../../src/index.css';
 
+const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
+const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
+
+const registerPosServiceWorker = async () => {
+  if (typeof window === 'undefined') return;
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: appBasePath === '/' ? '/' : `${appBasePath}/`
+    });
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  } catch {
+    // Service worker support is optional for local development.
+  }
+};
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
@@ -24,3 +42,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+registerPosServiceWorker();

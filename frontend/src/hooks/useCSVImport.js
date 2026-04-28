@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import api from '../services/api.js';
-import { normalizeWorkflowMode } from '../features/settings/workflowMode.js';
+import {
+    normalizeWorkflowMode,
+    resolveWorkflowTemplateMode
+} from '../features/settings/workflowMode.js';
 
 const normalizeTemplateRequest = (input) => {
     if (typeof input === 'object' && input !== null) {
-        return normalizeWorkflowMode(input.workflowMode);
+        return resolveWorkflowTemplateMode(input.workflowMode);
     }
 
     const normalized = String(input || '').trim().toLowerCase();
@@ -14,7 +17,7 @@ const normalizeTemplateRequest = (input) => {
         return 'manufacturing';
     }
 
-    return normalizeWorkflowMode(normalized);
+    return resolveWorkflowTemplateMode(normalizeWorkflowMode(normalized));
 };
 
 export const useCSVImport = () => {

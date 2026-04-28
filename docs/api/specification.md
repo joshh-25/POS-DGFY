@@ -2082,7 +2082,13 @@ Update online order fulfillment status from POS terminal operations.
 1. Allowed transitions are lifecycle-validated server-side.
 2. Delivery orders must progress to `out_for_delivery` (not `ready_for_pickup`).
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
-4. Successful responses include `data.idempotent_replay` and `data.replay_outcome` (`processed` or `idempotent_replay`); conflicts/blocked replays surface in error payload idempotency details.
+4. Successful responses include:
+   - `data.idempotent_replay`
+   - `data.replay_outcome`
+   - `data.status_transition` (`current_status`, `requested_status`, `order_method`, `applied_by`, `applied_at`)
+   - `data.idempotency` (`key`, `request_fingerprint`, `outcome`, `idempotent_replay`)
+5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
+6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
 
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
@@ -2248,6 +2254,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Auth**: Public  
 **Tenant Context**: Not required for this discovery endpoint
+**Caching Contract**: `Cache-Control: public, max-age=20, s-maxage=20, stale-while-revalidate=40, stale-if-error=90`
 
 **Query Parameters**
 | Name | Type | Description |
@@ -2287,6 +2294,7 @@ Resolve one storefront profile by tenant slug for public storefront entry.
 
 **Auth**: Public  
 **Tenant Context**: Not required
+**Caching Contract**: `Cache-Control: public, max-age=30, s-maxage=30, stale-while-revalidate=60, stale-if-error=120`
 
 **Security Note**: Discovery payloads do not expose `company_token`.
 Profile payload may include optional tenant branding fields:
@@ -2298,6 +2306,7 @@ List tenant storefront catalog items (public read).
 
 **Auth**: Public  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: public, max-age=45, s-maxage=45, stale-while-revalidate=90, stale-if-error=180`
 
 **Query Parameters**
 | Name | Type | Description |
@@ -2338,6 +2347,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 
 **Auth**: Public  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: public, max-age=30, s-maxage=30, stale-while-revalidate=60, stale-if-error=120`
 
 **Response Notes**
 1. Returns active locations only.
@@ -2350,6 +2360,7 @@ Compute quote totals for guest or store-customer checkout.
 
 **Auth**: Optional store customer (`Store JWT`)  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
 Route mapping note:
 - Public API path is `/api/v1/store/cart/quote`.
@@ -2370,6 +2381,7 @@ Create online-store order and return tracking metadata.
 
 **Auth**: Optional store customer (`Store JWT`)  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
 Route mapping note:
 - Public API path is `/api/v1/store/checkout`.
@@ -2390,6 +2402,7 @@ Track online-store order status for public users.
 
 **Auth**: Public  
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)  
+**Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`  
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 
 ### VAT Data Placement (Current Contract)
@@ -3571,6 +3584,12 @@ Get tenant onboarding status snapshot for the authenticated tenant master admin.
 - `tenant_onboarding_progress`:
   - `step_payloads` (step-keyed object)
   - `checklist_snapshot` (`required_total`, `completed_required_count`, `missing_requirements`, `is_ready`)
+  - `classification_snapshot`:
+    - `visibility_mode` (`ghost | catalog | inquiry | transaction`)
+    - `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
+    - `workflow_mode_recommendation` (`msme | manufacturing`)
+    - `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
+    - `payload` (normalized questionnaire payload)
 
 ### PUT /onboarding/step
 Persist onboarding progress for a step (idempotent).
@@ -3580,12 +3599,29 @@ Persist onboarding progress for a step (idempotent).
 **Request**
 ```json
 {
-  "step_key": "business_profile",
+  "step_key": "business_classification",
   "payload": {
-    "pos_business_name": "Acme Storefront"
+    "identity": {
+      "official_name": "Acme Incorporated",
+      "display_name": "Acme Storefront",
+      "industry_tags": ["retail", "food"]
+    },
+    "legitimacy": {
+      "registration_status": "registered",
+      "requires_official_receipt": true
+    },
+    "online_visibility": {
+      "mode": "transaction"
+    }
   }
 }
 ```
+
+**Supported `step_key` values**
+- `business_profile`
+- `brand_assets`
+- `business_classification`
+- `readiness`
 
 ### POST /onboarding/complete
 Finalize onboarding if required readiness checks are satisfied.
@@ -3617,6 +3653,9 @@ Track onboarding UX telemetry events without mutating onboarding checklist progr
 - `reminder_shown`
 - `reminder_dismissed`
 - `optional_asset_skipped`
+- `classifier_viewed`
+- `classifier_saved`
+- `classifier_skipped`
 
 **Response (202)**
 ```json

@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
 import { toast } from 'sonner';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
+import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_VALUES } from '@/src/features/settings/workflowMode.js';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -1431,8 +1432,9 @@ export default function TenantManager() {
                                         value={addForm.workflowMode}
                                         onChange={e => setAddForm({ ...addForm, workflowMode: e.target.value })}
                                     >
-                                        <option value="manufacturing">Manufacturing (Full)</option>
-                                        <option value="msme">MSME (Simplified)</option>
+                                        {WORKFLOW_MODE_VALUES.map((mode) => (
+                                            <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
+                                        ))}
                                     </select>
                                     <p className="text-xs text-slate-500">
                                         Controls initial IMS/POS workflow simplification for this tenant.

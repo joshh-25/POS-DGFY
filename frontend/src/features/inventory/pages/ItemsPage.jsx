@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
 import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +173,16 @@ export default function Items() {
   const [posChecklistSelectedIds, setPosChecklistSelectedIds] = useState(new Set());
   const [bulkPosToggleLoading, setBulkPosToggleLoading] = useState(false);
   const [guidedPosReadyItemId, setGuidedPosReadyItemId] = useState(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const normalizedSearchQuery = useMemo(
+    () => String(deferredSearchQuery || '').trim().toLowerCase(),
+    [deferredSearchQuery]
+  );
+  const deferredPosChecklistSearch = useDeferredValue(posChecklistSearch);
+  const normalizedPosChecklistSearch = useMemo(
+    () => String(deferredPosChecklistSearch || '').trim().toLowerCase(),
+    [deferredPosChecklistSearch]
+  );
 
   // DnD Sensors
   const sensors = useSensors(
@@ -341,8 +351,9 @@ export default function Items() {
   const posChecklistItems = useMemo(() => {
     return items
       .filter((item) => {
-        const matchesSearch = (item.name || '').toLowerCase().includes(posChecklistSearch.toLowerCase()) ||
-          (item.sku_code || '').toLowerCase().includes(posChecklistSearch.toLowerCase());
+        const matchesSearch = normalizedPosChecklistSearch.length === 0
+          || (item.name || '').toLowerCase().includes(normalizedPosChecklistSearch)
+          || (item.sku_code || '').toLowerCase().includes(normalizedPosChecklistSearch);
         const filterCategory = resolveCategoryFilterValue(item);
         const matchesCategory = posChecklistCategory === 'all' || filterCategory === posChecklistCategory || item.category === posChecklistCategory;
         const status = String(item.status || '').toLowerCase();
@@ -350,7 +361,7 @@ export default function Items() {
         return matchesSearch && matchesCategory && matchesStatus;
       })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  }, [items, posChecklistSearch, posChecklistCategory, posChecklistStatus, resolveCategoryFilterValue]);
+  }, [items, normalizedPosChecklistSearch, posChecklistCategory, posChecklistStatus, resolveCategoryFilterValue]);
 
   const checklistSelectedCount = posChecklistSelectedIds.size;
   const checklistFilteredCount = posChecklistItems.length;
@@ -647,8 +658,9 @@ export default function Items() {
   const filteredItems = useMemo(() => {
     return items
       .filter(item => {
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (item.sku_code || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = normalizedSearchQuery.length === 0
+          || item.name.toLowerCase().includes(normalizedSearchQuery)
+          || (item.sku_code || '').toLowerCase().includes(normalizedSearchQuery);
 
         // Category filter matches effective category
         const effectiveCategory = resolveCategoryFilterValue(item);
@@ -711,7 +723,7 @@ export default function Items() {
             return 0;
         }
       });
-  }, [items, searchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
+  }, [items, normalizedSearchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
@@ -1932,6 +1944,7 @@ export default function Items() {
           onSaveDraft={handleSaveDraft}
           folders={folders}
           existingItems={skuSuggestionItems}
+          workflowMode={workflowMode}
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
@@ -1966,6 +1979,7 @@ export default function Items() {
             onSaveDraft={handleProductSaveDraft}
             product={editingProduct}
             items={skuSuggestionItems}
+            workflowMode={workflowMode}
             folders={productFolders}
             posConfig={editingProduct ? resolvePosConfig(editingProduct) : null}
             onTogglePosVisibility={handleTogglePosVisibility}

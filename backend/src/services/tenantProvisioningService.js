@@ -6,7 +6,10 @@ import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
-import { normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
+import {
+    normalizeWorkflowMode,
+    WORKFLOW_MODE_VALUES
+} from '../modules/shared/constants/workflowModes.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
 // Strict allowlist pattern for all tenant database names.
@@ -113,7 +116,7 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
             replacements: [
                 WORKFLOW_MODE_SETTING_KEY,
                 normalizedWorkflowMode,
-                'Tenant operations workflow mode (manufacturing | msme)'
+                `Tenant operations workflow mode (${WORKFLOW_MODE_VALUES.join(' | ')})`
             ]
         }
     );

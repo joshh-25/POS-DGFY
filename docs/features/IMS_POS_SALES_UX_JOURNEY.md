@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-23
+last_reviewed: 2026-04-28
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -13,9 +13,10 @@ topic: end_to_end_cashier_admin_journey
 Canonical UX flow from item setup in IMS to POS checkout, history review, and Sales export.
 
 ## Workflow Mode Context
-1. Tenant workflow mode is tenant-wide and master-admin controlled (`manufacturing` or `msme`).
-2. Workflow mode is independent from compliance lifecycle (`non_compliant_active`, `compliant_pending`, `compliant_active`).
-3. MSME mode uses simplified IMS/POS surfaces while preserving hidden manufacturing data for reversible mode switching.
+1. Tenant workflow mode is tenant-wide and master-admin controlled with expanded template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`).
+2. Runtime boundary behavior remains family-compatible (`manufacturing` vs `msme`) for backward-safe route and wizard gating.
+3. Workflow mode is independent from compliance lifecycle (`non_compliant_active`, `compliant_pending`, `compliant_active`).
+4. MSME mode uses simplified IMS/POS surfaces while preserving hidden manufacturing data for reversible mode switching.
 
 ## Admin Journey
 1. Create or edit finished-goods item in `Items`.
@@ -37,6 +38,7 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
    - compliance state and reason code
 8. Review POS history records and hand off to Sales timeline (`Open in Sales Report`).
 9. Export Sales CSV with precheck confirmation and retain export metadata.
+10. Use Sync Queue console for deterministic replay/resolve actions when offline intents enter manual-resolution state.
 
 ## Readiness Gate Behavior
 1. Enabling `Show in POS` is readiness-gated.
