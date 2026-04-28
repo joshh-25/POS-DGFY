@@ -416,5 +416,5 @@ After setting up the environment:
 2. Read [Development Guidelines](./guidelines.md) for coding standards
 3. Check [API Specification](../api/specification.md) for API details
 4. Review [Database Schema](../database/schema.md) for data structure
-5. See root-level `PREREQUISITES.md` for local vs hosting setup reference
-6. See root-level `TROUBLESHOOTING.md` for common errors reference
+5. See `docs/setup/PREREQUISITES.md` for local vs hosting setup reference
+6. See `docs/setup/TROUBLESHOOTING.md` for common errors reference

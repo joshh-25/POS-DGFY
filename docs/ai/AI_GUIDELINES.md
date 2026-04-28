@@ -572,9 +572,9 @@ Ask the assistant:
 
 ### Documentation
 
-- [Quick Start Guide](../QUICK_START.md)
+- [Quick Start Guide](../setup/QUICK_START.md)
 - [API Specification](api/specification.md)
-- [Troubleshooting](../TROUBLESHOOTING.md)
+- [Troubleshooting](../setup/TROUBLESHOOTING.md)
 - [Nested Products Guide](NESTED_PRODUCTS.md)
 
 ### Support

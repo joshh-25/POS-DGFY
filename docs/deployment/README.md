@@ -16,5 +16,5 @@ Historical transition notes:
 - `docs/archive/deployment/2026-02-19/transition-guide.md`
 
 Notes:
-- `DEPLOYMENT_GUIDE.md` and `TROUBLESHOOTING.md` remain root-level supplemental references; prefer the docs above for current process.
+- Root-level `DEPLOYMENT_GUIDE.md` and `TROUBLESHOOTING.md` are compatibility pointers to canonical docs under `docs/ops` and `docs/setup`.
 - For persistent passwordless deploy access, see the SSH setup section in `docs/guides/SCRIPTS_GUIDE.md`.

@@ -44,7 +44,7 @@ Start here for all planning and implementation work:
 
 ## Documentation Scope
 - Governed implementation and architecture docs live under `docs/`.
-- Root-level operational docs (for example `SETUP.md`, `QUICK_START.md`, `TROUBLESHOOTING.md`) remain as supplemental reference while migration continues.
+- Root-level operational files are thin compatibility pointers; canonical operational docs are under `docs/setup`, `docs/ops`, and `docs/reference`.
 - `docs/archive/` is historical only and is non-authoritative for new planning.
 - Historical compliance remediation packets from April 2026 are archived under `docs/archive/compliance/2026-04-07/`.
 - Historical SKU expansion/storefront planning snapshots from March 2026 are archived under `docs/archive/reference/2026-03/`.
