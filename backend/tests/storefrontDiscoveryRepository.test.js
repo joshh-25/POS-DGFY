@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 
 const findAllMock = jest.fn();
 const findOneMock = jest.fn();
+const tenantFindOneMock = jest.fn();
 const reconcileMock = jest.fn();
 const loggerInfoMock = jest.fn();
 const loggerWarnMock = jest.fn();
@@ -12,6 +13,9 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   StorefrontDiscoveryIndex: {
     findAll: findAllMock,
     findOne: findOneMock
+  },
+  Tenant: {
+    findOne: tenantFindOneMock
   }
 }));
 
@@ -89,6 +93,7 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       row_count: 1,
       last_updated_at: '2026-03-31T00:00:00.000Z'
     });
+    tenantFindOneMock.mockResolvedValue(null);
     delete process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY;
   });
 
@@ -168,6 +173,45 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       tenant_id: 'tenant-2',
       slug: 'bravo-store'
     }));
+  });
+
+  it('uses materialized profile content from discovery index without tenant settings fallback', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue({
+      ...makeEntry({
+        tenant_id: 'tenant-2',
+        tenant_name: 'Bravo',
+        slug: 'bravo-store',
+        location_id: 2,
+        latitude: 10.71,
+        longitude: 122.57
+      }),
+      storefront_tagline: 'Grilled to perfection',
+      storefront_about: 'Materialized about section',
+      storefront_phone: '09171234567',
+      storefront_email: 'hello@example.com',
+      storefront_hours: '10:00 AM - 10:00 PM',
+      storefront_why_choose_us: ['Fresh daily'],
+      storefront_social_links: { facebook: 'https://facebook.com/bravo' },
+      storefront_review_highlights: [{ reviewer_name: 'A', rating: 5, comment: 'Great' }],
+      storefront_promo: { title: '10% OFF', active: true }
+    });
+
+    const result = await repository.getStorefrontBySlug('bravo-store');
+    expect(result).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-2',
+      slug: 'bravo-store',
+      storefront_tagline: 'Grilled to perfection',
+      storefront_about: 'Materialized about section',
+      storefront_phone: '09171234567',
+      storefront_email: 'hello@example.com',
+      storefront_hours: '10:00 AM - 10:00 PM',
+      storefront_why_choose_us: ['Fresh daily'],
+      storefront_social_links: { facebook: 'https://facebook.com/bravo' },
+      storefront_review_highlights: [{ reviewer_name: 'A', rating: 5, comment: 'Great' }],
+      storefront_promo: { title: '10% OFF', active: true }
+    }));
+    expect(tenantFindOneMock).not.toHaveBeenCalled();
   });
 
   it('falls back on profile lookup when storefront branding columns are missing', async () => {

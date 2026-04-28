@@ -130,6 +130,39 @@ const withAssetOrigin = (url) => {
   }
 };
 
+const parseOptionalArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseOptionalObject = (value) => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const sanitizeExternalLink = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
 const createStorePopupNode = (store = {}) => {
   const container = document.createElement('div');
   container.style.display = 'grid';
@@ -1046,6 +1079,7 @@ export function App() {
     };
   }, [quoteResult, cartTotal]);
   const isDesktopCheckout = viewportWidth >= 1024;
+  const isMobileViewport = viewportWidth < 768;
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -1330,18 +1364,18 @@ export function App() {
   };
 
   return (
-    <main style={{ fontFamily: 'Segoe UI, system-ui, sans-serif', background: '#eef2f7', minHeight: '100vh', color: '#0f172a' }}>
-      <div style={{ maxWidth: 1320, margin: '0 auto', padding: 20, paddingBottom: isStorePage ? 120 : 24 }}>
+    <main style={{ fontFamily: '"Manrope","Nunito Sans","Segoe UI",system-ui,sans-serif', background: 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)', minHeight: '100vh', color: '#0f172a' }}>
+      <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? 12 : 20, paddingBottom: isStorePage ? (isMobileViewport ? 96 : 120) : 24 }}>
         {!isStorePage && (
           <>
-            <h1 style={{ margin: '0 0 10px 0', fontSize: 42 }}>{DGFY_BRAND_NAME} General Store</h1>
-            <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: 22 }}>Discover nearby stores, browse menus, and place online orders.</p>
+            <h1 style={{ margin: '0 0 10px 0', fontSize: isMobileViewport ? 30 : 44, letterSpacing: '-0.02em' }}>{DGFY_BRAND_NAME} General Store</h1>
+            <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: isMobileViewport ? 15 : 20 }}>Discover nearby stores, browse menus, and place online orders.</p>
 
-            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
+            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 18, padding: isMobileViewport ? 12 : 16, boxShadow: '0 12px 28px rgba(15,23,42,.06)' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search store, slug, address, or item..." style={{ flex: '1 1 360px', border: '1px solid #cbd5e1', borderRadius: 10, padding: '10px 12px' }} />
-                <button type="button" onClick={() => loadStores(undefined, { useImmediateSearch: true })} style={{ borderRadius: 10, border: '1px solid #0f766e', color: '#0f766e', background: '#fff', padding: '10px 14px', fontWeight: 700 }}>Search</button>
-                <button type="button" onClick={handleNearMe} style={{ borderRadius: 10, border: '1px solid #0f766e', color: '#0f766e', background: '#fff', padding: '10px 14px', fontWeight: 700 }}>Near Me</button>
+                <button type="button" onClick={() => loadStores(undefined, { useImmediateSearch: true })} style={{ borderRadius: 12, border: '1px solid #c2410c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '10px 14px', fontWeight: 800 }}>Search</button>
+                <button type="button" onClick={handleNearMe} style={{ borderRadius: 12, border: '1px solid #fb923c', color: '#c2410c', background: '#fff7ed', padding: '10px 14px', fontWeight: 700 }}>Near Me</button>
                 {['list', 'grid', 'map'].map((mode) => (
                   <button key={mode} type="button" onClick={() => setViewMode(mode)} style={{ borderRadius: 10, border: `1px solid ${viewMode === mode ? '#1d9a8a' : '#cbd5e1'}`, background: viewMode === mode ? '#e6fffb' : '#fff', padding: '10px 14px', fontWeight: 700, textTransform: 'capitalize' }}>{mode}</button>
                 ))}
@@ -1404,10 +1438,10 @@ export function App() {
                 </article>
               </div>
 
-              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)', gap: 12 }}>
+              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 2fr) minmax(320px, 1fr)', gap: 12 }}>
                 <section style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#f8fafc', padding: 12, minHeight: 420 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <strong style={{ fontSize: 15 }}>Discovery Results</strong>
+                    <strong style={{ fontSize: 16, letterSpacing: '-0.01em' }}>Discovery Results</strong>
                     <span style={{ fontSize: 12, color: '#64748b' }}>Select any store to open its tenant page</span>
                   </div>
 
@@ -1451,7 +1485,7 @@ export function App() {
                               if (highlightedPin) setHighlightedDiscoveryMarkerKey(highlightedPin.marker_key);
                             }}
                             onClick={() => goStore(store.slug, preferredLocationId)}
-                            style={{ textAlign: 'left', borderRadius: 14, border: '1px solid #d6e2e8', background: '#fff', padding: 14, cursor: 'pointer' }}
+                            style={{ textAlign: 'left', borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, cursor: 'pointer', boxShadow: '0 8px 24px rgba(15,23,42,.05)' }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1633,11 +1667,101 @@ export function App() {
         {isStorePage && (
           <>
             <section style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={goDiscovery} style={{ borderRadius: 10, border: '1px solid #334155', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700 }}>? Back to {DGFY_BRAND_NAME} General Store</button>
+                  <button type="button" onClick={goDiscovery} style={{ borderRadius: 12, border: '1px solid #334155', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700 }}>Back to {DGFY_BRAND_NAME} General Store</button>
               <div style={{ color: '#64748b', fontSize: 13 }}>Tenant page: {routeSlug}</div>
             </section>
 
-            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            {selectedStore && (() => {
+              const whyChooseUs = parseOptionalArray(selectedStore.storefront_why_choose_us).map((entry) => String(entry || '').trim()).filter(Boolean);
+              const reviewHighlights = parseOptionalArray(selectedStore.storefront_review_highlights).filter((entry) => entry && typeof entry === 'object' && String(entry.comment || '').trim());
+              const promo = parseOptionalObject(selectedStore.storefront_promo);
+              const social = parseOptionalObject(selectedStore.storefront_social_links);
+              const socialMessengerUrl = sanitizeExternalLink(social?.messenger);
+              const socialFacebookUrl = sanitizeExternalLink(social?.facebook);
+              const socialInstagramUrl = sanitizeExternalLink(social?.instagram);
+              const hasSocialLinks = Boolean(socialMessengerUrl || socialFacebookUrl || socialInstagramUrl);
+              const hasPromo = promo && promo.active === true && (
+                String(promo.title || '').trim() || String(promo.subtitle || '').trim() || String(promo.badge || '').trim()
+              );
+              const hasAnyContent = (
+                String(selectedStore.storefront_about || '').trim()
+                || String(selectedStore.storefront_tagline || '').trim()
+                || String(selectedStore.storefront_phone || '').trim()
+                || String(selectedStore.storefront_email || '').trim()
+                || String(selectedStore.storefront_hours || '').trim()
+                || whyChooseUs.length > 0
+                || reviewHighlights.length > 0
+                || hasPromo
+                || hasSocialLinks
+              );
+              if (!hasAnyContent) return null;
+              return (
+                <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
+                  <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+                    {(String(selectedStore.storefront_about || '').trim() || String(selectedStore.storefront_tagline || '').trim()) && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>About {selectedStore.tenant_name}</div>
+                        {String(selectedStore.storefront_tagline || '').trim() && (
+                          <p style={{ margin: '6px 0 0 0', color: '#c2410c', fontStyle: 'italic', fontWeight: 700 }}>{selectedStore.storefront_tagline}</p>
+                        )}
+                        {String(selectedStore.storefront_about || '').trim() && (
+                          <p style={{ margin: '8px 0 0 0', color: '#334155', fontSize: 14, lineHeight: 1.55 }}>{selectedStore.storefront_about}</p>
+                        )}
+                      </article>
+                    )}
+                    {(String(selectedStore.storefront_phone || '').trim() || String(selectedStore.storefront_email || '').trim() || String(selectedStore.storefront_hours || '').trim()) && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Contact & Hours</div>
+                        {String(selectedStore.storefront_phone || '').trim() && <p style={{ margin: '8px 0 0 0', color: '#334155' }}>Phone: {selectedStore.storefront_phone}</p>}
+                        {String(selectedStore.storefront_email || '').trim() && <p style={{ margin: '6px 0 0 0', color: '#334155' }}>Email: {selectedStore.storefront_email}</p>}
+                        {String(selectedStore.storefront_hours || '').trim() && <p style={{ margin: '6px 0 0 0', color: '#0f766e', fontWeight: 700 }}>{selectedStore.storefront_hours}</p>}
+                      </article>
+                    )}
+                    {whyChooseUs.length > 0 && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Why Choose Us</div>
+                        <ul style={{ margin: '8px 0 0 16px', color: '#334155' }}>
+                          {whyChooseUs.map((entry, index) => <li key={`why-${index}`} style={{ marginBottom: 6 }}>{entry}</li>)}
+                        </ul>
+                      </article>
+                    )}
+                    {hasPromo && (
+                      <article style={{ border: '1px solid #fed7aa', borderRadius: 12, padding: 12, background: 'linear-gradient(135deg,#fff7ed,#fff)' }}>
+                        <div style={{ fontWeight: 800, color: '#c2410c' }}>{String(promo.badge || 'Promo')}</div>
+                        {String(promo.title || '').trim() && <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: '#9a3412' }}>{promo.title}</div>}
+                        {String(promo.subtitle || '').trim() && <p style={{ margin: '6px 0 0 0', color: '#7c2d12' }}>{promo.subtitle}</p>}
+                        {String(promo.validity_text || '').trim() && <div style={{ marginTop: 6, fontSize: 12, color: '#b45309' }}>{promo.validity_text}</div>}
+                      </article>
+                    )}
+                    {reviewHighlights.length > 0 && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Customer Highlights</div>
+                        <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                          {reviewHighlights.slice(0, 3).map((review, index) => (
+                            <div key={`review-${index}`} style={{ borderTop: index === 0 ? 'none' : '1px solid #e2e8f0', paddingTop: index === 0 ? 0 : 8 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `• ${review.rating}★` : ''}</div>
+                              <div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{String(review.comment || '')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </article>
+                    )}
+                    {hasSocialLinks && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Social Links</div>
+                        <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                          {socialMessengerUrl && <a href={socialMessengerUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Messenger</a>}
+                          {socialFacebookUrl && <a href={socialFacebookUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Facebook</a>}
+                          {socialInstagramUrl && <a href={socialInstagramUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Instagram</a>}
+                        </div>
+                      </article>
+                    )}
+                  </div>
+                </section>
+              );
+            })()}
+
+            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: isMobileViewport ? 12 : 16, marginBottom: 14 }}>
               {(() => {
                 const selectedSlug = toSlug(selectedStore?.slug || routeSlug);
                 const selectedCoverImageUrl = withAssetOrigin(selectedStore?.storefront_cover_image_url);
@@ -1675,9 +1799,9 @@ export function App() {
                         )}
                       </div>
                       <div>
-                        <h1 style={{ margin: 0, fontSize: 30, color: '#fff' }}>{DGFY_BRAND_NAME}</h1>
-                        <p style={{ margin: '4px 0 0 0', fontSize: 14, color: '#e2e8f0' }}>
-                          {selectedStore?.tenant_name || 'Loading storefront...'}
+                        <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 38, color: '#fff', letterSpacing: '-0.02em' }}>{selectedStore?.tenant_name || 'Loading storefront...'}</h1>
+                        <p style={{ margin: '4px 0 0 0', fontSize: 15, color: '#e2e8f0' }}>
+                          {String(selectedStore?.storefront_tagline || '').trim() || DGFY_BRAND_NAME}
                         </p>
                       </div>
                     </div>
@@ -1689,13 +1813,22 @@ export function App() {
                   </div>
                   <p style={{ margin: 0, color: '#e2e8f0' }}>{selectedLocation?.address_line || selectedStore?.address_line || 'Tenant storefront page is loading or being configured.'}</p>
                   {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} • {selectedStore.catalog_count} storefront item(s)</div>}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {String(selectedStore?.storefront_phone || '').trim() && (
+                      <a href={`tel:${selectedStore.storefront_phone}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Call</a>
+                    )}
+                    {String(selectedStore?.storefront_email || '').trim() && (
+                      <a href={`mailto:${selectedStore.storefront_email}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Message</a>
+                    )}
+                    <button type="button" onClick={() => setIsCheckoutOpen(true)} style={{ borderRadius: 10, border: '1px solid #fb923c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '8px 14px', fontWeight: 800, cursor: 'pointer' }}>Order Now</button>
+                  </div>
                 </div>
               </div>
                 );
               })()}
             </section>
 
-            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: isMobileViewport ? 12 : 16, marginBottom: 14 }}>
               {selectedStore ? (
                 <>
                   <StoresMap
@@ -1733,15 +1866,15 @@ export function App() {
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontSize: 34 }}>Store Catalog</h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0, fontSize: isMobileViewport ? 26 : 34, letterSpacing: '-0.02em' }}>Store Catalog</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: isMobileViewport ? '100%' : 'auto' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 13, color: '#334155', fontWeight: 700 }}>Search</span>
                     <input
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
                       placeholder="Search items in this store catalog..."
-                      style={{ width: 280, maxWidth: '100%', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', padding: '8px 11px' }}
+                      style={{ width: isMobileViewport ? '100%' : 280, maxWidth: '100%', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', padding: '8px 11px' }}
                     />
                   </label>
                   <button type="button" onClick={() => openStoreBySlug(routeSlug)} style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}>Refresh Tenant Page</button>
@@ -1763,7 +1896,7 @@ export function App() {
                 />
               )}
               {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginTop: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12, marginTop: 10 }}>
                   {filteredCatalog.map((item) => {
                     const itemId = Number(item.item_id);
                     const imageUrl = withAssetOrigin(item.image_url);
@@ -1834,7 +1967,7 @@ export function App() {
                           <div style={{ fontSize: 12, color: available ? '#0f766e' : '#b91c1c', fontWeight: 700 }}>
                             Availability: {available ? 'In stock' : 'Out of stock'}
                           </div>
-                          <button type="button" onClick={() => addToCart(item)} disabled={!available} style={{ marginTop: 'auto', width: '100%', borderRadius: 10, border: '1px solid #7f1d1d', background: available ? '#7f1d1d' : '#cbd5e1', color: '#fff', padding: '8px 10px', fontWeight: 700, cursor: available ? 'pointer' : 'not-allowed' }}>Add to Cart</button>
+                          <button type="button" onClick={() => addToCart(item)} disabled={!available} style={{ marginTop: 'auto', width: '100%', borderRadius: 10, border: '1px solid #ea580c', background: available ? 'linear-gradient(135deg,#ea580c,#f97316)' : '#cbd5e1', color: '#fff', padding: '9px 10px', fontWeight: 800, cursor: available ? 'pointer' : 'not-allowed' }}>+ Add</button>
                         </div>
                       </div>
                     );
@@ -1862,11 +1995,26 @@ export function App() {
                 return next;
               });
             }}
-            style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 2100, border: 'none', borderRadius: 999, background: 'linear-gradient(135deg,#7f1d1d,#991b1b 65%,#b91c1c)', color: '#fff', boxShadow: '0 12px 30px rgba(127,29,29,.35)', padding: '12px 18px', minWidth: 245, textAlign: 'left', cursor: 'pointer' }}
+            style={{
+              position: 'fixed',
+              zIndex: 2100,
+              border: 'none',
+              borderRadius: isMobileViewport ? 12 : 14,
+              background: 'linear-gradient(135deg,#ea580c,#f97316)',
+              color: '#fff',
+              boxShadow: '0 14px 34px rgba(234,88,12,.38)',
+              padding: '12px 18px',
+              minWidth: isMobileViewport ? 0 : 255,
+              textAlign: 'left',
+              cursor: 'pointer',
+              right: isMobileViewport ? 10 : 18,
+              left: isMobileViewport ? 10 : 'auto',
+              bottom: isMobileViewport ? 10 : 18
+            }}
           >
-            <div style={{ fontSize: 13, opacity: .95 }}>Cart {cartCount}</div>
+            <div style={{ fontSize: 13, opacity: .95 }}>{cartCount} item(s) in cart</div>
             <div style={{ fontSize: 18, fontWeight: 800 }}>{money(cartTotal)}</div>
-            <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'Go to checkout'}</div>
+            <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
           </button>
 
           <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: isCheckoutOpen ? 'auto' : 'none' }}>

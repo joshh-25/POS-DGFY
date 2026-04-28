@@ -99,6 +99,42 @@ export default (sequelize) => {
             type: DataTypes.STRING(500),
             allowNull: true
         },
+        storefront_tagline: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        storefront_about: {
+            type: DataTypes.STRING(1000),
+            allowNull: true
+        },
+        storefront_phone: {
+            type: DataTypes.STRING(50),
+            allowNull: true
+        },
+        storefront_email: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        storefront_hours: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        storefront_why_choose_us: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_social_links: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_review_highlights: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_promo: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         active_location_snapshot: {
             type: DataTypes.JSON,
             allowNull: true

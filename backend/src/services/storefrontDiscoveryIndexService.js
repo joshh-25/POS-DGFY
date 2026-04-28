@@ -16,7 +16,16 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'pos_open_status',
     'pos_wait_time_minutes',
     'storefront_cover_image_url',
-    'storefront_profile_image_url'
+    'storefront_profile_image_url',
+    'storefront_tagline',
+    'storefront_about',
+    'storefront_phone',
+    'storefront_email',
+    'storefront_hours',
+    'storefront_why_choose_us',
+    'storefront_social_links',
+    'storefront_review_highlights',
+    'storefront_promo'
 ]);
 const SEARCH_SNAPSHOT_VERSION = 1;
 
@@ -112,6 +121,30 @@ const toLocationPlain = (location) => (
 );
 
 const normalizeSearchToken = (value) => String(value || '').trim().toLowerCase();
+const toTrimmedString = (value, maxLen = 255) => String(value || '').trim().slice(0, maxLen);
+const parseJsonArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+    return [];
+};
+const parseJsonObject = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (!value || typeof value !== 'string') return null;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
 
 const buildItemSearchText = (item = {}) => (
     [
@@ -304,6 +337,44 @@ const buildTenantSnapshot = async (tenant) => {
         .filter(Boolean);
 
     const storefrontOpen = parseBoolean(settings.pos_open_status, true) && location.is_open !== false;
+    const storefrontWhyChooseUs = parseJsonArray(settings.storefront_why_choose_us)
+        .map((entry) => toTrimmedString(entry, 120))
+        .filter(Boolean)
+        .slice(0, 6);
+    const storefrontSocialLinksRaw = parseJsonObject(settings.storefront_social_links) || null;
+    const storefrontSocialLinks = storefrontSocialLinksRaw
+        ? {
+            messenger: toTrimmedString(storefrontSocialLinksRaw.messenger, 255),
+            facebook: toTrimmedString(storefrontSocialLinksRaw.facebook, 255),
+            instagram: toTrimmedString(storefrontSocialLinksRaw.instagram, 255)
+        }
+        : null;
+    const storefrontReviewHighlights = parseJsonArray(settings.storefront_review_highlights)
+        .map((entry) => {
+            const comment = toTrimmedString(entry?.comment, 280);
+            if (!comment) return null;
+            const rating = Number(entry?.rating);
+            const normalized = {
+                reviewer_name: toTrimmedString(entry?.reviewer_name, 80),
+                comment
+            };
+            if (Number.isFinite(rating) && rating >= 1 && rating <= 5) {
+                normalized.rating = rating;
+            }
+            return normalized;
+        })
+        .filter(Boolean)
+        .slice(0, 8);
+    const storefrontPromoRaw = parseJsonObject(settings.storefront_promo) || null;
+    const storefrontPromo = storefrontPromoRaw
+        ? {
+            title: toTrimmedString(storefrontPromoRaw.title, 100),
+            subtitle: toTrimmedString(storefrontPromoRaw.subtitle, 160),
+            badge: toTrimmedString(storefrontPromoRaw.badge, 60),
+            validity_text: toTrimmedString(storefrontPromoRaw.validity_text, 120),
+            active: storefrontPromoRaw.active === true
+        }
+        : null;
     const now = new Date();
     return {
         tenant_id: tenant.id,
@@ -334,6 +405,15 @@ const buildTenantSnapshot = async (tenant) => {
             key: 'storefront_profile_image_url',
             rawValue: settings.storefront_profile_image_url
         }),
+        storefront_tagline: toTrimmedString(settings.storefront_tagline, 120),
+        storefront_about: toTrimmedString(settings.storefront_about, 1000),
+        storefront_phone: toTrimmedString(settings.storefront_phone, 50),
+        storefront_email: toTrimmedString(settings.storefront_email, 120),
+        storefront_hours: toTrimmedString(settings.storefront_hours, 120),
+        storefront_why_choose_us: storefrontWhyChooseUs,
+        storefront_social_links: storefrontSocialLinks,
+        storefront_review_highlights: storefrontReviewHighlights,
+        storefront_promo: storefrontPromo,
         active_location_snapshot: activeLocationSnapshot,
         item_search_snapshot: itemSearchSnapshot,
         search_snapshot_version: SEARCH_SNAPSHOT_VERSION,

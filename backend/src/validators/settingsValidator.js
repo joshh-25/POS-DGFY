@@ -159,6 +159,26 @@ const storefrontAssetUrlSchema = Joi.string().trim().max(500).pattern(/^$|^\/upl
 const storefrontAssetPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).optional().messages({
   'string.pattern.base': 'Storefront asset path must be empty or a storefront-assets relative path'
 });
+const storefrontWhyChooseUsSchema = Joi.array().items(Joi.string().trim().min(1).max(120)).max(6).optional();
+const storefrontReviewHighlightsSchema = Joi.array().items(
+  Joi.object({
+    reviewer_name: Joi.string().trim().max(80).allow('', null).optional(),
+    rating: Joi.number().min(1).max(5).precision(1).allow(null).optional(),
+    comment: Joi.string().trim().max(280).required()
+  })
+).max(8).optional();
+const storefrontSocialLinksSchema = Joi.object({
+  messenger: Joi.string().trim().max(255).allow('', null).optional(),
+  facebook: Joi.string().trim().max(255).allow('', null).optional(),
+  instagram: Joi.string().trim().max(255).allow('', null).optional()
+}).optional();
+const storefrontPromoSchema = Joi.object({
+  title: Joi.string().trim().max(100).allow('', null).optional(),
+  subtitle: Joi.string().trim().max(160).allow('', null).optional(),
+  badge: Joi.string().trim().max(60).allow('', null).optional(),
+  validity_text: Joi.string().trim().max(120).allow('', null).optional(),
+  active: Joi.boolean().default(false)
+}).optional();
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
@@ -208,6 +228,15 @@ export const updateSettingsSchema = Joi.object({
   storefront_cover_image_path: storefrontAssetPathSchema,
   storefront_profile_image_url: storefrontAssetUrlSchema,
   storefront_profile_image_path: storefrontAssetPathSchema,
+  storefront_tagline: Joi.string().trim().max(120).allow('').optional(),
+  storefront_about: Joi.string().trim().max(1000).allow('').optional(),
+  storefront_phone: Joi.string().trim().max(50).allow('').optional(),
+  storefront_email: Joi.string().trim().email({ tlds: { allow: false } }).max(120).allow('').optional(),
+  storefront_hours: Joi.string().trim().max(120).allow('').optional(),
+  storefront_why_choose_us: storefrontWhyChooseUsSchema,
+  storefront_social_links: storefrontSocialLinksSchema,
+  storefront_review_highlights: storefrontReviewHighlightsSchema,
+  storefront_promo: storefrontPromoSchema,
   store_is_visible: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
@@ -326,6 +355,15 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     storefront_cover_image_path: storefrontAssetPathSchema,
     storefront_profile_image_url: storefrontAssetUrlSchema,
     storefront_profile_image_path: storefrontAssetPathSchema,
+    storefront_tagline: Joi.string().trim().max(120).allow(''),
+    storefront_about: Joi.string().trim().max(1000).allow(''),
+    storefront_phone: Joi.string().trim().max(50).allow(''),
+    storefront_email: Joi.string().trim().email({ tlds: { allow: false } }).max(120).allow(''),
+    storefront_hours: Joi.string().trim().max(120).allow(''),
+    storefront_why_choose_us: storefrontWhyChooseUsSchema,
+    storefront_social_links: storefrontSocialLinksSchema,
+    storefront_review_highlights: storefrontReviewHighlightsSchema,
+    storefront_promo: storefrontPromoSchema,
     store_is_visible: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),

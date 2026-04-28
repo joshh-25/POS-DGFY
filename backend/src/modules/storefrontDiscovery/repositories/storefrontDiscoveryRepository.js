@@ -5,6 +5,7 @@ import { getStorefrontDiscoverySharedSignature } from '../../../services/storefr
 import logger from '../../../config/logger.js';
 import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { createHash } from 'crypto';
+import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 
@@ -52,6 +53,36 @@ const LEGACY_SCHEMA_SAFE_ATTRIBUTES = Object.freeze([
     'item_search_snapshot',
     'search_snapshot_version'
 ]);
+const STOREFRONT_PROFILE_INDEX_COLUMNS = Object.freeze([
+    'storefront_tagline',
+    'storefront_about',
+    'storefront_phone',
+    'storefront_email',
+    'storefront_hours',
+    'storefront_why_choose_us',
+    'storefront_social_links',
+    'storefront_review_highlights',
+    'storefront_promo'
+]);
+const hasMaterializedStorefrontProfileColumns = (row) => {
+    const plain = row && typeof row.toJSON === 'function' ? row.toJSON() : row || {};
+    return STOREFRONT_PROFILE_INDEX_COLUMNS.every((column) => Object.prototype.hasOwnProperty.call(plain, column));
+};
+const STOREFRONT_PROFILE_SETTING_KEYS = Object.freeze([
+    'storefront_tagline',
+    'storefront_about',
+    'storefront_phone',
+    'storefront_email',
+    'storefront_hours',
+    'storefront_why_choose_us',
+    'storefront_social_links',
+    'storefront_review_highlights',
+    'storefront_promo'
+]);
+const DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS = Math.max(
+    10,
+    Number.parseInt(process.env.STOREFRONT_DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS || '30', 10) || 30
+);
 
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
 const shouldAutoRepairEmptyIndex = () => process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY !== 'false';
@@ -84,6 +115,113 @@ const parseJsonArray = (value) => {
         }
     }
     return [];
+};
+
+const parseJsonObject = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (!value || typeof value !== 'string') return null;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const toTrimmedString = (value, maxLen = 255) => String(value || '').trim().slice(0, maxLen);
+
+const buildDiscoveryProfileSettingsCacheKey = ({ tenantId = '', signature = '0:0' } = {}) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return '';
+    return `storefront:discovery:profile-settings:v1:${signature}:${normalizedTenantId}`;
+};
+
+const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) => {
+    if (!tenantId) return {};
+    const normalizedTenantId = String(tenantId || '').trim();
+    const signature = String(cacheSignature || '').trim() || await getStorefrontDiscoverySharedSignature();
+    const cacheKey = buildDiscoveryProfileSettingsCacheKey({
+        tenantId: normalizedTenantId,
+        signature
+    });
+    const cached = await readRedisCacheEntry(cacheKey);
+    if (cached && typeof cached === 'object') {
+        return cached;
+    }
+
+    let Tenant;
+    let tenantConnectorModule;
+    let tenantModelFactoryModule;
+    try {
+        [{ Tenant }, tenantConnectorModule, tenantModelFactoryModule] = await Promise.all([
+            import('../../../models/index.js'),
+            import('../../../utils/TenantConnector.js'),
+            import('../../../utils/tenantModelFactory.js')
+        ]);
+    } catch {
+        return {};
+    }
+    if (!Tenant || typeof Tenant.findOne !== 'function') {
+        return {};
+    }
+
+    const tenant = await Tenant.findOne({
+        where: { id: normalizedTenantId, status: 'active' },
+        attributes: ['id', 'name', 'company_token', 'db_name', 'status']
+    });
+    if (!tenant) return {};
+
+    const tenantConnector = tenantConnectorModule?.default;
+    const getTenantModels = tenantModelFactoryModule?.getTenantModels;
+    if (!tenantConnector || typeof tenantConnector.getConnection !== 'function' || typeof getTenantModels !== 'function') {
+        return {};
+    }
+
+    const tenantConnection = await tenantConnector.getConnection(tenant);
+    const { SystemSetting } = getTenantModels(tenantConnection);
+    if (!SystemSetting || typeof SystemSetting.findAll !== 'function') {
+        return {};
+    }
+    const rows = await SystemSetting.findAll({
+        where: { setting_key: { [Op.in]: STOREFRONT_PROFILE_SETTING_KEYS } },
+        attributes: ['setting_key', 'setting_value']
+    });
+
+    const settingsMap = {};
+    (rows || []).forEach((row) => {
+        const key = String(row?.setting_key || '').trim();
+        if (!key) return;
+        settingsMap[key] = row?.setting_value;
+    });
+
+    const whyChooseUs = parseJsonArray(settingsMap.storefront_why_choose_us).map((entry) => toTrimmedString(entry, 120)).filter(Boolean);
+    const social = parseJsonObject(settingsMap.storefront_social_links) || null;
+    const promo = parseJsonObject(settingsMap.storefront_promo) || null;
+    const reviewHighlights = parseJsonArray(settingsMap.storefront_review_highlights)
+        .map((entry) => {
+            const comment = toTrimmedString(entry?.comment, 280);
+            if (!comment) return null;
+            return {
+                reviewer_name: toTrimmedString(entry?.reviewer_name, 80),
+                rating: Number.isFinite(Number(entry?.rating)) ? Number(entry.rating) : null,
+                comment
+            };
+        })
+        .filter(Boolean);
+
+    const settingsPayload = {
+        storefront_tagline: toTrimmedString(settingsMap.storefront_tagline, 120),
+        storefront_about: toTrimmedString(settingsMap.storefront_about, 1000),
+        storefront_phone: toTrimmedString(settingsMap.storefront_phone, 50),
+        storefront_email: toTrimmedString(settingsMap.storefront_email, 120),
+        storefront_hours: toTrimmedString(settingsMap.storefront_hours, 120),
+        storefront_why_choose_us: whyChooseUs,
+        storefront_social_links: social,
+        storefront_review_highlights: reviewHighlights,
+        storefront_promo: promo
+    };
+    await writeRedisCacheEntry(cacheKey, settingsPayload, DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS);
+    return settingsPayload;
 };
 
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
@@ -226,14 +364,16 @@ const getSqlErrorMessage = (error) => String(
     || ''
 );
 
-const isMissingStorefrontBrandingColumnError = (error) => {
+const isMissingStorefrontIndexColumnError = (error) => {
     const code = getSqlErrorCode(error);
     if (code !== 'ER_BAD_FIELD_ERROR') return false;
     const message = getSqlErrorMessage(error);
-    return (
-        message.includes("Unknown column 'storefront_cover_image_url'")
-        || message.includes("Unknown column 'storefront_profile_image_url'")
-    );
+    const checkedColumns = [
+        'storefront_cover_image_url',
+        'storefront_profile_image_url',
+        ...STOREFRONT_PROFILE_INDEX_COLUMNS
+    ];
+    return checkedColumns.some((column) => message.includes(`Unknown column '${column}'`));
 };
 
 const queryDiscoveryIndexWithLegacyFallback = async ({
@@ -244,7 +384,7 @@ const queryDiscoveryIndexWithLegacyFallback = async ({
     try {
         return await findFn(queryOptions);
     } catch (error) {
-        if (!isMissingStorefrontBrandingColumnError(error)) {
+        if (!isMissingStorefrontIndexColumnError(error)) {
             throw error;
         }
         logger.warn('[StorefrontDiscovery] Legacy discovery-index schema detected; using temporary branding-column fallback', {
@@ -259,37 +399,59 @@ const queryDiscoveryIndexWithLegacyFallback = async ({
     }
 };
 
-const toPlainEntry = (row) => ({
-    tenant_id: row.tenant_id,
-    tenant_name: row.tenant_name,
-    slug: row.slug,
-    storefront_open: row.storefront_open === true,
-    location_id: row.location_id,
-    location_name: row.location_name,
-    address_line: row.address_line,
-    latitude: toNumber(row.latitude, null),
-    longitude: toNumber(row.longitude, null),
-    delivery_radius_km: toNumber(row.delivery_radius_km, 0),
-    estimated_wait_minutes: toNumber(row.estimated_wait_minutes, 15),
-    supports_delivery: row.supports_delivery !== false,
-    supports_pickup: row.supports_pickup !== false,
-    supports_dine_in: row.supports_dine_in !== false,
-    store_delivery_fee: toNumber(row.store_delivery_fee, 0),
-    catalog_count: toNumber(row.catalog_count, 0),
+const toPlainEntry = (row) => {
+    const plain = row && typeof row.toJSON === 'function' ? row.toJSON() : row || {};
+    return {
+    tenant_id: plain.tenant_id,
+    tenant_name: plain.tenant_name,
+    slug: plain.slug,
+    storefront_open: plain.storefront_open === true,
+    location_id: plain.location_id,
+    location_name: plain.location_name,
+    address_line: plain.address_line,
+    latitude: toNumber(plain.latitude, null),
+    longitude: toNumber(plain.longitude, null),
+    delivery_radius_km: toNumber(plain.delivery_radius_km, 0),
+    estimated_wait_minutes: toNumber(plain.estimated_wait_minutes, 15),
+    supports_delivery: plain.supports_delivery !== false,
+    supports_pickup: plain.supports_pickup !== false,
+    supports_dine_in: plain.supports_dine_in !== false,
+    store_delivery_fee: toNumber(plain.store_delivery_fee, 0),
+    catalog_count: toNumber(plain.catalog_count, 0),
     storefront_cover_image_url: sanitizeStorefrontAssetUrlFromIndex({
-        rawValue: row.storefront_cover_image_url,
-        tenantId: row.tenant_id,
+        rawValue: plain.storefront_cover_image_url,
+        tenantId: plain.tenant_id,
         assetType: 'cover'
     }),
     storefront_profile_image_url: sanitizeStorefrontAssetUrlFromIndex({
-        rawValue: row.storefront_profile_image_url,
-        tenantId: row.tenant_id,
+        rawValue: plain.storefront_profile_image_url,
+        tenantId: plain.tenant_id,
         assetType: 'profile'
     }),
-    active_location_snapshot: parseJsonArray(row.active_location_snapshot),
-    item_search_snapshot: parseJsonArray(row.item_search_snapshot),
-    search_snapshot_version: toNumber(row.search_snapshot_version, 0)
-});
+    storefront_tagline: toTrimmedString(plain.storefront_tagline, 120),
+    storefront_about: toTrimmedString(plain.storefront_about, 1000),
+    storefront_phone: toTrimmedString(plain.storefront_phone, 50),
+    storefront_email: toTrimmedString(plain.storefront_email, 120),
+    storefront_hours: toTrimmedString(plain.storefront_hours, 120),
+    storefront_why_choose_us: parseJsonArray(plain.storefront_why_choose_us).map((entry) => toTrimmedString(entry, 120)).filter(Boolean),
+    storefront_social_links: parseJsonObject(plain.storefront_social_links) || null,
+    storefront_review_highlights: parseJsonArray(plain.storefront_review_highlights)
+        .map((entry) => {
+            const comment = toTrimmedString(entry?.comment, 280);
+            if (!comment) return null;
+            return {
+                reviewer_name: toTrimmedString(entry?.reviewer_name, 80),
+                rating: Number.isFinite(Number(entry?.rating)) ? Number(entry.rating) : null,
+                comment
+            };
+        })
+        .filter(Boolean),
+    storefront_promo: parseJsonObject(plain.storefront_promo) || null,
+    active_location_snapshot: parseJsonArray(plain.active_location_snapshot),
+    item_search_snapshot: parseJsonArray(plain.item_search_snapshot),
+    search_snapshot_version: toNumber(plain.search_snapshot_version, 0)
+};
+};
 
 const warmIndexOnEmpty = async () => {
     if (!shouldAutoRepairEmptyIndex() || emptyAutoRepairInFlight) {
@@ -698,10 +860,19 @@ export const storefrontDiscoveryRepository = {
         });
 
         if (!row) return null;
+        const hasMaterializedProfileFields = hasMaterializedStorefrontProfileColumns(row);
         const entry = toPlainEntry(row);
         if (!Number.isFinite(entry.latitude) || !Number.isFinite(entry.longitude)) return null;
-        await writeRedisCacheEntry(cacheKey, entry, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
-        return entry;
+        let profileSettings = {};
+        if (!hasMaterializedProfileFields) {
+            profileSettings = await readStorefrontProfileSettings({
+                tenantId: entry.tenant_id,
+                cacheSignature: signature
+            });
+        }
+        const enriched = { ...entry, ...profileSettings };
+        await writeRedisCacheEntry(cacheKey, enriched, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
+        return enriched;
     }
 };
 

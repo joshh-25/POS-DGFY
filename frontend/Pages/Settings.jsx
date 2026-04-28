@@ -153,7 +153,16 @@ const SETTINGS_FIELD_LABELS = {
   ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
   store_tenant_slug: 'Store Slug',
-  pos_wait_time_minutes: 'POS Wait Time'
+  pos_wait_time_minutes: 'POS Wait Time',
+  storefront_tagline: 'Storefront Tagline',
+  storefront_about: 'Storefront About',
+  storefront_phone: 'Storefront Phone',
+  storefront_email: 'Storefront Email',
+  storefront_hours: 'Storefront Hours',
+  storefront_why_choose_us: 'Storefront Why Choose Us',
+  storefront_social_links: 'Storefront Social Links',
+  storefront_review_highlights: 'Storefront Review Highlights',
+  storefront_promo: 'Storefront Promo'
 };
 
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
@@ -226,6 +235,25 @@ const normalizeUserPermissions = (rawPermissions) => {
   return [];
 };
 
+const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
+  const source = Array.isArray(raw) ? raw : [];
+  return source
+    .map((entry) => String(entry || '').trim().slice(0, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+};
+
+const parseJsonObjectSetting = (raw) => {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string' || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 export default function Settings() {
   const settingsBuildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim() || 'dev';
   const location = useLocation();
@@ -266,7 +294,22 @@ export default function Settings() {
     storeTenantSlug: '',
     storeIsVisible: true,
     posOpenStatus: true,
-    posWaitTimeMinutes: 15
+    posWaitTimeMinutes: 15,
+    storefrontTagline: '',
+    storefrontAbout: '',
+    storefrontPhone: '',
+    storefrontEmail: '',
+    storefrontHours: '',
+    storefrontWhyChooseUs: [''],
+    storefrontSocialMessenger: '',
+    storefrontSocialFacebook: '',
+    storefrontSocialInstagram: '',
+    storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
+    storefrontPromoTitle: '',
+    storefrontPromoSubtitle: '',
+    storefrontPromoBadge: '',
+    storefrontPromoValidityText: '',
+    storefrontPromoActive: false
   });
 
   const [profileSettings, setProfileSettings] = useState({
@@ -385,6 +428,11 @@ export default function Settings() {
 
         // Map backend settings to frontend state
         const normalizedWorkflowMode = normalizeWorkflowMode(systemSettings.ops_workflow_mode?.value);
+        const storefrontSocialLinks = parseJsonObjectSetting(systemSettings.storefront_social_links?.value);
+        const storefrontPromo = parseJsonObjectSetting(systemSettings.storefront_promo?.value);
+        const storefrontReviewHighlightsRaw = Array.isArray(systemSettings.storefront_review_highlights?.value)
+          ? systemSettings.storefront_review_highlights.value
+          : [];
 
         setSettings({
           defaultMinThreshold: systemSettings.min_stock_threshold_percent?.value || 40,
@@ -414,7 +462,30 @@ export default function Settings() {
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value ?? true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
-          posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15
+          posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
+          storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
+          storefrontAbout: String(systemSettings.storefront_about?.value || ''),
+          storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
+          storefrontEmail: String(systemSettings.storefront_email?.value || ''),
+          storefrontHours: String(systemSettings.storefront_hours?.value || ''),
+          storefrontWhyChooseUs: normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120).length > 0
+            ? normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120)
+            : [''],
+          storefrontSocialMessenger: String(storefrontSocialLinks.messenger || ''),
+          storefrontSocialFacebook: String(storefrontSocialLinks.facebook || ''),
+          storefrontSocialInstagram: String(storefrontSocialLinks.instagram || ''),
+          storefrontReviewHighlights: storefrontReviewHighlightsRaw.length > 0
+            ? storefrontReviewHighlightsRaw.slice(0, 8).map((entry) => ({
+              reviewer_name: String(entry?.reviewer_name || ''),
+              rating: entry?.rating == null ? '' : String(entry.rating),
+              comment: String(entry?.comment || '')
+            }))
+            : [{ reviewer_name: '', rating: '', comment: '' }],
+          storefrontPromoTitle: String(storefrontPromo.title || ''),
+          storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
+          storefrontPromoBadge: String(storefrontPromo.badge || ''),
+          storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
+          storefrontPromoActive: storefrontPromo.active === true
         });
         setStorefrontAssets({
           cover: String(systemSettings.storefront_cover_image_url?.value || ''),
@@ -526,6 +597,57 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleStorefrontWhyChange = (index, value) => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [''];
+      next[index] = String(value || '');
+      return { ...prev, storefrontWhyChooseUs: next };
+    });
+  };
+
+  const addStorefrontWhy = () => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [];
+      if (next.length >= 6) return prev;
+      next.push('');
+      return { ...prev, storefrontWhyChooseUs: next };
+    });
+  };
+
+  const removeStorefrontWhy = (index) => {
+    setSettings((prev) => {
+      const next = (Array.isArray(prev.storefrontWhyChooseUs) ? prev.storefrontWhyChooseUs : ['']).filter((_, i) => i !== index);
+      return { ...prev, storefrontWhyChooseUs: next.length > 0 ? next : [''] };
+    });
+  };
+
+  const handleReviewHighlightChange = (index, key, value) => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontReviewHighlights)
+        ? [...prev.storefrontReviewHighlights]
+        : [{ reviewer_name: '', rating: '', comment: '' }];
+      const current = next[index] || { reviewer_name: '', rating: '', comment: '' };
+      next[index] = { ...current, [key]: value };
+      return { ...prev, storefrontReviewHighlights: next };
+    });
+  };
+
+  const addReviewHighlight = () => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontReviewHighlights) ? [...prev.storefrontReviewHighlights] : [];
+      if (next.length >= 8) return prev;
+      next.push({ reviewer_name: '', rating: '', comment: '' });
+      return { ...prev, storefrontReviewHighlights: next };
+    });
+  };
+
+  const removeReviewHighlight = (index) => {
+    setSettings((prev) => {
+      const next = (Array.isArray(prev.storefrontReviewHighlights) ? prev.storefrontReviewHighlights : []).filter((_, i) => i !== index);
+      return { ...prev, storefrontReviewHighlights: next.length > 0 ? next : [{ reviewer_name: '', rating: '', comment: '' }] };
+    });
   };
 
   const handleDiscountProfileChange = (index, key, value) => {
@@ -948,6 +1070,21 @@ export default function Settings() {
       }
 
       const nextWorkflowMode = normalizeWorkflowMode(settings.opsWorkflowMode);
+      const storefrontWhyChooseUs = normalizeStringList(settings.storefrontWhyChooseUs, 6, 120);
+      const storefrontReviewHighlights = (Array.isArray(settings.storefrontReviewHighlights) ? settings.storefrontReviewHighlights : [])
+        .map((entry) => {
+          const normalizedRating = Number(entry?.rating);
+          const nextEntry = {
+            reviewer_name: String(entry?.reviewer_name || '').trim().slice(0, 80),
+            comment: String(entry?.comment || '').trim().slice(0, 280)
+          };
+          if (Number.isFinite(normalizedRating)) {
+            nextEntry.rating = normalizedRating;
+          }
+          return nextEntry;
+        })
+        .filter((entry) => entry.comment.length > 0)
+        .slice(0, 8);
       const updatePayload = {
         enable_auto_reorder: settings.autoCalculateThresholds,
         min_stock_threshold_percent: settings.defaultMinThreshold,
@@ -969,7 +1106,26 @@ export default function Settings() {
         store_tenant_slug: String(settings.storeTenantSlug || '').trim().toLowerCase(),
         store_is_visible: settings.storeIsVisible === true,
         pos_open_status: settings.posOpenStatus === true,
-        pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0)
+        pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0),
+        storefront_tagline: String(settings.storefrontTagline || '').trim(),
+        storefront_about: String(settings.storefrontAbout || '').trim(),
+        storefront_phone: String(settings.storefrontPhone || '').trim(),
+        storefront_email: String(settings.storefrontEmail || '').trim(),
+        storefront_hours: String(settings.storefrontHours || '').trim(),
+        storefront_why_choose_us: storefrontWhyChooseUs,
+        storefront_social_links: {
+          messenger: String(settings.storefrontSocialMessenger || '').trim(),
+          facebook: String(settings.storefrontSocialFacebook || '').trim(),
+          instagram: String(settings.storefrontSocialInstagram || '').trim()
+        },
+        storefront_review_highlights: storefrontReviewHighlights,
+        storefront_promo: {
+          title: String(settings.storefrontPromoTitle || '').trim(),
+          subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
+          badge: String(settings.storefrontPromoBadge || '').trim(),
+          validity_text: String(settings.storefrontPromoValidityText || '').trim(),
+          active: settings.storefrontPromoActive === true
+        }
       };
       if (currentUser?.is_master_admin === true) {
         updatePayload.ops_workflow_mode = nextWorkflowMode;
@@ -1077,7 +1233,22 @@ export default function Settings() {
       storeTenantSlug: '',
       storeIsVisible: true,
       posOpenStatus: true,
-      posWaitTimeMinutes: 15
+      posWaitTimeMinutes: 15,
+      storefrontTagline: '',
+      storefrontAbout: '',
+      storefrontPhone: '',
+      storefrontEmail: '',
+      storefrontHours: '',
+      storefrontWhyChooseUs: [''],
+      storefrontSocialMessenger: '',
+      storefrontSocialFacebook: '',
+      storefrontSocialInstagram: '',
+      storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
+      storefrontPromoTitle: '',
+      storefrontPromoSubtitle: '',
+      storefrontPromoBadge: '',
+      storefrontPromoValidityText: '',
+      storefrontPromoActive: false
     });
     setStorefrontAssets({
       cover: '',
@@ -1458,6 +1629,97 @@ export default function Settings() {
             </CardHeader>
             <CardContent>
               {storefrontBrandingMediaControls}
+            </CardContent>
+          </Card>
+
+          <Card id="storefront-content-settings">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-orange-500" />
+                Storefront Content
+              </CardTitle>
+              <CardDescription>
+                Configure tenant-page sections (about, contact, social, highlights, promo). Empty values stay hidden on the public storefront.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Tagline</Label>
+                  <Input value={settings.storefrontTagline} onChange={(e) => handleChange('storefrontTagline', e.target.value)} placeholder="Grilled to perfection. Made with love." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Store Hours</Label>
+                  <Input value={settings.storefrontHours} onChange={(e) => handleChange('storefrontHours', e.target.value)} placeholder="10:00 AM - 10:00 PM Daily" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input value={settings.storefrontPhone} onChange={(e) => handleChange('storefrontPhone', e.target.value)} placeholder="0917 123 4567" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={settings.storefrontEmail} onChange={(e) => handleChange('storefrontEmail', e.target.value)} placeholder="store@email.com" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>About</Label>
+                <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-[96px]" value={settings.storefrontAbout} onChange={(e) => handleChange('storefrontAbout', e.target.value)} placeholder="Short store description for customers." />
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Why Choose Us</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addStorefrontWhy}><Plus className="w-4 h-4 mr-1" />Add</Button>
+                </div>
+                {(Array.isArray(settings.storefrontWhyChooseUs) ? settings.storefrontWhyChooseUs : ['']).map((entry, index) => (
+                  <div key={`why-${index}`} className="flex gap-2">
+                    <Input value={entry} onChange={(e) => handleStorefrontWhyChange(index, e.target.value)} placeholder="Freshly grilled daily" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontWhy(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Messenger Link</Label>
+                  <Input value={settings.storefrontSocialMessenger} onChange={(e) => handleChange('storefrontSocialMessenger', e.target.value)} placeholder="https://m.me/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Facebook Link</Label>
+                  <Input value={settings.storefrontSocialFacebook} onChange={(e) => handleChange('storefrontSocialFacebook', e.target.value)} placeholder="https://facebook.com/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Instagram Link</Label>
+                  <Input value={settings.storefrontSocialInstagram} onChange={(e) => handleChange('storefrontSocialInstagram', e.target.value)} placeholder="https://instagram.com/..." />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Review Highlights</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addReviewHighlight}><Plus className="w-4 h-4 mr-1" />Add</Button>
+                </div>
+                {(Array.isArray(settings.storefrontReviewHighlights) ? settings.storefrontReviewHighlights : []).map((row, index) => (
+                  <div key={`review-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_120px_2fr_auto]">
+                    <Input value={row.reviewer_name || ''} onChange={(e) => handleReviewHighlightChange(index, 'reviewer_name', e.target.value)} placeholder="Reviewer name" />
+                    <Input value={row.rating || ''} onChange={(e) => handleReviewHighlightChange(index, 'rating', e.target.value)} placeholder="4.8" />
+                    <Input value={row.comment || ''} onChange={(e) => handleReviewHighlightChange(index, 'comment', e.target.value)} placeholder="Great food and service." />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeReviewHighlight(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                <div className="flex items-center justify-between">
+                  <Label>Promo Card</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>Active</span>
+                    <Switch checked={settings.storefrontPromoActive === true} onCheckedChange={(checked) => handleChange('storefrontPromoActive', checked === true)} />
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input value={settings.storefrontPromoTitle} onChange={(e) => handleChange('storefrontPromoTitle', e.target.value)} placeholder="10% OFF" />
+                  <Input value={settings.storefrontPromoBadge} onChange={(e) => handleChange('storefrontPromoBadge', e.target.value)} placeholder="Today's Promo" />
+                  <Input value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
+                  <Input value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
+                </div>
+              </div>
             </CardContent>
           </Card>
 
