@@ -98,6 +98,18 @@ No-staging preflight checks:
 3. Local runtime has `ssh` and `powershell`/`pwsh`.
 4. QA deploy summary can be sourced (existing local file or SSH fetch path).
 
+### QA Gate Input Hygiene (Recommended)
+Before running `gate:release:no-staging` or `deploy-remote.sh`:
+1. Set `QA_COMPANY_TOKEN` to an active tenant token in QA.
+2. Ensure `QA_EMAIL`/`QA_PASSWORD` belongs to that same tenant context.
+3. Refresh deploy summary evidence so `deployed_head` matches your `RELEASE_TARGET_SHA`:
+```bash
+# PowerShell
+powershell -ExecutionPolicy Bypass -File scripts/load-qa-env.ps1 -EnvFile .env.qa.local
+$env:RELEASE_TARGET_SHA="<target_sha>"
+powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
+```
+
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
 
@@ -195,6 +207,14 @@ git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
+
+## If QA Drill Checks Fail Due to SSH Warning Text
+Symptom:
+- `qa.rollback.exception` or `qa.restore.exception` includes a warning banner instead of a real SSH failure.
+
+Current behavior:
+1. QA drill scripts now run SSH with explicit quiet options to suppress warning-only stderr noise.
+2. If you still see this, upgrade OpenSSH and verify host-level SSH policy.
 
 ## If `npm ci` Fails with `EPERM` or File Lock
 Common cause:

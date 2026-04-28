@@ -22,6 +22,7 @@ $qaSshPort = if ([string]::IsNullOrWhiteSpace($env:QA_SSH_PORT)) { '22' } else {
 $qaSshUser = if ([string]::IsNullOrWhiteSpace($env:QA_SSH_USER)) { 'root' } else { $env:QA_SSH_USER }
 $qaAppDir = if ([string]::IsNullOrWhiteSpace($env:QA_APP_DIR)) { '/var/www/skupervisor' } else { $env:QA_APP_DIR }
 $qaBackupFile = $env:QA_RESTORE_BACKUP_FILE
+$sshOptions = @('-o', 'WarnWeakCrypto=no', '-o', 'LogLevel=ERROR')
 
 $checks = New-Object System.Collections.Generic.List[Object]
 function Add-Check([string]$name, [bool]$ok, [string]$detail) {
@@ -37,7 +38,7 @@ try {
     Add-Check 'qa.ssh.configured' $false 'Missing QA_SSH_HOST'
   } else {
     Add-Check 'qa.ssh.configured' $true ("${qaSshUser}@${qaSshHost}:$qaSshPort")
-    $probe = & ssh -p $qaSshPort "$qaSshUser@$qaSshHost" "echo QA_SSH_OK" 2>$null
+    $probe = & ssh @sshOptions -p $qaSshPort "$qaSshUser@$qaSshHost" "echo QA_SSH_OK" 2>$null
     Add-Check 'qa.ssh.reachable' ($probe -match 'QA_SSH_OK') 'SSH connectivity probe'
   }
 
@@ -59,7 +60,7 @@ try {
       "bash -lc 'cd backend && npx sequelize-cli db:migrate:status || true'",
       "bash -lc 'cd backend && npm run audit:indexes'"
     ) -join '; '
-    & ssh -t -p $qaSshPort "$qaSshUser@$qaSshHost" $cmd
+    & ssh @sshOptions -t -p $qaSshPort "$qaSshUser@$qaSshHost" $cmd
     Add-Check 'qa.restore.apply' $true "Validated restore prerequisites and post-restore index audit for $qaBackupFile"
   } else {
     Add-Check 'qa.restore.apply' $true 'Simulation mode (no remote mutation executed)'
