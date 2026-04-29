@@ -34,7 +34,59 @@ $apiBase = if ($baseUrl -match '/api/v1$') { $baseUrl } else { "$baseUrl/api/v1"
 $companyToken = [Environment]::GetEnvironmentVariable($tokenVar)
 $companyTokenProvided = -not [string]::IsNullOrWhiteSpace($companyToken)
 $companyTokenSource = if ($companyTokenProvided) { 'env' } else { 'default_token_original' }
-if (-not $companyTokenProvided) { $companyToken = 'token-original' }
+$isPlaceholderToken = $companyToken -eq 'token-original'
+
+function Resolve-CompanyTokenFromSsh([string]$profileName) {
+  $profilePrefix = $profileName.ToUpperInvariant()
+  $sshHost = [Environment]::GetEnvironmentVariable("${profilePrefix}_SSH_HOST")
+  if ([string]::IsNullOrWhiteSpace($sshHost)) { return $null }
+
+  $sshPort = [Environment]::GetEnvironmentVariable("${profilePrefix}_SSH_PORT")
+  if ([string]::IsNullOrWhiteSpace($sshPort)) { $sshPort = '22' }
+  $sshUser = [Environment]::GetEnvironmentVariable("${profilePrefix}_SSH_USER")
+  if ([string]::IsNullOrWhiteSpace($sshUser)) { $sshUser = 'root' }
+  $appDir = [Environment]::GetEnvironmentVariable("${profilePrefix}_APP_DIR")
+  if ([string]::IsNullOrWhiteSpace($appDir)) { $appDir = '/var/www/skupervisor' }
+
+  $remoteScript = @'
+set -e
+APP_DIR="${1:-/var/www/skupervisor}"
+cd "$APP_DIR/backend"
+. ./.env
+if [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
+  exit 9
+fi
+TOKEN=$(mysql -u"$DB_USER" -p"$DB_PASSWORD" -D "$DB_NAME" -N -e "SELECT company_token FROM tenants WHERE db_name='$DB_NAME' AND status='active' ORDER BY id LIMIT 1")
+if [ -z "$TOKEN" ]; then
+  TOKEN=$(mysql -u"$DB_USER" -p"$DB_PASSWORD" -D "$DB_NAME" -N -e "SELECT company_token FROM tenants WHERE status='active' ORDER BY id LIMIT 1")
+fi
+echo "$TOKEN"
+'@
+
+  $escapedScript = $remoteScript.Replace("`r", '').Replace("`n", '; ')
+  $remoteCmd = "bash -lc ""$escapedScript '$appDir'"""
+  try {
+    $resolved = & ssh -p $sshPort "$sshUser@$sshHost" $remoteCmd 2>$null
+    $token = ($resolved | Select-Object -First 1).Trim()
+    if ([string]::IsNullOrWhiteSpace($token)) { return $null }
+    return $token
+  } catch {
+    return $null
+  }
+}
+
+if ($Profile -eq 'qa') {
+  $resolvedToken = Resolve-CompanyTokenFromSsh -profileName $Profile
+  if (-not [string]::IsNullOrWhiteSpace($resolvedToken) -and ($resolvedToken -ne $companyToken)) {
+    $companyToken = $resolvedToken
+    $companyTokenProvided = $true
+    $companyTokenSource = 'ssh_auto_resolved'
+  }
+}
+
+if ((-not $companyTokenProvided) -or $isPlaceholderToken) {
+  $companyToken = 'token-original'
+}
 
 $email = [Environment]::GetEnvironmentVariable($emailVar)
 if ([string]::IsNullOrWhiteSpace($email)) { $email = 'admin@test.com' }

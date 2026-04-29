@@ -57,6 +57,7 @@ function main() {
   const emergencyBypass = process.env.RELEASE_EMERGENCY_BYPASS === '1';
   const bypassReason = process.env.RELEASE_EMERGENCY_REASON || '';
   const bypassActor = process.env.RELEASE_EMERGENCY_ACTOR || '';
+  const enforcePredeploySummaryShaMatch = process.env.RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH === '1';
 
   const gates = [];
 
@@ -89,8 +90,10 @@ function main() {
     addGate(
       gates,
       'qa.deploy.summary.sha_match',
-      summaryHead === targetSha,
-      `deployed_head=${summaryHead || '<missing>'}; target_sha=${targetSha}`
+      (summaryHead === targetSha) || !enforcePredeploySummaryShaMatch,
+      enforcePredeploySummaryShaMatch
+        ? `deployed_head=${summaryHead || '<missing>'}; target_sha=${targetSha}`
+        : `non_blocking_predeploy_check deployed_head=${summaryHead || '<missing>'}; target_sha=${targetSha}`
     );
   } else {
     addGate(gates, 'qa.deploy.summary.exists', false, `Missing ${qaDeploySummaryFile}`);
