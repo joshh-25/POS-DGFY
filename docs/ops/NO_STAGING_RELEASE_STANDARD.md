@@ -34,7 +34,7 @@ Default evidence root:
 ```
 
 Required files:
-1. `qa_deploy_summary.txt` (must contain `deployed_head=<target_sha>`)
+1. `qa_deploy_summary.txt` (required for evidence continuity; strict SHA match can be enforced with `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1`)
 2. `smoke_result.json`
 3. `rollback_drill_result.json`
 4. `restore_drill_result.json`
@@ -43,7 +43,7 @@ Required files:
 ## QA Configuration Inputs
 1. QA smoke:
    - `QA_BASE_URL` (required)
-   - `QA_COMPANY_TOKEN` (optional default `token-original`)
+   - `QA_COMPANY_TOKEN` (required in practice for active tenant context; avoid legacy fallback values)
    - `QA_EMAIL` / `QA_PASSWORD` (optional defaults)
    - `QA_AUTH_JWT` (optional)
 2. QA deploy summary:
@@ -56,6 +56,11 @@ Required files:
 4. Drill mode:
    - `QA_ROLLBACK_DRILL_APPLY=0|1` (default simulation)
    - `QA_RESTORE_DRILL_APPLY=0|1` (default simulation)
+
+Recommended local secret source:
+1. Keep non-secret defaults in `.env.qa.local`.
+2. Keep credentials/tokens in `.env.qa.secrets.local` (gitignored).
+3. `scripts/deploy-remote.sh` and `scripts/load-qa-env.ps1` auto-load the secrets overlay when present.
 
 ## Emergency Bypass
 Allowed only during incident response with explicit metadata:

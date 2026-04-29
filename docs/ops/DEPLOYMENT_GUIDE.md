@@ -52,6 +52,12 @@ cp .env.qa.local.example .env.qa.local
 # fill values, then load them into your shell before deploy/gates
 ```
 
+Recommended local secret overlay (gitignored):
+```bash
+cp .env.qa.secrets.local.example .env.qa.secrets.local
+# put QA_COMPANY_TOKEN and optional QA_AUTH_JWT here
+```
+
 Recommended local setup for production contract gate inputs:
 ```bash
 cp .env.prod.local.example .env.prod.local
@@ -91,6 +97,7 @@ Behavior:
 3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
 4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
 5. Proceeds to production SSH deploy only when gate verdict is pass/bypassed.
+6. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
 
 No-staging preflight checks:
 1. `QA_BASE_URL` configured (for QA smoke contract).
@@ -109,6 +116,9 @@ powershell -ExecutionPolicy Bypass -File scripts/load-qa-env.ps1 -EnvFile .env.q
 $env:RELEASE_TARGET_SHA="<target_sha>"
 powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
 ```
+
+Optional strictness:
+1. Set `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` when you need hard fail on pre-deploy summary SHA mismatch.
 
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):

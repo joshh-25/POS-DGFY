@@ -92,6 +92,7 @@ Notes:
 - Operates on local `master` branch by design.
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
+- Auto-loads `.env.qa.local` and `.env.qa.secrets.local` (if present) before preflight/gate execution.
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
 - Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
@@ -157,6 +158,10 @@ Behavior:
   - `ssh` command availability
   - `powershell`/`pwsh` availability (used by QA gate wrapper scripts)
 - QA deploy summary source availability (local file or SSH-fetch path)
+
+Recommended secret layout:
+1. Non-secret QA defaults in `.env.qa.local`
+2. Sensitive QA values (`QA_COMPANY_TOKEN`, optional `QA_AUTH_JWT`) in `.env.qa.secrets.local` (gitignored)
 
 ## 2c. Runtime Schema Doctor (`npm run doctor:runtime`)
 Use this before storefront/IMS/POS manual verification and after backend restart/deploy.
@@ -588,6 +593,10 @@ Contract:
 
 Emergency bypass (incident-only):
 - `RELEASE_EMERGENCY_BYPASS=1`
+
+Pre-deploy summary SHA behavior:
+- Default: `qa.deploy.summary.sha_match` is recorded as evidence but non-blocking before deploy.
+- Strict mode: set `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` to fail gate when `deployed_head` does not match `RELEASE_TARGET_SHA`.
 - `RELEASE_EMERGENCY_REASON=...`
 - `RELEASE_EMERGENCY_ACTOR=...`
 
