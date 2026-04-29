@@ -9,6 +9,9 @@ description: Deploy updates to production hosting server (skupervisor.surebizcor
 - SSH access to the hosting server (`root@hermes-cloud` / `root@192.53.116.33 -p 64428`)
 - Git credentials for GitHub repository
 - All local changes committed and pushed to `master`
+- QA release-gate secrets configured locally in `.env.qa.secrets.local` (gitignored):
+  - `QA_COMPANY_TOKEN=<active tenant token>`
+  - optional `QA_AUTH_JWT=<cached jwt>`
 
 ## Option A: One-Command Remote Deploy (Recommended)
 
@@ -17,6 +20,8 @@ Run **locally** from the repo root. This pushes your code, SSHes into production
 ```bash
 bash scripts/deploy-remote.sh
 ```
+
+`deploy-remote.sh` auto-loads `.env.qa.local` and `.env.qa.secrets.local` when present.
 
 You will be prompted to confirm, and optionally auto-commit uncommitted changes.
 

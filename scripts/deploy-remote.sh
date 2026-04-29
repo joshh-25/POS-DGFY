@@ -19,6 +19,8 @@ REMOTE_USER="root"
 REMOTE_DIR="/var/www/skupervisor"
 DEPLOY_SCRIPT="scripts/deploy.sh"
 TARGET_BRANCH="master"
+QA_ENV_FILE="${QA_ENV_FILE:-.env.qa.local}"
+QA_SECRETS_FILE="${QA_SECRETS_FILE:-.env.qa.secrets.local}"
 
 # ------------------------------------------
 # Deployment policy flags (non-secret)
@@ -70,6 +72,32 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[1;36m'
 NC='\033[0m'
+
+load_env_file_if_present() {
+    local env_file="$1"
+    if [[ ! -f "$env_file" ]]; then
+        return 0
+    fi
+
+    while IFS='=' read -r raw_key raw_value; do
+        [[ -z "${raw_key// }" ]] && continue
+        [[ "$raw_key" =~ ^[[:space:]]*# ]] && continue
+
+        local key
+        key="$(echo "$raw_key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+        local value
+        value="$(echo "${raw_value:-}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+
+        # Keep existing exported values intact; fill only unset/empty ones.
+        if [[ -z "${!key:-}" ]]; then
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+# Load non-secret defaults then optional local secrets override source.
+load_env_file_if_present "$QA_ENV_FILE"
+load_env_file_if_present "$QA_SECRETS_FILE"
 
 echo -e "\n${CYAN}Remote Deployment Trigger${NC}"
 echo -e "   Target: ${YELLOW}$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR${NC}"
