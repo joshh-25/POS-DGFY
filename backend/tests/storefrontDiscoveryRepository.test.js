@@ -65,6 +65,13 @@ const makeEntry = (overrides = {}) => ({
   catalog_count: 42,
   storefront_cover_image_url: overrides.storefront_cover_image_url ?? '/uploads/storefront-assets/tenant-1/cover.png',
   storefront_profile_image_url: overrides.storefront_profile_image_url ?? '/uploads/storefront-assets/tenant-1/profile.png',
+  storefront_ui_v2_enabled: overrides.storefront_ui_v2_enabled ?? false,
+  storefront_categories: overrides.storefront_categories ?? ['General'],
+  storefront_gallery_images: overrides.storefront_gallery_images ?? [],
+  storefront_delivery_partners: overrides.storefront_delivery_partners ?? [],
+  storefront_follow_enabled: overrides.storefront_follow_enabled ?? false,
+  storefront_share_enabled: overrides.storefront_share_enabled ?? false,
+  storefront_review_summary: overrides.storefront_review_summary ?? null,
   search_snapshot_version: overrides.search_snapshot_version ?? 1,
   active_location_snapshot: overrides.active_location_snapshot || [
     {
@@ -194,7 +201,14 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       storefront_why_choose_us: ['Fresh daily'],
       storefront_social_links: { facebook: 'https://facebook.com/bravo' },
       storefront_review_highlights: [{ reviewer_name: 'A', rating: 5, comment: 'Great' }],
-      storefront_promo: { title: '10% OFF', active: true }
+      storefront_promo: { title: '10% OFF', active: true },
+      storefront_ui_v2_enabled: true,
+      storefront_categories: ['BBQ', 'Street Food'],
+      storefront_gallery_images: [{ path: 'storefront-assets/t2/gallery-1.png', caption: 'Hero shot' }],
+      storefront_delivery_partners: [{ partner: 'grab', label: 'Grab', url: '' }],
+      storefront_follow_enabled: true,
+      storefront_share_enabled: true,
+      storefront_review_summary: { score: 4.8, total_count: 127, star_distribution: { 5: 115, 4: 8 } }
     });
 
     const result = await repository.getStorefrontBySlug('bravo-store');
@@ -209,7 +223,16 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       storefront_why_choose_us: ['Fresh daily'],
       storefront_social_links: { facebook: 'https://facebook.com/bravo' },
       storefront_review_highlights: [{ reviewer_name: 'A', rating: 5, comment: 'Great' }],
-      storefront_promo: { title: '10% OFF', active: true }
+      storefront_promo: { title: '10% OFF', active: true },
+      storefront_ui_v2_enabled: true,
+      storefront_categories: ['BBQ', 'Street Food'],
+      storefront_gallery_images: expect.arrayContaining([
+        expect.objectContaining({ path: 'storefront-assets/t2/gallery-1.png', caption: 'Hero shot' })
+      ]),
+      storefront_delivery_partners: expect.arrayContaining([{ partner: 'grab', label: 'Grab', url: '' }]),
+      storefront_follow_enabled: true,
+      storefront_share_enabled: true,
+      storefront_review_summary: expect.objectContaining({ score: 4.8, total_count: 127 })
     }));
     expect(tenantFindOneMock).not.toHaveBeenCalled();
   });
@@ -270,6 +293,24 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
         asset_type: 'cover'
       })
     );
+  });
+
+  it('sanitizes unsafe delivery partner URLs from discovery index profile payload', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue(makeEntry({
+      tenant_id: 'tenant-safe-links',
+      slug: 'safe-links',
+      storefront_delivery_partners: [
+        { partner: 'grab', label: 'Grab', url: 'javascript:alert(1)' },
+        { partner: 'custom', label: 'Courier', url: 'https://courier.example.com/track' }
+      ]
+    }));
+
+    const result = await repository.getStorefrontBySlug('safe-links');
+    expect(result.storefront_delivery_partners).toEqual(expect.arrayContaining([
+      expect.objectContaining({ partner: 'grab', label: 'Grab', url: '' }),
+      expect.objectContaining({ partner: 'custom', label: 'Courier', url: 'https://courier.example.com/track' })
+    ]));
   });
 
   it('uses union + badges by default when both store and item matches exist', async () => {

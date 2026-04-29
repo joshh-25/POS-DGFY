@@ -179,6 +179,50 @@ const storefrontPromoSchema = Joi.object({
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
   active: Joi.boolean().default(false)
 }).optional();
+const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
+const storefrontGalleryUrlSchema = Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null).optional();
+const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
+  'string.pattern.base': 'Storefront gallery path must be empty or a storefront-assets relative path'
+});
+const storefrontGalleryImageSchema = Joi.object({
+  url: storefrontGalleryUrlSchema,
+  path: storefrontGalleryPathSchema,
+  caption: Joi.string().trim().max(140).allow('', null).optional(),
+  alt: Joi.string().trim().max(140).allow('', null).optional(),
+  sort_order: Joi.number().integer().min(0).max(9999).optional()
+}).custom((value, helpers) => {
+  const hasUrl = Boolean(String(value?.url || '').trim());
+  const hasPath = Boolean(String(value?.path || '').trim());
+  if (!hasUrl && !hasPath) {
+    return helpers.error('any.invalid', {
+      message: 'Each storefront gallery image must include a url or path'
+    });
+  }
+  return value;
+}).messages({
+  'any.invalid': '{{#message}}'
+});
+const storefrontGalleryImagesSchema = Joi.array().items(storefrontGalleryImageSchema).max(24).optional();
+const storefrontDeliveryPartnerSchema = Joi.alternatives().try(
+  Joi.string().trim().lowercase().valid('grab', 'foodpanda', 'lalamove'),
+  Joi.object({
+    partner: Joi.string().trim().lowercase().valid('grab', 'foodpanda', 'lalamove', 'custom').required(),
+    label: Joi.string().trim().max(60).allow('', null).optional(),
+    url: Joi.string().trim().max(255).uri({ scheme: ['http', 'https'] }).allow('', null).optional()
+  })
+);
+const storefrontDeliveryPartnersSchema = Joi.array().items(storefrontDeliveryPartnerSchema).max(8).optional();
+const storefrontReviewSummarySchema = Joi.object({
+  score: Joi.number().min(0).max(5).precision(2).allow(null).optional(),
+  total_count: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+  star_distribution: Joi.object({
+    1: Joi.number().integer().min(0).max(1000000).optional(),
+    2: Joi.number().integer().min(0).max(1000000).optional(),
+    3: Joi.number().integer().min(0).max(1000000).optional(),
+    4: Joi.number().integer().min(0).max(1000000).optional(),
+    5: Joi.number().integer().min(0).max(1000000).optional()
+  }).optional()
+}).optional();
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
@@ -236,7 +280,14 @@ export const updateSettingsSchema = Joi.object({
   storefront_why_choose_us: storefrontWhyChooseUsSchema,
   storefront_social_links: storefrontSocialLinksSchema,
   storefront_review_highlights: storefrontReviewHighlightsSchema,
+  storefront_review_summary: storefrontReviewSummarySchema,
   storefront_promo: storefrontPromoSchema,
+  storefront_ui_v2_enabled: Joi.boolean().optional(),
+  storefront_categories: storefrontCategoriesSchema,
+  storefront_gallery_images: storefrontGalleryImagesSchema,
+  storefront_delivery_partners: storefrontDeliveryPartnersSchema,
+  storefront_follow_enabled: Joi.boolean().optional(),
+  storefront_share_enabled: Joi.boolean().optional(),
   store_is_visible: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
@@ -363,7 +414,14 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     storefront_why_choose_us: storefrontWhyChooseUsSchema,
     storefront_social_links: storefrontSocialLinksSchema,
     storefront_review_highlights: storefrontReviewHighlightsSchema,
+    storefront_review_summary: storefrontReviewSummarySchema,
     storefront_promo: storefrontPromoSchema,
+    storefront_ui_v2_enabled: Joi.boolean(),
+    storefront_categories: storefrontCategoriesSchema,
+    storefront_gallery_images: storefrontGalleryImagesSchema,
+    storefront_delivery_partners: storefrontDeliveryPartnersSchema,
+    storefront_follow_enabled: Joi.boolean(),
+    storefront_share_enabled: Joi.boolean(),
     store_is_visible: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),

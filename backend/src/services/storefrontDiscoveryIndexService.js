@@ -7,7 +7,7 @@ import logger from '../config/logger.js';
 import { bumpStorefrontDiscoveryCacheVersion } from './storefrontDiscoveryCacheState.js';
 import { invalidateStorefrontDiscoverySharedSignatureCache } from './storefrontDiscoveryFreshnessService.js';
 import { isCatalogItemVisible } from '../modules/shared/utils/catalogVisibilityPolicy.js';
-import { normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
+import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'store_tenant_slug',
@@ -25,7 +25,14 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'storefront_why_choose_us',
     'storefront_social_links',
     'storefront_review_highlights',
-    'storefront_promo'
+    'storefront_promo',
+    'storefront_ui_v2_enabled',
+    'storefront_categories',
+    'storefront_gallery_images',
+    'storefront_delivery_partners',
+    'storefront_follow_enabled',
+    'storefront_share_enabled',
+    'storefront_review_summary'
 ]);
 const SEARCH_SNAPSHOT_VERSION = 1;
 
@@ -143,6 +150,99 @@ const parseJsonObject = (value) => {
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
     } catch {
         return null;
+    }
+};
+const normalizeStringList = (value, maxItems = 8, maxLength = 120) => parseJsonArray(value)
+    .map((entry) => toTrimmedString(entry, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+const normalizeStorefrontGalleryImages = (value) => parseJsonArray(value)
+    .map((entry, index) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+        const rawUrl = toTrimmedString(entry.url, 500);
+        const url = (() => {
+            const internal = normalizeStorefrontAssetUrl(rawUrl);
+            if (internal) return internal;
+            try {
+                const parsed = new URL(rawUrl);
+                return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+            } catch {
+                return '';
+            }
+        })();
+        const path = normalizeStorefrontAssetPath(toTrimmedString(entry.path, 500));
+        if (!url && !path) return null;
+        return {
+            url,
+            path,
+            caption: toTrimmedString(entry.caption, 140),
+            alt: toTrimmedString(entry.alt, 140),
+            sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+        };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+const normalizeStorefrontDeliveryPartners = (value) => {
+    const rows = parseJsonArray(value);
+    const normalized = [];
+    rows.forEach((entry) => {
+        if (typeof entry === 'string') {
+            const partner = toTrimmedString(entry, 40).toLowerCase();
+            if (!['grab', 'foodpanda', 'lalamove'].includes(partner)) return;
+            normalized.push({ partner, label: '', url: '' });
+            return;
+        }
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+        const partner = toTrimmedString(entry.partner, 40).toLowerCase();
+        if (!['grab', 'foodpanda', 'lalamove', 'custom'].includes(partner)) return;
+        normalized.push({
+            partner,
+            label: toTrimmedString(entry.label, 60),
+            url: normalizeExternalHttpUrl(entry.url, 255)
+        });
+    });
+    const deduped = [];
+    const seen = new Set();
+    normalized.forEach((entry) => {
+        const dedupeKey = `${entry.partner}:${entry.partner === 'custom' ? String(entry.label || '').toLowerCase() : ''}`;
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        deduped.push(entry);
+    });
+    return deduped.slice(0, 8);
+};
+const normalizeStorefrontReviewSummary = (value) => {
+    const raw = parseJsonObject(value);
+    if (!raw) return null;
+    const score = Number(raw.score);
+    const totalCount = Number(raw.total_count);
+    const summary = {
+        score: Number.isFinite(score) ? Math.min(5, Math.max(0, score)) : null,
+        total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null
+    };
+    if (raw.star_distribution && typeof raw.star_distribution === 'object' && !Array.isArray(raw.star_distribution)) {
+        const distribution = {};
+        [1, 2, 3, 4, 5].forEach((star) => {
+            const count = Number(raw.star_distribution[star]);
+            if (Number.isInteger(count) && count >= 0) {
+                distribution[star] = count;
+            }
+        });
+        if (Object.keys(distribution).length > 0) {
+            summary.star_distribution = distribution;
+        }
+    }
+    return summary;
+};
+const normalizeExternalHttpUrl = (value, maxLength = 255) => {
+    const raw = toTrimmedString(value, maxLength);
+    if (!raw) return '';
+    try {
+        const parsed = new URL(raw);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString().slice(0, maxLength) : '';
+    } catch {
+        return '';
     }
 };
 
@@ -375,6 +475,13 @@ const buildTenantSnapshot = async (tenant) => {
             active: storefrontPromoRaw.active === true
         }
         : null;
+    const storefrontUiV2Enabled = parseBoolean(settings.storefront_ui_v2_enabled, false);
+    const storefrontCategories = normalizeStringList(settings.storefront_categories, 12, 60);
+    const storefrontGalleryImages = normalizeStorefrontGalleryImages(settings.storefront_gallery_images);
+    const storefrontDeliveryPartners = normalizeStorefrontDeliveryPartners(settings.storefront_delivery_partners);
+    const storefrontFollowEnabled = parseBoolean(settings.storefront_follow_enabled, false);
+    const storefrontShareEnabled = parseBoolean(settings.storefront_share_enabled, false);
+    const storefrontReviewSummary = normalizeStorefrontReviewSummary(settings.storefront_review_summary);
     const now = new Date();
     return {
         tenant_id: tenant.id,
@@ -414,6 +521,13 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_social_links: storefrontSocialLinks,
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_promo: storefrontPromo,
+        storefront_ui_v2_enabled: storefrontUiV2Enabled,
+        storefront_categories: storefrontCategories,
+        storefront_gallery_images: storefrontGalleryImages,
+        storefront_delivery_partners: storefrontDeliveryPartners,
+        storefront_follow_enabled: storefrontFollowEnabled,
+        storefront_share_enabled: storefrontShareEnabled,
+        storefront_review_summary: storefrontReviewSummary,
         active_location_snapshot: activeLocationSnapshot,
         item_search_snapshot: itemSearchSnapshot,
         search_snapshot_version: SEARCH_SNAPSHOT_VERSION,

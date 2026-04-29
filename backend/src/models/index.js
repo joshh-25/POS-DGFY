@@ -46,6 +46,7 @@ import ItemLocationStock from './ItemLocationStock.js';
 import UserLocationGrant from './UserLocationGrant.js';
 import StoreCustomer from './StoreCustomer.js';
 import StoreCustomerAddress from './StoreCustomerAddress.js';
+import StorefrontFollow from './StorefrontFollow.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import PaymentFactory from './Landlord/Payment.js';
@@ -357,6 +358,7 @@ const db = {
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
+  StorefrontFollow,
   Tenant,
   UserTenantMapping,
   Payment,
@@ -422,6 +424,7 @@ export {
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
+  StorefrontFollow,
   Tenant,
   UserTenantMapping,
   Payment,

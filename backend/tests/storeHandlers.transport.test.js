@@ -15,6 +15,9 @@ const mockStoreCheckoutUseCase = jest.fn();
 const mockTrackStoreOrderUseCase = jest.fn();
 const mockCancelStoreOrderUseCase = jest.fn();
 const mockListStoreCustomerOrdersUseCase = jest.fn();
+const mockGetStorefrontFollowStatusUseCase = jest.fn();
+const mockFollowStorefrontUseCase = jest.fn();
+const mockUnfollowStorefrontUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     listStoreCatalogUseCase: mockListStoreCatalogUseCase,
@@ -31,7 +34,10 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
     trackStoreOrderUseCase: mockTrackStoreOrderUseCase,
     cancelStoreOrderUseCase: mockCancelStoreOrderUseCase,
-    listStoreCustomerOrdersUseCase: mockListStoreCustomerOrdersUseCase
+    listStoreCustomerOrdersUseCase: mockListStoreCustomerOrdersUseCase,
+    getStorefrontFollowStatusUseCase: mockGetStorefrontFollowStatusUseCase,
+    followStorefrontUseCase: mockFollowStorefrontUseCase,
+    unfollowStorefrontUseCase: mockUnfollowStorefrontUseCase
 }));
 
 let registerStoreCustomer;

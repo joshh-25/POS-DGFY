@@ -31,7 +31,10 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260424000001-add-storefront-branding-assets-to-discovery-index.cjs' },
         { name: '20260424000002-harden-storefront-asset-settings-constraints.cjs' },
         { name: '20260424000003-enforce-storefront-asset-settings-via-triggers.cjs' },
-        { name: '20260427000001-add-storefront-pos-read-path-indexes.cjs' }
+        { name: '20260427000001-add-storefront-pos-read-path-indexes.cjs' },
+        { name: '20260428000001-add-storefront-profile-content-to-discovery-index.cjs' },
+        { name: '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs' },
+        { name: '20260429000002-create-storefront-follows.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -198,6 +201,12 @@ const buildHealthySequelizeMock = () => ({
                     address_line: {},
                     is_default: {}
                 },
+                storefront_follows: {
+                    storefront_follow_id: {},
+                    tenant_id: {},
+                    storefront_slug: {},
+                    visitor_fingerprint: {}
+                },
                 storefront_discovery_index: {
                     storefront_discovery_index_id: {},
                     tenant_id: {},
@@ -205,6 +214,13 @@ const buildHealthySequelizeMock = () => ({
                     is_visible: {},
                     storefront_cover_image_url: {},
                     storefront_profile_image_url: {},
+                    storefront_ui_v2_enabled: {},
+                    storefront_categories: {},
+                    storefront_gallery_images: {},
+                    storefront_delivery_partners: {},
+                    storefront_follow_enabled: {},
+                    storefront_share_enabled: {},
+                    storefront_review_summary: {},
                     last_synced_at: {}
                 }
             };

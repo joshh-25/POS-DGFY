@@ -1,7 +1,7 @@
 import express from 'express';
 import * as storeController from '../controllers/storeController.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeAuthLimiter, storeTrackingLimiter } from '../middleware/rateLimiter.js';
+import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter } from '../middleware/rateLimiter.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import {
@@ -15,7 +15,9 @@ import {
     validateStoreAddressIdParam,
     validateStoreTrackingPinParam,
     validateStoreCancelOrder,
-    validateStoreOrderHistoryQuery
+    validateStoreOrderHistoryQuery,
+    validateStorefrontFollowBody,
+    validateStorefrontFollowQuery
 } from '../validators/storeValidator.js';
 
 const router = express.Router();
@@ -60,5 +62,8 @@ router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validate
 router.get('/track/:tracking_pin', storeTrackingLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
 router.patch('/orders/:tracking_pin/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStoreTrackingPinParam, validateStoreCancelOrder, storeController.cancelOrder);
 router.get('/orders', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreOrderHistoryQuery, storeController.listStoreCustomerOrders);
+router.get('/follow/status', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowQuery, storeController.getStorefrontFollowStatus);
+router.post('/follow', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowBody, storeController.followStorefront);
+router.delete('/follow', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowBody, storeController.unfollowStorefront);
 
 export default router;

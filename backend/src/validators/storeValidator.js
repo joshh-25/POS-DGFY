@@ -85,6 +85,11 @@ const storeCatalogQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const storefrontFollowBaseSchema = Joi.object({
+    storefront_slug: Joi.string().trim().lowercase().max(120).pattern(/^[a-z0-9-]+$/).required(),
+    visitor_id: Joi.string().trim().min(16).max(128).allow('', null).optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -121,3 +126,34 @@ export const validateStoreTrackingPinParam = validateSchema(storeTrackingPinPara
 export const validateStoreCancelOrder = validateSchema(storeCancelOrderSchema, 'body', 'validatedData');
 export const validateStoreOrderHistoryQuery = validateSchema(storeOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateStoreCatalogQuery = validateSchema(storeCatalogQuerySchema, 'query', 'validatedQuery');
+
+const validateStorefrontFollowSource = (source, target) => (req, res, next) => {
+    const { error, value } = storefrontFollowBaseSchema.validate(req[source], {
+        abortEarly: false,
+        stripUnknown: true
+    });
+    if (error) {
+        return res.status(422).json(buildValidationErrorResponse(error));
+    }
+
+    const hasAuthenticatedStoreCustomer = Boolean(req.storeCustomer?.customer_id);
+    const hasVisitorId = String(value?.visitor_id || '').trim().length >= 16;
+    if (!hasAuthenticatedStoreCustomer && !hasVisitorId) {
+        return res.status(422).json({
+            success: false,
+            data: null,
+            message: 'Validation failed',
+            errors: [{
+                field: 'visitor_id',
+                message: 'visitor_id is required for guest follow requests'
+            }],
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    req[target] = value;
+    return next();
+};
+
+export const validateStorefrontFollowBody = validateStorefrontFollowSource('body', 'validatedData');
+export const validateStorefrontFollowQuery = validateStorefrontFollowSource('query', 'validatedQuery');

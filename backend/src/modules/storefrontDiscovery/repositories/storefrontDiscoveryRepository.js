@@ -7,7 +7,7 @@ import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { createHash } from 'crypto';
 import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
-import { normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
+import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
 const DISCOVERY_REDIS_CACHE_TTL_SECONDS = Math.max(
@@ -62,7 +62,14 @@ const STOREFRONT_PROFILE_INDEX_COLUMNS = Object.freeze([
     'storefront_why_choose_us',
     'storefront_social_links',
     'storefront_review_highlights',
-    'storefront_promo'
+    'storefront_promo',
+    'storefront_ui_v2_enabled',
+    'storefront_categories',
+    'storefront_gallery_images',
+    'storefront_delivery_partners',
+    'storefront_follow_enabled',
+    'storefront_share_enabled',
+    'storefront_review_summary'
 ]);
 const hasMaterializedStorefrontProfileColumns = (row) => {
     const plain = row && typeof row.toJSON === 'function' ? row.toJSON() : row || {};
@@ -77,7 +84,14 @@ const STOREFRONT_PROFILE_SETTING_KEYS = Object.freeze([
     'storefront_why_choose_us',
     'storefront_social_links',
     'storefront_review_highlights',
-    'storefront_promo'
+    'storefront_promo',
+    'storefront_ui_v2_enabled',
+    'storefront_categories',
+    'storefront_gallery_images',
+    'storefront_delivery_partners',
+    'storefront_follow_enabled',
+    'storefront_share_enabled',
+    'storefront_review_summary'
 ]);
 const DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS = Math.max(
     10,
@@ -129,6 +143,106 @@ const parseJsonObject = (value) => {
 };
 
 const toTrimmedString = (value, maxLen = 255) => String(value || '').trim().slice(0, maxLen);
+const parseBoolean = (value, fallback = false) => {
+    if (value == null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return fallback;
+};
+const normalizeStringList = (value, maxItems = 8, maxLen = 120) => parseJsonArray(value)
+    .map((entry) => toTrimmedString(entry, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+const normalizeStorefrontGalleryImages = (value) => parseJsonArray(value)
+    .map((entry, index) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+        const rawUrl = toTrimmedString(entry.url, 500);
+        const url = (() => {
+            const internal = normalizeStorefrontAssetUrl(rawUrl);
+            if (internal) return internal;
+            try {
+                const parsed = new URL(rawUrl);
+                return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+            } catch {
+                return '';
+            }
+        })();
+        const path = normalizeStorefrontAssetPath(toTrimmedString(entry.path, 500));
+        if (!url && !path) return null;
+        return {
+            url,
+            path,
+            caption: toTrimmedString(entry.caption, 140),
+            alt: toTrimmedString(entry.alt, 140),
+            sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+        };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+const normalizeStorefrontDeliveryPartners = (value) => {
+    const normalized = [];
+    parseJsonArray(value).forEach((entry) => {
+        if (typeof entry === 'string') {
+            const partner = toTrimmedString(entry, 40).toLowerCase();
+            if (!['grab', 'foodpanda', 'lalamove'].includes(partner)) return;
+            normalized.push({ partner, label: '', url: '' });
+            return;
+        }
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+        const partner = toTrimmedString(entry.partner, 40).toLowerCase();
+        if (!['grab', 'foodpanda', 'lalamove', 'custom'].includes(partner)) return;
+        normalized.push({
+            partner,
+            label: toTrimmedString(entry.label, 60),
+            url: normalizeExternalHttpUrl(entry.url, 255)
+        });
+    });
+    const deduped = [];
+    const seen = new Set();
+    normalized.forEach((entry) => {
+        const dedupeKey = `${entry.partner}:${entry.partner === 'custom' ? String(entry.label || '').toLowerCase() : ''}`;
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        deduped.push(entry);
+    });
+    return deduped.slice(0, 8);
+};
+const normalizeStorefrontReviewSummary = (value) => {
+    const raw = parseJsonObject(value);
+    if (!raw) return null;
+    const score = Number(raw.score);
+    const totalCount = Number(raw.total_count);
+    const summary = {
+        score: Number.isFinite(score) ? Math.min(5, Math.max(0, score)) : null,
+        total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null
+    };
+    if (raw.star_distribution && typeof raw.star_distribution === 'object' && !Array.isArray(raw.star_distribution)) {
+        const distribution = {};
+        [1, 2, 3, 4, 5].forEach((star) => {
+            const count = Number(raw.star_distribution[star]);
+            if (Number.isInteger(count) && count >= 0) {
+                distribution[star] = count;
+            }
+        });
+        if (Object.keys(distribution).length > 0) {
+            summary.star_distribution = distribution;
+        }
+    }
+    return summary;
+};
+const normalizeExternalHttpUrl = (value, maxLength = 255) => {
+    const raw = toTrimmedString(value, maxLength);
+    if (!raw) return '';
+    try {
+        const parsed = new URL(raw);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString().slice(0, maxLength) : '';
+    } catch {
+        return '';
+    }
+};
 
 const buildDiscoveryProfileSettingsCacheKey = ({ tenantId = '', signature = '0:0' } = {}) => {
     const normalizedTenantId = String(tenantId || '').trim();
@@ -218,7 +332,14 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) 
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,
         storefront_review_highlights: reviewHighlights,
-        storefront_promo: promo
+        storefront_promo: promo,
+        storefront_ui_v2_enabled: parseBoolean(settingsMap.storefront_ui_v2_enabled, false),
+        storefront_categories: normalizeStringList(settingsMap.storefront_categories, 12, 60),
+        storefront_gallery_images: normalizeStorefrontGalleryImages(settingsMap.storefront_gallery_images),
+        storefront_delivery_partners: normalizeStorefrontDeliveryPartners(settingsMap.storefront_delivery_partners),
+        storefront_follow_enabled: parseBoolean(settingsMap.storefront_follow_enabled, false),
+        storefront_share_enabled: parseBoolean(settingsMap.storefront_share_enabled, false),
+        storefront_review_summary: normalizeStorefrontReviewSummary(settingsMap.storefront_review_summary)
     };
     await writeRedisCacheEntry(cacheKey, settingsPayload, DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS);
     return settingsPayload;
@@ -447,6 +568,13 @@ const toPlainEntry = (row) => {
         })
         .filter(Boolean),
     storefront_promo: parseJsonObject(plain.storefront_promo) || null,
+    storefront_ui_v2_enabled: parseBoolean(plain.storefront_ui_v2_enabled, false),
+    storefront_categories: normalizeStringList(plain.storefront_categories, 12, 60),
+    storefront_gallery_images: normalizeStorefrontGalleryImages(plain.storefront_gallery_images),
+    storefront_delivery_partners: normalizeStorefrontDeliveryPartners(plain.storefront_delivery_partners),
+    storefront_follow_enabled: parseBoolean(plain.storefront_follow_enabled, false),
+    storefront_share_enabled: parseBoolean(plain.storefront_share_enabled, false),
+    storefront_review_summary: normalizeStorefrontReviewSummary(plain.storefront_review_summary),
     active_location_snapshot: parseJsonArray(plain.active_location_snapshot),
     item_search_snapshot: parseJsonArray(plain.item_search_snapshot),
     search_snapshot_version: toNumber(plain.search_snapshot_version, 0)

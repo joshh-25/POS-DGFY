@@ -52,6 +52,7 @@ const parsePositiveInt = (value) => {
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
+const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 
 const pruneTrackingFailureCounters = (now = Date.now()) => {
     for (const [key, value] of trackingFailureCounters.entries()) {
@@ -1637,6 +1638,120 @@ export const buildListStoreCustomerOrdersUseCase = ({ storeRepository }) => {
             return ok(buildOrderHistoryResponse(result));
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to list store order history'));
+        }
+    };
+};
+
+const FOLLOW_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
+
+const resolveStorefrontSlugGuard = async ({ storeRepository, tenantId }) => {
+    const settingsRows = await storeRepository.getSettingsByKeys(['store_tenant_slug']);
+    const configured = String(settingsRows?.store_tenant_slug?.value || '').trim().toLowerCase();
+    if (!configured) {
+        throw new DomainError(
+            DomainErrorCode.RESOURCE_NOT_FOUND,
+            'Storefront slug is not configured for this tenant',
+            { statusCode: 404 }
+        );
+    }
+    return configured;
+};
+
+const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, payload = {}, storeCustomer = null }) => {
+    const normalizedTenantId = ensureTenantContext(tenantId);
+    const configuredTenantSlug = await resolveStorefrontSlugGuard({ storeRepository, tenantId: normalizedTenantId });
+    const storefrontSlug = String(payload?.storefront_slug || '').trim().toLowerCase();
+    const visitorId = String(payload?.visitor_id || '').trim();
+
+    if (!storefrontSlug || storefrontSlug.length > 120 || !/^[a-z0-9-]+$/.test(storefrontSlug)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'storefront_slug must contain lowercase letters, numbers, and hyphens',
+            { statusCode: 422 }
+        );
+    }
+    if (storefrontSlug !== configuredTenantSlug) {
+        throw new DomainError(
+            DomainErrorCode.RESOURCE_NOT_FOUND,
+            'Storefront slug was not found for this tenant',
+            { statusCode: 404 }
+        );
+    }
+
+    const customerId = parsePositiveInt(storeCustomer?.customer_id);
+    let identitySeed = '';
+    let identityType = 'guest';
+    if (customerId) {
+        identitySeed = `customer:${customerId}`;
+        identityType = 'customer';
+    } else {
+        if (!FOLLOW_VISITOR_ID_PATTERN.test(visitorId)) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'visitor_id is required and must be a stable 16-128 character token',
+                { statusCode: 422 }
+            );
+        }
+        identitySeed = `guest:${visitorId}`;
+    }
+
+    return {
+        tenantId: normalizedTenantId,
+        storefrontSlug,
+        identityType,
+        visitorFingerprint: hashStableFingerprint(identitySeed)
+    };
+};
+
+export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository }) => {
+    return async ({ tenantId, payload = {}, storeCustomer = null }) => {
+        try {
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const [existing, followersCount] = await Promise.all([
+                storeRepository.findStorefrontFollow(normalized),
+                storeRepository.countStorefrontFollowsBySlug(normalized)
+            ]);
+            return ok({
+                storefront_slug: normalized.storefrontSlug,
+                followers_count: followersCount,
+                is_following: Boolean(existing)
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to get storefront follow status'));
+        }
+    };
+};
+
+export const buildFollowStorefrontUseCase = ({ storeRepository }) => {
+    return async ({ tenantId, payload = {}, storeCustomer = null }) => {
+        try {
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            await storeRepository.upsertStorefrontFollow(normalized);
+            const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
+            return ok({
+                storefront_slug: normalized.storefrontSlug,
+                followers_count: followersCount,
+                is_following: true
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to follow storefront'));
+        }
+    };
+};
+
+export const buildUnfollowStorefrontUseCase = ({ storeRepository }) => {
+    return async ({ tenantId, payload = {}, storeCustomer = null }) => {
+        try {
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            await storeRepository.deleteStorefrontFollow(normalized);
+            const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
+            return ok({
+                storefront_slug: normalized.storefrontSlug,
+                followers_count: followersCount,
+                is_following: false
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to unfollow storefront'));
         }
     };
 };

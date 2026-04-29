@@ -14,7 +14,10 @@ import {
     buildStoreCheckoutUseCase,
     buildTrackStoreOrderUseCase,
     buildCancelStoreOrderUseCase,
-    buildListStoreCustomerOrdersUseCase
+    buildListStoreCustomerOrdersUseCase,
+    buildGetStorefrontFollowStatusUseCase,
+    buildFollowStorefrontUseCase,
+    buildUnfollowStorefrontUseCase
 } from './usecases/storeUseCases.js';
 
 export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({ storeRepository });
@@ -32,6 +35,9 @@ export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository 
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
+export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({ storeRepository });
+export const followStorefrontUseCase = buildFollowStorefrontUseCase({ storeRepository });
+export const unfollowStorefrontUseCase = buildUnfollowStorefrontUseCase({ storeRepository });
 
 export * from './contracts/storeRepository.contract.js';
 export * from './repositories/storeRepository.js';

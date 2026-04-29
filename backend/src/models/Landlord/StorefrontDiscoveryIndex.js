@@ -135,6 +135,37 @@ export default (sequelize) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        storefront_ui_v2_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        storefront_categories: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_gallery_images: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_delivery_partners: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        storefront_follow_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        storefront_share_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        storefront_review_summary: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         active_location_snapshot: {
             type: DataTypes.JSON,
             allowNull: true

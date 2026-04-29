@@ -24,7 +24,11 @@ const REQUIRED_METHODS = Object.freeze([
     'updateOrderByTrackingPin',
     'listOrdersByCustomer',
     'getOrderById',
-    'updateOrderById'
+    'updateOrderById',
+    'findStorefrontFollow',
+    'upsertStorefrontFollow',
+    'deleteStorefrontFollow',
+    'countStorefrontFollowsBySlug'
 ]);
 
 export const assertStoreRepositoryContract = (repository) => {

@@ -162,7 +162,14 @@ const SETTINGS_FIELD_LABELS = {
   storefront_why_choose_us: 'Storefront Why Choose Us',
   storefront_social_links: 'Storefront Social Links',
   storefront_review_highlights: 'Storefront Review Highlights',
-  storefront_promo: 'Storefront Promo'
+  storefront_review_summary: 'Storefront Review Summary',
+  storefront_promo: 'Storefront Promo',
+  storefront_ui_v2_enabled: 'Storefront UI V2',
+  storefront_categories: 'Storefront Categories',
+  storefront_gallery_images: 'Storefront Gallery Images',
+  storefront_delivery_partners: 'Storefront Delivery Partners',
+  storefront_follow_enabled: 'Storefront Follow Enabled',
+  storefront_share_enabled: 'Storefront Share Enabled'
 };
 
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
@@ -254,6 +261,87 @@ const parseJsonObjectSetting = (raw) => {
   }
 };
 
+const parseNullableNumberInput = (value, {
+  integer = false,
+  min = null,
+  max = null,
+  precision = null
+} = {}) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  if (integer && !Number.isInteger(parsed)) return null;
+  let normalized = parsed;
+  if (min != null && normalized < min) return null;
+  if (max != null && normalized > max) return null;
+  if (typeof precision === 'number' && Number.isInteger(precision) && precision >= 0) {
+    normalized = Number(normalized.toFixed(precision));
+  }
+  return normalized;
+};
+
+const normalizeStorefrontGallerySettings = (raw) => {
+  const source = Array.isArray(raw) ? raw : [];
+  const normalized = source
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const url = String(entry.url || '').trim().slice(0, 500);
+      const path = String(entry.path || '').trim().slice(0, 500);
+      if (!url && !path) return null;
+      return {
+        url,
+        path,
+        caption: String(entry.caption || '').trim().slice(0, 140),
+        alt: String(entry.alt || '').trim().slice(0, 140),
+        sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+  return normalized.length > 0 ? normalized : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }];
+};
+
+const normalizeStorefrontDeliveryPartnersSettings = (raw) => {
+  const source = Array.isArray(raw) ? raw : [];
+  const normalized = source
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const partner = String(entry || '').trim().toLowerCase();
+        if (!partner) return null;
+        return { partner, label: '', url: '' };
+      }
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const partner = String(entry.partner || '').trim().toLowerCase();
+      if (!partner) return null;
+      return {
+        partner,
+        label: String(entry.label || '').trim().slice(0, 60),
+        url: String(entry.url || '').trim().slice(0, 255)
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  return normalized.length > 0 ? normalized : [{ partner: 'grab', label: '', url: '' }];
+};
+
+const normalizeStorefrontReviewSummarySettings = (raw) => {
+  const parsed = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const starDistribution = parsed.star_distribution && typeof parsed.star_distribution === 'object' && !Array.isArray(parsed.star_distribution)
+    ? parsed.star_distribution
+    : {};
+  return {
+    score: parsed.score == null ? '' : String(parsed.score),
+    total_count: parsed.total_count == null ? '' : String(parsed.total_count),
+    star1: starDistribution[1] == null ? '' : String(starDistribution[1]),
+    star2: starDistribution[2] == null ? '' : String(starDistribution[2]),
+    star3: starDistribution[3] == null ? '' : String(starDistribution[3]),
+    star4: starDistribution[4] == null ? '' : String(starDistribution[4]),
+    star5: starDistribution[5] == null ? '' : String(starDistribution[5])
+  };
+};
+
 export default function Settings() {
   const settingsBuildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim() || 'dev';
   const location = useLocation();
@@ -305,11 +393,24 @@ export default function Settings() {
     storefrontSocialFacebook: '',
     storefrontSocialInstagram: '',
     storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
+    storefrontReviewSummaryScore: '',
+    storefrontReviewSummaryTotalCount: '',
+    storefrontReviewSummaryStar1: '',
+    storefrontReviewSummaryStar2: '',
+    storefrontReviewSummaryStar3: '',
+    storefrontReviewSummaryStar4: '',
+    storefrontReviewSummaryStar5: '',
     storefrontPromoTitle: '',
     storefrontPromoSubtitle: '',
     storefrontPromoBadge: '',
     storefrontPromoValidityText: '',
-    storefrontPromoActive: false
+    storefrontPromoActive: false,
+    storefrontUiV2Enabled: false,
+    storefrontCategories: [''],
+    storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
+    storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
+    storefrontFollowEnabled: false,
+    storefrontShareEnabled: false
   });
 
   const [profileSettings, setProfileSettings] = useState({
@@ -430,9 +531,20 @@ export default function Settings() {
         const normalizedWorkflowMode = normalizeWorkflowMode(systemSettings.ops_workflow_mode?.value);
         const storefrontSocialLinks = parseJsonObjectSetting(systemSettings.storefront_social_links?.value);
         const storefrontPromo = parseJsonObjectSetting(systemSettings.storefront_promo?.value);
+        const storefrontReviewSummary = parseJsonObjectSetting(systemSettings.storefront_review_summary?.value);
         const storefrontReviewHighlightsRaw = Array.isArray(systemSettings.storefront_review_highlights?.value)
           ? systemSettings.storefront_review_highlights.value
           : [];
+        const storefrontGalleryImagesRaw = Array.isArray(systemSettings.storefront_gallery_images?.value)
+          ? systemSettings.storefront_gallery_images.value
+          : [];
+        const storefrontDeliveryPartnersRaw = Array.isArray(systemSettings.storefront_delivery_partners?.value)
+          ? systemSettings.storefront_delivery_partners.value
+          : [];
+        const storefrontCategoriesRaw = Array.isArray(systemSettings.storefront_categories?.value)
+          ? systemSettings.storefront_categories.value
+          : [];
+        const normalizedReviewSummary = normalizeStorefrontReviewSummarySettings(storefrontReviewSummary);
 
         setSettings({
           defaultMinThreshold: systemSettings.min_stock_threshold_percent?.value || 40,
@@ -481,11 +593,26 @@ export default function Settings() {
               comment: String(entry?.comment || '')
             }))
             : [{ reviewer_name: '', rating: '', comment: '' }],
+          storefrontReviewSummaryScore: normalizedReviewSummary.score,
+          storefrontReviewSummaryTotalCount: normalizedReviewSummary.total_count,
+          storefrontReviewSummaryStar1: normalizedReviewSummary.star1,
+          storefrontReviewSummaryStar2: normalizedReviewSummary.star2,
+          storefrontReviewSummaryStar3: normalizedReviewSummary.star3,
+          storefrontReviewSummaryStar4: normalizedReviewSummary.star4,
+          storefrontReviewSummaryStar5: normalizedReviewSummary.star5,
           storefrontPromoTitle: String(storefrontPromo.title || ''),
           storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
           storefrontPromoBadge: String(storefrontPromo.badge || ''),
           storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
-          storefrontPromoActive: storefrontPromo.active === true
+          storefrontPromoActive: storefrontPromo.active === true,
+          storefrontUiV2Enabled: systemSettings.storefront_ui_v2_enabled?.value === true,
+          storefrontCategories: normalizeStringList(storefrontCategoriesRaw, 12, 60).length > 0
+            ? normalizeStringList(storefrontCategoriesRaw, 12, 60)
+            : [''],
+          storefrontGalleryImages: normalizeStorefrontGallerySettings(storefrontGalleryImagesRaw),
+          storefrontDeliveryPartners: normalizeStorefrontDeliveryPartnersSettings(storefrontDeliveryPartnersRaw),
+          storefrontFollowEnabled: systemSettings.storefront_follow_enabled?.value === true,
+          storefrontShareEnabled: systemSettings.storefront_share_enabled?.value === true
         });
         setStorefrontAssets({
           cover: String(systemSettings.storefront_cover_image_url?.value || ''),
@@ -620,6 +747,87 @@ export default function Settings() {
     setSettings((prev) => {
       const next = (Array.isArray(prev.storefrontWhyChooseUs) ? prev.storefrontWhyChooseUs : ['']).filter((_, i) => i !== index);
       return { ...prev, storefrontWhyChooseUs: next.length > 0 ? next : [''] };
+    });
+  };
+
+  const handleStorefrontCategoryChange = (index, value) => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontCategories) ? [...prev.storefrontCategories] : [''];
+      next[index] = String(value || '');
+      return { ...prev, storefrontCategories: next };
+    });
+  };
+
+  const addStorefrontCategory = () => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontCategories) ? [...prev.storefrontCategories] : [];
+      if (next.length >= 12) return prev;
+      next.push('');
+      return { ...prev, storefrontCategories: next };
+    });
+  };
+
+  const removeStorefrontCategory = (index) => {
+    setSettings((prev) => {
+      const next = (Array.isArray(prev.storefrontCategories) ? prev.storefrontCategories : ['']).filter((_, i) => i !== index);
+      return { ...prev, storefrontCategories: next.length > 0 ? next : [''] };
+    });
+  };
+
+  const handleStorefrontGalleryChange = (index, key, value) => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontGalleryImages)
+        ? [...prev.storefrontGalleryImages]
+        : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }];
+      const current = next[index] || { url: '', path: '', caption: '', alt: '', sort_order: index };
+      next[index] = { ...current, [key]: value };
+      return { ...prev, storefrontGalleryImages: next };
+    });
+  };
+
+  const addStorefrontGalleryRow = () => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontGalleryImages) ? [...prev.storefrontGalleryImages] : [];
+      if (next.length >= 24) return prev;
+      next.push({ url: '', path: '', caption: '', alt: '', sort_order: next.length });
+      return { ...prev, storefrontGalleryImages: next };
+    });
+  };
+
+  const removeStorefrontGalleryRow = (index) => {
+    setSettings((prev) => {
+      const next = (Array.isArray(prev.storefrontGalleryImages) ? prev.storefrontGalleryImages : []).filter((_, i) => i !== index);
+      return {
+        ...prev,
+        storefrontGalleryImages: next.length > 0 ? next : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }]
+      };
+    });
+  };
+
+  const handleStorefrontDeliveryPartnerChange = (index, key, value) => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontDeliveryPartners)
+        ? [...prev.storefrontDeliveryPartners]
+        : [{ partner: 'grab', label: '', url: '' }];
+      const current = next[index] || { partner: 'grab', label: '', url: '' };
+      next[index] = { ...current, [key]: value };
+      return { ...prev, storefrontDeliveryPartners: next };
+    });
+  };
+
+  const addStorefrontDeliveryPartner = () => {
+    setSettings((prev) => {
+      const next = Array.isArray(prev.storefrontDeliveryPartners) ? [...prev.storefrontDeliveryPartners] : [];
+      if (next.length >= 8) return prev;
+      next.push({ partner: 'custom', label: '', url: '' });
+      return { ...prev, storefrontDeliveryPartners: next };
+    });
+  };
+
+  const removeStorefrontDeliveryPartner = (index) => {
+    setSettings((prev) => {
+      const next = (Array.isArray(prev.storefrontDeliveryPartners) ? prev.storefrontDeliveryPartners : []).filter((_, i) => i !== index);
+      return { ...prev, storefrontDeliveryPartners: next.length > 0 ? next : [{ partner: 'grab', label: '', url: '' }] };
     });
   };
 
@@ -1071,14 +1279,51 @@ export default function Settings() {
 
       const nextWorkflowMode = normalizeWorkflowMode(settings.opsWorkflowMode);
       const storefrontWhyChooseUs = normalizeStringList(settings.storefrontWhyChooseUs, 6, 120);
+      const storefrontCategories = normalizeStringList(settings.storefrontCategories, 12, 60);
+      const storefrontGalleryImages = (Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : [])
+        .map((entry, index) => ({
+          url: String(entry?.url || '').trim().slice(0, 500),
+          path: String(entry?.path || '').trim().slice(0, 500),
+          caption: String(entry?.caption || '').trim().slice(0, 140),
+          alt: String(entry?.alt || '').trim().slice(0, 140),
+          sort_order: Number.isInteger(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+        }))
+        .filter((entry) => entry.url || entry.path)
+        .slice(0, 24);
+      const storefrontDeliveryPartners = (Array.isArray(settings.storefrontDeliveryPartners) ? settings.storefrontDeliveryPartners : [])
+        .map((entry) => ({
+          partner: String(entry?.partner || '').trim().toLowerCase(),
+          label: String(entry?.label || '').trim().slice(0, 60),
+          url: String(entry?.url || '').trim().slice(0, 255)
+        }))
+        .filter((entry) => entry.partner)
+        .slice(0, 8);
+      const storefrontReviewSummaryScore = parseNullableNumberInput(settings.storefrontReviewSummaryScore, { min: 0, max: 5, precision: 2 });
+      const storefrontReviewSummaryTotalCount = parseNullableNumberInput(settings.storefrontReviewSummaryTotalCount, { integer: true, min: 0 });
+      const storefrontReviewSummaryStars = {
+        1: parseNullableNumberInput(settings.storefrontReviewSummaryStar1, { integer: true, min: 0 }),
+        2: parseNullableNumberInput(settings.storefrontReviewSummaryStar2, { integer: true, min: 0 }),
+        3: parseNullableNumberInput(settings.storefrontReviewSummaryStar3, { integer: true, min: 0 }),
+        4: parseNullableNumberInput(settings.storefrontReviewSummaryStar4, { integer: true, min: 0 }),
+        5: parseNullableNumberInput(settings.storefrontReviewSummaryStar5, { integer: true, min: 0 })
+      };
+      const storefrontReviewSummaryDistribution = Object.entries(storefrontReviewSummaryStars).reduce((acc, [key, value]) => {
+        if (value != null) acc[key] = value;
+        return acc;
+      }, {});
+      const storefrontReviewSummary = {
+        score: storefrontReviewSummaryScore,
+        total_count: storefrontReviewSummaryTotalCount,
+        star_distribution: storefrontReviewSummaryDistribution
+      };
       const storefrontReviewHighlights = (Array.isArray(settings.storefrontReviewHighlights) ? settings.storefrontReviewHighlights : [])
         .map((entry) => {
-          const normalizedRating = Number(entry?.rating);
+          const normalizedRating = parseNullableNumberInput(entry?.rating, { min: 1, max: 5, precision: 1 });
           const nextEntry = {
             reviewer_name: String(entry?.reviewer_name || '').trim().slice(0, 80),
             comment: String(entry?.comment || '').trim().slice(0, 280)
           };
-          if (Number.isFinite(normalizedRating)) {
+          if (normalizedRating != null) {
             nextEntry.rating = normalizedRating;
           }
           return nextEntry;
@@ -1119,13 +1364,20 @@ export default function Settings() {
           instagram: String(settings.storefrontSocialInstagram || '').trim()
         },
         storefront_review_highlights: storefrontReviewHighlights,
+        storefront_review_summary: storefrontReviewSummary,
         storefront_promo: {
           title: String(settings.storefrontPromoTitle || '').trim(),
           subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
           badge: String(settings.storefrontPromoBadge || '').trim(),
           validity_text: String(settings.storefrontPromoValidityText || '').trim(),
           active: settings.storefrontPromoActive === true
-        }
+        },
+        storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
+        storefront_categories: storefrontCategories,
+        storefront_gallery_images: storefrontGalleryImages,
+        storefront_delivery_partners: storefrontDeliveryPartners,
+        storefront_follow_enabled: settings.storefrontFollowEnabled === true,
+        storefront_share_enabled: settings.storefrontShareEnabled === true
       };
       if (currentUser?.is_master_admin === true) {
         updatePayload.ops_workflow_mode = nextWorkflowMode;
@@ -1244,11 +1496,24 @@ export default function Settings() {
       storefrontSocialFacebook: '',
       storefrontSocialInstagram: '',
       storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
+      storefrontReviewSummaryScore: '',
+      storefrontReviewSummaryTotalCount: '',
+      storefrontReviewSummaryStar1: '',
+      storefrontReviewSummaryStar2: '',
+      storefrontReviewSummaryStar3: '',
+      storefrontReviewSummaryStar4: '',
+      storefrontReviewSummaryStar5: '',
       storefrontPromoTitle: '',
       storefrontPromoSubtitle: '',
       storefrontPromoBadge: '',
       storefrontPromoValidityText: '',
-      storefrontPromoActive: false
+      storefrontPromoActive: false,
+      storefrontUiV2Enabled: false,
+      storefrontCategories: [''],
+      storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
+      storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
+      storefrontFollowEnabled: false,
+      storefrontShareEnabled: false
     });
     setStorefrontAssets({
       cover: '',
@@ -1665,6 +1930,41 @@ export default function Settings() {
                 <Label>About</Label>
                 <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-[96px]" value={settings.storefrontAbout} onChange={(e) => handleChange('storefrontAbout', e.target.value)} placeholder="Short store description for customers." />
               </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Enable Harmonized Storefront UI</Label>
+                    <Switch checked={settings.storefrontUiV2Enabled === true} onCheckedChange={(checked) => handleChange('storefrontUiV2Enabled', checked === true)} />
+                  </div>
+                  <p className="text-xs text-slate-500">Turns on the high-fidelity storefront v2 layout for this tenant.</p>
+                </div>
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Show Follow Button</Label>
+                    <Switch checked={settings.storefrontFollowEnabled === true} onCheckedChange={(checked) => handleChange('storefrontFollowEnabled', checked === true)} />
+                  </div>
+                  <p className="text-xs text-slate-500">Controls the mobile/desktop follow action visibility.</p>
+                </div>
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Show Share Button</Label>
+                    <Switch checked={settings.storefrontShareEnabled === true} onCheckedChange={(checked) => handleChange('storefrontShareEnabled', checked === true)} />
+                  </div>
+                  <p className="text-xs text-slate-500">Controls storefront share action visibility.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Store Categories</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addStorefrontCategory}><Plus className="w-4 h-4 mr-1" />Add</Button>
+                </div>
+                {(Array.isArray(settings.storefrontCategories) ? settings.storefrontCategories : ['']).map((entry, index) => (
+                  <div key={`category-${index}`} className="flex gap-2">
+                    <Input value={entry} onChange={(e) => handleStorefrontCategoryChange(index, e.target.value)} placeholder="BBQ" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontCategory(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+              </div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Why Choose Us</Label>
@@ -1693,6 +1993,41 @@ export default function Settings() {
               </div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
+                  <Label>Gallery Images</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addStorefrontGalleryRow}><Plus className="w-4 h-4 mr-1" />Add</Button>
+                </div>
+                {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => (
+                  <div key={`gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]">
+                    <Input value={row.path || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'path', e.target.value)} placeholder="storefront-assets/tenant/gallery-1.jpg" />
+                    <Input value={row.url || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'url', e.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" />
+                    <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
+                    <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
+                    <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontGalleryRow(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Delivery Partners</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addStorefrontDeliveryPartner}><Plus className="w-4 h-4 mr-1" />Add</Button>
+                </div>
+                {(Array.isArray(settings.storefrontDeliveryPartners) ? settings.storefrontDeliveryPartners : []).map((row, index) => (
+                  <div key={`delivery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[160px_1fr_1fr_auto]">
+                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" value={row.partner || ''} onChange={(e) => handleStorefrontDeliveryPartnerChange(index, 'partner', e.target.value)}>
+                      <option value="grab">grab</option>
+                      <option value="foodpanda">foodpanda</option>
+                      <option value="lalamove">lalamove</option>
+                      <option value="custom">custom</option>
+                    </select>
+                    <Input value={row.label || ''} onChange={(e) => handleStorefrontDeliveryPartnerChange(index, 'label', e.target.value)} placeholder="Display label" />
+                    <Input value={row.url || ''} onChange={(e) => handleStorefrontDeliveryPartnerChange(index, 'url', e.target.value)} placeholder="https://partner.example.com" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontDeliveryPartner(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
                   <Label>Review Highlights</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addReviewHighlight}><Plus className="w-4 h-4 mr-1" />Add</Button>
                 </div>
@@ -1704,6 +2039,20 @@ export default function Settings() {
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeReviewHighlight(index)}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 ))}
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <Label>Review Summary</Label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input value={settings.storefrontReviewSummaryScore} onChange={(e) => handleChange('storefrontReviewSummaryScore', e.target.value)} placeholder="Average score (e.g. 4.8)" />
+                  <Input value={settings.storefrontReviewSummaryTotalCount} onChange={(e) => handleChange('storefrontReviewSummaryTotalCount', e.target.value)} placeholder="Total reviews" />
+                </div>
+                <div className="grid gap-2 md:grid-cols-5">
+                  <Input value={settings.storefrontReviewSummaryStar5} onChange={(e) => handleChange('storefrontReviewSummaryStar5', e.target.value)} placeholder="5★ count" />
+                  <Input value={settings.storefrontReviewSummaryStar4} onChange={(e) => handleChange('storefrontReviewSummaryStar4', e.target.value)} placeholder="4★ count" />
+                  <Input value={settings.storefrontReviewSummaryStar3} onChange={(e) => handleChange('storefrontReviewSummaryStar3', e.target.value)} placeholder="3★ count" />
+                  <Input value={settings.storefrontReviewSummaryStar2} onChange={(e) => handleChange('storefrontReviewSummaryStar2', e.target.value)} placeholder="2★ count" />
+                  <Input value={settings.storefrontReviewSummaryStar1} onChange={(e) => handleChange('storefrontReviewSummaryStar1', e.target.value)} placeholder="1★ count" />
+                </div>
               </div>
               <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
                 <div className="flex items-center justify-between">

@@ -634,6 +634,66 @@ export const storeRepository = {
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
         return toPlain(row);
+    },
+
+    async findStorefrontFollow({ tenantId, storefrontSlug, visitorFingerprint }, options = {}) {
+        const StorefrontFollow = dbStore.get('StorefrontFollow');
+        const row = await StorefrontFollow.findOne({
+            where: {
+                tenant_id: tenantId,
+                storefront_slug: storefrontSlug,
+                visitor_fingerprint: visitorFingerprint
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async upsertStorefrontFollow({ tenantId, storefrontSlug, visitorFingerprint }, options = {}) {
+        const StorefrontFollow = dbStore.get('StorefrontFollow');
+        const existing = await StorefrontFollow.findOne({
+            where: {
+                tenant_id: tenantId,
+                storefront_slug: storefrontSlug,
+                visitor_fingerprint: visitorFingerprint
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (existing) return toPlain(existing);
+        const row = await StorefrontFollow.create({
+            tenant_id: tenantId,
+            storefront_slug: storefrontSlug,
+            visitor_fingerprint: visitorFingerprint
+        }, {
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
+    async deleteStorefrontFollow({ tenantId, storefrontSlug, visitorFingerprint }, options = {}) {
+        const StorefrontFollow = dbStore.get('StorefrontFollow');
+        return StorefrontFollow.destroy({
+            where: {
+                tenant_id: tenantId,
+                storefront_slug: storefrontSlug,
+                visitor_fingerprint: visitorFingerprint
+            },
+            transaction: options.transaction
+        });
+    },
+
+    async countStorefrontFollowsBySlug({ tenantId, storefrontSlug }, options = {}) {
+        const StorefrontFollow = dbStore.get('StorefrontFollow');
+        const count = await StorefrontFollow.count({
+            where: {
+                tenant_id: tenantId,
+                storefront_slug: storefrontSlug
+            },
+            transaction: options.transaction
+        });
+        return Number(count) || 0;
     }
 };
 

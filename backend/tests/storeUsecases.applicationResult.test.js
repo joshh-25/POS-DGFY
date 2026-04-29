@@ -6,7 +6,10 @@ import {
     buildLoginStoreCustomerUseCase,
     buildStoreCartQuoteUseCase,
     buildTrackStoreOrderUseCase,
-    buildCancelStoreOrderUseCase
+    buildCancelStoreOrderUseCase,
+    buildGetStorefrontFollowStatusUseCase,
+    buildFollowStorefrontUseCase,
+    buildUnfollowStorefrontUseCase
 } from '../src/modules/store/usecases/storeUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
@@ -650,5 +653,121 @@ describe('store use-cases application result contract', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
         expect(result.error.statusCode).toBe(403);
+    });
+
+    it('storefront follow returns 404 when storefront slug does not belong to tenant', async () => {
+        const useCase = buildFollowStorefrontUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue({
+                    store_tenant_slug: { value: 'alpha-store' }
+                }),
+                upsertStorefrontFollow: jest.fn(),
+                countStorefrontFollowsBySlug: jest.fn().mockResolvedValue(0)
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                storefront_slug: 'beta-store',
+                visitor_id: 'guestvisitorid-1234567890'
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.RESOURCE_NOT_FOUND);
+        expect(result.error.statusCode).toBe(404);
+    });
+
+    it('storefront follow supports authenticated customer identity without visitor_id', async () => {
+        const upsertStorefrontFollow = jest.fn().mockResolvedValue({ storefront_follow_id: 1 });
+        const countStorefrontFollowsBySlug = jest.fn().mockResolvedValue(11);
+        const useCase = buildFollowStorefrontUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue({
+                    store_tenant_slug: { value: 'alpha-store' }
+                }),
+                upsertStorefrontFollow,
+                countStorefrontFollowsBySlug
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: { storefront_slug: 'alpha-store' },
+            storeCustomer: { customer_id: 55 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            storefront_slug: 'alpha-store',
+            is_following: true,
+            followers_count: 11
+        }));
+        expect(upsertStorefrontFollow).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: expect.any(String),
+            storefrontSlug: 'alpha-store',
+            identityType: 'customer',
+            visitorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
+        }));
+    });
+
+    it('storefront follow guest path requires visitor_id and can query status', async () => {
+        const findStorefrontFollow = jest.fn().mockResolvedValue({ storefront_follow_id: 9 });
+        const useCase = buildGetStorefrontFollowStatusUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue({
+                    store_tenant_slug: { value: 'alpha-store' }
+                }),
+                findStorefrontFollow,
+                countStorefrontFollowsBySlug: jest.fn().mockResolvedValue(7)
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                storefront_slug: 'alpha-store',
+                visitor_id: 'guestvisitorid-1234567890'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            storefront_slug: 'alpha-store',
+            is_following: true,
+            followers_count: 7
+        }));
+        expect(findStorefrontFollow).toHaveBeenCalledWith(expect.objectContaining({
+            identityType: 'guest',
+            visitorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
+        }));
+    });
+
+    it('storefront unfollow is idempotent and returns deterministic state', async () => {
+        const useCase = buildUnfollowStorefrontUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue({
+                    store_tenant_slug: { value: 'alpha-store' }
+                }),
+                deleteStorefrontFollow: jest.fn().mockResolvedValue(0),
+                countStorefrontFollowsBySlug: jest.fn().mockResolvedValue(3)
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                storefront_slug: 'alpha-store',
+                visitor_id: 'guestvisitorid-1234567890'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            storefront_slug: 'alpha-store',
+            is_following: false,
+            followers_count: 3
+        }));
     });
 });

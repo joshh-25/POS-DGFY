@@ -20,6 +20,8 @@ const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WIN
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
+const storefrontFollowMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
@@ -42,6 +44,7 @@ const rateLimitCounters = {
   store_auth: 0,
   store_tracking: 0,
   storefront_discovery: 0,
+  storefront_follow: 0,
   onboarding_events: 0,
   ai: 0,
   pos: 0,
@@ -132,6 +135,7 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
   if (path.includes('/storefront/discovery')) return 'storefront_discovery';
+  if (path.includes('/store/follow')) return 'storefront_follow';
   if (path.includes('/onboarding/events')) return 'onboarding_events';
   if (path.includes('/ai/')) return 'ai';
   if (path.includes('/pos/')) return 'pos';
@@ -486,6 +490,44 @@ export const storefrontDiscoveryLimiter = rateLimit({
   },
 });
 
+export const storefrontFollowLimiter = rateLimit({
+  windowMs: storefrontFollowWindowMs,
+  max: storefrontFollowMaxRequests,
+  message: createRateLimitError('Too many storefront follow requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('storefront_follow'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const slugRaw = req.query?.storefront_slug ?? req.body?.storefront_slug ?? '';
+    const slug = String(slugRaw || '').trim().toLowerCase() || 'unknown-slug';
+    const customerId = String(req.storeCustomer?.customer_id || '').trim();
+    const visitorIdRaw = req.query?.visitor_id ?? req.body?.visitor_id ?? '';
+    const visitorId = String(visitorIdRaw || '').trim();
+    const identity = customerId ? `customer:${customerId}` : `guest:${visitorId || 'missing-visitor'}`;
+    return `storefront_follow:${tenantKey}:${slug}:${identity}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many storefront follow requests. Please wait before trying again.',
+      'storefront_follow',
+      'tenant_slug_identity_ip'
+    );
+    logRateLimitEvent(req, 'storefront_follow', response.retryAfterSeconds, 'tenant_slug_identity_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Tenant onboarding telemetry limiter (master-admin authenticated surface).
 export const onboardingEventsLimiter = rateLimit({
   windowMs: onboardingEventsWindowMs,
@@ -620,6 +662,7 @@ export default {
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,
+  storefrontFollow: storefrontFollowLimiter,
   onboardingEvents: onboardingEventsLimiter,
   lookup: lookupLimiter,
   registration: tenantRegistrationLimiter,

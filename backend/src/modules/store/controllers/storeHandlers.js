@@ -13,7 +13,10 @@ import {
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
     cancelStoreOrderUseCase,
-    listStoreCustomerOrdersUseCase
+    listStoreCustomerOrdersUseCase,
+    getStorefrontFollowStatusUseCase,
+    followStorefrontUseCase,
+    unfollowStorefrontUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -354,6 +357,74 @@ export const listStoreCustomerOrders = async (req, res, next) => {
     }
 };
 
+export const getStorefrontFollowStatus = async (req, res, next) => {
+    try {
+        const result = await getStorefrontFollowStatusUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedQuery || req.query,
+            storeCustomer: resolveStoreCustomer(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const followStorefront = async (req, res, next) => {
+    try {
+        const result = await followStorefrontUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body,
+            storeCustomer: resolveStoreCustomer(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Storefront followed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const unfollowStorefront = async (req, res, next) => {
+    try {
+        const result = await unfollowStorefrontUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body,
+            storeCustomer: resolveStoreCustomer(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Storefront unfollowed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export default {
     listStoreCatalog,
     listStoreLocations,
@@ -369,5 +440,8 @@ export default {
     checkout,
     trackOrder,
     cancelOrder,
-    listStoreCustomerOrders
+    listStoreCustomerOrders,
+    getStorefrontFollowStatus,
+    followStorefront,
+    unfollowStorefront
 };

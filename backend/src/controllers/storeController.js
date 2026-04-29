@@ -17,7 +17,10 @@ export {
     checkout,
     trackOrder,
     cancelOrder,
-    listStoreCustomerOrders
+    listStoreCustomerOrders,
+    getStorefrontFollowStatus,
+    followStorefront,
+    unfollowStorefront
 } from '../modules/store/controllers/storeHandlers.js';
 
 import {
@@ -35,7 +38,10 @@ import {
     checkout,
     trackOrder,
     cancelOrder,
-    listStoreCustomerOrders
+    listStoreCustomerOrders,
+    getStorefrontFollowStatus,
+    followStorefront,
+    unfollowStorefront
 } from '../modules/store/controllers/storeHandlers.js';
 
 export default {
@@ -53,5 +59,8 @@ export default {
     checkout,
     trackOrder,
     cancelOrder,
-    listStoreCustomerOrders
+    listStoreCustomerOrders,
+    getStorefrontFollowStatus,
+    followStorefront,
+    unfollowStorefront
 };

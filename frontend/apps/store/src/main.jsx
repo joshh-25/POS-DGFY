@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import L from 'leaflet';
 import { Toaster, toast } from 'sonner';
@@ -119,11 +119,15 @@ const withApiOrigin = (url) => {
 const withAssetOrigin = (url) => {
   if (!url || typeof url !== 'string') return url;
   const trimmed = url.trim();
+  if (trimmed.startsWith('storefront-assets/')) {
+    const normalized = `/uploads/${trimmed}`;
+    return assetOrigin ? `${assetOrigin}${normalized}` : normalized;
+  }
   if (trimmed.startsWith('/')) {
     return assetOrigin ? `${assetOrigin}${trimmed}` : trimmed;
   }
   try {
-    const parsed = new URL(trimmed, window.location.origin);
+    const parsed = new URL(trimmed);
     return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
   } catch {
     return '';
@@ -150,6 +154,74 @@ const parseOptionalObject = (value) => {
   } catch {
     return null;
   }
+};
+
+const parseBooleanFlag = (value, fallback = false) => {
+  if (value === true || value === false) return value;
+  if (value == null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
+const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
+  .map((entry) => String(entry || '').trim())
+  .filter(Boolean)
+  .slice(0, 12);
+
+const normalizeStorefrontGallery = (value) => parseOptionalArray(value)
+  .map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const url = String(entry.url || '').trim();
+    const path = String(entry.path || '').trim();
+    if (!url && !path) return null;
+    return {
+      url: withAssetOrigin(url) || '',
+      path: withAssetOrigin(path) || '',
+      caption: String(entry.caption || '').trim(),
+      alt: String(entry.alt || '').trim(),
+      sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+    };
+  })
+  .filter(Boolean)
+  .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+  .slice(0, 24);
+
+const normalizeStorefrontDeliveryPartners = (value) => parseOptionalArray(value)
+  .map((entry) => {
+    if (typeof entry === 'string') {
+      const partner = String(entry || '').trim().toLowerCase();
+      if (!partner) return null;
+      return { partner, label: partner, url: '' };
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const partner = String(entry.partner || '').trim().toLowerCase();
+    if (!partner) return null;
+    return {
+      partner,
+      label: String(entry.label || '').trim() || partner,
+      url: sanitizeExternalLink(entry.url)
+    };
+  })
+  .filter(Boolean)
+  .slice(0, 8);
+
+const normalizeStorefrontReviewSummary = (value) => {
+  const raw = parseOptionalObject(value);
+  if (!raw) return null;
+  const score = Number(raw.score);
+  const totalCount = Number(raw.total_count);
+  const starDistributionRaw = raw.star_distribution && typeof raw.star_distribution === 'object' ? raw.star_distribution : {};
+  const starDistribution = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: Number.isInteger(Number(starDistributionRaw[star])) ? Number(starDistributionRaw[star]) : 0
+  }));
+  return {
+    score: Number.isFinite(score) ? Math.max(0, Math.min(5, score)) : null,
+    total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null,
+    star_distribution: starDistribution
+  };
 };
 
 const sanitizeExternalLink = (value) => {
@@ -201,14 +273,26 @@ const createStorePopupNode = (store = {}) => {
   return container;
 };
 
-const requestJson = async (url, { method = 'GET', body, storeSlug } = {}) => {
+const readStoreAuthToken = () => {
+  if (typeof window === 'undefined') return '';
+  const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
+  for (const key of keys) {
+    const token = String(window.localStorage.getItem(key) || '').trim();
+    if (token) return token;
+  }
+  return '';
+};
+
+const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '' } = {}) => {
   let response;
   try {
+    const token = String(authToken || '').trim();
     response = await fetch(withApiOrigin(url), {
       method,
       headers: {
         'Content-Type': 'application/json',
-        ...(storeSlug ? { 'x-store-slug': storeSlug } : {})
+        ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       body: body ? JSON.stringify(body) : undefined
     });
@@ -259,6 +343,18 @@ const isItemAvailable = (item = {}) => {
   if (item?.is_available === true) return true;
   if (item?.is_available === false) return false;
   return String(item?.availability_status || '').toLowerCase() === 'in_stock';
+};
+
+const STOREFRONT_VISITOR_ID_STORAGE_KEY = 'dgfy_storefront_visitor_id';
+const getOrCreateStorefrontVisitorId = () => {
+  if (typeof window === 'undefined') return '';
+  const existing = String(window.localStorage.getItem(STOREFRONT_VISITOR_ID_STORAGE_KEY) || '').trim();
+  if (existing && existing.length >= 16) return existing;
+  const generated = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Date.now()}${Math.random().toString(36).slice(2, 18)}`;
+  window.localStorage.setItem(STOREFRONT_VISITOR_ID_STORAGE_KEY, generated);
+  return generated;
 };
 
 const pinIcon = (selected = false) => L.divIcon({
@@ -505,6 +601,13 @@ export function App() {
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
+  const [followState, setFollowState] = useState({
+    loading: false,
+    isFollowing: false,
+    followersCount: 0,
+    error: ''
+  });
+  const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -1080,6 +1183,8 @@ export function App() {
   }, [quoteResult, cartTotal]);
   const isDesktopCheckout = viewportWidth >= 1024;
   const isMobileViewport = viewportWidth < 768;
+  const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
+  const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -1241,6 +1346,98 @@ export function App() {
         timeout: 10000
       }
     );
+  };
+
+  useEffect(() => {
+    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
+    if (!isStorePage || !isStorefrontV2 || !followEnabledForStore || !slug || !storefrontVisitorId) {
+      setFollowState({ loading: false, isFollowing: false, followersCount: 0 });
+      return;
+    }
+    let cancelled = false;
+    const loadFollowStatus = async () => {
+      setFollowState((prev) => ({ ...prev, loading: true }));
+      try {
+        const token = readStoreAuthToken();
+        const status = await requestJson(`/api/v1/store/follow/status?storefront_slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(storefrontVisitorId)}`, {
+          method: 'GET',
+          storeSlug: slug,
+          authToken: token
+        });
+        if (cancelled) return;
+        setFollowState({
+          loading: false,
+          isFollowing: status?.is_following === true,
+          followersCount: Number(status?.followers_count || 0),
+          error: ''
+        });
+      } catch {
+        if (cancelled) return;
+        setFollowState({ loading: false, isFollowing: false, followersCount: 0, error: 'Follow status unavailable.' });
+      }
+    };
+    loadFollowStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, isStorefrontV2, followEnabledForStore, selectedStore?.slug, storefrontVisitorId]);
+
+  const handleFollowAction = async () => {
+    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
+    if (!slug || !storefrontVisitorId || followState.loading) return;
+    const nextIsFollowing = !followState.isFollowing;
+    setFollowState((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const token = readStoreAuthToken();
+      const response = await requestJson('/api/v1/store/follow', {
+        method: nextIsFollowing ? 'POST' : 'DELETE',
+        storeSlug: slug,
+        authToken: token,
+        body: {
+          storefront_slug: slug,
+          visitor_id: storefrontVisitorId
+        }
+      });
+      setFollowState({
+        loading: false,
+        isFollowing: response?.is_following === true,
+        followersCount: Number(response?.followers_count || 0),
+        error: ''
+      });
+      toast.success(response?.is_following ? 'Storefront followed.' : 'Storefront unfollowed.');
+    } catch (error) {
+      let followError = normalizeStorefrontErrorMessage(error, 'Unable to update follow status.');
+      if (Number(error?.status) === 404) {
+        followError = 'Storefront is unavailable for follow.';
+      } else if (Number(error?.status) === 429) {
+        followError = 'Too many follow requests. Please wait and retry.';
+      }
+      setFollowState((prev) => ({ ...prev, loading: false, error: followError }));
+      toast.error(followError);
+    }
+  };
+
+  const handleShareAction = async () => {
+    const targetUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const sharePayload = {
+      title: selectedStore?.tenant_name || 'Storefront',
+      text: selectedStore?.storefront_tagline || `${DGFY_BRAND_NAME} tenant storefront`,
+      url: targetUrl
+    };
+    try {
+      if (navigator?.share) {
+        await navigator.share(sharePayload);
+        return;
+      }
+      if (navigator?.clipboard?.writeText && targetUrl) {
+        await navigator.clipboard.writeText(targetUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+    } catch {
+      // fallback to toast below
+    }
+    toast.info('Sharing is unavailable in this browser.');
   };
 
   const handleQuote = async () => {
@@ -1411,7 +1608,7 @@ export function App() {
               </div>
               <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
                 {discoveryCoords
-                  ? `Near Me is active (${discoveryCoords.latitude.toFixed(4)}, ${discoveryCoords.longitude.toFixed(4)}). Results are sorted by nearest active storefront branch${nearestDistanceKm != null ? ` • nearest: ${nearestDistanceKm.toFixed(2)} km` : ''}.`
+                  ? `Near Me is active (${discoveryCoords.latitude.toFixed(4)}, ${discoveryCoords.longitude.toFixed(4)}). Results are sorted by nearest active storefront branch${nearestDistanceKm != null ? ` â€¢ nearest: ${nearestDistanceKm.toFixed(2)} km` : ''}.`
                   : 'Tip: Near Me uses your browser location to sort stores by nearest active storefront branch.'}
                 {loadingDiscoveryLocations ? ' Syncing branch pins...' : ''}
                 {discoveryAppliedFilters
@@ -1470,16 +1667,22 @@ export function App() {
                     <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'list' ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                       {storesWithNearestBranch.map((store) => {
                         const storeSlug = toSlug(store?.slug);
+                        const storeCoverImageUrl = withAssetOrigin(store?.storefront_cover_image_url);
+                        const storeCoverImageKey = `discovery-cover:${storeSlug}:${storeCoverImageUrl}`;
                         const storeProfileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
                         const storeProfileImageKey = `discovery-profile:${storeSlug}:${storeProfileImageUrl}`;
                         const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
                         const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
                         const highlightedPin = storePins[0] || null;
                         const badges = getDiscoveryMatchBadges(store, search.trim().length > 0);
+                        const storeV2Enabled = parseBooleanFlag(store?.storefront_ui_v2_enabled, false);
+                        const storeCategories = normalizeStorefrontCategories(store?.storefront_categories);
+                        const storeReviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
                         return (
                           <button
                             key={store.slug}
                             type="button"
+                            aria-label={`Open tenant storefront for ${store.tenant_name}`}
                             onMouseEnter={() => {
                               setHighlightedStoreSlug(store.slug);
                               if (highlightedPin) setHighlightedDiscoveryMarkerKey(highlightedPin.marker_key);
@@ -1487,6 +1690,29 @@ export function App() {
                             onClick={() => goStore(store.slug, preferredLocationId)}
                             style={{ textAlign: 'left', borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, cursor: 'pointer', boxShadow: '0 8px 24px rgba(15,23,42,.05)' }}
                           >
+                            {storeV2Enabled && (
+                              <div style={{ marginBottom: 10, borderRadius: 12, overflow: 'hidden', border: '1px solid #dbe5ee', background: '#f8fafc', position: 'relative', minHeight: 120 }}>
+                                {storeCoverImageUrl && !isBrandingImageBlocked(storeCoverImageKey) ? (
+                                  <img
+                                    src={storeCoverImageUrl}
+                                    alt={`${store.tenant_name} cover`}
+                                    style={{ width: '100%', height: 120, objectFit: 'cover' }}
+                                    onError={() => markBrandingImageError(storeCoverImageKey)}
+                                  />
+                                ) : (
+                                  <div style={{ width: '100%', height: 120, background: 'linear-gradient(135deg,#dbeafe,#ecfeff 70%,#f8fafc)' }} />
+                                )}
+                                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(15,23,42,0.05),rgba(15,23,42,0.45))' }} />
+                                <div style={{ position: 'absolute', left: 10, right: 10, bottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: store.storefront_open ? '#16a34a' : '#b45309', borderRadius: 999, padding: '3px 8px' }}>
+                                    {store.storefront_open ? 'Open' : 'Closed'}
+                                  </span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>
+                                    {store.estimated_wait_minutes} min
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div style={{ width: 34, height: 34, borderRadius: 999, overflow: 'hidden', border: '1px solid #d1d5db', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1503,7 +1729,7 @@ export function App() {
                                 </div>
                                 <strong style={{ fontSize: 18 }}>{store.tenant_name}</strong>
                               </div>
-                              <span style={{ fontSize: 12, color: store.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700 }}>{store.storefront_open ? 'Open' : 'Closed'}</span>
+                              {!storeV2Enabled && <span style={{ fontSize: 12, color: store.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700 }}>{store.storefront_open ? 'Open' : 'Closed'}</span>}
                             </div>
                             {badges.length > 0 && (
                               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1531,12 +1757,26 @@ export function App() {
                               </div>
                             )}
                             <div style={{ marginTop: 8, color: '#425466', fontSize: 13 }}>{store.address_line || 'Address unavailable'}</div>
-                            <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) • Wait {store.estimated_wait_minutes} min</div>
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) â€¢ Wait {store.estimated_wait_minutes} min</div>
+                            {storeV2Enabled && (
+                              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {storeReviewSummary?.score != null && (
+                                  <span style={{ fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
+                                    {storeReviewSummary.score.toFixed(1)}? ({storeReviewSummary.total_count ?? 0})
+                                  </span>
+                                )}
+                                {storeCategories.slice(0, 2).map((category, index) => (
+                                  <span key={`${store.slug}:category:${index}`} style={{ fontSize: 11, color: '#334155', borderRadius: 999, border: '1px solid #cbd5e1', padding: '2px 7px', background: '#f8fafc' }}>
+                                    {category}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             {Number(store.matching_item_count) > 0 && search.trim() && (
                               <div style={{ marginTop: 4, fontSize: 12, color: '#334155' }}>
                                 {store.matching_item_count} matching item(s)
                                 {Array.isArray(store.matching_item_sample) && store.matching_item_sample.length > 0
-                                  ? ` • e.g. ${store.matching_item_sample.join(', ')}`
+                                  ? ` â€¢ e.g. ${store.matching_item_sample.join(', ')}`
                                   : ''}
                               </div>
                             )}
@@ -1550,7 +1790,14 @@ export function App() {
                                 Nearest branch: <strong>{store.nearest_location_name}</strong> {store.nearest_is_primary ? '(Primary)' : ''}
                               </div>
                             )}
-                            <div style={{ marginTop: 10, fontSize: 12, color: '#0f766e', textDecoration: 'underline' }}>Open tenant storefront page</div>
+                            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 12, color: '#0f766e', textDecoration: 'underline' }}>Open tenant storefront page</span>
+                              {storeV2Enabled && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#ea580c', border: '1px solid #fed7aa', borderRadius: 999, padding: '3px 8px', background: '#fff7ed' }}>
+                                  Order now
+                                </span>
+                              )}
+                            </div>
                           </button>
                         );
                       })}
@@ -1671,7 +1918,7 @@ export function App() {
               <div style={{ color: '#64748b', fontSize: 13 }}>Tenant page: {routeSlug}</div>
             </section>
 
-            {selectedStore && (() => {
+            {selectedStore && !isStorefrontV2 && (() => {
               const whyChooseUs = parseOptionalArray(selectedStore.storefront_why_choose_us).map((entry) => String(entry || '').trim()).filter(Boolean);
               const reviewHighlights = parseOptionalArray(selectedStore.storefront_review_highlights).filter((entry) => entry && typeof entry === 'object' && String(entry.comment || '').trim());
               const promo = parseOptionalObject(selectedStore.storefront_promo);
@@ -1739,7 +1986,7 @@ export function App() {
                         <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                           {reviewHighlights.slice(0, 3).map((review, index) => (
                             <div key={`review-${index}`} style={{ borderTop: index === 0 ? 'none' : '1px solid #e2e8f0', paddingTop: index === 0 ? 0 : 8 }}>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `• ${review.rating}★` : ''}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `â€¢ ${review.rating}?` : ''}</div>
                               <div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{String(review.comment || '')}</div>
                             </div>
                           ))}
@@ -1761,6 +2008,145 @@ export function App() {
               );
             })()}
 
+            {selectedStore && isStorefrontV2 && (() => {
+              const categories = normalizeStorefrontCategories(selectedStore.storefront_categories);
+              const gallery = normalizeStorefrontGallery(selectedStore.storefront_gallery_images);
+              const whyChooseUs = parseOptionalArray(selectedStore.storefront_why_choose_us).map((entry) => String(entry || '').trim()).filter(Boolean);
+              const reviewHighlights = parseOptionalArray(selectedStore.storefront_review_highlights).filter((entry) => entry && typeof entry === 'object' && String(entry.comment || '').trim());
+              const promo = parseOptionalObject(selectedStore.storefront_promo);
+              const reviewSummary = normalizeStorefrontReviewSummary(selectedStore.storefront_review_summary);
+              const deliveryPartners = normalizeStorefrontDeliveryPartners(selectedStore.storefront_delivery_partners);
+              const social = parseOptionalObject(selectedStore.storefront_social_links);
+              const socialMessengerUrl = sanitizeExternalLink(social?.messenger);
+              const socialFacebookUrl = sanitizeExternalLink(social?.facebook);
+              const socialInstagramUrl = sanitizeExternalLink(social?.instagram);
+              const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
+              const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
+              const hasPromo = promo && promo.active === true && (String(promo.title || '').trim() || String(promo.subtitle || '').trim() || String(promo.badge || '').trim());
+              return (
+                <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16, marginBottom: 14 }}>
+                  <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0,2fr) minmax(0,1fr)' }}>
+                    <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Overview</div>
+                      {String(selectedStore.storefront_tagline || '').trim() && (
+                        <p style={{ margin: '6px 0 0 0', color: '#c2410c', fontStyle: 'italic', fontWeight: 700 }}>{selectedStore.storefront_tagline}</p>
+                      )}
+                      {String(selectedStore.storefront_about || '').trim() && (
+                        <p style={{ margin: '8px 0 0 0', color: '#334155', fontSize: 14, lineHeight: 1.55 }}>{selectedStore.storefront_about}</p>
+                      )}
+                      {gallery.length > 0 && (
+                        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
+                          {gallery.slice(0, 4).map((image, index) => {
+                            const gallerySrc = image.url || image.path;
+                            if (!gallerySrc) return null;
+                            return (
+                              <div key={`gallery-thumb-${index}`} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0', aspectRatio: '4 / 3', background: '#f8fafc' }}>
+                                <img src={gallerySrc} alt={image.alt || `${selectedStore.tenant_name} gallery ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </article>
+                    <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Contact & Location</div>
+                      {String(selectedStore.storefront_phone || '').trim() && <p style={{ margin: '8px 0 0 0', color: '#334155' }}>Phone: {selectedStore.storefront_phone}</p>}
+                      {String(selectedStore.storefront_email || '').trim() && <p style={{ margin: '6px 0 0 0', color: '#334155' }}>Email: {selectedStore.storefront_email}</p>}
+                      {String(selectedStore.storefront_hours || '').trim() && <p style={{ margin: '6px 0 0 0', color: '#0f766e', fontWeight: 700 }}>{selectedStore.storefront_hours}</p>}
+                      <p style={{ margin: '6px 0 0 0', color: '#334155' }}>{selectedLocation?.address_line || selectedStore.address_line || 'Address unavailable'}</p>
+                      {deliveryPartners.length > 0 && (
+                        <p style={{ margin: '10px 0 0 0', color: '#334155', fontSize: 13 }}>
+                          We deliver via {deliveryPartners.map((entry) => entry.label).join(', ')}
+                        </p>
+                      )}
+                    </article>
+                    {(categories.length > 0 || whyChooseUs.length > 0 || hasPromo) && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Why Choose Us</div>
+                        {categories.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {categories.map((entry, index) => (
+                              <span key={`category-chip-${index}`} style={{ fontSize: 12, fontWeight: 700, color: '#334155', border: '1px solid #cbd5e1', borderRadius: 999, padding: '3px 8px', background: '#f8fafc' }}>{entry}</span>
+                            ))}
+                          </div>
+                        )}
+                        {whyChooseUs.length > 0 && (
+                          <ul style={{ margin: '8px 0 0 16px', color: '#334155' }}>
+                            {whyChooseUs.map((entry, index) => <li key={`why-v2-${index}`} style={{ marginBottom: 6 }}>{entry}</li>)}
+                          </ul>
+                        )}
+                        {hasPromo && (
+                          <div style={{ marginTop: 8, borderRadius: 10, border: '1px solid #fed7aa', background: 'linear-gradient(135deg,#fff7ed,#fff)', padding: 10 }}>
+                            <div style={{ fontWeight: 800, color: '#c2410c' }}>{String(promo.badge || 'Promo')}</div>
+                            {String(promo.title || '').trim() && <div style={{ marginTop: 4, fontSize: 22, fontWeight: 900, color: '#9a3412' }}>{promo.title}</div>}
+                            {String(promo.subtitle || '').trim() && <p style={{ margin: '4px 0 0 0', color: '#7c2d12' }}>{promo.subtitle}</p>}
+                          </div>
+                        )}
+                      </article>
+                    )}
+                    {(reviewSummary || reviewHighlights.length > 0 || socialMessengerUrl || socialFacebookUrl || socialInstagramUrl) && (
+                      <article style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>Customer Reviews</div>
+                        {reviewSummary && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{reviewSummary.score != null ? reviewSummary.score.toFixed(1) : '--'}</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>({reviewSummary.total_count ?? 0} reviews)</div>
+                            {Array.isArray(reviewSummary.star_distribution) && reviewSummary.star_distribution.some((entry) => Number(entry.count) > 0) && (
+                              <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+                                {(() => {
+                                  const peak = Math.max(...reviewSummary.star_distribution.map((entry) => Number(entry.count || 0)), 1);
+                                  return reviewSummary.star_distribution.map((entry) => (
+                                    <div key={`review-dist-${entry.star}`} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 34px', alignItems: 'center', gap: 6 }}>
+                                      <span style={{ fontSize: 11, color: '#334155' }}>{entry.star}?</span>
+                                      <div style={{ height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
+                                        <div style={{ width: `${Math.round((Number(entry.count || 0) / peak) * 100)}%`, height: '100%', background: '#f59e0b' }} />
+                                      </div>
+                                      <span style={{ fontSize: 11, color: '#64748b', textAlign: 'right' }}>{entry.count}</span>
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {reviewHighlights.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                            {reviewHighlights.slice(0, 2).map((review, index) => (
+                              <div key={`review-v2-${index}`} style={{ borderTop: index === 0 ? 'none' : '1px solid #e2e8f0', paddingTop: index === 0 ? 0 : 8 }}>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `â€¢ ${review.rating}?` : ''}</div>
+                                <div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{String(review.comment || '')}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {(socialMessengerUrl || socialFacebookUrl || socialInstagramUrl) && (
+                          <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                            {socialMessengerUrl && <a href={socialMessengerUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Messenger</a>}
+                            {socialFacebookUrl && <a href={socialFacebookUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Facebook</a>}
+                            {socialInstagramUrl && <a href={socialInstagramUrl} target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>Instagram</a>}
+                          </div>
+                        )}
+                      </article>
+                    )}
+                  </div>
+                  {(followEnabled || shareEnabled) && !isMobileViewport && (
+                      <div style={{ marginTop: 12, display: 'flex', gap: 10, justifyContent: isMobileViewport ? 'space-between' : 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>{followState.followersCount} follower(s)</span>
+                        {followEnabled && (
+                        <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>{followState.isFollowing ? 'Following' : 'Follow'}</button>
+                      )}
+                      {shareEnabled && (
+                        <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700 }}>Share</button>
+                      )}
+                    </div>
+                  )}
+                  {followState.error && (
+                    <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>{followState.error}</p>
+                  )}
+                </section>
+              );
+            })()}
+
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: isMobileViewport ? 12 : 16, marginBottom: 14 }}>
               {(() => {
                 const selectedSlug = toSlug(selectedStore?.slug || routeSlug);
@@ -1770,12 +2156,19 @@ export function App() {
                 const selectedProfileImageKey = `tenant-profile:${selectedSlug}:${selectedProfileImageUrl}`;
                 const showCoverImage = Boolean(selectedCoverImageUrl) && !isBrandingImageBlocked(selectedCoverImageKey);
                 const showProfileImage = Boolean(selectedProfileImageUrl) && !isBrandingImageBlocked(selectedProfileImageKey);
+                const heroCategories = normalizeStorefrontCategories(selectedStore?.storefront_categories);
+                const heroReviewSummary = normalizeStorefrontReviewSummary(selectedStore?.storefront_review_summary);
+                const social = parseOptionalObject(selectedStore?.storefront_social_links);
+                const messengerUrl = sanitizeExternalLink(social?.messenger);
+                const messageHref = messengerUrl || (String(selectedStore?.storefront_email || '').trim() ? `mailto:${selectedStore.storefront_email}` : '');
                 return (
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', minHeight: 180 }}>
                 {showCoverImage ? (
                   <img
                     src={selectedCoverImageUrl}
                     alt={`${selectedStore?.tenant_name || 'Store'} cover`}
+                    loading="eager"
+                    decoding="async"
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={() => markBrandingImageError(selectedCoverImageKey)}
                   />
@@ -1812,15 +2205,22 @@ export function App() {
                     )}
                   </div>
                   <p style={{ margin: 0, color: '#e2e8f0' }}>{selectedLocation?.address_line || selectedStore?.address_line || 'Tenant storefront page is loading or being configured.'}</p>
-                  {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} • {selectedStore.catalog_count} storefront item(s)</div>}
+                  {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} â€¢ {selectedStore.catalog_count} storefront item(s)</div>}
+                  {isStorefrontV2 && (
+                    <div style={{ color: '#f8fafc', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {heroReviewSummary?.score != null && <span>{heroReviewSummary.score.toFixed(1)}? ({heroReviewSummary.total_count ?? 0})</span>}
+                      {heroCategories.length > 0 && <span>{heroCategories.join(', ')}</span>}
+                      {(selectedLocation?.name || selectedStore?.location_name) && <span>{selectedLocation?.name || selectedStore?.location_name}</span>}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {messageHref && (
+                      <a href={messageHref} target={messageHref.startsWith('http') ? '_blank' : undefined} rel={messageHref.startsWith('http') ? 'noreferrer' : undefined} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', minHeight: 44, minWidth: 96, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Message</a>
+                    )}
                     {String(selectedStore?.storefront_phone || '').trim() && (
-                      <a href={`tel:${selectedStore.storefront_phone}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Call</a>
+                      <a href={`tel:${selectedStore.storefront_phone}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', minHeight: 44, minWidth: 96, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Call</a>
                     )}
-                    {String(selectedStore?.storefront_email || '').trim() && (
-                      <a href={`mailto:${selectedStore.storefront_email}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Message</a>
-                    )}
-                    <button type="button" onClick={() => setIsCheckoutOpen(true)} style={{ borderRadius: 10, border: '1px solid #fb923c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '8px 14px', fontWeight: 800, cursor: 'pointer' }}>Order Now</button>
+                    <button type="button" aria-label="Open checkout order panel" onClick={() => setIsCheckoutOpen(true)} style={{ borderRadius: 10, border: '1px solid #fb923c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '8px 14px', minHeight: 44, minWidth: 110, fontWeight: 800, cursor: 'pointer' }}>Order Now</button>
                   </div>
                 </div>
               </div>
@@ -1986,6 +2386,37 @@ export function App() {
 
       {isStorePage && (
         <>
+          {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
+            const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
+            const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
+            if (!followEnabled && !shareEnabled) return null;
+            return (
+              <div
+                style={{
+                  position: 'fixed',
+                  zIndex: 2090,
+                  left: isMobileViewport ? 10 : 'auto',
+                  right: isMobileViewport ? 10 : 18,
+                  bottom: isMobileViewport ? 78 : 84,
+                  display: 'flex',
+                  gap: 8,
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap'
+                }}
+              >
+                {followEnabled && (
+                  <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
+                    {followState.isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                )}
+                {shareEnabled && (
+                  <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }}>
+                    Share
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           <button
             type="button"
             onClick={() => {
@@ -2064,7 +2495,7 @@ export function App() {
                     </span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>×</button>
+                <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>Ã—</button>
               </div>
 
               <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
@@ -2217,7 +2648,7 @@ export function App() {
                               <div>
                                 <div style={{ fontWeight: 700, color: '#0f172a' }}>{line.name}</div>
                                 <div style={{ fontSize: 11, color: '#64748b' }}>
-                                  Unit: {money(line.price)} {line.unit_of_measure ? `• ${line.unit_of_measure}` : ''}
+                                  Unit: {money(line.price)} {line.unit_of_measure ? `â€¢ ${line.unit_of_measure}` : ''}
                                 </div>
                                 <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
                                   Availability checked on quote/checkout
@@ -2339,3 +2770,4 @@ if (rootElement) {
     </React.StrictMode>
   );
 }
+

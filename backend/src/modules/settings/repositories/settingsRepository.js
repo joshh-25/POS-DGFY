@@ -112,6 +112,119 @@ const normalizeOrderMethodFees = (rawValue) => {
     return normalized;
 };
 
+const normalizeStringListValue = (rawValue, maxItems = 8, maxLen = 120) => {
+    const parsed = parseJsonLoosely(rawValue);
+    const source = Array.isArray(parsed) ? parsed : (Array.isArray(rawValue) ? rawValue : []);
+    return source
+        .map((entry) => String(entry || '').trim().slice(0, maxLen))
+        .filter(Boolean)
+        .slice(0, maxItems);
+};
+
+const normalizeStorefrontGalleryUrlValue = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const internal = normalizeStorefrontAssetUrl(raw);
+    if (internal) return internal;
+    try {
+        const parsed = new URL(raw);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+    } catch {
+        return '';
+    }
+};
+
+const normalizeExternalHttpUrl = (value, maxLen = 255) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        const parsed = new URL(raw);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString().slice(0, maxLen) : '';
+    } catch {
+        return '';
+    }
+};
+
+const normalizeStorefrontGalleryImages = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    const source = Array.isArray(parsed) ? parsed : [];
+    const normalized = source
+        .map((entry, index) => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+            const url = normalizeStorefrontGalleryUrlValue(entry.url).slice(0, 500);
+            const path = normalizeStorefrontAssetPath(entry.path).slice(0, 500);
+            if (!url && !path) return null;
+            return {
+                url,
+                path,
+                caption: String(entry.caption || '').trim().slice(0, 140),
+                alt: String(entry.alt || '').trim().slice(0, 140),
+                sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 24);
+    return normalized.sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+};
+
+const normalizeStorefrontDeliveryPartners = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    const source = Array.isArray(parsed) ? parsed : [];
+    const normalized = [];
+    source.forEach((entry) => {
+        if (typeof entry === 'string') {
+            const partner = String(entry || '').trim().toLowerCase();
+            if (!partner) return;
+            if (!['grab', 'foodpanda', 'lalamove'].includes(partner)) return;
+            normalized.push({ partner, label: '', url: '' });
+            return;
+        }
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+        const partner = String(entry.partner || '').trim().toLowerCase();
+        if (!['grab', 'foodpanda', 'lalamove', 'custom'].includes(partner)) return;
+        normalized.push({
+            partner,
+            label: String(entry.label || '').trim().slice(0, 60),
+            url: normalizeExternalHttpUrl(entry.url, 255)
+        });
+    });
+
+    const deduped = [];
+    const seen = new Set();
+    normalized.forEach((entry) => {
+        const key = `${entry.partner}:${entry.partner === 'custom' ? String(entry.label || '').toLowerCase() : ''}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        deduped.push(entry);
+    });
+    return deduped.slice(0, 8);
+};
+
+const normalizeStorefrontReviewSummary = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const score = Number(parsed.score);
+    const totalCount = Number(parsed.total_count);
+    const summary = {
+        score: Number.isFinite(score) ? Math.min(5, Math.max(0, score)) : null,
+        total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null
+    };
+    const rawDistribution = parsed.star_distribution;
+    if (rawDistribution && typeof rawDistribution === 'object' && !Array.isArray(rawDistribution)) {
+        const distribution = {};
+        [1, 2, 3, 4, 5].forEach((star) => {
+            const value = Number(rawDistribution[star]);
+            if (Number.isInteger(value) && value >= 0) {
+                distribution[star] = value;
+            }
+        });
+        if (Object.keys(distribution).length > 0) {
+            summary.star_distribution = distribution;
+        }
+    }
+    return summary;
+};
+
 const normalizeTerminalRegistry = (rawValue) => {
     const parsed = parseJsonLoosely(rawValue);
     if (!Array.isArray(parsed)) return [];
@@ -178,10 +291,30 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'storefront_cover_image_path' || settingKey === 'storefront_profile_image_path') {
         return normalizeStorefrontAssetPath(value);
     }
+    if (settingKey === 'storefront_categories') {
+        return normalizeStringListValue(value, 12, 60);
+    }
+    if (settingKey === 'storefront_gallery_images') {
+        return normalizeStorefrontGalleryImages(value);
+    }
+    if (settingKey === 'storefront_delivery_partners') {
+        return normalizeStorefrontDeliveryPartners(value);
+    }
+    if (settingKey === 'storefront_review_summary') {
+        return normalizeStorefrontReviewSummary(value);
+    }
     return value;
 };
 
-const POS_JSON_SETTING_KEYS = new Set(['pos_discount_profiles', 'pos_order_method_fees', 'pos_terminal_registry']);
+const POS_JSON_SETTING_KEYS = new Set([
+    'pos_discount_profiles',
+    'pos_order_method_fees',
+    'pos_terminal_registry',
+    'storefront_categories',
+    'storefront_gallery_images',
+    'storefront_delivery_partners',
+    'storefront_review_summary'
+]);
 const STOREFRONT_ASSET_SETTING_KEYS = new Set([
     'storefront_cover_image_url',
     'storefront_profile_image_url',
