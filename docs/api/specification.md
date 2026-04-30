@@ -3573,6 +3573,11 @@ Perform the PO or JO receive operation. The QR token is validated server-side; n
 
 The system uses Nodemailer with SMTP for sending emails. All email features gracefully degrade - if email fails, the primary operation (approval/invitation) still succeeds.
 
+Current operational status as of 2026-04-30:
+- Local Gmail SMTP requires a valid Gmail App Password. A normal Gmail password will fail with `EAUTH 535 BadCredentials`.
+- Production is configured for Brevo SMTP, but the production host currently times out to Brevo SMTP ports `587`, `2525`, and `465`; the application falls back to manual invitation links when delivery fails.
+- The recommended production close-out is either provider-unblocked Brevo SMTP or Brevo HTTPS API delivery with a valid API key. Gmail SMTP is acceptable for local/testing only.
+
 ### Environment Variables
 ```env
 SMTP_HOST=smtp.gmail.com
@@ -3581,7 +3586,7 @@ SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=SKU Inventory Manager
+EMAIL_FROM_NAME=SKUpervisor
 APP_URL=https://your-domain.com
 ```
 
@@ -3597,6 +3602,7 @@ APP_URL=https://your-domain.com
 1. Enable 2-Factor Authentication on your Google account
 2. Generate an App Password at: https://myaccount.google.com/apppasswords
 3. Use the 16-character app password as `SMTP_PASS`
+4. Keep `EMAIL_FROM` aligned with `SMTP_USER` for Gmail.
 
 ## Tenant Onboarding Endpoints
 

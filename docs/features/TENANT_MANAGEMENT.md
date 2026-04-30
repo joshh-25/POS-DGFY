@@ -208,8 +208,16 @@ Invite creation supports:
 ### Acceptance UX
 `/accept-invite?token=<token>` validates the token without needing tenant context in the URL. The page shows company, inviter, invite email, role, and expiry before password setup. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `refreshToken`, `expiresIn`, `company`) and immediately signs the invited user into the app.
 
-### Delivery And Recovery Caveat
-The product handles SMTP unavailable or failed delivery as a first-class state and gives the admin a manual link. Real SMTP success still depends on valid provider credentials in the deployed environment.
+### Delivery And Recovery Status
+The product handles SMTP unavailable or failed delivery as a first-class state and gives the admin a manual link.
+
+Current verified status as of `2026-04-30`:
+- Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
+- Production is configured for Brevo SMTP, but the production host times out to `smtp-relay.brevo.com` on ports `587`, `2525`, and `465`.
+- Production firewall checks showed `ufw` inactive and `iptables OUTPUT ACCEPT`; the remaining SMTP blocker appears upstream of the application host.
+- HTTPS to Brevo works from production, but no valid Brevo API key is configured yet.
+
+Production email delivery can be closed out by either unblocking Brevo SMTP at the provider/network level or adding Brevo HTTPS API delivery with a valid Brevo API key. Until then, the invitation workflow remains user-ready through manual-link recovery.
 
 ---
 

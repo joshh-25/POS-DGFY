@@ -211,40 +211,34 @@ lsof -ti:5000 | xargs kill -9
 - **Max Supported**: Up to 1,000 items per import.
 - **If still failing**: Split your CSV into multiple files of ~500 items each.
 
-### 16. Emails Not Sending (Connection Timeout)
+### 16. Emails Not Sending (SMTP Auth Failure Or Connection Timeout)
 **Symptoms**:
 - Company approval and user invitation emails never arrive
-- Backend logs show: `[TenantApproval] Failed to send approval email: Connection timeout`
+- Backend logs show `EAUTH`, `535 BadCredentials`, or `Connection timeout`
 - `isEmailConfigured()` returns true but emails still fail
 
-**Cause**:
-- VPS providers (DigitalOcean, Vultr, AWS Lightsail, etc.) block outbound SMTP ports **587** and **465** by default to prevent spam abuse
-- Even with correct Gmail App Password, the server cannot connect to `smtp.gmail.com`
+**Current verified state (2026-04-30)**:
+- Local Gmail SMTP is configured but rejects the saved credential with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password, not the normal account password.
+- Production is configured for Brevo SMTP, but outbound SMTP to `smtp-relay.brevo.com` times out on ports `587`, `2525`, and `465`.
+- Production firewall was checked: `ufw` inactive and `iptables OUTPUT ACCEPT`; this points to an upstream VPS/network SMTP block or provider policy rather than an application bug.
+- HTTPS to Brevo works from production, but no valid Brevo API key is currently configured.
 
 **Diagnosis**:
 ```bash
-# Test if port 587 is blocked
+# Test common SMTP ports from the production host
 timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/587' && echo "OPEN" || echo "BLOCKED"
-# Test if port 465 is blocked
 timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BLOCKED"
+timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/587' && echo "OPEN" || echo "BLOCKED"
+timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/2525' && echo "OPEN" || echo "BLOCKED"
+timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/465' && echo "OPEN" || echo "BLOCKED"
 ```
 
 **Solution**:
-- **Use Brevo (free tier, 300 emails/day)**:
-  1. Sign up at [brevo.com](https://www.brevo.com/)
-  2. Go to Settings → SMTP & API → Generate SMTP Key
-  3. Update `.env`:
-  ```env
-  SMTP_HOST=smtp-relay.brevo.com
-  SMTP_PORT=587
-  SMTP_SECURE=false
-  SMTP_USER=your-brevo-account-email
-  SMTP_PASS=your-brevo-smtp-key
-  EMAIL_FROM=skupervisor@gmail.com
-  ```
-  4. Restart: `pm2 restart sku-backend`
+- **Local/testing**: Use Gmail SMTP with a Gmail App Password. The normal Gmail account password is expected to fail. Keep `EMAIL_FROM` aligned with `SMTP_USER`.
+- **Production preferred**: Keep Brevo for production delivery, but first confirm the VPS/provider allows outbound SMTP to Brevo on `587`, `2525`, or `465`. If the provider blocks SMTP, request an outbound SMTP unblock or use a host/provider that permits SMTP relay.
+- **Production alternative**: Add Brevo HTTPS API delivery with a valid Brevo API key. HTTPS already works from production, so this avoids outbound SMTP port restrictions.
+- **Operational fallback**: Until real SMTP delivery is verified, invitation workflows remain usable through the manual-link delivery state in User Management.
 
-- **Alternative**: Contact your VPS provider to unblock SMTP ports
 
 
 ### 17. Purchase Order "Mark All Received" sets quantity to 0

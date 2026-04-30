@@ -227,13 +227,18 @@ REDIS_URL=redis://localhost:6379
 # DISABLE_RATE_LIMIT=false
 
 # Email Configuration for test invitations and notifications
+# Gmail requires an App Password here; a normal Gmail password will fail.
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=SKU Inventory Manager
+EMAIL_FROM_NAME=SKUpervisor
+
+# Production delivery currently depends on resolving Brevo SMTP connectivity
+# or adding Brevo HTTPS API delivery. Local invites can still be validated with
+# manual-link delivery when SMTP is unavailable.
 
 # Application URL used for email links
 APP_URL=http://localhost:5173
