@@ -4,18 +4,11 @@
  *
  * Validates consistency between:
  * - aiTools.js (tool definitions)
- * - aiToolExecutor.js (tool handlers)
+ * - toolRegistryMap.js (tool handlers)
  *
  * Run with: npm run validate:ai
  * Exit code 0 = all valid, 1 = validation errors
  */
-
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // ANSI colors for terminal output
 const colors = {
@@ -89,29 +82,22 @@ async function main() {
 
   log(`   Extracted ${definedTools.size} unique tool names`, 'green');
 
-  // Step 3: Parse aiToolExecutor.js for handler cases
+  // Step 3: Load registry-based tool handlers
   log('\n🔧 Checking tool handlers...', 'blue');
 
-  const executorPath = path.join(__dirname, '../src/services/aiToolExecutor.js');
-  let executorContent;
+  let TOOL_REGISTRY_BY_NAME;
 
   try {
-    executorContent = fs.readFileSync(executorPath, 'utf8');
+    const registryModule = await import('../src/modules/ai/usecases/toolHandlers/toolRegistryMap.js');
+    TOOL_REGISTRY_BY_NAME = registryModule.TOOL_REGISTRY_BY_NAME;
   } catch (err) {
-    errors.push(`Failed to read aiToolExecutor.js: ${err.message}`);
+    errors.push(`Failed to load toolRegistryMap.js: ${err.message}`);
     log(`   ✗ Failed to read aiToolExecutor.js`, 'red');
     printSummary(errors, warnings);
     process.exit(1);
   }
 
-  // Extract case statements from the switch block
-  const casePattern = /case\s+['"]([^'"]+)['"]\s*:/g;
-  const handledTools = new Set();
-  let match;
-
-  while ((match = casePattern.exec(executorContent)) !== null) {
-    handledTools.add(match[1]);
-  }
+  const handledTools = new Set(Object.keys(TOOL_REGISTRY_BY_NAME || {}));
 
   log(`   Found ${handledTools.size} tool handlers`, 'green');
 
@@ -136,7 +122,7 @@ async function main() {
 
   if (missingHandlers.length > 0) {
     for (const tool of missingHandlers) {
-      errors.push(`Tool "${tool}" is defined but has no handler in aiToolExecutor.js`);
+      errors.push(`Tool "${tool}" is defined but has no handler in toolRegistryMap.js`);
     }
     log(`   ✗ ${missingHandlers.length} tools missing handlers:`, 'red');
     missingHandlers.forEach(t => log(`     - ${t}`, 'red'));

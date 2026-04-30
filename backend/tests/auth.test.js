@@ -5,11 +5,13 @@ import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 describe('Authentication API', () => {
   const TEST_EMAILS = ['test@example.com', 'testuser2@example.com'];
   const TEST_USERNAMES = ['testuser', 'testuser2'];
-  const TEST_COMPANY_TOKEN = 'token-testbox4236-175692e6';
+  let TEST_COMPANY_TOKEN;
+  let testTenantContext;
 
   const performTargetedCleanup = async () => {
     // SECURITY GUARD: Never run deletions if not in test environment
@@ -80,12 +82,17 @@ describe('Authentication API', () => {
   beforeAll(async () => {
     // Connect to test database
     await sequelize.authenticate();
+    testTenantContext = await createTestTenant('authapi');
+    TEST_COMPANY_TOKEN = testTenantContext.token;
     await performTargetedCleanup(); // Clean state before starting
   });
 
   afterAll(async () => {
     // Final targeted cleanup
     await performTargetedCleanup();
+    if (testTenantContext) {
+      await destroyTestTenant(testTenantContext);
+    }
     await sequelize.close();
   });
 
@@ -170,7 +177,7 @@ describe('Authentication API', () => {
       };
       await request(app)
         .post('/api/v1/auth/register')
-        .set('x-company-token', 'token-testbox4236-175692e6')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
         .send(userData);
     });
 
@@ -224,7 +231,7 @@ describe('Authentication API', () => {
       // Create a test user and get refresh token
       const registerResponse = await request(app)
         .post('/api/v1/auth/register')
-        .set('x-company-token', 'token-testbox4236-175692e6')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
         .send({
           username: 'testuser',
           email: 'test@example.com',

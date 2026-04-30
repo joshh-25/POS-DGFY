@@ -190,7 +190,7 @@ describe('Auth tenant isolation hardening', () => {
     expect(response.body.error_code).toBe('TENANT_BINDING_MISMATCH');
   });
 
-  it('fails closed for invite validation when company token header is missing', async () => {
+  it('fails closed for invite validation when token-only invite cannot be resolved', async () => {
     const fakeInviteToken = 'a'.repeat(64);
 
     const response = await request(app)
@@ -198,10 +198,10 @@ describe('Auth tenant isolation hardening', () => {
       .expect(400);
 
     expect(response.body.success).toBe(false);
-    expect(response.body.error_code).toBe('TENANT_TOKEN_REQUIRED');
+    expect(response.body.error_code).toBe('INVITATION_TOKEN_INVALID');
   });
 
-  it('fails closed for invite acceptance when company token header is missing', async () => {
+  it('fails closed for invite acceptance when token-only invite cannot be resolved', async () => {
     const response = await request(app)
       .post('/api/v1/auth/accept-invite')
       .send({
@@ -212,6 +212,6 @@ describe('Auth tenant isolation hardening', () => {
       .expect(400);
 
     expect(response.body.success).toBe(false);
-    expect(response.body.error_code).toBe('TENANT_TOKEN_REQUIRED');
+    expect(response.body.error_code).toBe('INVITATION_TOKEN_INVALID');
   });
 });

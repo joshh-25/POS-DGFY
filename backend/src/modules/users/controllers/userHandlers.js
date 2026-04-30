@@ -9,6 +9,9 @@ import {
   getUserLocationGrantsUseCase,
   updateUserLocationGrantsUseCase,
   inviteUserUseCase,
+  resendUserInvitationUseCase,
+  createInvitationManualLinkUseCase,
+  cancelUserInvitationUseCase,
   removeUserFromCompanyUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -135,7 +138,8 @@ export const changePassword = async (req, res, next) => {
 
 export const getAllUsers = async (req, res, next) => {
   try {
-    const result = await getAllUsersUseCase();
+    const includeInvitations = req.query?.include_invitations === 'true';
+    const result = await getAllUsersUseCase({ includeInvitations });
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -299,11 +303,18 @@ export const updateUserLocationGrants = async (req, res, next) => {
 
 export const inviteUser = async (req, res, next) => {
   try {
-    const { email, role } = req.validatedData;
+    const {
+      email,
+      role,
+      location_ids: locationIds = [],
+      delivery_mode: deliveryMode = 'email'
+    } = req.validatedData;
     const result = await inviteUserUseCase({
       adminUserId: req.user.user_id,
       email,
-      role
+      role,
+      locationIds,
+      deliveryMode
     });
     await trackProductUsageFromResult({
       req,
@@ -324,6 +335,72 @@ export const inviteUser = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'User invitation created successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendUserInvitation = async (req, res, next) => {
+  try {
+    const result = await resendUserInvitationUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Invitation resent successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createInvitationManualLink = async (req, res, next) => {
+  try {
+    const result = await createInvitationManualLinkUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Invitation link created successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const cancelUserInvitation = async (req, res, next) => {
+  try {
+    const result = await cancelUserInvitationUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Invitation cancelled successfully',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -366,5 +443,8 @@ export default {
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
+  resendUserInvitation,
+  createInvitationManualLink,
+  cancelUserInvitation,
   removeUserFromCompany
 };

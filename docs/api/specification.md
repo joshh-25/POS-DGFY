@@ -199,6 +199,11 @@ Logout user (invalidate tokens)
 }
 ```
 
+### POST /auth/accept-invite
+Accept an invitation and create the user account. Token-only links are supported; legacy links may still pass `x-company-token`.
+
+Successful responses include the usable login shape: `user`, `token`, `refreshToken`, `expiresIn`, and `company`.
+
 ---
 
 ## User Management Endpoints
@@ -231,6 +236,9 @@ x-company-token: <company-token>
 
 ### GET /users
 Get all users (Admin/Manager only). Excludes soft-deleted users.
+
+Query:
+- `include_invitations=true` includes pending, cancelled, and expired invitation rows with invitation lifecycle and delivery metadata.
 
 **Headers**
 ```
@@ -266,6 +274,30 @@ x-company-token: <company-token>
 - `po`
 - `do`
 - `jo`
+
+### POST /users/invite
+Create a tenant user invitation.
+
+**Request Body**
+```json
+{
+  "email": "teammate@example.com",
+  "role": "staff",
+  "location_ids": [1],
+  "delivery_mode": "email"
+}
+```
+
+If email delivery is unavailable or fails, the response includes `invitation_url` for explicit manual sharing. New links use only the invitation token; legacy links with `company` remain accepted until expiry. Role, status, permission, and location-scope edits are rejected until the invited user accepts the invitation.
+
+### POST /users/:user_id/invitation/resend
+Regenerate an invitation token for a pending, cancelled, or expired invitation row, extend expiry, and attempt email delivery again. The previous token is invalidated.
+
+### POST /users/:user_id/invitation/link
+Regenerate a manual invitation link for an existing pending, cancelled, or expired invitation row. The previous token is invalidated.
+
+### DELETE /users/:user_id/invitation
+Cancel a pending invitation. Cancelled invitation links cannot be accepted.
 
 ### PUT /users/:user_id/role
 Update user role (Admin only)

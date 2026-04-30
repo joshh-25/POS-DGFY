@@ -42,22 +42,14 @@ export default function AcceptInvite() {
         return;
       }
 
-      if (!companyTokenFromUrl) {
-        setTokenValid(false);
-        setTokenError('This invitation link is missing company information. Ask your administrator to resend the invitation.');
-        setIsValidatingToken(false);
-        return;
-      }
-
       setIsValidatingToken(true);
       setTokenError('');
 
       try {
-        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`, {
-          headers: {
-            'x-company-token': companyTokenFromUrl
-          }
-        });
+        const config = companyTokenFromUrl
+          ? { headers: { 'x-company-token': companyTokenFromUrl } }
+          : {};
+        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`, config);
         setInvitationData(response.data.data);
         setTokenValid(true);
       } catch (err) {
@@ -98,11 +90,6 @@ export default function AcceptInvite() {
       return;
     }
 
-    if (!companyTokenFromUrl) {
-      setError('Missing company token in invitation link. Ask your administrator to resend the invitation.');
-      return;
-    }
-
     // Validate password strength
     if (!isPasswordValid) {
       setError('Password does not meet security requirements');
@@ -112,18 +99,22 @@ export default function AcceptInvite() {
     setIsLoading(true);
 
     try {
-      await api.post('/auth/accept-invite', {
+      const config = companyTokenFromUrl
+        ? { headers: { 'x-company-token': companyTokenFromUrl } }
+        : {};
+      const response = await api.post('/auth/accept-invite', {
         token: tokenFromUrl,
         username: formData.username,
         password: formData.password
-      }, {
-        headers: {
-          'x-company-token': companyTokenFromUrl
-        }
-      });
+      }, config);
 
-      // Redirect to login
-      navigate('/login?setup=true');
+      const data = response.data?.data || {};
+      if (data.token) localStorage.setItem('authToken', data.token);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      const resolvedCompanyToken = data.company?.token || companyTokenFromUrl;
+      if (resolvedCompanyToken) localStorage.setItem('companyToken', resolvedCompanyToken);
+      window.dispatchEvent(new CustomEvent('auth:login'));
+      navigate('/');
     } catch (err) {
       const errorMessage = err.response?.data?.message ||
         err.response?.data?.errors?.[0]?.message ||
@@ -157,6 +148,17 @@ export default function AcceptInvite() {
       default:
         return 'bg-blue-100 text-blue-700 border-blue-200';
     }
+  };
+
+  const formatExpiry = (date) => {
+    if (!date) return 'Not provided';
+    return new Date(date).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Loading state
@@ -236,6 +238,12 @@ export default function AcceptInvite() {
                   <p className="text-xs text-slate-500 mt-2">
                     Email: {invitationData.email}
                   </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Invited by: {invitationData.inviter_name || 'Your administrator'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Expires: {formatExpiry(invitationData.expires_at)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -311,7 +319,7 @@ export default function AcceptInvite() {
               />
               {formData.confirmPassword && (
                 <p className={`text-xs mt-1 ${passwordsMatch ? 'text-green-600' : 'text-red-600'}`}>
-                  {passwordsMatch ? '✓ Passwords match' : '✗ Passwords do not match'}
+                  {passwordsMatch ? 'Passwords match' : 'Passwords do not match'}
                 </p>
               )}
             </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,11 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Mail, UserPlus } from 'lucide-react';
 import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
+import { listTenantLocations } from '../../src/services/tenantLocationService.js';
 
 export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
     const [email, setEmail] = useState('');
     const [role, setRole] = useState('staff');
     const [loading, setLoading] = useState(false);
+    const [locations, setLocations] = useState([]);
+    const [selectedLocationIds, setSelectedLocationIds] = useState([]);
+    const [manualLink, setManualLink] = useState('');
+    const [deliveryMode, setDeliveryMode] = useState('email');
 
     const roleDescriptions = {
         admin: 'Full tenant administration and user management access.',
@@ -22,6 +27,52 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
         cashier: 'POS-focused role for checkout, receipts, and daily closeout tasks.',
         staff: 'Limited operational access with minimal write permissions.'
     };
+    const operationalRoles = new Set(['staff', 'cashier', 'po', 'do', 'jo']);
+    const activeLocations = useMemo(() => locations.filter((location) => location.is_active !== false), [locations]);
+
+    useEffect(() => {
+        if (!open) return;
+        setManualLink('');
+        listTenantLocations({ include_inactive: false })
+            .then((rows) => {
+                const normalized = Array.isArray(rows) ? rows : [];
+                setLocations(normalized);
+                if (normalized.length === 1) {
+                    setSelectedLocationIds([Number(normalized[0].location_id)]);
+                }
+            })
+            .catch(() => setLocations([]));
+    }, [open]);
+
+    useEffect(() => {
+        if (activeLocations.length === 1) {
+            setSelectedLocationIds([Number(activeLocations[0].location_id)]);
+        } else if (['admin', 'manager'].includes(role)) {
+            setSelectedLocationIds(activeLocations.map((location) => Number(location.location_id)));
+        } else {
+            setSelectedLocationIds([]);
+        }
+    }, [role, activeLocations]);
+
+    const toggleLocation = (locationId) => {
+        setSelectedLocationIds((previous) => (
+            previous.includes(locationId)
+                ? previous.filter((id) => id !== locationId)
+                : [...previous, locationId]
+        ));
+    };
+
+    const copyManualLink = async () => {
+        try {
+            if (!navigator.clipboard?.writeText) {
+                throw new Error('Clipboard is not available in this browser');
+            }
+            await navigator.clipboard.writeText(manualLink);
+            toast.success('Invitation link copied');
+        } catch (error) {
+            toast.error(error.message || 'Failed to copy invitation link');
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -31,27 +82,39 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
             return;
         }
 
+        if (operationalRoles.has(role) && activeLocations.length > 1 && selectedLocationIds.length === 0) {
+            toast.error('Select at least one location for this role');
+            return;
+        }
+
         setLoading(true);
         try {
-            const result = await userService.inviteUser(email, role);
+            const result = await userService.inviteUser(email, role, {
+                locationIds: selectedLocationIds,
+                deliveryMode
+            });
 
             if (result.email_sent) {
                 toast.success(`Invitation sent to ${email}`);
             } else {
-                toast.success(`Invitation created for ${email}`);
-                // If email wasn't sent (e.g. no SMTP), maybe show the token?
-                // For now, let's keep it simple. The list will show "Pending".
+                setManualLink(result.invitation_url || '');
+                toast.success(
+                    result.delivery_status === 'failed'
+                        ? `Invitation created, but email delivery failed`
+                        : `Invitation link ready for ${email}`
+                );
             }
 
             // Reset form
             setEmail('');
             setRole('staff');
-
-            // Close modal
-            onOpenChange(false);
+            setSelectedLocationIds(activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : []);
 
             // Refresh parent list
             if (onSuccess) onSuccess();
+            if (result.email_sent) {
+                onOpenChange(false);
+            }
 
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to send invitation');
@@ -71,6 +134,21 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+                    {manualLink && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-sm font-medium text-amber-900">Manual invitation link</p>
+                            <p className="mt-1 break-all text-xs text-amber-800">{manualLink}</p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-2"
+                                onClick={copyManualLink}
+                            >
+                                Copy Link
+                            </Button>
+                        </div>
+                    )}
                     <div className="grid gap-2">
                         <Label htmlFor="email">Email Address</Label>
                         <div className="relative">
@@ -108,12 +186,47 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
                         </p>
                     </div>
 
+                    <div className="grid gap-2">
+                        <Label htmlFor="deliveryMode">Delivery</Label>
+                        <Select value={deliveryMode} onValueChange={setDeliveryMode}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Delivery mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="email">Send email</SelectItem>
+                                <SelectItem value="manual">Create manual link</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {activeLocations.length > 0 && (
+                        <div className="grid gap-2">
+                            <Label>Location Scope</Label>
+                            <div className="max-h-32 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
+                                {activeLocations.map((location) => {
+                                    const locationId = Number(location.location_id);
+                                    return (
+                                        <label key={locationId} className="flex items-center justify-between gap-2 text-sm">
+                                            <span className="truncate">{location.name}</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedLocationIds.includes(locationId)}
+                                                onChange={() => toggleLocation(locationId)}
+                                                className="h-4 w-4"
+                                            />
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>
                         <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading}>
-                            {loading ? 'Sending...' : 'Send Invitation'}
+                            {loading ? 'Creating...' : (deliveryMode === 'manual' ? 'Create Link' : 'Send Invitation')}
                         </Button>
                     </DialogFooter>
                 </form>

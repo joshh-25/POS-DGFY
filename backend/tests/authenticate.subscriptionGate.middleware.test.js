@@ -23,6 +23,9 @@ const loadAuthenticate = async ({ paymentsEnabledFlag }) => {
 
   jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
+      getStore: jest.fn(() => ({
+        tenantId: 'tenant-ctx-1'
+      })),
       get: jest.fn(() => ({
         findByPk: mockFindByPk
       }))
@@ -53,7 +56,7 @@ describe('authenticate middleware subscription gate behavior', () => {
     } = await loadAuthenticate({ paymentsEnabledFlag: false });
 
     mockIsTokenBlacklisted.mockResolvedValue(false);
-    mockVerifyToken.mockReturnValue({ user_id: 11 });
+    mockVerifyToken.mockReturnValue({ user_id: 11, tenant_id: 'tenant-ctx-1' });
     mockFindByPk.mockResolvedValue({
       user_id: 11,
       username: 'admin',
@@ -73,6 +76,7 @@ describe('authenticate middleware subscription gate behavior', () => {
       baseUrl: '/api/v1/users',
       path: '/me',
       tenant: {
+        id: 'tenant-ctx-1',
         status: 'active',
         plan: 'standard',
         subscription_status: 'inactive',
@@ -97,7 +101,7 @@ describe('authenticate middleware subscription gate behavior', () => {
     } = await loadAuthenticate({ paymentsEnabledFlag: true });
 
     mockIsTokenBlacklisted.mockResolvedValue(false);
-    mockVerifyToken.mockReturnValue({ user_id: 12 });
+    mockVerifyToken.mockReturnValue({ user_id: 12, tenant_id: 'tenant-ctx-1' });
     mockFindByPk.mockResolvedValue({
       user_id: 12,
       username: 'premium-admin',
@@ -117,6 +121,7 @@ describe('authenticate middleware subscription gate behavior', () => {
       baseUrl: '/api/v1/users',
       path: '/me',
       tenant: {
+        id: 'tenant-ctx-1',
         status: 'active',
         plan: 'premium',
         subscription_status: 'inactive',

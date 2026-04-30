@@ -1,5 +1,5 @@
 
-import { Tenant, UserTenantMapping, sequelize } from '../models/index.js';
+import { Tenant, UserTenantMapping, UserInvitation, sequelize } from '../models/index.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
 
@@ -34,6 +34,10 @@ const TENANT_LOOKUP_ATTRIBUTE_CANDIDATES = [
     ...ESSENTIAL_TENANT_LOOKUP_ATTRIBUTES,
     ...OPTIONAL_TENANT_LOOKUP_ATTRIBUTES
 ];
+
+export const hashInvitationToken = (token) => (
+    crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
+);
 
 let tenantLookupAttributeCache = {
     attributes: TENANT_LOOKUP_ATTRIBUTE_CANDIDATES,
@@ -137,6 +141,84 @@ export const findTenantByToken = async (token) => {
         where: { company_token: token },
         attributes
     });
+};
+
+export const findInvitationByToken = async (token, options = {}) => {
+    const tokenHash = hashInvitationToken(token);
+    return UserInvitation.findOne({
+        where: {
+            token_hash: tokenHash,
+            ...(options.status ? { status: options.status } : {})
+        },
+        include: [{
+            model: Tenant,
+            as: 'tenant',
+            attributes: await resolveTenantLookupAttributes()
+        }]
+    });
+};
+
+export const resolveInvitationTenantTokenByToken = async (token) => {
+    const invitation = await findInvitationByToken(token, { status: 'pending' });
+    if (!invitation || !invitation.tenant) return null;
+    return invitation.tenant.company_token || null;
+};
+
+export const upsertUserInvitationRegistry = async ({
+    tenantId,
+    tenantUserId,
+    email,
+    role,
+    token,
+    status = 'pending',
+    deliveryStatus = 'manual_link',
+    deliveryError = null,
+    invitedByUserId = null,
+    invitedByName = null,
+    expiresAt,
+    lastSentAt = null
+}) => {
+    const tokenHash = hashInvitationToken(token);
+    const where = {
+        tenant_id: tenantId,
+        tenant_user_id: tenantUserId
+    };
+    const defaults = {
+        tenant_id: tenantId,
+        tenant_user_id: tenantUserId,
+        email: String(email || '').trim().toLowerCase(),
+        role,
+        token_hash: tokenHash,
+        status,
+        delivery_status: deliveryStatus,
+        delivery_error: deliveryError,
+        invited_by_user_id: invitedByUserId,
+        invited_by_name: invitedByName,
+        expires_at: expiresAt,
+        last_sent_at: lastSentAt
+    };
+
+    const [row, created] = await UserInvitation.findOrCreate({ where, defaults });
+    if (!created) {
+        await row.update(defaults);
+    }
+    return created ? row : row.reload();
+};
+
+export const updateInvitationRegistryByTenantUser = async ({
+    tenantId,
+    tenantUserId,
+    updates = {}
+}) => {
+    const row = await UserInvitation.findOne({
+        where: {
+            tenant_id: tenantId,
+            tenant_user_id: tenantUserId
+        }
+    });
+    if (!row) return null;
+    await row.update(updates);
+    return row.reload();
 };
 
 /**
@@ -290,6 +372,11 @@ export default {
     createTenant,
     findTenantByToken,
     findTenantByDbName,
+    findInvitationByToken,
+    resolveInvitationTenantTokenByToken,
+    upsertUserInvitationRegistry,
+    updateInvitationRegistryByTenantUser,
+    hashInvitationToken,
     isDomainAvailable,
     findTenantsByEmail,
     addEmailTenantMapping,

@@ -34,7 +34,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
     <div
       ref={ref}
       className={cn(
-        'relative bg-white rounded-2xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto px-5',
+        'relative bg-white rounded-2xl shadow-lg w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto px-5 sm:w-full',
         className
       )}
       onClick={(e) => e.stopPropagation()}
@@ -81,4 +81,3 @@ const DialogFooter = ({ className, ...props }) => {
 }
 
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter }
-

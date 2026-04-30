@@ -2,11 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import sequelize from '../src/config/database.js';
 import { initializeRedis, closeRedis } from '../src/config/redis.js';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 const originalEnv = { ...process.env };
 let app;
 let server;
 let baseUrl;
+let testTenantContext;
 
 // We need an actual open port to test the true network layer, not just the Express framework internal routing tree.
 const TEST_PORT = 5032;
@@ -21,6 +23,7 @@ beforeAll(async () => {
     process.env.SKIP_SERVER_START = 'true'; // Prevent server.js from auto-listening
 
     await sequelize.authenticate();
+    testTenantContext = await createTestTenant('authrl');
 
     // We also want to prove it uses Redis properly if available
     if (process.env.REDIS_URL) {
@@ -43,6 +46,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
     process.env = originalEnv;
+    if (testTenantContext) {
+        await destroyTestTenant(testTenantContext);
+    }
     await sequelize.close();
     await closeRedis();
 
@@ -56,15 +62,13 @@ describe('E2E True Real-World Authentication Rate Limiting', () => {
         email: 'hacker-bruteforce@example.com',
         password: 'wrongpassword123'
     };
-    const TEST_COMPANY_TOKEN = 'token-testbox4236-175692e6';
-
     const SPOOFED_HACKER_IP = '203.0.113.5';
 
     it('protects the actual /api/v1/auth/login route against consecutive brute-force attacks from a proxy', async () => {
         // Attack Attempt 1
         const res1 = await request(baseUrl)
             .post('/api/v1/auth/login')
-            .set('x-company-token', TEST_COMPANY_TOKEN)
+            .set('x-company-token', testTenantContext.token)
             .set('X-Forwarded-For', SPOOFED_HACKER_IP) // Simulate traffic through a load balancer
             .send(BAD_CREDENTIALS)
             .expect(401);
@@ -73,7 +77,7 @@ describe('E2E True Real-World Authentication Rate Limiting', () => {
         // Attack Attempt 2
         const res2 = await request(baseUrl)
             .post('/api/v1/auth/login')
-            .set('x-company-token', TEST_COMPANY_TOKEN)
+            .set('x-company-token', testTenantContext.token)
             .set('X-Forwarded-For', SPOOFED_HACKER_IP)
             .send(BAD_CREDENTIALS)
             .expect(401);
@@ -82,7 +86,7 @@ describe('E2E True Real-World Authentication Rate Limiting', () => {
         // Attack Attempt 3: HARD BLOCK. 
         const res3 = await request(baseUrl)
             .post('/api/v1/auth/login')
-            .set('x-company-token', TEST_COMPANY_TOKEN)
+            .set('x-company-token', testTenantContext.token)
             .set('X-Forwarded-For', SPOOFED_HACKER_IP)
             .send(BAD_CREDENTIALS)
             .expect(429);
@@ -101,7 +105,7 @@ describe('E2E True Real-World Authentication Rate Limiting', () => {
 
         const resGenuine = await request(baseUrl)
             .post('/api/v1/auth/login')
-            .set('x-company-token', TEST_COMPANY_TOKEN)
+            .set('x-company-token', testTenantContext.token)
             .set('X-Forwarded-For', '198.51.100.22') // A completely different real IP
             .send(genuineCredentials)
             .expect(401);

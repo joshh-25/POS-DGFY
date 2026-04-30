@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { jest } from '@jest/globals';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 // Define mocks
 const mockVerifyToken = jest.fn();
@@ -32,6 +33,8 @@ let isRedisConnected;
 
 describe('Security & Infrastructure Integration Tests', () => {
     let testUser;
+    let testTenantContext;
+    let companyToken;
 
     process.env.NODE_ENV = 'test';
 
@@ -58,10 +61,12 @@ describe('Security & Infrastructure Integration Tests', () => {
 
         // 2. DB
         await sequelize.authenticate();
+        testTenantContext = await createTestTenant('security');
+        companyToken = testTenantContext.token;
 
         // 3. User
         const timestamp = Date.now();
-        testUser = await User.create({
+        testUser = await testTenantContext.models.User.create({
             username: `sec_admin_${timestamp}`,
             password_hash: 'hash_placeholder',
             email: `sec_${timestamp}@check.com`,
@@ -72,6 +77,7 @@ describe('Security & Infrastructure Integration Tests', () => {
         // 4. Config Mock
         mockVerifyToken.mockReturnValue({
             user_id: testUser.user_id,
+            tenant_id: testTenantContext.tenant.id,
             role: 'admin',
             type: 'access'
         });
@@ -83,7 +89,10 @@ describe('Security & Infrastructure Integration Tests', () => {
 
     afterAll(async () => {
         if (testUser) {
-            await User.destroy({ where: { user_id: testUser.user_id } }).catch(() => { });
+            await testTenantContext?.models?.User?.destroy({ where: { user_id: testUser.user_id } }).catch(() => { });
+        }
+        if (testTenantContext) {
+            await destroyTestTenant(testTenantContext);
         }
         await closeRedis();
         await sequelize.close();
@@ -95,6 +104,7 @@ describe('Security & Infrastructure Integration Tests', () => {
 
             const res = await request(app)
                 .get('/api/v1/analytics/anomalies')
+                .set('x-company-token', companyToken)
                 .set('Authorization', 'Bearer valid_mock_token')
                 .query({ 'category[$ne]': 'null' });
 
@@ -106,6 +116,7 @@ describe('Security & Infrastructure Integration Tests', () => {
             if (!app) return;
             const res = await request(app)
                 .get('/api/v1/analytics/anomalies')
+                .set('x-company-token', companyToken)
                 .set('Authorization', 'Bearer valid_mock_token')
                 .query({ category: 'Electronics' });
 
@@ -118,6 +129,7 @@ describe('Security & Infrastructure Integration Tests', () => {
             if (!app) return;
             const res = await request(app)
                 .get('/api/v1/reports/expiry')
+                .set('x-company-token', companyToken)
                 .set('Authorization', 'Bearer valid_mock_token')
                 .query({
                     startDate: '2020-01-01',

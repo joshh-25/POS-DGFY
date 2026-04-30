@@ -20,7 +20,10 @@ import {
   Settings2,
   UserMinus,
   UserPlus,
-  MapPin
+  MapPin,
+  Send,
+  Copy,
+  XCircle
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -28,6 +31,30 @@ import DeleteConfirmDialog from '../ui/DeleteConfirmDialog';
 
 // Role hierarchy for permission checks (higher number = higher rank)
 const ROLE_HIERARCHY = { admin: 7, manager: 6, po: 5, do: 5, jo: 5, cashier: 4, staff: 3 };
+const ROLE_LABELS = {
+  admin: 'Admin',
+  manager: 'Manager',
+  po: 'PO Officer',
+  do: 'DO Officer',
+  jo: 'JO Officer',
+  cashier: 'Cashier',
+  staff: 'Staff'
+};
+const INVITATION_STATUSES = new Set(['pending', 'cancelled', 'expired']);
+const INVITATION_STATUS_LABELS = {
+  pending: 'Pending',
+  cancelled: 'Cancelled',
+  expired: 'Expired'
+};
+const DELIVERY_STATUS_LABELS = {
+  not_configured: 'SMTP missing',
+  sent: 'Email sent',
+  failed: 'Email failed',
+  manual_link: 'Manual link'
+};
+
+const isInvitationRow = (user) => INVITATION_STATUSES.has(String(user?.invitation_status || '').toLowerCase());
+const isPendingInvitation = (user) => String(user?.invitation_status || '').toLowerCase() === 'pending';
 
 // Permission templates for bulk operations
 const PERMISSION_TEMPLATES = {
@@ -145,7 +172,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const data = await userService.getAllUsers();
+      const data = await userService.getAllUsers({ include_invitations: true });
       setUsers(data);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load users');
@@ -164,12 +191,14 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
       // Role/status filter
       let matchesFilter = true;
-      if (filter === 'inactive') {
+      if (filter === 'invitations') {
+        matchesFilter = isInvitationRow(user);
+      } else if (filter === 'inactive') {
         // Inactive tab: show only inactive users
-        matchesFilter = !user.is_active;
+        matchesFilter = !user.is_active && !isInvitationRow(user);
       } else {
         // All other tabs: only show active users
-        if (!user.is_active) return false;
+        if (!user.is_active || isInvitationRow(user)) return false;
 
         // Apply role filter
         if (filter === 'admin') matchesFilter = user.role === 'admin';
@@ -224,6 +253,51 @@ export default function UserManagementModal({ open, onOpenChange }) {
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update status');
+    }
+  };
+
+  const handleCopyInvitationLink = async (user) => {
+    try {
+      const result = await userService.createInvitationLink(user.user_id);
+      if (!result.invitation_url) {
+        throw new Error('Invitation link was not returned');
+      }
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard is not available in this browser');
+      }
+      await navigator.clipboard.writeText(result.invitation_url);
+      toast.success('Invitation link copied');
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to create invitation link');
+    }
+  };
+
+  const handleResendInvitation = async (user) => {
+    try {
+      const result = await userService.resendUserInvitation(user.user_id);
+      if (result.invitation_url) {
+        if (!navigator.clipboard?.writeText) {
+          throw new Error('Clipboard is not available in this browser');
+        }
+        await navigator.clipboard.writeText(result.invitation_url);
+        toast.success('Invitation link copied because email was not sent');
+      } else {
+        toast.success('Invitation resent');
+      }
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to resend invitation');
+    }
+  };
+
+  const handleCancelInvitation = async (user) => {
+    try {
+      await userService.cancelUserInvitation(user.user_id);
+      toast.success('Invitation cancelled');
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to cancel invitation');
     }
   };
 
@@ -430,8 +504,18 @@ export default function UserManagementModal({ open, onOpenChange }) {
     });
   };
 
+  const formatShortDate = (date) => {
+    if (!date) return 'Not set';
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   const FILTER_OPTIONS = [
     { key: 'all', label: 'All', icon: Users2 },
+    { key: 'invitations', label: 'Invitations', icon: UserPlus },
     { key: 'admin', label: 'Admins', icon: Shield },
     { key: 'manager', label: 'Managers', icon: UserCheck },
     { key: 'cashier', label: 'Cashiers', icon: UserCheck },
@@ -445,18 +529,18 @@ export default function UserManagementModal({ open, onOpenChange }) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-0">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl max-h-[90vh] flex flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
           {/* Sticky Header */}
-          <div className="sticky top-0 z-10 bg-white border-b px-6 py-4">
+          <div className="sticky top-0 z-10 bg-white border-b px-4 py-4 sm:px-6">
             <DialogHeader>
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <DialogTitle className="text-xl">User Management</DialogTitle>
                   <p className="text-sm text-slate-500">
                     Manage user accounts, roles, and permissions
                   </p>
                 </div>
-                <Button onClick={() => setShowInviteModal(true)} className="bg-teal-600 hover:bg-teal-700">
+                <Button onClick={() => setShowInviteModal(true)} className="w-full bg-teal-600 hover:bg-teal-700 sm:w-auto">
                   <UserPlus className="w-4 h-4 mr-2" />
                   Invite User
                 </Button>
@@ -557,7 +641,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {loading ? (
               <div className="text-center py-12">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -568,7 +652,8 @@ export default function UserManagementModal({ open, onOpenChange }) {
                 {searchQuery ? 'No users match your search' : 'No users found'}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="overflow-x-auto pb-2">
+                <div className="min-w-[760px] space-y-2">
                 {/* Select All Header */}
                 <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-600">
                   <input
@@ -582,7 +667,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                   <span className="w-24">Access</span>
                   <span className="w-28">Locations</span>
                   <span className="w-20 text-center">Status</span>
-                  <span className="w-10"></span>
+                  <span className="w-28"></span>
                 </div>
 
                 {/* User Rows */}
@@ -620,10 +705,26 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         )}
                       </p>
                       <p className="text-sm text-slate-500 truncate">{user.email}</p>
+                      {isInvitationRow(user) && (
+                        <p className="text-xs text-slate-500 truncate">
+                          Expires {formatShortDate(user.invitation_expires_at)}
+                          {user.invited_by ? ` - Invited by user #${user.invited_by}` : ''}
+                        </p>
+                      )}
                     </div>
 
                     {/* Role Dropdown */}
                     <div className="w-24">
+                      {isInvitationRow(user) ? (
+                        <div className="space-y-1">
+                          <span className="block truncate text-sm font-medium text-slate-700">
+                            {ROLE_LABELS[user.role] || user.role}
+                          </span>
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            {INVITATION_STATUS_LABELS[user.invitation_status] || user.invitation_status}
+                          </span>
+                        </div>
+                      ) : (
                       <select
                         value={user.role}
                         onChange={(e) => handleRoleChange(user.user_id, e.target.value)}
@@ -638,11 +739,15 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         <option value="manager">Manager</option>
                         <option value="admin">Admin</option>
                       </select>
+                      )}
                     </div>
 
                     {/* Permissions Button */}
                     <div className="w-24">
-                      <Button
+                      {isInvitationRow(user) ? (
+                        <span className="text-xs text-slate-400">After accept</span>
+                      ) : (
+                        <Button
                         variant="outline"
                         size="sm"
                         onClick={(e) => {
@@ -654,11 +759,15 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         <Shield className="w-3 h-3" />
                         <span className="text-xs">Edit</span>
                       </Button>
+                      )}
                     </div>
 
                     {/* Location Grants Button */}
                     <div className="w-28">
-                      <Button
+                      {isInvitationRow(user) ? (
+                        <span className="text-xs text-slate-400">Pre-set</span>
+                      ) : (
+                        <Button
                         variant="outline"
                         size="sm"
                         onClick={(e) => {
@@ -670,10 +779,16 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         <MapPin className="w-3 h-3" />
                         <span className="text-xs">Scope</span>
                       </Button>
+                      )}
                     </div>
 
                     {/* Status Toggle */}
                     <div className="w-20 flex justify-center">
+                      {isInvitationRow(user) ? (
+                        <span className="text-xs text-amber-700">
+                          {DELIVERY_STATUS_LABELS[user.invitation_delivery_status] || user.invitation_delivery_status || 'Pending'}
+                        </span>
+                      ) : (
                       <div
                         className="flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
@@ -686,33 +801,53 @@ export default function UserManagementModal({ open, onOpenChange }) {
                           {user.is_active ? 'On' : 'Off'}
                         </span>
                       </div>
+                      )}
                     </div>
 
                     {/* Remove User Button */}
-                    <div className="w-10 flex justify-center">
-                      {canRemoveUser(user) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRemoveConfirmUser(user);
-                          }}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 h-8 w-8"
-                          title="Remove from company"
-                        >
-                          <UserMinus className="w-4 h-4" />
-                        </Button>
+                    <div className="w-28 flex justify-center">
+                      {isInvitationRow(user) ? (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-1" title="Resend invitation" onClick={(e) => { e.stopPropagation(); handleResendInvitation(user); }}>
+                            <Send className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-1" title="Copy invitation link" onClick={(e) => { e.stopPropagation(); handleCopyInvitationLink(user); }}>
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                          {isPendingInvitation(user) && (
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-1 text-red-500 hover:bg-red-50 hover:text-red-700" title="Cancel invitation" onClick={(e) => { e.stopPropagation(); handleCancelInvitation(user); }}>
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          {canRemoveUser(user) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRemoveConfirmUser(user);
+                              }}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 h-8 w-8"
+                              title="Remove from company"
+                            >
+                              <UserMinus className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-white border-t px-6 py-3 flex items-center justify-between">
+          <div className="sticky bottom-0 bg-white border-t px-4 py-3 flex items-center justify-between sm:px-6">
             <span className="text-sm text-slate-600">
               {selectedUserIds.length > 0
                 ? `${selectedUserIds.length} selected`

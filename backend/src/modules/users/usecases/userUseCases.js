@@ -85,9 +85,9 @@ export const buildChangePasswordUseCase = ({ userService }) => {
 };
 
 export const buildGetAllUsersUseCase = ({ userService }) => {
-  return async () => {
+  return async ({ includeInvitations = false } = {}) => {
     try {
-      const data = await userService.getAllUsers();
+      const data = await userService.getAllUsers({ includeInvitations });
       return ok(data);
     } catch (error) {
       return fail(mapUserUseCaseError(error, 'Failed to retrieve users'));
@@ -239,7 +239,7 @@ export const buildUpdateUserLocationGrantsUseCase = ({ userService }) => {
 };
 
 export const buildInviteUserUseCase = ({ userService }) => {
-  return async ({ adminUserId, email, role }) => {
+  return async ({ adminUserId, email, role, locationIds = [], deliveryMode = 'email' }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);
     if (!normalizedAdminUserId || !email || !role) {
       return fail(new DomainError(
@@ -250,10 +250,78 @@ export const buildInviteUserUseCase = ({ userService }) => {
     }
 
     try {
-      const data = await userService.createUserInvitation(normalizedAdminUserId, { email, role });
+      const data = await userService.createUserInvitation(normalizedAdminUserId, {
+        email,
+        role,
+        location_ids: locationIds,
+        delivery_mode: deliveryMode
+      });
       return ok(data);
     } catch (error) {
       return fail(mapUserUseCaseError(error, 'Failed to create user invitation'));
+    }
+  };
+};
+
+export const buildResendUserInvitationUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.resendUserInvitation(normalizedAdminUserId, normalizedTargetUserId);
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to resend user invitation'));
+    }
+  };
+};
+
+export const buildCreateInvitationManualLinkUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.createInvitationManualLink(normalizedAdminUserId, normalizedTargetUserId);
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to create invitation link'));
+    }
+  };
+};
+
+export const buildCancelUserInvitationUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.cancelUserInvitation(normalizedAdminUserId, normalizedTargetUserId);
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to cancel user invitation'));
     }
   };
 };

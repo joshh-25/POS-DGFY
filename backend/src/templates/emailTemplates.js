@@ -25,6 +25,13 @@ const appendUtm = (url, campaign) => {
   return `${url}${separator}utm_source=email&utm_medium=transactional&utm_campaign=${campaign}`;
 };
 
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl, companyToken }) => {
   const inviteQuery = new URLSearchParams({
     token: invitationToken,
@@ -32,6 +39,11 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
   });
   const inviteUrlRaw = `${appUrl}/accept-invite?${inviteQuery.toString()}`;
   const inviteUrl = appendUtm(inviteUrlRaw, 'user_invitation');
+  const safeInviterName = escapeHtml(inviterName);
+  const safeRole = escapeHtml(role);
+  const safeTenantName = escapeHtml(tenantName);
+  const safeExpiresIn = escapeHtml(expiresIn);
+  const safeInviteUrl = escapeHtml(inviteUrl);
 
   // Role-specific colors
   const roleColors = {
@@ -47,7 +59,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>You're Invited to ${tenantName}</title>
+  <title>You're Invited to ${safeTenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
@@ -58,7 +70,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
           <tr>
             <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                SKU Inventory Manager
+                SKUpervisor
               </h1>
             </td>
           </tr>
@@ -80,14 +92,14 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 
               <!-- Message -->
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px; text-align: center;">
-                <strong style="color: #1f2937;">${inviterName}</strong> has invited you to join
-                <strong style="color: #1f2937;">${tenantName}</strong> as a
+                <strong style="color: #1f2937;">${safeInviterName}</strong> has invited you to join
+                <strong style="color: #1f2937;">${safeTenantName}</strong> as a
               </p>
 
               <!-- Role Badge -->
               <div style="text-align: center; margin-bottom: 32px;">
                 <span style="display: inline-block; background-color: ${roleColor.bg}; color: ${roleColor.text}; padding: 8px 24px; border-radius: 20px; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-                  ${role}
+                  ${safeRole}
                 </span>
               </div>
 
@@ -98,7 +110,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 32px;">
-                <a href="${inviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
+                <a href="${safeInviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
                   Accept Invitation
                 </a>
               </div>
@@ -106,14 +118,14 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
               <!-- Expiry Notice -->
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
                 <p style="margin: 0; color: #92400e; font-size: 14px;">
-                  <strong>Note:</strong> This invitation expires in <strong>${expiresIn}</strong>.
+                  <strong>Note:</strong> This invitation expires in <strong>${safeExpiresIn}</strong> and is only for the email address invited by your company administrator.
                 </p>
               </div>
 
               <!-- Alternative Link -->
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; word-break: break-all;">
                 If the button doesn't work, copy and paste this link into your browser:<br>
-                <a href="${inviteUrl}" style="color: #0891b2;">${inviteUrl}</a>
+                <a href="${safeInviteUrl}" style="color: #0891b2;">${safeInviteUrl}</a>
               </p>
             </td>
           </tr>
@@ -125,7 +137,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
                 If you didn't expect this invitation, you can safely ignore this email.
               </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKU Inventory Manager. All rights reserved.
+                &copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.
               </p>
             </td>
           </tr>
@@ -150,6 +162,10 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
   const loginUrlRaw = `${appUrl}/login`;
   const loginUrl = appendUtm(loginUrlRaw, 'welcome_email');
+  const safeUsername = escapeHtml(username);
+  const safeRole = escapeHtml(role);
+  const safeTenantName = escapeHtml(tenantName);
+  const safeLoginUrl = escapeHtml(loginUrl);
 
   return `
 <!DOCTYPE html>
@@ -157,7 +173,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to ${tenantName}</title>
+  <title>Welcome to ${safeTenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
@@ -168,7 +184,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
           <tr>
             <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                Welcome to ${tenantName}!
+                Welcome to ${safeTenantName}!
               </h1>
             </td>
           </tr>
@@ -177,11 +193,11 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
           <tr>
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px;">
-                Hello, ${username}!
+                Hello, ${safeUsername}!
               </h2>
 
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
-                Your account has been successfully created. You now have access to the SKU Inventory Manager as a <strong>${role}</strong>.
+                Your account has been successfully created. You now have access to SKUpervisor as a <strong>${safeRole}</strong>.
               </p>
 
               <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
@@ -189,7 +205,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
               </p>
 
               <div style="text-align: center;">
-                <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                <a href="${safeLoginUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                   Go to Login
                 </a>
               </div>
@@ -200,7 +216,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
           <tr>
             <td style="padding: 24px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKU Inventory Manager. All rights reserved.
+                &copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.
               </p>
             </td>
           </tr>

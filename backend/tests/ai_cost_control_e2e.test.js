@@ -2,6 +2,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { v4 as uuidv4 } from 'uuid';
+import dbStore from '../src/utils/dbStore.js';
 
 process.env.OPENAI_API_KEY = 'test-openai-key';
 process.env.OPENAI_MODEL = 'gpt-4o';
@@ -34,14 +35,22 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 // Mock tenantHandler to ensure we have a tenant context
 jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
     tenantHandler: (req, res, next) => {
-        req.tenant = {
+        const tenant = {
             id: '11111111-1111-4111-8111-111111111111',
             name: 'Test Tenant',
             status: 'active',
             plan: 'premium',
             subscription_status: 'active'
         };
-        next();
+        req.tenant = tenant;
+        dbStore.run({
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            tenantToken: req.headers['x-company-token'] || 'ai-cost-tenant',
+            User,
+            AiUsageLog,
+            AIConversation
+        }, next);
     },
     invalidateTenantLookupCache: jest.fn()
 }));
@@ -57,7 +66,8 @@ describe('AI Cost Control Integration Test', () => {
 
     beforeAll(async () => {
         // Sync DB
-        await sequelize.sync({ force: true });
+        await sequelize.sync();
+        await User.destroy({ where: { email: 'ai@test.com' } }).catch(() => null);
 
         // Create User
         user = await User.create({
@@ -69,7 +79,7 @@ describe('AI Cost Control Integration Test', () => {
             permissions: ['ai:chat', 'ai:action']
         });
 
-        token = generateToken(user);
+        token = generateToken(user, { tenantId: '11111111-1111-4111-8111-111111111111' });
     });
 
     afterAll(async () => {
@@ -104,6 +114,7 @@ describe('AI Cost Control Integration Test', () => {
 
         const response = await request(app)
             .post('/api/v1/ai/chat')
+            .set('x-company-token', 'ai-cost-tenant')
             .set('Authorization', `Bearer ${token}`)
             .send({
                 message: 'Hello AI',

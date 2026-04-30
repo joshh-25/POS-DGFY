@@ -40,8 +40,8 @@ export const changePassword = async (passwordData) => {
  * Get all users (admin only)
  * @returns {Promise<Array>} List of all users
  */
-export const getAllUsers = async () => {
-  const response = await api.get('/users');
+export const getAllUsers = async (params = {}) => {
+  const response = await api.get('/users', { params });
   return response.data.data;
 };
 
@@ -83,8 +83,28 @@ export const removeUserFromCompany = async (userId) => {
  * @param {string} role - User role
  * @returns {Promise<Object>} Invitation result
  */
-export const inviteUser = async (email, role) => {
-  const response = await api.post('/users/invite', { email, role });
+export const inviteUser = async (email, role, options = {}) => {
+  const response = await api.post('/users/invite', {
+    email,
+    role,
+    location_ids: options.locationIds || [],
+    delivery_mode: options.deliveryMode || 'email'
+  });
+  return response.data.data;
+};
+
+export const resendUserInvitation = async (userId) => {
+  const response = await api.post(`/users/${userId}/invitation/resend`);
+  return response.data.data;
+};
+
+export const createInvitationLink = async (userId) => {
+  const response = await api.post(`/users/${userId}/invitation/link`);
+  return response.data.data;
+};
+
+export const cancelUserInvitation = async (userId) => {
+  const response = await api.delete(`/users/${userId}/invitation`);
   return response.data.data;
 };
 

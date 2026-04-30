@@ -30,6 +30,9 @@ router.put('/:user_id/location-grants', authenticate, checkPermission(PERMISSION
 
 // Invite new user (admin only)
 router.post('/invite', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateInviteUser, userController.inviteUser);
+router.post('/:user_id/invitation/resend', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), userController.resendUserInvitation);
+router.post('/:user_id/invitation/link', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), userController.createInvitationManualLink);
+router.delete('/:user_id/invitation', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), userController.cancelUserInvitation);
 
 // Remove user from company (soft delete with hierarchical access control)
 router.delete('/:user_id', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.DELETE_USERS), userController.removeUserFromCompany);

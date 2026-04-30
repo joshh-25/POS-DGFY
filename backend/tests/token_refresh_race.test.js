@@ -27,9 +27,11 @@ import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import * as authService from '../src/services/authService.js';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
-  const COMPANY_TOKEN = 'token-testbox4236-175692e6';
+  let COMPANY_TOKEN;
+  let testTenantContext;
   const EMAIL = `race-test-${Date.now()}@example.com`;
   const USERNAME = `raceuser${Date.now()}`;
   const PASSWORD = 'TestPassword123!';
@@ -42,6 +44,8 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
 
   beforeAll(async () => {
     await sequelize.authenticate();
+    testTenantContext = await createTestTenant('rttrace');
+    COMPANY_TOKEN = testTenantContext.token;
     await cleanup();
 
     await request(app)
@@ -53,6 +57,9 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
 
   afterAll(async () => {
     await cleanup();
+    if (testTenantContext) {
+      await destroyTestTenant(testTenantContext);
+    }
     await sequelize.close();
   });
 

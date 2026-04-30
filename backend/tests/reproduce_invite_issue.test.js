@@ -59,7 +59,12 @@ describe('inviteUser Validation & Controller', () => {
         validateInviteUser(req, res, next);
 
         expect(next).toHaveBeenCalled();
-        expect(req.validatedData).toEqual({ email: 'test@example.com', role: 'admin' });
+        expect(req.validatedData).toEqual({
+            email: 'test@example.com',
+            role: 'admin',
+            location_ids: [],
+            delivery_mode: 'email'
+        });
     });
 
     // Test Controller
@@ -71,7 +76,12 @@ describe('inviteUser Validation & Controller', () => {
 
         await inviteUser(req, res, next);
 
-        expect(userService.createUserInvitation).toHaveBeenCalledWith(1, { email: 'test@example.com', role: 'staff' });
+        expect(userService.createUserInvitation).toHaveBeenCalledWith(1, {
+            email: 'test@example.com',
+            role: 'staff',
+            location_ids: [],
+            delivery_mode: 'email'
+        });
         expect(res.status).toHaveBeenCalledWith(201);
     });
 });

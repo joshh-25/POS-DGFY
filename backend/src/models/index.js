@@ -49,6 +49,7 @@ import StoreCustomerAddress from './StoreCustomerAddress.js';
 import StorefrontFollow from './StorefrontFollow.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
+import UserInvitationFactory from './Landlord/UserInvitation.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -61,6 +62,7 @@ import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplia
 import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
+const UserInvitation = UserInvitationFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -307,6 +309,8 @@ User.hasMany(AIConversation, { foreignKey: 'user_id', as: 'aiConversations' });
 // UserTenantMapping associations (Landlord DB)
 UserTenantMapping.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(UserTenantMapping, { foreignKey: 'tenant_id', as: 'userMappings' });
+UserInvitation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(UserInvitation, { foreignKey: 'tenant_id', as: 'userInvitations' });
 
 const db = {
   sequelize,
@@ -361,6 +365,7 @@ const db = {
   StorefrontFollow,
   Tenant,
   UserTenantMapping,
+  UserInvitation,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -427,6 +432,7 @@ export {
   StorefrontFollow,
   Tenant,
   UserTenantMapping,
+  UserInvitation,
   Payment,
   WebhookLog,
   EngagementEvent,

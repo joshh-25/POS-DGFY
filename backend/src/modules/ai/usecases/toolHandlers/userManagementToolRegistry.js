@@ -72,12 +72,8 @@ const buildGetAvailablePermissions = ({ permissions }) => {
     };
 };
 
-const buildInviteAcceptanceUrl = ({ appUrl, invitationToken, companyToken }) => {
+const buildInviteAcceptanceUrl = ({ appUrl, invitationToken }) => {
     const params = new URLSearchParams({ token: invitationToken });
-    const normalizedCompanyToken = String(companyToken || '').trim();
-    if (normalizedCompanyToken) {
-        params.set('company', normalizedCompanyToken);
-    }
     return `${appUrl}/accept-invite?${params.toString()}`;
 };
 
@@ -94,17 +90,26 @@ export const buildUserManagementToolRegistry = ({
 
     const handlers = {
         get_users: async () => {
-            const users = await userService.getAllUsers();
+            const users = await userService.getAllUsers({ includeInvitations: true });
+            const invitationLifecycleStatuses = new Set(['pending', 'cancelled', 'expired']);
             return {
                 count: users.length,
-                users: users.map((user) => ({
-                    id: user.user_id,
-                    username: user.username,
-                    email: user.email,
-                    role: user.role,
-                    status: user.is_active ? 'active' : 'inactive',
-                    last_login: user.last_login
-                }))
+                users: users.map((user) => {
+                    const invitationStatus = String(user.invitation_status || '').toLowerCase();
+                    return {
+                        id: user.user_id,
+                        username: user.username,
+                        email: user.email,
+                        role: user.role,
+                        status: invitationLifecycleStatuses.has(invitationStatus)
+                            ? `${invitationStatus}_invitation`
+                            : (user.is_active ? 'active' : 'inactive'),
+                        last_login: user.last_login,
+                        invitation_status: user.invitation_status || null,
+                        invitation_delivery_status: user.invitation_delivery_status || null,
+                        invitation_expires_at: user.invitation_expires_at || null
+                    };
+                })
             };
         },
 
@@ -192,19 +197,28 @@ export const buildUserManagementToolRegistry = ({
         create_user_invitation: async ({ args, user }) => {
             const result = await userService.createUserInvitation(user.user_id, {
                 email: args.email,
-                role: args.role
+                role: args.role,
+                location_ids: args.location_ids || args.locationIds || [],
+                delivery_mode: args.delivery_mode || args.deliveryMode || 'email'
             });
+
+            const deliveryLabel = result.email_sent
+                ? 'Email Sent'
+                : (result.delivery_status === 'failed'
+                    ? 'Email Failed - Manual Link Ready'
+                    : (result.delivery_status === 'manual_link' ? 'Manual Link Ready' : 'SMTP Missing - Manual Link Ready'));
 
             const response = {
                 success: true,
                 message: result.email_sent
                     ? `Invitation email sent to ${args.email}`
-                    : `Invitation created for ${args.email} (email not configured - see token below)`,
+                    : `Invitation created for ${args.email} (${deliveryLabel})`,
                 details: {
                     Email: args.email,
                     Role: args.role.charAt(0).toUpperCase() + args.role.slice(1),
                     'Expires In': '7 days',
-                    Status: result.email_sent ? 'Email Sent' : 'Pending (Email not configured)'
+                    Status: deliveryLabel,
+                    'Delivery Status': deliveryLabel
                 },
                 related_entity: {
                     type: 'user_invitation',
@@ -216,21 +230,27 @@ export const buildUserManagementToolRegistry = ({
                     email: args.email,
                     role: args.role,
                     expires_at: result.expires_at,
-                    email_sent: result.email_sent
+                    email_sent: result.email_sent,
+                    token: null,
+                    url: null
                 }
             };
 
+            if (result.delivery_error) {
+                response.details['Delivery Error'] = result.delivery_error;
+                response.message += `: ${result.delivery_error}`;
+            }
+
             if (!result.email_sent && result.invitation_token) {
                 const appUrl = appUrlProvider();
-                const companyToken = String(result.company_token || companyTokenProvider() || '').trim() || null;
-                const acceptUrl = buildInviteAcceptanceUrl({
+                const acceptUrl = result.invitation_url || buildInviteAcceptanceUrl({
                     appUrl,
-                    invitationToken: result.invitation_token,
-                    companyToken
+                    invitationToken: result.invitation_token
                 });
                 response.details['Invitation Token'] = result.invitation_token;
                 response.details['Accept URL'] = acceptUrl;
                 response.invitation.token = result.invitation_token;
+                response.invitation.url = acceptUrl;
                 response.message += `\n\n**Manual Invitation Link:**\n${acceptUrl}`;
             }
 
@@ -243,13 +263,13 @@ export const buildUserManagementToolRegistry = ({
             if (!companyToken) {
                 return {
                     success: false,
-                    message: 'Unable to retrieve company token. Please copy it from Settings → Company tab.'
+                    message: 'Unable to retrieve company token. Please copy it from Settings > Company tab.'
                 };
             }
             const joinLink = `${appUrl}/register?token=${companyToken}`;
             return {
                 success: true,
-                message: `Here is the shareable registration link for your company:\n\n**${joinLink}**\n\nShare this link with new team members — it pre-fills the company token so they can register directly.`,
+                message: `Here is the shareable registration link for your company:\n\n**${joinLink}**\n\nShare this link with new team members; it pre-fills the company token so they can register directly.`,
                 data: { join_link: joinLink, company_token: companyToken }
             };
         },
@@ -394,18 +414,26 @@ export const buildUserManagementToolRegistry = ({
                     }));
 
                     const result = await userService.importUsersFromCSV(userData, user.user_id);
+                    const invitedCount = Array.isArray(result.invited) ? result.invited.length : 0;
+                    const skippedCount = Array.isArray(result.skipped) ? result.skipped.length : 0;
+                    const errorCount = Array.isArray(result.errors) ? result.errors.length : 0;
+                    const manualLinkCount = Array.isArray(result.invited)
+                        ? result.invited.filter((entry) => entry.invitation_url).length
+                        : 0;
                     return {
                         success: true,
-                        message: `Import completed: ${result.invited} invitation(s) sent, ${result.skipped} skipped, ${result.errors.length} error(s).`,
+                        message: `Import completed: ${invitedCount} invitation(s) created, ${skippedCount} skipped, ${errorCount} error(s).`,
                         details: {
-                            'Invitations Sent': String(result.invited),
-                            Skipped: String(result.skipped),
-                            Errors: String(result.errors.length)
+                            'Invitations Created': String(invitedCount),
+                            'Manual Links Ready': String(manualLinkCount),
+                            Skipped: String(skippedCount),
+                            Errors: String(errorCount)
                         },
                         stats: {
-                            invited: result.invited,
-                            skipped: result.skipped,
-                            errors: result.errors.length
+                            invited: invitedCount,
+                            skipped: skippedCount,
+                            errors: errorCount,
+                            manual_links_ready: manualLinkCount
                         },
                         results: result
                     };

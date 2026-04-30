@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { PERMISSIONS } from '../src/config/permissions.js';
+import dbStore from '../src/utils/dbStore.js';
 
 const mockCacheMap = new Map();
 
@@ -34,14 +35,20 @@ jest.unstable_mockModule('../src/services/cacheService.js', () => ({
 
 jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
     tenantHandler: (req, res, next) => {
-        req.tenant = {
+        const tenant = {
             id: 'ai-export-tenant',
             name: 'AI Export Tenant',
             status: 'active',
             plan: 'premium',
             subscription_status: 'active'
         };
-        next();
+        req.tenant = tenant;
+        dbStore.run({
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            tenantToken: req.headers['x-company-token'] || 'ai-export-tenant',
+            User
+        }, next);
     },
     invalidateTenantLookupCache: jest.fn()
 }));
@@ -60,7 +67,12 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
     let fileId;
 
     beforeAll(async () => {
-        await sequelize.sync({ force: true });
+        await sequelize.sync();
+        await User.destroy({
+            where: {
+                email: ['ai-export-admin@example.com', 'ai-export-staff@example.com']
+            }
+        }).catch(() => null);
 
         authorizedUser = await User.create({
             username: 'ai_export_admin',
@@ -78,13 +90,13 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
             username: 'ai_export_staff',
             email: 'ai-export-staff@example.com',
             password_hash: 'hash',
-            role: 'staff',
+            role: 'cashier',
             is_active: true,
             permissions: []
         });
 
-        authorizedToken = generateToken(authorizedUser);
-        unauthorizedToken = generateToken(unauthorizedUser);
+        authorizedToken = generateToken(authorizedUser, { tenantId: 'ai-export-tenant' });
+        unauthorizedToken = generateToken(unauthorizedUser, { tenantId: 'ai-export-tenant' });
     });
 
     afterAll(async () => {

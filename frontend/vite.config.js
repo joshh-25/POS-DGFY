@@ -10,6 +10,12 @@ const securityHeaders = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin'
 }
+const devSecurityHeaders = {
+  ...securityHeaders,
+  // Vite React Refresh injects an inline preamble in development.
+  // Keep preview/build CSP strict while allowing the local dev app to boot.
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -30,7 +36,7 @@ export default defineConfig({
   },
   server: {
     allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49', 'localhost'],
-    headers: securityHeaders,
+    headers: devSecurityHeaders,
     proxy: {
       '/api': {
         target: apiProxyTarget,

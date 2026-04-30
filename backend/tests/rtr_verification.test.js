@@ -2,13 +2,22 @@ import request from 'supertest';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 describe('Refresh Token Rotation (RTR) Verification', () => {
+    let testTenantContext;
+    let companyToken;
+
     beforeAll(async () => {
         await sequelize.authenticate();
+        testTenantContext = await createTestTenant('rtrverify');
+        companyToken = testTenantContext.token;
     });
 
     afterAll(async () => {
+        if (testTenantContext) {
+            await destroyTestTenant(testTenantContext);
+        }
         await sequelize.close();
     });
 
@@ -22,11 +31,13 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         await request(app)
             .post('/api/v1/auth/register')
+            .set('x-company-token', companyToken)
             .send(userData)
             .expect(201);
 
         const loginRes = await request(app)
             .post('/api/v1/auth/login')
+            .set('x-company-token', companyToken)
             .send({
                 email: userData.email,
                 password: userData.password
@@ -49,6 +60,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         const firstRefresh = await request(app)
             .post('/api/v1/auth/refresh-token')
+            .set('x-company-token', companyToken)
             .send({ refreshToken: rt1 })
             .expect(200);
 
@@ -58,6 +70,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         const replayAttempt = await request(app)
             .post('/api/v1/auth/refresh-token')
+            .set('x-company-token', companyToken)
             .send({ refreshToken: rt1 });
 
         expect(replayAttempt.status).toBe(401);
@@ -71,6 +84,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         const firstRefresh = await request(app)
             .post('/api/v1/auth/refresh-token')
+            .set('x-company-token', companyToken)
             .send({ refreshToken: rt1 })
             .expect(200);
 
@@ -79,6 +93,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         const secondRefresh = await request(app)
             .post('/api/v1/auth/refresh-token')
+            .set('x-company-token', companyToken)
             .send({ refreshToken: rt2 })
             .expect(200);
 

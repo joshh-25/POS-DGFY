@@ -10,6 +10,9 @@ import {
   buildGetUserLocationGrantsUseCase,
   buildUpdateUserLocationGrantsUseCase,
   buildInviteUserUseCase,
+  buildResendUserInvitationUseCase,
+  buildCreateInvitationManualLinkUseCase,
+  buildCancelUserInvitationUseCase,
   buildRemoveUserFromCompanyUseCase
 } from './usecases/userUseCases.js';
 
@@ -23,4 +26,7 @@ export const updateUserPermissionsUseCase = buildUpdateUserPermissionsUseCase({ 
 export const getUserLocationGrantsUseCase = buildGetUserLocationGrantsUseCase({ userService });
 export const updateUserLocationGrantsUseCase = buildUpdateUserLocationGrantsUseCase({ userService });
 export const inviteUserUseCase = buildInviteUserUseCase({ userService });
+export const resendUserInvitationUseCase = buildResendUserInvitationUseCase({ userService });
+export const createInvitationManualLinkUseCase = buildCreateInvitationManualLinkUseCase({ userService });
+export const cancelUserInvitationUseCase = buildCancelUserInvitationUseCase({ userService });
 export const removeUserFromCompanyUseCase = buildRemoveUserFromCompanyUseCase({ userService });

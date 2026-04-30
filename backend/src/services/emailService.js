@@ -11,6 +11,7 @@ import nodemailer from 'nodemailer';
 import logger from '../config/logger.js';
 import {
   getInvitationTemplate,
+  getWelcomeTemplate,
   getCompanyApprovedTemplate,
   getCompanyRejectedTemplate,
   getSubscriptionExpiringTemplate,
@@ -81,7 +82,7 @@ export const sendEmail = async ({ to, subject, html, text }) => {
     throw error;
   }
 
-  const fromName = process.env.EMAIL_FROM_NAME || 'SKU Inventory Manager';
+  const fromName = process.env.EMAIL_FROM_NAME || 'SKUpervisor';
   const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER;
 
   const mailOptions = {
@@ -127,7 +128,23 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
 
   return sendEmail({
     to: email,
-    subject: `You've been invited to join ${tenantName} on SKU Inventory Manager`,
+    subject: `You've been invited to join ${tenantName} on SKUpervisor`,
+    html
+  });
+};
+
+export const sendWelcomeEmail = async ({ email, username, role, tenantName }) => {
+  const appUrl = getAppUrl();
+  const html = getWelcomeTemplate({
+    username,
+    role: role.charAt(0).toUpperCase() + role.slice(1),
+    tenantName,
+    appUrl
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Welcome to ${tenantName} on SKUpervisor`,
     html
   });
 };
@@ -361,6 +378,7 @@ export const sendResubmissionConfirmationEmail = async ({ email, companyName }) 
 export default {
   sendEmail,
   sendInvitationEmail,
+  sendWelcomeEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
   sendSubscriptionExpiringEmail,

@@ -1,7 +1,7 @@
 
 import tenantConnector from '../utils/TenantConnector.js';
 import dbStore from '../utils/dbStore.js';
-import { findTenantByToken } from '../services/landlordService.js';
+import { findTenantByToken, resolveInvitationTenantTokenByToken } from '../services/landlordService.js';
 import logger from '../config/logger.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
@@ -97,6 +97,34 @@ export const tenantHandler = async (req, res, next) => {
         let companyToken = req.headers['x-company-token'];
         const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
         const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
+        if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite)\b/i.test(path)) {
+            const pathInviteMatch = path.match(/\/auth\/validate-invite\/([^/?#]+)/i);
+            const inviteToken = String(req.params?.token || req.body?.token || pathInviteMatch?.[1] || '').trim();
+            if (inviteToken) {
+                try {
+                    const resolvedToken = await resolveInvitationTenantTokenByToken(inviteToken);
+                    if (resolvedToken) {
+                        companyToken = resolvedToken;
+                        req.headers['x-company-token'] = resolvedToken;
+                    } else if (!req.headers['x-company-token']) {
+                        return sendTenantContextError(
+                            res,
+                            400,
+                            'Invalid or expired invitation token.',
+                            'INVITATION_TOKEN_INVALID'
+                        );
+                    }
+                } catch (inviteResolveError) {
+                    logger.warn(`[TenantHandler] Invitation tenant resolution failed: ${inviteResolveError.message}`);
+                    return sendTenantContextError(
+                        res,
+                        400,
+                        'Invalid or expired invitation token.',
+                        'INVITATION_TOKEN_INVALID'
+                    );
+                }
+            }
+        }
 
         // 1.1 No Tenant Token?
         if (!companyToken && allowStoreSlugResolution && storeSlug) {

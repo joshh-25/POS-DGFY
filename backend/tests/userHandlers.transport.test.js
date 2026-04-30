@@ -2,6 +2,9 @@ import { jest } from '@jest/globals';
 
 const mockGetCurrentUserUseCase = jest.fn();
 const mockInviteUserUseCase = jest.fn();
+const mockResendUserInvitationUseCase = jest.fn();
+const mockCreateInvitationManualLinkUseCase = jest.fn();
+const mockCancelUserInvitationUseCase = jest.fn();
 const mockChangePasswordUseCase = jest.fn();
 const mockGetUserLocationGrantsUseCase = jest.fn();
 const mockUpdateUserLocationGrantsUseCase = jest.fn();
@@ -18,6 +21,9 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   getUserLocationGrantsUseCase: mockGetUserLocationGrantsUseCase,
   updateUserLocationGrantsUseCase: mockUpdateUserLocationGrantsUseCase,
   inviteUserUseCase: mockInviteUserUseCase,
+  resendUserInvitationUseCase: mockResendUserInvitationUseCase,
+  createInvitationManualLinkUseCase: mockCreateInvitationManualLinkUseCase,
+  cancelUserInvitationUseCase: mockCancelUserInvitationUseCase,
   removeUserFromCompanyUseCase: jest.fn()
 }));
 

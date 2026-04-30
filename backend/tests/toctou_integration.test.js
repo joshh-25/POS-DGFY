@@ -2,6 +2,9 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { v4 as uuidv4 } from 'uuid';
+import { Op } from 'sequelize';
+import dbStore from '../src/utils/dbStore.js';
+import { PERMISSIONS } from '../src/config/permissions.js';
 
 // 1. Mock external services (PayPal, OpenAI, etc.) to isolate the test
 jest.unstable_mockModule('../src/services/paypalService.js', () => ({
@@ -25,14 +28,23 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 // Mock tenantHandler to bypass subscription checks
 jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
     tenantHandler: (req, res, next) => {
-        req.tenant = {
+        const tenant = {
             id: '11111111-1111-4111-8111-111111111111',
             name: 'Test Tenant',
             status: 'active',
             plan: 'premium', // CRITICAL: satisfies requirePremium
             subscription_status: 'active'
         };
-        next();
+        req.tenant = tenant;
+        dbStore.run({
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            tenantToken: req.headers['x-company-token'] || 'toctou-tenant',
+            User,
+            PendingAIAction,
+            AIConversation,
+            Item
+        }, next);
     },
     invalidateTenantLookupCache: jest.fn()
 }));
@@ -71,7 +83,11 @@ describe('TOCTOU Integration Test', () => {
         jest.clearAllMocks();
 
         // Reset Database completely for each test
-        await sequelize.sync({ force: true });
+        await sequelize.sync();
+        await PendingAIAction.destroy({ where: {} }).catch(() => null);
+        await AIConversation.destroy({ where: {} }).catch(() => null);
+        await Item.destroy({ where: { sku_code: { [Op.like]: 'TOCTOU-%' } } }).catch(() => null);
+        await User.destroy({ where: { email: 'admin@test.com' } }).catch(() => null);
 
         // Create Admin User
         // Give them necessary permissions to bypass middleware
@@ -81,10 +97,14 @@ describe('TOCTOU Integration Test', () => {
             password_hash: 'hash',
             role: 'admin',
             is_active: true,
-            permissions: ['ai:action', 'ai:chat'] // Allow access to endpoint
+            permissions: [
+                'ai:action',
+                'ai:chat',
+                PERMISSIONS.INVENTORY.actions.DELETE_ITEMS
+            ] // Allow endpoint access and the confirmed delete_item tool.
         });
 
-        adminToken = generateToken(adminUser);
+        adminToken = generateToken(adminUser, { tenantId: '11111111-1111-4111-8111-111111111111' });
         conversationId = uuidv4();
 
         // Create a conversation

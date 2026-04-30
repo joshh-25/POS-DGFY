@@ -24,7 +24,10 @@ const mockHandlers = {
         }
     })),
     cancelOrder: jest.fn((req, res) => res.status(200).json({ success: true })),
-    listStoreCustomerOrders: jest.fn((req, res) => res.status(200).json({ success: true }))
+    listStoreCustomerOrders: jest.fn((req, res) => res.status(200).json({ success: true })),
+    getStorefrontFollowStatus: jest.fn((req, res) => res.status(200).json({ success: true })),
+    followStorefront: jest.fn((req, res) => res.status(200).json({ success: true })),
+    unfollowStorefront: jest.fn((req, res) => res.status(200).json({ success: true }))
 };
 
 jest.unstable_mockModule('../src/controllers/storeController.js', () => mockHandlers);

@@ -309,8 +309,14 @@ export const acceptInvitation = async (req, res, next) => {
             user_id: result.data.user_id,
             username: result.data.username,
             email: result.data.email,
-            role: result.data.role
-          }
+            role: result.data.role,
+            permissions: result.data.permissions || [],
+            is_master_admin: result.data.is_master_admin || false
+          },
+          token: result.data.token,
+          refreshToken: result.data.refreshToken,
+          expiresIn: result.data.expiresIn,
+          company: result.data.company || null
         },
         message: 'Account created successfully. You are now logged in.',
         timestamp: timestamp()

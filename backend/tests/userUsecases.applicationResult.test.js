@@ -60,7 +60,12 @@ describe('user use-cases application result contract', () => {
     });
 
     const result = await useCase({ adminUserId: 7, email: 'new@example.com', role: 'staff' });
-    expect(createUserInvitation).toHaveBeenCalledWith(7, { email: 'new@example.com', role: 'staff' });
+    expect(createUserInvitation).toHaveBeenCalledWith(7, {
+      email: 'new@example.com',
+      role: 'staff',
+      location_ids: [],
+      delivery_mode: 'email'
+    });
     expect(result).toEqual({
       success: true,
       data: { user_id: 11, email: 'new@example.com' },

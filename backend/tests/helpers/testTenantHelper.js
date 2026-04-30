@@ -12,8 +12,14 @@
  */
 
 import { Sequelize } from 'sequelize';
-import { Tenant, sequelize as landlordSequelize } from '../../src/models/index.js';
+import {
+    Tenant,
+    UserInvitation,
+    UserTenantMapping,
+    sequelize as landlordSequelize
+} from '../../src/models/index.js';
 import { getTenantModels } from '../../src/utils/tenantModelFactory.js';
+import tenantConnector from '../../src/utils/TenantConnector.js';
 import logger from '../../src/config/logger.js';
 
 /**
@@ -77,11 +83,14 @@ export async function createTestTenant(label = 'default') {
  */
 export async function destroyTestTenant({ tenant, dbName, tenantSeq }) {
     try {
+        await tenantConnector.closeConnection(tenant.id);
         await tenantSeq.close();
         await landlordSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+        await UserInvitation.destroy({ where: { tenant_id: tenant.id } }).catch(() => null);
+        await UserTenantMapping.destroy({ where: { tenant_id: tenant.id } }).catch(() => null);
         await Tenant.destroy({ where: { id: tenant.id } });
         logger.info(`[TestTenantHelper] Destroyed test tenant: ${dbName}`);
     } catch (err) {
-        logger.warn(`[TestTenantHelper] Cleanup error for ${dbName}:`, err.message);
+        logger.warn(`[TestTenantHelper] Cleanup error for ${dbName}: ${err.message}`);
     }
 }

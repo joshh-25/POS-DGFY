@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import dbStore from '../utils/dbStore.js';
-import { hashPassword, comparePassword, generateToken } from './authService.js';
+import { hashPassword, comparePassword, generateToken, generateRefreshToken } from './authService.js';
 import * as landlordService from './landlordService.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { ROLE_HIERARCHY, USER_ROLES, isAdminLikeRole } from '../config/userRoles.js';
@@ -48,6 +48,26 @@ const resolveEffectivePermissions = (user) => {
 const hasPermission = (user, permission) => {
   const effectivePermissions = resolveEffectivePermissions(user);
   return effectivePermissions.includes(permission);
+};
+
+const REUSABLE_INVITATION_STATUSES = new Set(['cancelled', 'expired']);
+const RECOVERABLE_INVITATION_STATUSES = new Set(['pending', 'cancelled', 'expired']);
+
+const isReusableInvitationRow = (user) => (
+  user &&
+  !user.is_active &&
+  REUSABLE_INVITATION_STATUSES.has(String(user.invitation_status || '').toLowerCase())
+);
+
+const isInvitationLifecycleRow = (user) => (
+  user &&
+  RECOVERABLE_INVITATION_STATUSES.has(String(user.invitation_status || '').toLowerCase())
+);
+
+const assertAcceptedUserEditable = (user, action) => {
+  if (isInvitationLifecycleRow(user)) {
+    throw createError(`Cannot ${action} until the invitation is accepted`, 409);
+  }
 };
 
 const findVisibleUserById = async (User, userId, queryOptions = {}) => {
@@ -237,11 +257,33 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
  * Excludes users who have been removed from the company (soft-deleted)
  * @returns {Promise<Array>} List of all active users
  */
-export const getAllUsers = async () => {
+export const getAllUsers = async (options = {}) => {
   const User = dbStore.get('User');
+  const includeInvitations = options?.includeInvitations === true;
   const users = await User.findAll({
-    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin'],
-    where: buildVisibleWhere({}), // Exclude removed users
+    attributes: [
+      'user_id',
+      'username',
+      'email',
+      'role',
+      'is_active',
+      'last_login',
+      'created_at',
+      'permissions',
+      'is_master_admin',
+      'invitation_status',
+      'invitation_expires_at',
+      'invitation_delivery_status',
+      'invitation_delivery_error',
+      'invitation_last_sent_at',
+      'invited_by'
+    ],
+    where: buildVisibleWhere(includeInvitations ? {} : {
+      [Op.or]: [
+        { invitation_status: null },
+        { invitation_status: 'accepted' }
+      ]
+    }),
     order: [['created_at', 'DESC']]
   });
 
@@ -254,7 +296,13 @@ export const getAllUsers = async () => {
     last_login: user.last_login,
     created_at: user.created_at,
     permissions: resolveEffectivePermissions(user),
-    is_master_admin: user.is_master_admin
+    is_master_admin: user.is_master_admin,
+    invitation_status: user.invitation_status || null,
+    invitation_expires_at: user.invitation_expires_at || null,
+    invitation_delivery_status: user.invitation_delivery_status || null,
+    invitation_delivery_error: user.invitation_delivery_error || null,
+    invitation_last_sent_at: user.invitation_last_sent_at || null,
+    invited_by: user.invited_by || null
   }));
 };
 
@@ -289,6 +337,8 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
+
+  assertAcceptedUserEditable(targetUser, 'change role');
 
   // Get default permissions for the new role
   const normalizedRole = roleData.role?.toLowerCase();
@@ -361,6 +411,8 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
+
+  assertAcceptedUserEditable(targetUser, 'change status');
 
   validateAdminHierarchy(adminUser, targetUser, 'change status for');
 
@@ -489,6 +541,8 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
     throw notFoundError('Target user not found');
   }
 
+  assertAcceptedUserEditable(targetUser, 'change permissions');
+
   // Prevent revoking your own master admin status if you are the one doing it
   if (adminUserId === parseInt(targetUserId) && isMaster === false) {
     // Optional safety check: allow it for now, but UI should warn
@@ -590,15 +644,7 @@ export const updateUserLocationGrants = async (adminUserId, targetUserId, locati
     throw createError('adminUserId and targetUserId must be positive integers', 400);
   }
 
-  if (!Array.isArray(locationIds)) {
-    throw createError('locationIds must be an array', 400);
-  }
-  const normalizedLocationIds = Array.from(
-    new Set(locationIds.map((value) => parsePositiveInt(value)))
-  );
-  if (normalizedLocationIds.some((value) => !value)) {
-    throw createError('locationIds must only include positive integers', 400);
-  }
+  const normalizedLocationIds = normalizeLocationIds(locationIds);
 
   const [adminUser, targetUser] = await Promise.all([
     findVisibleUserById(User, normalizedAdminUserId),
@@ -616,34 +662,21 @@ export const updateUserLocationGrants = async (adminUserId, targetUserId, locati
     throw createError('Missing users:manage permission', 403);
   }
 
+  assertAcceptedUserEditable(targetUser, 'change location scope');
+
   validateAdminHierarchy(adminUser, targetUser, 'modify location grants for');
 
-  const activeLocations = await TenantLocation.findAll({
-    where: { is_active: true },
-    attributes: ['location_id']
-  });
-  const activeLocationIdSet = new Set(activeLocations.map((location) => Number(location.location_id)));
-  const invalidLocationIds = normalizedLocationIds.filter((locationId) => !activeLocationIdSet.has(Number(locationId)));
-  if (invalidLocationIds.length > 0) {
-    throw createError(`Invalid or inactive location ids: ${invalidLocationIds.join(', ')}`, 422);
-  }
+  await validateActiveLocationIds(normalizedLocationIds);
 
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
   const transaction = await sequelize.transaction();
   try {
-    await UserLocationGrant.destroy({
-      where: { user_id: normalizedTargetUserId },
-      transaction
-    });
-
-    if (normalizedLocationIds.length > 0) {
-      const rows = normalizedLocationIds.map((locationId) => ({
-        user_id: normalizedTargetUserId,
-        location_id: Number(locationId),
-        created_by: normalizedAdminUserId
-      }));
-      await UserLocationGrant.bulkCreate(rows, { transaction });
-    }
+    await replaceUserLocationGrants(
+      normalizedTargetUserId,
+      normalizedLocationIds,
+      transaction,
+      normalizedAdminUserId
+    );
 
     await transaction.commit();
   } catch (error) {
@@ -666,6 +699,46 @@ const generateInvitationToken = () => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+const hashInvitationToken = (token) => landlordService.hashInvitationToken(token);
+
+const buildInviteAcceptanceUrl = ({ token }) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const params = new URLSearchParams({ token });
+  return `${appUrl}/accept-invite?${params.toString()}`;
+};
+
+const resolveInviteDelivery = async ({ email, inviterName, role, invitationToken, tenantName }) => {
+  if (!emailService.isEmailConfigured()) {
+    return {
+      emailSent: false,
+      deliveryStatus: 'not_configured',
+      deliveryError: 'Email service is not configured'
+    };
+  }
+
+  try {
+    await emailService.sendInvitationEmail({
+      email,
+      inviterName,
+      role,
+      invitationToken,
+      tenantName
+    });
+    return {
+      emailSent: true,
+      deliveryStatus: 'sent',
+      deliveryError: null
+    };
+  } catch (emailError) {
+    console.warn('Failed to send invitation email:', emailError.message);
+    return {
+      emailSent: false,
+      deliveryStatus: 'failed',
+      deliveryError: emailError.message || 'Email delivery failed'
+    };
+  }
+};
+
 /**
  * Helper function to create standardized errors
  */
@@ -673,6 +746,109 @@ const createError = (message, statusCode) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const normalizeLocationIds = (locationIds = []) => {
+  if (!Array.isArray(locationIds)) {
+    throw createError('locationIds must be an array', 400);
+  }
+
+  const normalizedLocationIds = Array.from(
+    new Set(locationIds.map((value) => parsePositiveInt(value)))
+  );
+  if (normalizedLocationIds.some((value) => !value)) {
+    throw createError('locationIds must only include positive integers', 400);
+  }
+  return normalizedLocationIds;
+};
+
+const validateActiveLocationIds = async (locationIds = []) => {
+  const normalizedLocationIds = normalizeLocationIds(locationIds);
+  if (normalizedLocationIds.length === 0) return normalizedLocationIds;
+
+  const TenantLocation = dbStore.get('TenantLocation');
+  if (!TenantLocation) {
+    throw createError('Location models are unavailable in this tenant context', 500);
+  }
+
+  const activeLocations = await TenantLocation.findAll({
+    where: { is_active: true },
+    attributes: ['location_id']
+  });
+  const activeLocationIdSet = new Set(activeLocations.map((location) => Number(location.location_id)));
+  const invalidLocationIds = normalizedLocationIds.filter((locationId) => !activeLocationIdSet.has(Number(locationId)));
+  if (invalidLocationIds.length > 0) {
+    throw createError(`Invalid or inactive location ids: ${invalidLocationIds.join(', ')}`, 422);
+  }
+
+  return normalizedLocationIds;
+};
+
+const replaceUserLocationGrants = async (userId, locationIds = [], transaction = null, createdBy = null) => {
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
+  if (!UserLocationGrant) {
+    throw createError('Location grant models are unavailable in this tenant context', 500);
+  }
+
+  await UserLocationGrant.destroy({
+    where: { user_id: userId },
+    ...(transaction ? { transaction } : {})
+  });
+
+  if (locationIds.length > 0) {
+    await UserLocationGrant.bulkCreate(
+      locationIds.map((locationId) => ({
+        user_id: userId,
+        location_id: Number(locationId),
+        ...(createdBy ? { created_by: createdBy } : {})
+      })),
+      transaction ? { transaction } : {}
+    );
+  }
+};
+
+const writeInvitationRegistryOrThrow = async ({
+  tenantId,
+  tenantUserId,
+  email,
+  role,
+  token,
+  status = 'pending',
+  deliveryStatus = 'not_configured',
+  deliveryError = null,
+  invitedByUserId,
+  invitedByName,
+  expiresAt,
+  lastSentAt = null
+}) => {
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId || normalizedTenantId === 'default') {
+    return null;
+  }
+
+  try {
+    return await landlordService.upsertUserInvitationRegistry({
+      tenantId: normalizedTenantId,
+      tenantUserId,
+      email,
+      role,
+      token,
+      status,
+      deliveryStatus,
+      deliveryError,
+      invitedByUserId,
+      invitedByName,
+      expiresAt,
+      lastSentAt
+    });
+  } catch (registryError) {
+    logger.error('[UserService] Failed to write user invitation registry', {
+      tenantId: normalizedTenantId,
+      user_id: tenantUserId,
+      error: registryError.message
+    });
+    throw createError('Could not create a usable invitation link. Please try again.', 500);
+  }
 };
 
 /**
@@ -720,8 +896,15 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
  * @returns {Promise<Object>} Invitation result
  */
 export const createUserInvitation = async (adminUserId, invitationData) => {
-  const { email, role: rawRole } = invitationData;
+  const {
+    email: rawEmail,
+    role: rawRole,
+    location_ids: locationIds = [],
+    delivery_mode: deliveryMode = 'email'
+  } = invitationData;
+  const email = String(rawEmail || '').trim().toLowerCase();
   const role = rawRole?.toLowerCase() || 'staff';
+  const normalizedDeliveryMode = ['email', 'manual'].includes(deliveryMode) ? deliveryMode : 'email';
   if (!USER_ROLES.includes(role)) {
     throw createError(`Invalid role: ${rawRole}`, 422);
   }
@@ -744,12 +927,14 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
 
   // Check if email already exists
   const existingUser = await User.findOne({ where: { email } });
-  if (existingUser) {
+  if (existingUser && !existingUser.deleted_at && !isReusableInvitationRow(existingUser)) {
     if (existingUser.invitation_status === 'pending') {
       throw createError('An invitation has already been sent to this email', 409);
     }
     throw createError('A user with this email already exists', 409);
   }
+
+  const normalizedLocationIds = await validateActiveLocationIds(locationIds);
 
   // Generate invitation token
   const invitationToken = generateInvitationToken();
@@ -758,42 +943,111 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   // Get default permissions for role
   const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[role] || [];
 
-  // Create pending user record
-  const newUser = await User.create({
+  const tokenHash = hashInvitationToken(invitationToken);
+  const inviteCore = {
     username: `pending_${Date.now()}`, // Temporary, will be updated on accept
     email,
     password_hash: 'PENDING_INVITATION', // Placeholder, will be set on accept
     role,
     permissions: defaultPermissions,
     is_active: false,
-    invitation_token: invitationToken,
+    invitation_token: tokenHash,
     invitation_expires_at: expiresAt,
     invited_by: adminUserId,
-    invitation_status: 'pending'
-  });
+    invitation_status: 'pending',
+    invitation_delivery_status: normalizedDeliveryMode === 'manual' ? 'manual_link' : 'not_configured',
+    invitation_delivery_error: null,
+    invitation_last_sent_at: null,
+    invitation_accepted_at: null,
+    invitation_cancelled_at: null,
+    invitation_cancelled_by: null,
+    deleted_at: null,
+    deleted_by: null
+  };
+
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  let newUser;
+  try {
+    if (existingUser?.deleted_at || isReusableInvitationRow(existingUser)) {
+      await existingUser.update(inviteCore, { transaction });
+      newUser = existingUser;
+    } else {
+      newUser = await User.create(inviteCore, { transaction });
+    }
+    await replaceUserLocationGrants(newUser.user_id, normalizedLocationIds, transaction, adminUserId);
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
 
   // Get tenant name for email
   const store = dbStore.getStore();
-  const tenantName = store?.tenantName || 'SKU Inventory Manager';
-  const tenantToken = String(store?.tenantToken || '').trim() || null;
+  const tenantName = store?.tenantName || 'SKUpervisor';
+  const tenantId = String(store?.tenantId || '').trim() || null;
 
-  // Send invitation email (if email service is configured)
-  let emailSent = false;
-  if (emailService.isEmailConfigured()) {
-    try {
-      await emailService.sendInvitationEmail({
-        email,
-        inviterName: adminUser.username,
-        role,
-        invitationToken,
-        tenantName,
-        companyToken: tenantToken
+  try {
+    await writeInvitationRegistryOrThrow({
+      tenantId,
+      tenantUserId: newUser.user_id,
+      email,
+      role,
+      token: invitationToken,
+      status: 'pending',
+      deliveryStatus: normalizedDeliveryMode === 'manual' ? 'manual_link' : 'not_configured',
+      invitedByUserId: adminUserId,
+      invitedByName: adminUser.username,
+      expiresAt
+    });
+  } catch (error) {
+    const cancelledAt = new Date();
+    await newUser.update({
+      invitation_token: null,
+      invitation_status: 'cancelled',
+      invitation_delivery_status: 'failed',
+      invitation_delivery_error: error.message,
+      invitation_cancelled_at: cancelledAt,
+      invitation_cancelled_by: adminUserId
+    }).catch(() => {});
+    throw error;
+  }
+
+  const delivery = normalizedDeliveryMode === 'manual'
+    ? { emailSent: false, deliveryStatus: 'manual_link', deliveryError: null }
+    : await resolveInviteDelivery({
+      email,
+      inviterName: adminUser.username,
+      role,
+      invitationToken,
+      tenantName
+    });
+
+  const lastSentAt = delivery.emailSent ? new Date() : null;
+  await newUser.update({
+    invitation_delivery_status: delivery.deliveryStatus,
+    invitation_delivery_error: delivery.deliveryError,
+    invitation_last_sent_at: lastSentAt
+  });
+
+  if (tenantId && tenantId !== 'default') {
+    await landlordService.updateInvitationRegistryByTenantUser({
+      tenantId,
+      tenantUserId: newUser.user_id,
+      updates: {
+        delivery_status: delivery.deliveryStatus,
+        delivery_error: delivery.deliveryError,
+        last_sent_at: lastSentAt
+      }
+    }).catch((registryError) => {
+      logger.warn('[UserService] Failed to update invitation delivery status in registry', {
+        tenantId,
+        user_id: newUser.user_id,
+        error: registryError.message
       });
-      emailSent = true;
-    } catch (emailError) {
-      console.warn('Failed to send invitation email:', emailError.message);
-      // Don't fail the invitation creation, just note email wasn't sent
-    }
+    });
   }
 
   return {
@@ -802,9 +1056,11 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     role: newUser.role,
     invitation_status: 'pending',
     expires_at: expiresAt,
-    email_sent: emailSent,
-    invitation_token: emailSent ? undefined : invitationToken, // Only return token if email failed
-    company_token: tenantToken || undefined
+    email_sent: delivery.emailSent,
+    delivery_status: delivery.deliveryStatus,
+    delivery_error: delivery.deliveryError,
+    invitation_url: !delivery.emailSent ? buildInviteAcceptanceUrl({ token: invitationToken }) : undefined,
+    invitation_token: !delivery.emailSent ? invitationToken : undefined
   };
 };
 
@@ -818,11 +1074,15 @@ export const acceptInvitation = async (token, userData) => {
   const { username, password } = userData;
 
   const User = dbStore.get('User');
+  const tokenHash = hashInvitationToken(token);
 
   // Find user by invitation token
   const user = await User.findOne({
     where: {
-      invitation_token: token,
+      [Op.or]: [
+        { invitation_token: tokenHash },
+        { invitation_token: token }
+      ],
       invitation_status: 'pending'
     }
   });
@@ -834,6 +1094,14 @@ export const acceptInvitation = async (token, userData) => {
   // Check if invitation has expired
   if (new Date() > new Date(user.invitation_expires_at)) {
     await user.update({ invitation_status: 'expired' });
+    const tenantId = dbStore.getStore()?.tenantId;
+    if (tenantId) {
+      await landlordService.updateInvitationRegistryByTenantUser({
+        tenantId,
+        tenantUserId: user.user_id,
+        updates: { status: 'expired' }
+      }).catch(() => {});
+    }
     throw createError('Invitation has expired. Please request a new invitation.', 400);
   }
 
@@ -858,7 +1126,8 @@ export const acceptInvitation = async (token, userData) => {
     password_hash,
     is_active: true,
     invitation_token: null,
-    invitation_status: 'accepted'
+    invitation_status: 'accepted',
+    invitation_accepted_at: new Date()
   });
 
   // Add email-tenant mapping
@@ -870,7 +1139,31 @@ export const acceptInvitation = async (token, userData) => {
     } catch (mappingError) {
       console.warn('Failed to add email-tenant mapping:', mappingError.message);
     }
+    await landlordService.updateInvitationRegistryByTenantUser({
+      tenantId,
+      tenantUserId: user.user_id,
+      updates: {
+        status: 'accepted',
+        accepted_at: new Date()
+      }
+    }).catch(() => {});
   }
+
+  if (emailService.isEmailConfigured()) {
+    emailService.sendWelcomeEmail({
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      tenantName: dbStore.getStore()?.tenantName || 'SKUpervisor'
+    }).catch((error) => logger.warn('[UserService] Failed to send welcome email', {
+      user_id: user.user_id,
+      error: error.message
+    }));
+  }
+
+  const tokenTenantId = String(tenantId || '').trim();
+  const authToken = generateToken(user, { tenantId: tokenTenantId });
+  const refreshToken = generateRefreshToken(user, { tenantId: tokenTenantId });
 
   return {
     user_id: user.user_id,
@@ -878,7 +1171,15 @@ export const acceptInvitation = async (token, userData) => {
     email: user.email,
     role: user.role,
     permissions: user.permissions,
-    is_master_admin: user.is_master_admin
+    is_master_admin: user.is_master_admin,
+    token: authToken,
+    refreshToken,
+    expiresIn: 24 * 60 * 60,
+    company: {
+      id: tenantId || null,
+      name: dbStore.getStore()?.tenantName || null,
+      token: dbStore.getStore()?.tenantToken || null
+    }
   };
 };
 
@@ -889,13 +1190,17 @@ export const acceptInvitation = async (token, userData) => {
  */
 export const validateInvitationToken = async (token) => {
   const User = dbStore.get('User');
+  const tokenHash = hashInvitationToken(token);
 
   const user = await User.findOne({
     where: {
-      invitation_token: token,
+      [Op.or]: [
+        { invitation_token: tokenHash },
+        { invitation_token: token }
+      ],
       invitation_status: 'pending'
     },
-    attributes: ['email', 'role', 'invitation_expires_at']
+    attributes: ['user_id', 'email', 'role', 'invitation_expires_at', 'invited_by']
   });
 
   if (!user) {
@@ -903,14 +1208,245 @@ export const validateInvitationToken = async (token) => {
   }
 
   if (new Date() > new Date(user.invitation_expires_at)) {
+    await user.update({ invitation_status: 'expired' });
+    const tenantId = dbStore.getStore()?.tenantId;
+    if (tenantId) {
+      await landlordService.updateInvitationRegistryByTenantUser({
+        tenantId,
+        tenantUserId: user.user_id,
+        updates: { status: 'expired' }
+      }).catch(() => {});
+    }
     throw createError('Invitation has expired', 400);
+  }
+
+  const registryInvitation = await landlordService.findInvitationByToken(token, { status: 'pending' }).catch(() => null);
+  let inviterName = registryInvitation?.invited_by_name || null;
+  if (!inviterName && user.invited_by) {
+    const inviter = await User.findByPk(user.invited_by, { attributes: ['username'] }).catch(() => null);
+    inviterName = inviter?.username || null;
   }
 
   return {
     email: user.email,
     role: user.role,
     expires_at: user.invitation_expires_at,
-    tenantName: dbStore.getStore()?.tenantName || null
+    tenantName: dbStore.getStore()?.tenantName || null,
+    inviter_user_id: user.invited_by || null,
+    inviter_name: inviterName
+  };
+};
+
+export const resendUserInvitation = async (adminUserId, targetUserId) => {
+  const User = dbStore.get('User');
+  const [adminUser, inviteUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!inviteUser || !RECOVERABLE_INVITATION_STATUSES.has(String(inviteUser.invitation_status || '').toLowerCase())) {
+    throw createError('Recoverable invitation not found', 404);
+  }
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  validateAdminHierarchy(adminUser, null, 'resend invitation for', inviteUser.role);
+
+  const invitationToken = generateInvitationToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const tenantName = dbStore.getStore()?.tenantName || 'SKUpervisor';
+  const tenantId = dbStore.getStore()?.tenantId;
+  const previousInvitationState = {
+    invitation_token: inviteUser.invitation_token,
+    invitation_expires_at: inviteUser.invitation_expires_at,
+    invitation_status: inviteUser.invitation_status,
+    invitation_delivery_status: inviteUser.invitation_delivery_status,
+    invitation_delivery_error: inviteUser.invitation_delivery_error,
+    invitation_last_sent_at: inviteUser.invitation_last_sent_at,
+    invitation_cancelled_at: inviteUser.invitation_cancelled_at,
+    invitation_cancelled_by: inviteUser.invitation_cancelled_by
+  };
+
+  await inviteUser.update({
+    invitation_token: hashInvitationToken(invitationToken),
+    invitation_expires_at: expiresAt,
+    invitation_status: 'pending',
+    invitation_delivery_status: 'not_configured',
+    invitation_delivery_error: null,
+    invitation_last_sent_at: null,
+    invitation_cancelled_at: null,
+    invitation_cancelled_by: null
+  });
+
+  try {
+    await writeInvitationRegistryOrThrow({
+      tenantId,
+      tenantUserId: inviteUser.user_id,
+      email: inviteUser.email,
+      role: inviteUser.role,
+      token: invitationToken,
+      status: 'pending',
+      deliveryStatus: 'not_configured',
+      invitedByUserId: adminUserId,
+      invitedByName: adminUser.username,
+      expiresAt
+    });
+  } catch (error) {
+    await inviteUser.update(previousInvitationState).catch(() => {});
+    throw error;
+  }
+
+  const delivery = await resolveInviteDelivery({
+    email: inviteUser.email,
+    inviterName: adminUser.username,
+    role: inviteUser.role,
+    invitationToken,
+    tenantName
+  });
+  const lastSentAt = delivery.emailSent ? new Date() : null;
+
+  await inviteUser.update({
+    invitation_delivery_status: delivery.deliveryStatus,
+    invitation_delivery_error: delivery.deliveryError,
+    invitation_last_sent_at: lastSentAt
+  });
+
+  if (tenantId && tenantId !== 'default') {
+    await landlordService.updateInvitationRegistryByTenantUser({
+      tenantId,
+      tenantUserId: inviteUser.user_id,
+      updates: {
+        delivery_status: delivery.deliveryStatus,
+        delivery_error: delivery.deliveryError,
+        last_sent_at: lastSentAt
+      }
+    }).catch(() => {});
+  }
+
+  return {
+    user_id: inviteUser.user_id,
+    email: inviteUser.email,
+    role: inviteUser.role,
+    expires_at: expiresAt,
+    email_sent: delivery.emailSent,
+    delivery_status: delivery.deliveryStatus,
+    delivery_error: delivery.deliveryError,
+    invitation_url: !delivery.emailSent ? buildInviteAcceptanceUrl({ token: invitationToken }) : undefined,
+    invitation_token: !delivery.emailSent ? invitationToken : undefined
+  };
+};
+
+export const createInvitationManualLink = async (adminUserId, targetUserId) => {
+  const User = dbStore.get('User');
+  const [adminUser, inviteUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!inviteUser || !RECOVERABLE_INVITATION_STATUSES.has(String(inviteUser.invitation_status || '').toLowerCase())) {
+    throw createError('Recoverable invitation not found', 404);
+  }
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  validateAdminHierarchy(adminUser, null, 'create invitation link for', inviteUser.role);
+
+  const invitationToken = generateInvitationToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const previousInvitationState = {
+    invitation_token: inviteUser.invitation_token,
+    invitation_expires_at: inviteUser.invitation_expires_at,
+    invitation_status: inviteUser.invitation_status,
+    invitation_delivery_status: inviteUser.invitation_delivery_status,
+    invitation_delivery_error: inviteUser.invitation_delivery_error,
+    invitation_cancelled_at: inviteUser.invitation_cancelled_at,
+    invitation_cancelled_by: inviteUser.invitation_cancelled_by
+  };
+
+  await inviteUser.update({
+    invitation_token: hashInvitationToken(invitationToken),
+    invitation_expires_at: expiresAt,
+    invitation_status: 'pending',
+    invitation_delivery_status: 'manual_link',
+    invitation_delivery_error: null,
+    invitation_cancelled_at: null,
+    invitation_cancelled_by: null
+  });
+
+  const tenantId = dbStore.getStore()?.tenantId;
+  try {
+    await writeInvitationRegistryOrThrow({
+      tenantId,
+      tenantUserId: inviteUser.user_id,
+      email: inviteUser.email,
+      role: inviteUser.role,
+      token: invitationToken,
+      status: 'pending',
+      deliveryStatus: 'manual_link',
+      invitedByUserId: adminUserId,
+      invitedByName: adminUser.username,
+      expiresAt
+    });
+  } catch (error) {
+    await inviteUser.update(previousInvitationState).catch(() => {});
+    throw error;
+  }
+
+  return {
+    user_id: inviteUser.user_id,
+    email: inviteUser.email,
+    role: inviteUser.role,
+    expires_at: expiresAt,
+    delivery_status: 'manual_link',
+    invitation_url: buildInviteAcceptanceUrl({ token: invitationToken }),
+    invitation_token: invitationToken
+  };
+};
+
+export const cancelUserInvitation = async (adminUserId, targetUserId) => {
+  const User = dbStore.get('User');
+  const [adminUser, inviteUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!inviteUser || inviteUser.invitation_status !== 'pending') {
+    throw createError('Pending invitation not found', 404);
+  }
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  validateAdminHierarchy(adminUser, null, 'cancel invitation for', inviteUser.role);
+
+  const cancelledAt = new Date();
+  await inviteUser.update({
+    invitation_token: null,
+    invitation_status: 'cancelled',
+    invitation_cancelled_at: cancelledAt,
+    invitation_cancelled_by: adminUserId,
+    is_active: false
+  });
+
+  const tenantId = dbStore.getStore()?.tenantId;
+  if (tenantId) {
+    await landlordService.updateInvitationRegistryByTenantUser({
+      tenantId,
+      tenantUserId: inviteUser.user_id,
+      updates: {
+        status: 'cancelled',
+        cancelled_at: cancelledAt,
+        cancelled_by_user_id: adminUserId
+      }
+    }).catch(() => {});
+  }
+
+  return {
+    user_id: inviteUser.user_id,
+    email: inviteUser.email,
+    invitation_status: 'cancelled'
   };
 };
 
@@ -948,6 +1484,8 @@ export const updateUserPermissionsAI = async (adminUserId, targetUserId, permiss
   if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
+
+  assertAcceptedUserEditable(targetUser, 'change permissions');
 
   // Validate hierarchy
   validateAdminHierarchy(adminUser, targetUser, 'modify permissions for');
@@ -1035,7 +1573,10 @@ export const importUsersFromCSV = async (userData, adminUserId) => {
       results.invited.push({
         email: row.email,
         role,
-        email_sent: result.email_sent
+        email_sent: result.email_sent,
+        delivery_status: result.delivery_status,
+        delivery_error: result.delivery_error || null,
+        invitation_url: result.invitation_url || null
       });
     } catch (error) {
       if (error.statusCode === 409) {

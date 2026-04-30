@@ -3,12 +3,14 @@ import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { PERMISSIONS } from '../src/config/permissions.js';
+import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 describe('Purchase Order API', () => {
     let token;
     let userId;
     let supplierId;
     let itemId;
+    let tenantCtx;
 
     beforeAll(async () => {
         await sequelize.authenticate();
@@ -18,8 +20,15 @@ describe('Purchase Order API', () => {
         await sequelize.close();
     });
 
+    afterEach(async () => {
+        if (tenantCtx) {
+            await destroyTestTenant(tenantCtx);
+            tenantCtx = null;
+        }
+    });
+
     beforeEach(async () => {
-        await sequelize.sync({ force: true });
+        tenantCtx = await createTestTenant('po');
 
         const stamp = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         const userData = {
@@ -30,10 +39,11 @@ describe('Purchase Order API', () => {
 
         await request(app)
             .post('/api/v1/auth/register')
+            .set('x-company-token', tenantCtx.token)
             .send(userData)
             .expect(201);
 
-        await db.User.update(
+        await tenantCtx.models.User.update(
             {
                 role: 'manager',
                 permissions: [PERMISSIONS.ORDERS.actions.CREATE_PO]
@@ -43,6 +53,7 @@ describe('Purchase Order API', () => {
 
         const loginRes = await request(app)
             .post('/api/v1/auth/login')
+            .set('x-company-token', tenantCtx.token)
             .send({
                 email: userData.email,
                 password: userData.password
@@ -52,7 +63,7 @@ describe('Purchase Order API', () => {
         token = loginRes.body.data.token;
         userId = loginRes.body.data.user_id;
 
-        const supplier = await db.Supplier.create({
+        const supplier = await tenantCtx.models.Supplier.create({
             name: `Test Supplier ${stamp}`,
             contact_person: 'Jane Doe',
             email: `supplier-${stamp}@example.com`,
@@ -61,7 +72,7 @@ describe('Purchase Order API', () => {
         });
         supplierId = supplier.supplier_id;
 
-        const item = await db.Item.create({
+        const item = await tenantCtx.models.Item.create({
             sku_code: `RM-${stamp}`,
             name: `Test Raw Material ${stamp}`,
             category: 'raw_material',
@@ -95,6 +106,7 @@ describe('Purchase Order API', () => {
 
             const response = await request(app)
                 .post('/api/v1/purchase-orders')
+                .set('x-company-token', tenantCtx.token)
                 .set('Authorization', `Bearer ${token}`)
                 .send(poData)
                 .expect(201);
@@ -122,6 +134,7 @@ describe('Purchase Order API', () => {
 
             const response = await request(app)
                 .post('/api/v1/purchase-orders')
+                .set('x-company-token', tenantCtx.token)
                 .set('Authorization', `Bearer ${token}`)
                 .send(draftData)
                 .expect(201);
@@ -139,6 +152,7 @@ describe('Purchase Order API', () => {
 
             const response = await request(app)
                 .post('/api/v1/purchase-orders')
+                .set('x-company-token', tenantCtx.token)
                 .set('Authorization', `Bearer ${token}`)
                 .send(invalidData)
                 .expect(422);
@@ -149,7 +163,7 @@ describe('Purchase Order API', () => {
 
     describe('GET /api/v1/purchase-orders', () => {
         beforeEach(async () => {
-            await db.PurchaseOrder.create({
+            await tenantCtx.models.PurchaseOrder.create({
                 supplier_id: supplierId,
                 order_date: new Date(),
                 po_number: 'PO-TEST-EXISTING',
@@ -164,6 +178,7 @@ describe('Purchase Order API', () => {
         it('should retrieve a list of purchase orders', async () => {
             const response = await request(app)
                 .get('/api/v1/purchase-orders')
+                .set('x-company-token', tenantCtx.token)
                 .set('Authorization', `Bearer ${token}`)
                 .expect(200);
 

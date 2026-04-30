@@ -192,6 +192,12 @@ export const inviteUserSchema = Joi.object({
   role: Joi.string().valid(...USER_ROLES).required().messages({
     'any.only': `Role must be one of: ${USER_ROLES.join(', ')}`,
     'any.required': 'Role is required'
+  }),
+  location_ids: Joi.array().items(Joi.number().integer().positive()).optional().default([]).messages({
+    'array.base': 'location_ids must be an array'
+  }),
+  delivery_mode: Joi.string().valid('email', 'manual').optional().default('email').messages({
+    'any.only': 'delivery_mode must be one of: email, manual'
   })
 });
 

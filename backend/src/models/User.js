@@ -65,8 +65,36 @@ const User = sequelize.define('User', {
     }
   },
   invitation_status: {
-    type: DataTypes.ENUM('pending', 'accepted', 'expired'),
+    type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled'),
     allowNull: true
+  },
+  invitation_delivery_status: {
+    type: DataTypes.ENUM('not_configured', 'sent', 'failed', 'manual_link'),
+    allowNull: true
+  },
+  invitation_delivery_error: {
+    type: DataTypes.STRING(500),
+    allowNull: true
+  },
+  invitation_last_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  invitation_accepted_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  invitation_cancelled_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  invitation_cancelled_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'user_id'
+    }
   },
   // Soft delete fields for "Remove from Company" feature
   deleted_at: {

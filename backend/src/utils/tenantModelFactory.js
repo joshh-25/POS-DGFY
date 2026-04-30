@@ -37,7 +37,7 @@ export const getTenantModels = (sequelize) => {
         'PosZReadingSnapshot', 'PosOperationReplay',
         'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
         'TenantLocation', 'StoreCustomer', 'StoreCustomerAddress',
-        'ItemLocationStock'
+        'ItemLocationStock', 'UserLocationGrant'
     ];
 
     // Re-define each model on the new connection

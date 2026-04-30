@@ -13,6 +13,9 @@ export {
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
+  resendUserInvitation,
+  createInvitationManualLink,
+  cancelUserInvitation,
   removeUserFromCompany
 } from '../modules/users/controllers/userHandlers.js';
 
@@ -27,6 +30,9 @@ import {
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
+  resendUserInvitation,
+  createInvitationManualLink,
+  cancelUserInvitation,
   removeUserFromCompany
 } from '../modules/users/controllers/userHandlers.js';
 
@@ -41,5 +47,8 @@ export default {
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
+  resendUserInvitation,
+  createInvitationManualLink,
+  cancelUserInvitation,
   removeUserFromCompany
 };

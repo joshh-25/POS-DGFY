@@ -20,6 +20,7 @@
 import request from 'supertest';
 import app from '../src/server.js';
 import db from '../src/models/index.js';
+import dbStore from '../src/utils/dbStore.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
@@ -27,6 +28,7 @@ import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.
 let managerToken;   // JWT for a 'manager' user (has CREATE_ADJUSTMENT permission)
 let viewerToken;    // JWT for a 'viewer' user (no write permissions)
 let managerId;
+let defaultTenantCtx;
 
 const TIMESTAMP = Date.now();
 const TODAY = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
@@ -34,6 +36,7 @@ const TODAY = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 // ─── Setup ────────────────────────────────────────────────────────────────────
 beforeAll(async () => {
     await db.sequelize.authenticate();
+    defaultTenantCtx = await createTestTenant('void');
 
     // ------------------------------------------------------------------
     // 1. Create + promote a Manager (has STOCK.CREATE_ADJUSTMENT perm)
@@ -43,8 +46,11 @@ beforeAll(async () => {
         email: `void_mgr_${TIMESTAMP}@test.com`,
         password: 'Manager123!'
     };
-    await request(app).post('/api/v1/auth/register').send(managerCreds);
-    await db.User.update(
+    await request(app)
+        .post('/api/v1/auth/register')
+        .set('x-company-token', defaultTenantCtx.token)
+        .send(managerCreds);
+    await defaultTenantCtx.models.User.update(
         {
             role: 'manager',
             // checkPermission reads from the permissions DB column, not the role name.
@@ -55,6 +61,7 @@ beforeAll(async () => {
 
     const managerLogin = await request(app)
         .post('/api/v1/auth/login')
+        .set('x-company-token', defaultTenantCtx.token)
         .send({ email: managerCreds.email, password: managerCreds.password });
 
     managerToken = managerLogin.body.data?.token;
@@ -68,8 +75,11 @@ beforeAll(async () => {
         email: `void_viewer_${TIMESTAMP}@test.com`,
         password: 'Viewer123!'
     };
-    await request(app).post('/api/v1/auth/register').send(viewerCreds);
-    await db.User.update(
+    await request(app)
+        .post('/api/v1/auth/register')
+        .set('x-company-token', defaultTenantCtx.token)
+        .send(viewerCreds);
+    await defaultTenantCtx.models.User.update(
         {
             role: 'staff',
             permissions: JSON.stringify(DEFAULT_ROLE_PERMISSIONS.staff)
@@ -79,21 +89,26 @@ beforeAll(async () => {
 
     const viewerLogin = await request(app)
         .post('/api/v1/auth/login')
+        .set('x-company-token', defaultTenantCtx.token)
         .send({ email: viewerCreds.email, password: viewerCreds.password });
 
     viewerToken = viewerLogin.body.data?.token;
 });
 
 afterAll(async () => {
-    await db.BatchTransaction.destroy({ where: {} }).catch(() => { });
-    await db.StockMovement.destroy({ where: {} }).catch(() => { });
-    await db.FIFOBatch.destroy({ where: {} }).catch(() => { });
-    await db.Item.destroy({
+    const models = defaultTenantCtx?.models || db;
+    await models.BatchTransaction.destroy({ where: {} }).catch(() => { });
+    await models.StockMovement.destroy({ where: {} }).catch(() => { });
+    await models.FIFOBatch.destroy({ where: {} }).catch(() => { });
+    await models.Item.destroy({
         where: { sku_code: { [db.Sequelize.Op.like]: `VOID-ST-%${TIMESTAMP}%` } }
     }).catch(() => { });
-    await db.User.destroy({
+    await models.User.destroy({
         where: { email: { [db.Sequelize.Op.like]: `%${TIMESTAMP}@test.com` } }
     }).catch(() => { });
+    if (defaultTenantCtx) {
+        await destroyTestTenant(defaultTenantCtx);
+    }
 
     await db.sequelize.close();
 });
@@ -101,8 +116,17 @@ afterAll(async () => {
 // ─── Helper: create an item + purchase receipt via the service layer directly ─
 async function createReceiptWithBatch({ qty = 100, consumed = 0, sku = null, userId = null } = {}) {
     const { createStockMovement } = await import('../src/services/stockMovementService.js');
+    const ctx = defaultTenantCtx;
+    const storeContext = {
+        sequelize: ctx.tenantSeq,
+        tenantId: ctx.tenant.id,
+        tenantToken: ctx.token,
+        tenantName: ctx.tenant.name,
+        ...ctx.models
+    };
 
-    const item = await db.Item.create({
+    return dbStore.run(storeContext, async () => {
+    const item = await ctx.models.Item.create({
         sku_code: sku || `VOID-ST-${TIMESTAMP}-${Math.random().toString(36).slice(2, 6)}`,
         name: 'Supertest Void Item',
         category: 'raw_material',
@@ -132,6 +156,7 @@ async function createReceiptWithBatch({ qty = 100, consumed = 0, sku = null, use
     }
 
     return { item, receiptMovement };
+    });
 }
 
 /**
@@ -185,6 +210,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${viewerToken}`)
                 .send({ reason: 'Viewer trying to void' });
 
@@ -201,6 +227,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({});
 
@@ -218,6 +245,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: '' });
 
@@ -234,6 +262,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'Attempting to void partially consumed receipt' });
 
@@ -247,6 +276,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'Attempting to void fully consumed receipt' });
 
@@ -260,6 +290,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
         it('returns 404 for a movement ID that does not exist', async () => {
             const res = await request(app)
                 .post('/api/v1/stock-movements/99999999/void')
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'Void non-existent' });
 
@@ -274,12 +305,14 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const firstVoid = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'First void' });
             expect(firstVoid.status).toBe(200);
 
             const secondVoid = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'Second void attempt' });
 
@@ -297,6 +330,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .set('Authorization', `Bearer ${managerToken}`)
                 .send({ reason: 'Supertest happy-path void' });
 
@@ -309,10 +343,10 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
             expect(parseFloat(res.body.data.quantity)).toBe(-40);
             expect(res.body.data.movement_type).toBe('return');
 
-            const updatedItem = await db.Item.findByPk(item.item_id);
+            const updatedItem = await defaultTenantCtx.models.Item.findByPk(item.item_id);
             expect(parseFloat(updatedItem.current_stock)).toBe(0);
 
-            const batch = await db.FIFOBatch.findByPk(receiptMovement.batch_id);
+            const batch = await defaultTenantCtx.models.FIFOBatch.findByPk(receiptMovement.batch_id);
             expect(parseFloat(batch.quantity_consumed)).toBe(40);
         });
     });
@@ -590,10 +624,12 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
             const [r1, r2] = await Promise.all([
                 request(app)
                     .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                    .set('x-company-token', defaultTenantCtx.token)
                     .set('Authorization', `Bearer ${managerToken}`)
                     .send({ reason: 'Concurrent void attempt 1' }),
                 request(app)
                     .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
+                    .set('x-company-token', defaultTenantCtx.token)
                     .set('Authorization', `Bearer ${managerToken}`)
                     .send({ reason: 'Concurrent void attempt 2' })
             ]);
