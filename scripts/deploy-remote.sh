@@ -79,14 +79,22 @@ load_env_file_if_present() {
         return 0
     fi
 
-    while IFS='=' read -r raw_key raw_value; do
-        [[ -z "${raw_key// }" ]] && continue
-        [[ "$raw_key" =~ ^[[:space:]]*# ]] && continue
+    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+        raw_line="${raw_line//$'\r'/}"
+        raw_line="${raw_line#$'\ufeff'}"
+        [[ -z "${raw_line// }" ]] && continue
+        [[ "$raw_line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$raw_line" != *=* ]] && continue
 
         local key
-        key="$(echo "$raw_key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+        key="$(echo "${raw_line%%=*}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+        if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo -e "${YELLOW}Skipping invalid env key in ${env_file}: ${key}${NC}"
+            continue
+        fi
+
         local value
-        value="$(echo "${raw_value:-}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+        value="$(echo "${raw_line#*=}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
 
         # Keep existing exported values intact; fill only unset/empty ones.
         if [[ -z "${!key:-}" ]]; then

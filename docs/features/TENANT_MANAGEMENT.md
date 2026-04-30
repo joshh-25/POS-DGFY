@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-23
+last_reviewed: 2026-04-30
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -172,6 +172,44 @@ Mappings are created automatically when:
 2. A user is invited and accepts their invitation
 
 The `landlordService.js` functions handle mapping CRUD: `addEmailTenantMapping`, `removeEmailTenantMapping`, `updateEmailTenantMapping`, `findTenantsByEmail`.
+
+---
+
+## Company User Invitations
+
+Master admins invite users from **Settings -> Company -> Manage Users**. The current invitation flow is token-first: new invitation links resolve tenant context from a landlord-level invitation registry and do not require `company_token` in the URL. Legacy links with `company` remain accepted only while their underlying tenant invite is still valid.
+
+### Registry And Token Policy
+- The landlord `UserInvitation` registry stores tenant ID, tenant user ID, email, role, token hash, expiry, delivery status, and lifecycle timestamps.
+- New invitation tokens are stored as hashes. Raw tokens are exposed only for explicit admin manual-link actions.
+- Legacy raw-token tenant rows are still supported during acceptance so old pending links can expire naturally.
+- Resending or generating a manual link invalidates the previous token by replacing the token hash and expiry.
+
+### Lifecycle
+Invitation rows use these statuses:
+- `pending`: invite has not been accepted yet.
+- `accepted`: password setup succeeded and the user can log in.
+- `expired`: expiry has passed; acceptance is blocked.
+- `cancelled`: admin cancelled the invite; acceptance is blocked.
+
+Pending, expired, and cancelled invitation rows are non-login rows and cannot be edited through role/status/permission/location-scope controls. Admins must resend, copy a fresh link, cancel, or wait for acceptance.
+
+### Admin UX
+The **Users** tab shows accepted users. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
+- Resend email
+- Copy/generate manual link
+- Cancel invitation
+
+Invite creation supports:
+- `delivery_mode=email`: attempts email delivery; returns manual-link recovery details if SMTP is missing or delivery fails.
+- `delivery_mode=manual`: creates the invite and returns the manual link without attempting SMTP.
+- Optional `location_ids`: invite-time location scope. Operational roles require explicit selection when multiple active locations exist; admin-like roles default to all active locations but remain editable before submission.
+
+### Acceptance UX
+`/accept-invite?token=<token>` validates the token without needing tenant context in the URL. The page shows company, inviter, invite email, role, and expiry before password setup. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `refreshToken`, `expiresIn`, `company`) and immediately signs the invited user into the app.
+
+### Delivery And Recovery Caveat
+The product handles SMTP unavailable or failed delivery as a first-class state and gives the admin a manual link. Real SMTP success still depends on valid provider credentials in the deployed environment.
 
 ---
 

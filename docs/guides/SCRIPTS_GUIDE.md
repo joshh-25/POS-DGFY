@@ -93,6 +93,7 @@ Notes:
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
 - Auto-loads `.env.qa.local` and `.env.qa.secrets.local` (if present) before preflight/gate execution.
+- QA env loading tolerates CRLF line endings, UTF-8 BOM, and values containing `=`; malformed env keys are skipped with a warning.
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
 - Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
