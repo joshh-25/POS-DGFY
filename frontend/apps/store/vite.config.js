@@ -24,6 +24,12 @@ const proxyTargets = {
     target: apiProxyTarget,
     changeOrigin: true,
     secure: false
+  },
+  '/openfreemap': {
+    target: 'https://tiles.openfreemap.org',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/openfreemap/, ''),
+    secure: false
   }
 };
 
@@ -35,12 +41,12 @@ export default defineConfig({
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString())
   },
   server: {
-    port: 5175,
+    port: 5173,
     allowedHosts,
     proxy: proxyTargets
   },
   preview: {
-    port: 5175,
+    port: 5173,
     host: true,
     allowedHosts,
     proxy: proxyTargets
