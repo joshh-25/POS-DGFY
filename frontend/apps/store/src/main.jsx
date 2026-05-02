@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import L from 'leaflet';
+import maplibregl from 'maplibre-gl';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
@@ -14,9 +14,24 @@ import {
   classifyStoreCatalogError,
   normalizeStorefrontErrorMessage
 } from './storefrontErrorMessages.js';
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
+const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
+
+const TILING_SERVER = import.meta.env.DEV
+  ? '/openfreemap/styles/liberty'
+  : `${TILE_BASE}/styles/liberty`;
+
+const tileTransformRequest = import.meta.env.DEV
+  ? (url) => {
+      if (url.startsWith(TILE_BASE)) {
+        return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+      }
+      return { url };
+    }
+  : undefined;
+
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' },
@@ -357,23 +372,21 @@ const getOrCreateStorefrontVisitorId = () => {
   return generated;
 };
 
-const pinIcon = (selected = false) => L.divIcon({
-  className: '',
-  iconSize: [26, 36],
-  iconAnchor: [13, 35],
-  popupAnchor: [0, -30],
-  html: `<div style="position:relative;width:26px;height:36px;display:flex;align-items:center;justify-content:center;">
-    <div style="width:${selected ? 22 : 18}px;height:${selected ? 22 : 18}px;border-radius:999px;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);background:${selected ? 'linear-gradient(135deg,#0f766e,#14b8a6)' : 'linear-gradient(135deg,#334155,#64748b)'};"></div>
-    <div style="position:absolute;bottom:2px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid ${selected ? '#0f766e' : '#334155'};"></div>
-  </div>`
-});
+const makePinElement = (selected = false) => {
+  const size = selected ? 22 : 18;
+  const color = selected ? '#0f766e' : '#334155';
+  const gradient = selected ? 'linear-gradient(135deg,#0f766e,#14b8a6)' : 'linear-gradient(135deg,#334155,#64748b)';
+  const el = document.createElement('div');
+  el.style.cssText = 'position:relative;width:26px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+  el.innerHTML = `<div style="width:${size}px;height:${size}px;border-radius:999px;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);background:${gradient};"></div><div style="position:absolute;bottom:2px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid ${color};"></div>`;
+  return el;
+};
 
-const userLocationIcon = L.divIcon({
-  className: '',
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-  html: '<div style="width:20px;height:20px;border-radius:999px;background:#1d4ed8;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);"></div>'
-});
+const makeUserLocationElement = () => {
+  const el = document.createElement('div');
+  el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1d4ed8;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
+  return el;
+};
 
 function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) {
   const ref = useRef(null);
@@ -383,11 +396,26 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
-    mapRef.current = L.map(ref.current, { zoomControl: true }).setView([DEFAULT_CENTER.latitude, DEFAULT_CENTER.longitude], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(mapRef.current);
+    const map = new maplibregl.Map({
+      container: ref.current,
+      style: TILING_SERVER,
+      transformRequest: tileTransformRequest,
+      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+      zoom: 11,
+      bearing: 60,
+      pitch: 60,
+    });
+    mapRef.current = map;
+
+    map.on('error', (e) => console.error('[MapLibre error]', e));
+    map.on('style.load', () => console.log('[MapLibre] style loaded'));
+    map.on('sourcedata', (e) => console.log('[MapLibre] sourcedata', e.sourceId, e.isSourceLoaded));
+    map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -408,11 +436,15 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
       const highlighted = selectedKey
         ? markerKey === String(selectedKey)
         : store.is_primary_storefront === true;
-      const marker = L.marker([lat, lng], { icon: pinIcon(highlighted) }).addTo(map);
-      marker.bindPopup(createStorePopupNode(store));
-      marker.on('click', () => onSelectStore(store));
+      const el = makePinElement(highlighted);
+      el.addEventListener('click', () => onSelectStore(store));
+      const popup = new maplibregl.Popup({ offset: 25 }).setDOMContent(createStorePopupNode(store));
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .setPopup(popup)
+        .addTo(map);
       markersRef.current.push(marker);
-      bounds.push([lat, lng]);
+      bounds.push([lng, lat]);
     });
 
     if (userMarkerRef.current) {
@@ -423,14 +455,24 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
       const uLat = Number(userLocation.latitude);
       const uLng = Number(userLocation.longitude);
       if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
-        userMarkerRef.current = L.marker([uLat, uLng], { icon: userLocationIcon }).addTo(map);
-        userMarkerRef.current.bindPopup('<strong>Your location</strong>');
-        bounds.push([uLat, uLng]);
+        const el = makeUserLocationElement();
+        userMarkerRef.current = new maplibregl.Marker({ element: el })
+          .setLngLat([uLng, uLat])
+          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
+          .addTo(map);
+        bounds.push([uLng, uLat]);
       }
     }
 
-    if (bounds.length === 1) map.setView(bounds[0], 15, { animate: true });
-    if (bounds.length > 1) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: 15 });
+    if (bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        { padding: 24, maxZoom: 14 }
+      );
+    }
   }, [stores, selectedKey, onSelectStore, userLocation]);
 
   return <div ref={ref} style={{ height: 360, border: '1px solid #d6e2e8', borderRadius: 14 }} />;
@@ -441,15 +483,24 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
 
-  useEffect(() => {
-    if (!ref.current || mapRef.current) return;
-    mapRef.current = L.map(ref.current, { zoomControl: true }).setView([DEFAULT_CENTER.latitude, DEFAULT_CENTER.longitude], 13);
-    mapRef.current.getContainer().style.zIndex = '0';
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(mapRef.current);
-  }, []);
+  // useEffect(() => {
+  //   if (!ref.current || mapRef.current) return;
+  //   const map = new maplibregl.Map({
+  //     container: ref.current,
+  //     style: TILING_SERVER,
+  //     transformRequest: tileTransformRequest,
+  //     center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+  //     zoom: 13,
+  //     bearing: 60,
+  //     pitch: 60,
+  //   });
+  //   map.getCanvas().style.zIndex = '0';
+  //   mapRef.current = map;
+  //   return () => {
+  //     map.remove();
+  //     mapRef.current = null;
+  //   };
+  // }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -464,8 +515,11 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
       const lat = Number(pin.latitude);
       const lng = Number(pin.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        markerRef.current = L.marker([lat, lng], { icon: userLocationIcon }).addTo(map);
-        map.setView([lat, lng], Math.max(map.getZoom(), 15), { animate: true });
+        const el = makeUserLocationElement();
+        markerRef.current = new maplibregl.Marker({ element: el })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
       }
     }
   }, [pin]);
@@ -476,8 +530,8 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
     if (disabled) return undefined;
 
     const handleClick = (event) => {
-      const lat = Number(event?.latlng?.lat);
-      const lng = Number(event?.latlng?.lng);
+      const lat = Number(event?.lngLat?.lat);
+      const lng = Number(event?.lngLat?.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       onPinChange?.({
         latitude: Number(lat.toFixed(6)),
@@ -492,7 +546,7 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return undefined;
-    const timer = setTimeout(() => map.invalidateSize(), 120);
+    const timer = setTimeout(() => map.resize(), 120);
     return () => clearTimeout(timer);
   }, [disabled]);
 
