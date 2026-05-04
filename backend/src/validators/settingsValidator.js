@@ -1,5 +1,9 @@
 import Joi from 'joi';
 import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
+import {
+  CUSTOMER_ACCESS_MODES,
+  INVENTORY_DISPLAY_MODES
+} from '../modules/shared/utils/customerAccessPolicy.js';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -223,6 +227,13 @@ const storefrontReviewSummarySchema = Joi.object({
     5: Joi.number().integer().min(0).max(1000000).optional()
   }).optional()
 }).optional();
+const customerAccessModeSchema = Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).messages({
+  'any.only': `Customer access mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`
+});
+const inventoryDisplayModeSchema = Joi.string().trim().lowercase().valid(...INVENTORY_DISPLAY_MODES).messages({
+  'any.only': `Inventory display mode must be one of: ${INVENTORY_DISPLAY_MODES.join(', ')}`
+});
+const inventoryLowStockDisplayThresholdSchema = Joi.number().integer().min(1).max(9999);
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
@@ -288,6 +299,9 @@ export const updateSettingsSchema = Joi.object({
   storefront_delivery_partners: storefrontDeliveryPartnersSchema,
   storefront_follow_enabled: Joi.boolean().optional(),
   storefront_share_enabled: Joi.boolean().optional(),
+  customer_access_mode: customerAccessModeSchema.optional(),
+  inventory_display_mode: inventoryDisplayModeSchema.optional(),
+  inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema.optional(),
   store_is_visible: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
@@ -422,6 +436,9 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     storefront_delivery_partners: storefrontDeliveryPartnersSchema,
     storefront_follow_enabled: Joi.boolean(),
     storefront_share_enabled: Joi.boolean(),
+    customer_access_mode: customerAccessModeSchema,
+    inventory_display_mode: inventoryDisplayModeSchema,
+    inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema,
     store_is_visible: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),

@@ -127,6 +127,7 @@ const buildCompliancePolicyBlockerMessage = (error) => {
 const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
+const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
 
 const CHECKOUT_QUEUE_OPERATION = 'checkout';
 const CHECKOUT_QUEUE_MAX_RETRIES = 5;
@@ -896,6 +897,9 @@ export default function POSCheckoutTerminal({
     );
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
+            if (isServiceCatalogItem(item)) {
+                return [Number(item?.item_id), Number.POSITIVE_INFINITY];
+            }
             const stock = Number(item?.current_stock);
             return [
                 Number(item?.item_id),
@@ -909,8 +913,8 @@ export default function POSCheckoutTerminal({
         const stockFromCatalog = itemStockById.get(Number(item.item_id));
         const maxStock = Number.isFinite(stockFromCatalog)
             ? stockFromCatalog
-            : Math.max(0, Number(item.current_stock) || 0);
-        if (maxStock <= 0) {
+            : (stockFromCatalog === Number.POSITIVE_INFINITY ? Number.POSITIVE_INFINITY : Math.max(0, Number(item.current_stock) || 0));
+        if (Number.isFinite(maxStock) && maxStock <= 0) {
             toast.error(buildStockExceededMessage({
                 itemName: item.name,
                 requestedQty: 1,
@@ -921,13 +925,16 @@ export default function POSCheckoutTerminal({
         }
 
         const defaultPrice = Number(item.default_sale_price ?? item.cost_per_unit ?? 0);
+        if (isServiceCatalogItem(item)) {
+            setOrderMethod('appointment');
+        }
         let stockWarning = '';
         setCart((prev) => {
             const existing = prev.find((line) => line.item_id === item.item_id);
             if (existing) {
                 const requestedQty = Number(existing.quantity) + 1;
-                const safeQty = round4(Math.min(requestedQty, maxStock));
-                if (requestedQty > maxStock) {
+                const safeQty = Number.isFinite(maxStock) ? round4(Math.min(requestedQty, maxStock)) : round4(requestedQty);
+                if (Number.isFinite(maxStock) && requestedQty > maxStock) {
                     stockWarning = buildStockExceededMessage({
                         itemName: item.name,
                         requestedQty,
@@ -946,11 +953,12 @@ export default function POSCheckoutTerminal({
                 {
                     item_id: item.item_id,
                     item_name: item.name,
-                    quantity: round4(Math.min(1, maxStock)),
+                    quantity: Number.isFinite(maxStock) ? round4(Math.min(1, maxStock)) : 1,
                     base_sale_price: defaultPrice,
                     sale_price: defaultPrice,
                     price_override_reason: '',
                     unit_of_measure: item.unit_of_measure,
+                    category: item.category,
                     vat_type: item.vat_type || 'vatable'
                 }
             ];
@@ -978,7 +986,7 @@ export default function POSCheckoutTerminal({
                 const maxStock = itemStockById.get(Number(itemId));
                 const safeMax = Number.isFinite(maxStock) ? maxStock : Number.POSITIVE_INFINITY;
                 const safeQty = round4(Math.max(0, Math.min(parsedQty, safeMax)));
-                if (parsedQty > safeMax) {
+                if (Number.isFinite(safeMax) && parsedQty > safeMax) {
                     stockWarning = buildStockExceededMessage({
                         itemName: line.item_name,
                         requestedQty: parsedQty,
@@ -1246,6 +1254,7 @@ export default function POSCheckoutTerminal({
                             <option value="takeout">Takeout</option>
                             <option value="pickup">Pickup</option>
                             <option value="delivery">Delivery</option>
+                            <option value="appointment">Appointment</option>
                         </select>
                         <select
                             value={historyOrderSource}
@@ -1523,7 +1532,8 @@ export default function POSCheckoutTerminal({
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
                         {catalog.map((item) => {
-                            const isOutOfStock = Number(item.current_stock || 0) <= 0;
+                            const isServiceItem = isServiceCatalogItem(item);
+                            const isOutOfStock = !isServiceItem && Number(item.current_stock || 0) <= 0;
                             const posImageSrc = resolveAssetUrl(item.pos_image_url);
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             return (
@@ -1585,18 +1595,22 @@ export default function POSCheckoutTerminal({
                                 </div>
                                 <div className="flex items-start justify-between gap-2">
                                     <p className="text-lg font-semibold text-slate-900 leading-tight">{item.name}</p>
-                                    {isOutOfStock && (
+                                    {isServiceItem ? (
+                                        <span className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
+                                            Service
+                                        </span>
+                                    ) : isOutOfStock ? (
                                         <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
                                             Out of stock
                                         </span>
-                                    )}
+                                    ) : null}
                                 </div>
                                 <p className="text-xs font-semibold tracking-wide bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500 bg-clip-text text-transparent">
                                     {item.sku_code}
                                 </p>
                                 <div className="mt-2 text-xs text-slate-600 flex justify-between">
                                     <span className="font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
-                                        Stock: {Number(item.current_stock || 0).toFixed(2)}
+                                        {isServiceItem ? 'Service sale' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`}
                                     </span>
                                     <span className="font-semibold text-slate-700">Default: PHP {money(item.default_sale_price ?? item.cost_per_unit)}</span>
                                 </div>
@@ -1662,6 +1676,7 @@ export default function POSCheckoutTerminal({
                             <option value="takeout">Takeout</option>
                             <option value="pickup">Pickup</option>
                             <option value="delivery">Delivery</option>
+                            <option value="appointment">Appointment</option>
                         </select>
                     </label>
 

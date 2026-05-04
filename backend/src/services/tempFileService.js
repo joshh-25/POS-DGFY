@@ -6,11 +6,94 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../config/logger.js';
 import cacheService from './cacheService.js';
+import {
+  getConfiguredTempFileStorageMode,
+  resolveTempFileStorageMode
+} from '../config/hostingProfile.js';
 
 // File expiry time in seconds (1 hour)
 const FILE_EXPIRY_SECONDS = 60 * 60;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const TEMP_EXPORT_DIR = path.resolve(__dirname, '../../storage/temp-ai-exports');
+const LOCAL_FILE_PREFIX = 'ai-export-';
+const LOCAL_FILE_SUFFIX = '.json';
+
+const isSafeFileId = (fileId) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(fileId || ''));
+
+const getRedisKey = (fileId) => `temp_file:${fileId}`;
+
+const getLocalFilePath = (fileId) => {
+  if (!isSafeFileId(fileId)) {
+    throw new Error('Invalid temporary file id');
+  }
+  return path.join(TEMP_EXPORT_DIR, `${LOCAL_FILE_PREFIX}${fileId}${LOCAL_FILE_SUFFIX}`);
+};
+
+const serializeFileInfo = (fileInfo) => JSON.stringify({
+  ...fileInfo,
+  createdAt: fileInfo.createdAt instanceof Date ? fileInfo.createdAt.toISOString() : fileInfo.createdAt,
+  expiresAt: fileInfo.expiresAt instanceof Date ? fileInfo.expiresAt.toISOString() : fileInfo.expiresAt
+});
+
+const normalizeFileInfo = (fileInfo) => ({
+  ...fileInfo,
+  createdAt: new Date(fileInfo.createdAt),
+  expiresAt: new Date(fileInfo.expiresAt)
+});
+
+const isExpired = (fileInfo) => {
+  const expiresAt = new Date(fileInfo?.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+};
+
+const canAccessFile = (fileInfo, userId) => {
+  if (userId === undefined || userId === null || String(userId).trim() === '') {
+    return true;
+  }
+
+  if (fileInfo?.userId === undefined || fileInfo?.userId === null || String(fileInfo.userId).trim() === '') {
+    return false;
+  }
+
+  return String(fileInfo.userId) === String(userId);
+};
+
+const readLocalFileInfo = async (fileId) => {
+  try {
+    const filePath = getLocalFilePath(fileId);
+    const raw = await fs.readFile(filePath, 'utf8');
+    const fileInfo = normalizeFileInfo(JSON.parse(raw));
+
+    if (isExpired(fileInfo)) {
+      await fs.unlink(filePath).catch(() => {});
+      return null;
+    }
+
+    return fileInfo;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    logger.warn(`Failed to read local temp export ${fileId}: ${error.message}`);
+    return null;
+  }
+};
+
+const writeLocalFileInfo = async (fileInfo) => {
+  await fs.mkdir(TEMP_EXPORT_DIR, { recursive: true });
+  const filePath = getLocalFilePath(fileInfo.id);
+  await fs.writeFile(filePath, serializeFileInfo(fileInfo), 'utf8');
+};
+
+export const getTempFileStorageMode = () => resolveTempFileStorageMode({
+  cacheAvailable: cacheService.isAvailable()
+});
 
 /**
  * Store CSV content temporarily
@@ -33,10 +116,25 @@ export const storeTemporaryFile = async (content, filename, userId) => {
     accessCount: 0
   };
 
-  const redisKey = `temp_file:${fileId}`;
-  await cacheService.set(redisKey, JSON.stringify(fileInfo), FILE_EXPIRY_SECONDS);
+  const storageMode = getTempFileStorageMode();
+  const redisKey = getRedisKey(fileId);
+  let storedInCache = false;
 
-  logger.info(`Created temp file: ${fileId} for user ${userId}`);
+  if (storageMode === 'cache') {
+    storedInCache = await cacheService.set(redisKey, serializeFileInfo(fileInfo), FILE_EXPIRY_SECONDS);
+  }
+
+  if (!storedInCache) {
+    if (storageMode === 'cache') {
+      const configuredMode = getConfiguredTempFileStorageMode();
+      logger.warn(`Temp file cache storage unavailable; falling back to local storage (configured=${configuredMode})`);
+    }
+    await writeLocalFileInfo(fileInfo);
+  }
+
+  logger.info(`Created temp file: ${fileId} for user ${userId}`, {
+    storageMode: storedInCache ? 'cache' : 'local'
+  });
 
   return {
     fileId,
@@ -52,15 +150,30 @@ export const storeTemporaryFile = async (content, filename, userId) => {
  * @param {string} fileId - File ID
  * @returns {Object|null} File content and info
  */
-export const getTemporaryFile = async (fileId) => {
-  const redisKey = `temp_file:${fileId}`;
-  const fileData = await cacheService.get(redisKey);
+export const getTemporaryFile = async (fileId, userId = null) => {
+  const storageMode = getTempFileStorageMode();
+  const redisKey = getRedisKey(fileId);
+  let fileInfo = null;
 
-  if (!fileData) {
+  if (storageMode === 'cache') {
+    const fileData = await cacheService.get(redisKey);
+    if (fileData) {
+      fileInfo = normalizeFileInfo(JSON.parse(fileData));
+    }
+  }
+
+  if (!fileInfo) {
+    fileInfo = await readLocalFileInfo(fileId);
+  }
+
+  if (!fileInfo || isExpired(fileInfo)) {
     return null;
   }
 
-  const fileInfo = JSON.parse(fileData);
+  if (!canAccessFile(fileInfo, userId)) {
+    logger.warn(`Denied temp export access for user ${userId}: ${fileId}`);
+    return null;
+  }
 
   return {
     content: fileInfo.content,
@@ -76,19 +189,56 @@ export const getTemporaryFile = async (fileId) => {
  * @param {string} fileId - File ID
  */
 export const deleteTemporaryFile = async (fileId) => {
-  const redisKey = `temp_file:${fileId}`;
+  const redisKey = getRedisKey(fileId);
   await cacheService.del(redisKey);
+  try {
+    await fs.unlink(getLocalFilePath(fileId));
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      logger.warn(`Failed to delete local temp export ${fileId}: ${error.message}`);
+    }
+  }
   logger.info(`Cleaned up temp file manually: ${fileId}`);
 };
 
 /**
  * Cleanup all expired files
- * Note: Handled natively by Redis TTL, this function is a no-op implementation 
- * for backwards compatibility with any potential scheduled tasks.
  */
-export const cleanupExpiredFiles = () => {
-  // No-op - Redis handles TTL
-  return 0;
+export const cleanupExpiredFiles = async () => {
+  let deletedCount = 0;
+
+  try {
+    const files = await fs.readdir(TEMP_EXPORT_DIR);
+    for (const file of files) {
+      if (!file.startsWith(LOCAL_FILE_PREFIX) || !file.endsWith(LOCAL_FILE_SUFFIX)) {
+        continue;
+      }
+
+      const filePath = path.join(TEMP_EXPORT_DIR, file);
+      try {
+        const raw = await fs.readFile(filePath, 'utf8');
+        const fileInfo = JSON.parse(raw);
+        if (isExpired(fileInfo)) {
+          await fs.unlink(filePath);
+          deletedCount += 1;
+        }
+      } catch (error) {
+        const stats = await fs.stat(filePath).catch(() => null);
+        if (stats && Date.now() - stats.mtimeMs > FILE_EXPIRY_SECONDS * 1000) {
+          await fs.unlink(filePath).catch(() => {});
+          deletedCount += 1;
+        } else {
+          logger.warn(`Failed to inspect local temp export ${file}: ${error.message}`);
+        }
+      }
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      logger.warn(`Temp export cleanup failed: ${error.message}`);
+    }
+  }
+
+  return deletedCount;
 };
 
 /**
@@ -283,6 +433,7 @@ export const validateCsvStructure = (parsed, requiredFields) => {
 export default {
   storeTemporaryFile,
   getTemporaryFile,
+  getTempFileStorageMode,
   deleteTemporaryFile,
   cleanupExpiredFiles,
   parseCsv,

@@ -5,6 +5,8 @@ const STORE_JWT_SECRET = process.env.STORE_JWT_SECRET || `${baseSecret}:store`;
 const STORE_JWT_EXPIRY = process.env.STORE_JWT_EXPIRY || '24h';
 const STORE_CANCEL_PROOF_SECRET = process.env.STORE_CANCEL_PROOF_SECRET || `${baseSecret}:store:cancel-proof`;
 const STORE_CANCEL_PROOF_EXPIRY = process.env.STORE_CANCEL_PROOF_EXPIRY || '30m';
+const STORE_CLAIM_TOKEN_SECRET = process.env.STORE_CLAIM_TOKEN_SECRET || `${baseSecret}:store:claim`;
+const STORE_CLAIM_TOKEN_EXPIRY = process.env.STORE_CLAIM_TOKEN_EXPIRY || '30m';
 const TENANT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const parsePositiveInt = (value) => {
@@ -77,7 +79,32 @@ export const generateStoreCancelProof = ({ trackingPin, tenantId, orderId, store
 
 export const verifyStoreCancelProof = (token) => jwt.verify(token, STORE_CANCEL_PROOF_SECRET);
 
+export const generateStoreClaimToken = ({ trackingPin, tenantId, orderId, email }) => {
+    const normalizedTenantId = normalizeTenantIdentifier(tenantId);
+    if (!normalizedTenantId) {
+        throw new Error('generateStoreClaimToken requires a valid tenant identifier');
+    }
+
+    const normalizedTrackingPin = String(trackingPin || '').trim().toUpperCase();
+    const normalizedOrderId = parsePositiveInt(orderId);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedTrackingPin || !normalizedOrderId || !normalizedEmail) {
+        throw new Error('generateStoreClaimToken requires trackingPin, orderId, and email');
+    }
+
+    return jwt.sign({
+        type: 'store_order_claim',
+        tracking_pin: normalizedTrackingPin,
+        tenant_id: normalizedTenantId,
+        order_id: normalizedOrderId,
+        email: normalizedEmail
+    }, STORE_CLAIM_TOKEN_SECRET, { expiresIn: STORE_CLAIM_TOKEN_EXPIRY });
+};
+
+export const verifyStoreClaimToken = (token) => jwt.verify(token, STORE_CLAIM_TOKEN_SECRET);
+
 export const getStoreTokenConfig = () => ({
     expiresIn: STORE_JWT_EXPIRY,
-    cancelProofExpiresIn: STORE_CANCEL_PROOF_EXPIRY
+    cancelProofExpiresIn: STORE_CANCEL_PROOF_EXPIRY,
+    claimTokenExpiresIn: STORE_CLAIM_TOKEN_EXPIRY
 });

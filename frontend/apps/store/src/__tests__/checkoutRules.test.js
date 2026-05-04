@@ -21,8 +21,28 @@ describe('store checkout rules', () => {
     expect(getCheckoutBlockReason({ ...base, cartCount: 0 })).toBe('empty_cart');
     expect(getCheckoutBlockReason({ ...base, checkoutLoading: true })).toBe('checkout_loading');
     expect(getCheckoutBlockReason({ ...base, hasStockViolation: true })).toBe('stock_violation');
+    expect(getCheckoutBlockReason({ ...base, accessCapabilities: { checkout: false, quote: false } })).toBe('access_mode');
     expect(getCheckoutBlockReason({ ...base, quoteResult: null })).toBe('missing_quote');
     expect(getCheckoutBlockReason({ ...base, quoteNeedsRefresh: true })).toBe('stale_quote');
   });
-});
 
+  it('lets service-only bookings bypass product quote guards', () => {
+    const serviceOnly = {
+      ...base,
+      hasServiceCart: true,
+      quoteResult: null,
+      quoteNeedsRefresh: true
+    };
+    expect(getCheckoutBlockReason(serviceOnly)).toBeNull();
+    expect(canCheckout(serviceOnly)).toBe(true);
+  });
+
+  it('blocks service bookings when access capabilities do not allow booking', () => {
+    expect(getCheckoutBlockReason({
+      ...base,
+      hasServiceCart: true,
+      quoteResult: null,
+      accessCapabilities: { booking: false }
+    })).toBe('access_mode');
+  });
+});

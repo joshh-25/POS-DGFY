@@ -1,8 +1,9 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import logger from '../../../config/logger.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertStoreRepositoryContract } from '../contracts/storeRepository.contract.js';
-import { isCatalogItemVisible } from '../../shared/utils/catalogVisibilityPolicy.js';
+import { isCatalogItemVisible, resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -18,7 +19,7 @@ const buildOrderInclude = () => ([
             {
                 model: dbStore.get('Item'),
                 as: 'item',
-                attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure']
+                attributes: ['item_id', 'name', 'sku_code', 'category', 'unit_of_measure']
             }
         ]
     },
@@ -45,7 +46,32 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('pos_catalog_overrides');
+};
+
+const isMissingStorefrontCatalogOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
+};
+
+const isMissingServiceItemDetailTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('service_item_details');
+};
+
+const isMissingOptionalCatalogIncludeTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && (
+        message.includes('pos_catalog_overrides')
+        || message.includes('storefront_catalog_overrides')
+        || message.includes('service_item_details')
+    );
 };
 
 const isMissingItemLocationStockSchemaError = (error) => {
@@ -120,16 +146,59 @@ const loadLocationStockMap = async (itemIds = [], locationId = null, options = {
 const applyLocationStock = (rows = [], stockMap = new Map()) => (
     (Array.isArray(rows) ? rows : []).map((row) => {
         const payload = toPlain(row);
+        const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
         const stock = stockMap.get(Number(payload.item_id));
         const currentStock = Number.isFinite(stock) ? Math.max(0, stock) : 0;
         return {
             ...payload,
-            current_stock: currentStock,
-            is_available: currentStock > 0,
-            availability_status: currentStock > 0 ? 'in_stock' : 'out_of_stock'
+            current_stock: isServiceItem ? 0 : currentStock,
+            is_available: isServiceItem || currentStock > 0,
+            availability_status: isServiceItem ? 'bookable' : (currentStock > 0 ? 'in_stock' : 'out_of_stock')
         };
     })
 );
+
+const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false } = {}) => {
+    const includes = [];
+    if (StorefrontCatalogOverride) {
+        includes.push({
+            model: StorefrontCatalogOverride,
+            as: 'storefrontCatalogOverride',
+            attributes: ['storefront_visible', 'storefront_image_url'],
+            required: false
+        });
+    }
+    if (includeLegacyPosFallback && PosCatalogOverride) {
+        includes.push({
+            model: PosCatalogOverride,
+            as: 'posCatalogOverride',
+            attributes: ['pos_visible', 'pos_image_url'],
+            required: false
+        });
+    }
+    return includes;
+};
+
+const mapStorefrontCatalogVisibility = (row = {}, { allowLegacyPosFallback = false } = {}) => (
+    resolveStorefrontCatalogVisibility({
+        item: row,
+        override: row?.storefrontCatalogOverride || null,
+        legacyPosOverride: allowLegacyPosFallback ? (row?.posCatalogOverride || null) : null
+    })
+);
+
+const mapStorefrontCatalogImageUrl = (row = {}, { allowLegacyPosFallback = false } = {}) => (
+    row?.storefrontCatalogOverride?.storefront_image_url
+    || (allowLegacyPosFallback ? row?.posCatalogOverride?.pos_image_url : null)
+    || null
+);
+
+const warnStorefrontOverrideFallback = (error) => {
+    logger.warn('[StoreRepository] Falling back to POS-derived storefront catalog visibility while storefront override table is unavailable', {
+        event_type: 'storefront_catalog_override_fallback',
+        reason: error?.original?.code || error?.parent?.code || error?.code || 'unknown'
+    });
+};
 export const storeRepository = {
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -238,6 +307,7 @@ export const storeRepository = {
 
     async findSellableItemsByIds(itemIds, options = {}) {
         const Item = dbStore.get('Item');
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
         const normalizedLocationId = Number.parseInt(options.locationId, 10);
         const baseQuery = {
@@ -261,14 +331,7 @@ export const storeRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         };
-        const includeOverride = PosCatalogOverride
-            ? [{
-                model: PosCatalogOverride,
-                as: 'posCatalogOverride',
-                attributes: ['pos_visible'],
-                required: false
-            }]
-            : [];
+        const includeOverride = buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride);
 
         try {
             const rows = await Item.findAll({
@@ -277,7 +340,7 @@ export const storeRepository = {
             });
             const catalogRows = rows
                 .map(toPlain)
-                .filter((row) => isCatalogItemVisible(row));
+                .filter((row) => mapStorefrontCatalogVisibility(row));
             const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
@@ -287,10 +350,19 @@ export const storeRepository = {
                 ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows;
         } catch (error) {
-            if (!isMissingPosCatalogOverrideTableError(error)) {
+            if (!isMissingOptionalCatalogIncludeTableError(error)) {
                 throw error;
             }
-            const rows = await Item.findAll(baseQuery);
+            if (isMissingStorefrontCatalogOverrideTableError(error)) {
+                warnStorefrontOverrideFallback(error);
+            }
+            const legacyInclude = buildStorefrontOverrideInclude(null, PosCatalogOverride, {
+                includeLegacyPosFallback: !isMissingPosCatalogOverrideTableError(error)
+            });
+            const rows = await Item.findAll({
+                ...baseQuery,
+                include: legacyInclude
+            });
             const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row));
@@ -307,6 +379,7 @@ export const storeRepository = {
 
     async listStoreCatalog({ search = '', limit = 60, location_id = null } = {}, options = {}) {
         const Item = dbStore.get('Item');
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
         const normalizedLocationId = Number.parseInt(location_id, 10);
         const normalizedLimit = Number.isFinite(Number(limit))
@@ -343,34 +416,36 @@ export const storeRepository = {
             limit: normalizedLimit,
             transaction: options.transaction
         };
-        const includeOverride = PosCatalogOverride
-            ? [{
-                model: PosCatalogOverride,
-                as: 'posCatalogOverride',
-                attributes: ['pos_visible', 'pos_image_url'],
-                required: false
-            }]
-            : [];
+        const includeOverride = buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride);
+        const serviceDetailInclude = [{
+            model: dbStore.get('ServiceItemDetail'),
+            as: 'serviceDetail',
+            required: false
+        }];
 
-        const mapCatalogRows = (rows) => rows
+        const mapCatalogRows = (rows, { allowLegacyPosFallback = false } = {}) => rows
             .map(toPlain)
-            .filter((row) => isCatalogItemVisible(row))
+            .filter((row) => mapStorefrontCatalogVisibility(row, { allowLegacyPosFallback }))
             .map((row) => ({
                 item_id: row.item_id,
                 name: row.name,
                 category: row.category,
                 unit_of_measure: row.unit_of_measure,
-                current_stock: row.current_stock,
+                current_stock: String(row.category || '').trim().toLowerCase() === 'service' ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
-                image_url: row?.posCatalogOverride?.pos_image_url || null
+                image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
+                service_detail: row?.serviceDetail || null
             }));
 
         try {
             const rows = await Item.findAll({
                 ...baseQuery,
-                include: includeOverride
+                include: [
+                    ...includeOverride,
+                    ...serviceDetailInclude
+                ]
             });
             const catalogRows = mapCatalogRows(rows);
             const locationStock = await loadLocationStockMap(
@@ -380,17 +455,39 @@ export const storeRepository = {
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(catalogRows, locationStock.stockMap)
-                : catalogRows.map((row) => ({
-                    ...row,
-                    is_available: Number(row.current_stock || 0) > 0,
-                    availability_status: Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock'
-                }));
+                : catalogRows.map((row) => {
+                    const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
+                    return {
+                        ...row,
+                        is_available: isServiceItem || Number(row.current_stock || 0) > 0,
+                        availability_status: isServiceItem ? 'bookable' : (Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock')
+                    };
+                });
         } catch (error) {
-            if (!isMissingPosCatalogOverrideTableError(error)) {
+            if (!isMissingOptionalCatalogIncludeTableError(error)) {
                 throw error;
             }
-            const rows = await Item.findAll(baseQuery);
-            const catalogRows = mapCatalogRows(rows);
+            if (isMissingStorefrontCatalogOverrideTableError(error)) {
+                warnStorefrontOverrideFallback(error);
+            }
+            const fallbackInclude = [
+                ...buildStorefrontOverrideInclude(
+                    isMissingStorefrontCatalogOverrideTableError(error) ? null : StorefrontCatalogOverride,
+                    PosCatalogOverride,
+                    {
+                        includeLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
+                            && !isMissingPosCatalogOverrideTableError(error)
+                    }
+                ),
+                ...(isMissingServiceItemDetailTableError(error) ? [] : serviceDetailInclude)
+            ];
+            const rows = await Item.findAll({
+                ...baseQuery,
+                include: fallbackInclude
+            });
+            const catalogRows = mapCatalogRows(rows, {
+                allowLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
+            });
             const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
@@ -398,11 +495,14 @@ export const storeRepository = {
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(catalogRows, locationStock.stockMap)
-                : catalogRows.map((row) => ({
-                    ...row,
-                    is_available: Number(row.current_stock || 0) > 0,
-                    availability_status: Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock'
-                }));
+                : catalogRows.map((row) => {
+                    const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
+                    return {
+                        ...row,
+                        is_available: isServiceItem || Number(row.current_stock || 0) > 0,
+                        availability_status: isServiceItem ? 'bookable' : (Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock')
+                    };
+                });
         }
     },
 

@@ -151,7 +151,7 @@ export default function TenantManager() {
         adminPassword: '',
         plan: 'standard',
         complianceMode: 'non_compliant',
-        workflowMode: 'manufacturing'
+        workflowMode: 'food_manufacturing'
     });
 
     // Edit Tenant Modal State
@@ -254,7 +254,7 @@ export default function TenantManager() {
                 adminPassword: '',
                 plan: 'standard',
                 complianceMode: 'non_compliant',
-                workflowMode: 'manufacturing'
+                workflowMode: 'food_manufacturing'
             });
             loadTenants();
             toast.success('Tenant created successfully');

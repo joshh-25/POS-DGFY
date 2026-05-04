@@ -8,6 +8,13 @@ import { createHash } from 'crypto';
 import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    buildAccessCapabilities,
+    CUSTOMER_ACCESS_SETTING_KEYS,
+    isCustomerAccessModesEnabled,
+    resolveAccessPolicyFromSettings
+} from '../../shared/utils/customerAccessPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
 const DISCOVERY_REDIS_CACHE_TTL_SECONDS = Math.max(
@@ -37,6 +44,7 @@ const LEGACY_SCHEMA_SAFE_ATTRIBUTES = Object.freeze([
     'tenant_name',
     'slug',
     'storefront_open',
+    'workflow_mode',
     'location_id',
     'location_name',
     'address_line',
@@ -69,7 +77,15 @@ const STOREFRONT_PROFILE_INDEX_COLUMNS = Object.freeze([
     'storefront_delivery_partners',
     'storefront_follow_enabled',
     'storefront_share_enabled',
-    'storefront_review_summary'
+    'storefront_review_summary',
+    'customer_access_mode',
+    'effective_customer_access_mode',
+    'max_customer_access_mode',
+    'inventory_display_mode',
+    'inventory_low_stock_display_threshold',
+    'access_capabilities',
+    'access_limitation_reason',
+    'customer_access_modes_enabled'
 ]);
 const hasMaterializedStorefrontProfileColumns = (row) => {
     const plain = row && typeof row.toJSON === 'function' ? row.toJSON() : row || {};
@@ -91,7 +107,8 @@ const STOREFRONT_PROFILE_SETTING_KEYS = Object.freeze([
     'storefront_delivery_partners',
     'storefront_follow_enabled',
     'storefront_share_enabled',
-    'storefront_review_summary'
+    'storefront_review_summary',
+    ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
 const DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS = Math.max(
     10,
@@ -247,7 +264,7 @@ const normalizeExternalHttpUrl = (value, maxLength = 255) => {
 const buildDiscoveryProfileSettingsCacheKey = ({ tenantId = '', signature = '0:0' } = {}) => {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) return '';
-    return `storefront:discovery:profile-settings:v1:${signature}:${normalizedTenantId}`;
+    return `storefront:discovery:profile-settings:v2:${signature}:${normalizedTenantId}`;
 };
 
 const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) => {
@@ -322,6 +339,16 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) 
             };
         })
         .filter(Boolean);
+    const accessPolicy = resolveAccessPolicyFromSettings({
+        ...settingsMap,
+        tenant_onboarding_progress: parseJsonObject(settingsMap.tenant_onboarding_progress) || null
+    }, {
+        featureEnabled: isCustomerAccessModesEnabled({
+            tenantId,
+            companyToken: tenant?.company_token,
+            tenantName: tenant?.name
+        })
+    });
 
     const settingsPayload = {
         storefront_tagline: toTrimmedString(settingsMap.storefront_tagline, 120),
@@ -339,7 +366,15 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) 
         storefront_delivery_partners: normalizeStorefrontDeliveryPartners(settingsMap.storefront_delivery_partners),
         storefront_follow_enabled: parseBoolean(settingsMap.storefront_follow_enabled, false),
         storefront_share_enabled: parseBoolean(settingsMap.storefront_share_enabled, false),
-        storefront_review_summary: normalizeStorefrontReviewSummary(settingsMap.storefront_review_summary)
+        storefront_review_summary: normalizeStorefrontReviewSummary(settingsMap.storefront_review_summary),
+        customer_access_mode: accessPolicy.customer_access_mode,
+        effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+        max_customer_access_mode: accessPolicy.max_customer_access_mode,
+        inventory_display_mode: accessPolicy.inventory_display_mode,
+        inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
+        access_capabilities: accessPolicy.access_capabilities,
+        access_limitation_reason: accessPolicy.limitation_reason,
+        customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
     };
     await writeRedisCacheEntry(cacheKey, settingsPayload, DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS);
     return settingsPayload;
@@ -522,11 +557,20 @@ const queryDiscoveryIndexWithLegacyFallback = async ({
 
 const toPlainEntry = (row) => {
     const plain = row && typeof row.toJSON === 'function' ? row.toJSON() : row || {};
+    const customerAccessModesEnabled = parseBoolean(
+        plain.customer_access_modes_enabled,
+        isCustomerAccessModesEnabled({ tenantId: plain.tenant_id })
+    );
+    const effectiveCustomerAccessMode = plain.effective_customer_access_mode
+        || (customerAccessModesEnabled ? 'catalog' : 'transaction');
+    const accessCapabilities = parseJsonObject(plain.access_capabilities)
+        || buildAccessCapabilities(effectiveCustomerAccessMode);
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
     slug: plain.slug,
     storefront_open: plain.storefront_open === true,
+    workflow_mode: normalizeWorkflowMode(plain.workflow_mode || DEFAULT_WORKFLOW_MODE),
     location_id: plain.location_id,
     location_name: plain.location_name,
     address_line: plain.address_line,
@@ -575,6 +619,14 @@ const toPlainEntry = (row) => {
     storefront_follow_enabled: parseBoolean(plain.storefront_follow_enabled, false),
     storefront_share_enabled: parseBoolean(plain.storefront_share_enabled, false),
     storefront_review_summary: normalizeStorefrontReviewSummary(plain.storefront_review_summary),
+    customer_access_mode: plain.customer_access_mode || 'catalog',
+    effective_customer_access_mode: effectiveCustomerAccessMode,
+    max_customer_access_mode: plain.max_customer_access_mode || 'catalog',
+    inventory_display_mode: plain.inventory_display_mode || 'availability',
+    inventory_low_stock_display_threshold: toNumber(plain.inventory_low_stock_display_threshold, 5),
+    access_capabilities: accessCapabilities,
+    access_limitation_reason: plain.access_limitation_reason || null,
+    customer_access_modes_enabled: customerAccessModesEnabled,
     active_location_snapshot: parseJsonArray(plain.active_location_snapshot),
     item_search_snapshot: parseJsonArray(plain.item_search_snapshot),
     search_snapshot_version: toNumber(plain.search_snapshot_version, 0)
@@ -991,12 +1043,23 @@ export const storefrontDiscoveryRepository = {
         const hasMaterializedProfileFields = hasMaterializedStorefrontProfileColumns(row);
         const entry = toPlainEntry(row);
         if (!Number.isFinite(entry.latitude) || !Number.isFinite(entry.longitude)) return null;
-        let profileSettings = {};
-        if (!hasMaterializedProfileFields) {
-            profileSettings = await readStorefrontProfileSettings({
-                tenantId: entry.tenant_id,
-                cacheSignature: signature
-            });
+        let profileSettings = await readStorefrontProfileSettings({
+            tenantId: entry.tenant_id,
+            cacheSignature: signature
+        });
+        if (hasMaterializedProfileFields) {
+            profileSettings = Object.fromEntries(Object.entries(profileSettings).filter(([key]) => (
+                [
+                    'customer_access_mode',
+                    'effective_customer_access_mode',
+                    'max_customer_access_mode',
+                    'inventory_display_mode',
+                    'inventory_low_stock_display_threshold',
+                    'access_capabilities',
+                    'access_limitation_reason',
+                    'customer_access_modes_enabled'
+                ].includes(key)
+            )));
         }
         const enriched = { ...entry, ...profileSettings };
         await writeRedisCacheEntry(cacheKey, enriched, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);

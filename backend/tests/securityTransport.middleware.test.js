@@ -50,4 +50,11 @@ describe('ENC-01 HTTPS transport enforcement middleware', () => {
 
         expect(response.status).not.toBe(426);
     });
+
+    it('does not block /api/v1/health with HTTPS enforcement enabled', async () => {
+        const app = await loadAppWithEnv({ ENFORCE_HTTPS: 'true' });
+        const response = await request(app).get('/api/v1/health');
+
+        expect(response.status).not.toBe(426);
+    });
 });

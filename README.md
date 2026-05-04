@@ -82,7 +82,9 @@ npm run check:architecture
 - POS checkout, discounts, service fees, terminal shifts, and Z-reading
 - Unified sales read model
 - Tenant locations and storefront discovery
-- Public store catalog, quote, checkout, and order tracking
+- Public store catalog, quote, checkout, booking, waitlist, and order tracking
+- Customer Access Mode and Inventory Display controls for storefront rollout-gated public behavior
+- Services Mode with item-backed service catalog rows, bookings, resources/providers, reminders, intake forms, and stock-exempt POS service sales
 - AI-assisted workflows and generated AI docs
 
 ## Documentation
@@ -96,6 +98,7 @@ High-value docs:
 - [docs/architecture/ARCHITECTURE_BOUNDARIES.md](docs/architecture/ARCHITECTURE_BOUNDARIES.md)
 - [docs/architecture/ARCHITECTURE_GOVERNANCE.md](docs/architecture/ARCHITECTURE_GOVERNANCE.md)
 - [docs/api/specification.md](docs/api/specification.md)
+- [docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md](docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md)
 - [docs/database/schema.md](docs/database/schema.md)
 - [docs/development/environment-setup.md](docs/development/environment-setup.md)
 - [docs/testing/README.md](docs/testing/README.md)

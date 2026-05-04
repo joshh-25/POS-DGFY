@@ -31,6 +31,11 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: true
         },
+        workflow_mode: {
+            type: DataTypes.STRING(80),
+            allowNull: false,
+            defaultValue: 'food_manufacturing'
+        },
         is_visible: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
@@ -165,6 +170,44 @@ export default (sequelize) => {
         storefront_review_summary: {
             type: DataTypes.JSON,
             allowNull: true
+        },
+        customer_access_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'catalog'
+        },
+        effective_customer_access_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'transaction'
+        },
+        max_customer_access_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'catalog'
+        },
+        inventory_display_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'availability'
+        },
+        inventory_low_stock_display_threshold: {
+            type: DataTypes.INTEGER.UNSIGNED,
+            allowNull: false,
+            defaultValue: 5
+        },
+        access_capabilities: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        access_limitation_reason: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        customer_access_modes_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         },
         active_location_snapshot: {
             type: DataTypes.JSON,

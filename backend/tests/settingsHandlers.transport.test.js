@@ -9,6 +9,8 @@ const mockGetCompanyInfoUseCase = jest.fn();
 const mockUploadStorefrontAssetUseCase = jest.fn();
 const mockDeleteStorefrontAssetUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockSyncStorefrontDiscoveryWithReliability = jest.fn();
+const mockInvalidateTenantLookupCache = jest.fn();
 
 jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   getAllSettingsUseCase: mockGetAllSettingsUseCase,
@@ -25,6 +27,20 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
   trackProductUsageFromResult: mockTrackProductUsageFromResult
 }));
 
+jest.unstable_mockModule('../src/services/storefrontDiscoverySyncReliabilityService.js', () => ({
+  syncStorefrontDiscoveryWithReliability: mockSyncStorefrontDiscoveryWithReliability
+}));
+
+jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
+  invalidateTenantLookupCache: mockInvalidateTenantLookupCache
+}));
+
+jest.unstable_mockModule('../src/config/logger.js', () => ({
+  default: {
+    warn: jest.fn()
+  }
+}));
+
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
   default: {
     getStore: jest.fn()
@@ -33,6 +49,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
 
 let getAllSettings;
 let getSettingByKey;
+let updateSettings;
+let updateSettingByKey;
 let uploadStorefrontAsset;
 let deleteStorefrontAsset;
 
@@ -40,6 +58,8 @@ beforeAll(async () => {
   const mod = await import('../src/modules/settings/controllers/settingsHandlers.js');
   getAllSettings = mod.getAllSettings;
   getSettingByKey = mod.getSettingByKey;
+  updateSettings = mod.updateSettings;
+  updateSettingByKey = mod.updateSettingByKey;
   uploadStorefrontAsset = mod.uploadStorefrontAsset;
   deleteStorefrontAsset = mod.deleteStorefrontAsset;
 });
@@ -58,6 +78,7 @@ describe('settingsHandlers transport contracts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTrackProductUsageFromResult.mockResolvedValue({ created: true });
+    mockSyncStorefrontDiscoveryWithReliability.mockResolvedValue({ ok: true, attempts: 1, errors: [] });
   });
 
   it('getAllSettings returns expected success payload', async () => {
@@ -153,6 +174,65 @@ describe('settingsHandlers transport contracts', () => {
         asset_type: 'cover'
       })
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('runs discovery sync after successful bulk settings update', async () => {
+    mockUpdateSettingsUseCase.mockResolvedValue({
+      success: true,
+      data: { customer_access_mode: { value: 'catalog' } }
+    });
+    const req = {
+      requestId: 'req-settings-sync',
+      headers: { 'x-company-token': 'token-a' },
+      tenant: { id: 'tenant-a' },
+      user: { user_id: 1, tenant_id: 'tenant-a' },
+      validatedData: { customer_access_mode: 'catalog' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateSettings(req, res, next);
+    await Promise.resolve();
+
+    expect(mockInvalidateTenantLookupCache).toHaveBeenCalledWith({
+      companyToken: 'token-a',
+      tenantId: 'tenant-a'
+    });
+    expect(mockSyncStorefrontDiscoveryWithReliability).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-a',
+      source: 'settings_update_bulk',
+      requestId: 'req-settings-sync'
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('runs discovery sync after successful single setting update', async () => {
+    mockUpdateSettingByKeyUseCase.mockResolvedValue({
+      success: true,
+      data: { setting_key: 'customer_access_mode', value: 'inquiry' }
+    });
+    const req = {
+      params: { key: 'customer_access_mode' },
+      requestId: 'req-setting-sync',
+      headers: { 'x-company-token': 'token-a' },
+      tenant: { id: 'tenant-a' },
+      user: { user_id: 1, tenant_id: 'tenant-a' },
+      validatedData: { value: 'inquiry' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateSettingByKey(req, res, next);
+    await Promise.resolve();
+
+    expect(mockSyncStorefrontDiscoveryWithReliability).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-a',
+      source: 'settings_update_single',
+      requestId: 'req-setting-sync'
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(next).not.toHaveBeenCalled();
   });
 

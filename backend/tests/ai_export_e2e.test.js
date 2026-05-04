@@ -61,8 +61,10 @@ const tempFileService = await import('../src/services/tempFileService.js');
 
 describe('AI Export E2E Test (System Audit 8.2)', () => {
     let authorizedUser;
+    let secondAuthorizedUser;
     let unauthorizedUser;
     let authorizedToken;
+    let secondAuthorizedToken;
     let unauthorizedToken;
     let fileId;
 
@@ -70,7 +72,7 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
         await sequelize.sync();
         await User.destroy({
             where: {
-                email: ['ai-export-admin@example.com', 'ai-export-staff@example.com']
+                email: ['ai-export-admin@example.com', 'ai-export-second@example.com', 'ai-export-staff@example.com']
             }
         }).catch(() => null);
 
@@ -95,7 +97,20 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
             permissions: []
         });
 
+        secondAuthorizedUser = await User.create({
+            username: 'ai_export_second',
+            email: 'ai-export-second@example.com',
+            password_hash: 'hash',
+            role: 'admin',
+            is_active: true,
+            permissions: [
+                PERMISSIONS.AI.actions.AI_CHAT_VIEW,
+                PERMISSIONS.AI.actions.AI_CHAT_ACTION
+            ]
+        });
+
         authorizedToken = generateToken(authorizedUser, { tenantId: 'ai-export-tenant' });
+        secondAuthorizedToken = generateToken(secondAuthorizedUser, { tenantId: 'ai-export-tenant' });
         unauthorizedToken = generateToken(unauthorizedUser, { tenantId: 'ai-export-tenant' });
     });
 
@@ -123,6 +138,42 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
         expect(response.headers['content-type']).toContain('text/csv');
         expect(response.headers['content-disposition']).toContain(`attachment; filename="${filename}"`);
         expect(response.text).toBe(csvContent);
+    });
+
+    it('should not expose local temp export data through public uploads', async () => {
+        const originalEnv = { ...process.env };
+        process.env.HOSTING_PROFILE = 'shared';
+        process.env.TEMP_FILE_STORAGE = 'local';
+        process.env.REDIS_URL = '';
+
+        try {
+            const storeResult = await tempFileService.storeTemporaryFile('sku,qty\nLOCAL,1', 'local.csv', authorizedUser.user_id);
+            fileId = storeResult.fileId;
+
+            await request(app)
+                .get(`/uploads/temp/ai-export-${fileId}.json`)
+                .expect(404);
+        } finally {
+            process.env = originalEnv;
+            if (fileId) {
+                await tempFileService.deleteTemporaryFile(fileId);
+                fileId = null;
+            }
+        }
+    });
+
+    it('should return 404 when another authorized user tries to download someone else export', async () => {
+        const storeResult = await tempFileService.storeTemporaryFile('sku,qty\nPRIVATE,1', 'private.csv', authorizedUser.user_id);
+        fileId = storeResult.fileId;
+
+        const response = await request(app)
+            .get(`/api/v1/ai/exports/${fileId}`)
+            .set('Authorization', `Bearer ${secondAuthorizedToken}`)
+            .set('x-company-token', 'ai-export-tenant')
+            .expect(404);
+
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Export file not found or expired');
     });
 
     it('should return 404 for a deleted/expired export for an authorized user', async () => {

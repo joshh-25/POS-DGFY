@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];

@@ -24,7 +24,6 @@ const normalizeExt = (originalName = '') => {
         '.gif',
         '.webp',
         '.bmp',
-        '.svg',
         '.avif'
     ]);
     return allowed.has(ext) ? ext : '.png';
@@ -37,7 +36,8 @@ const ensureDirectory = async (directoryPath) => {
 const resolveStoragePath = (relativePath) => {
     const normalized = String(relativePath || '').replace(/^[/\\]+/, '');
     const absolute = path.resolve(UPLOADS_ROOT, normalized);
-    if (!absolute.startsWith(UPLOADS_ROOT)) {
+    const uploadsRootWithSeparator = `${UPLOADS_ROOT}${path.sep}`;
+    if (absolute !== UPLOADS_ROOT && !absolute.startsWith(uploadsRootWithSeparator)) {
         throw new Error('Invalid image storage path');
     }
     return absolute;
@@ -83,4 +83,3 @@ const createLocalPosCatalogImageStorage = () => ({
 
 export const posCatalogImageStorage = createLocalPosCatalogImageStorage();
 export const createPosCatalogImageStorage = createLocalPosCatalogImageStorage;
-

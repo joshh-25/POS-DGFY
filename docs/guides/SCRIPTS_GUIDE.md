@@ -189,6 +189,34 @@ npm run migrate
 npm run doctor:runtime
 ```
 
+## 2d. `scripts/check-hosting-profile.js`
+Hosting profile preflight validator for shared hosting and Redis-capable VPS deployments.
+
+Usage:
+```bash
+npm run preflight:shared
+npm run preflight:vps
+```
+
+Behavior:
+- Validates `HOSTING_PROFILE`.
+- Rejects placeholder secrets and placeholder origins.
+- Rejects `DB_AUTO_SYNC=true`.
+- Requires database, JWT, refresh JWT, and CORS values.
+- Rejects `REDIS_URL` in the `shared` profile.
+- Requires `REDIS_URL` in the `vps` profile.
+- Requires `AUTH_BLACKLIST_FAILURE_MODE=fail_open` for `shared`.
+- Requires `AUTH_BLACKLIST_FAILURE_MODE=fail_closed` for `vps`.
+
+Related smoke tests:
+```bash
+npm run test:hosting:shared
+npm run test:hosting:vps
+```
+
+Operator reference:
+- `docs/ops/HOSTING_PROFILES.md`
+
 ## 3. `backend/scripts/repair-required-indexes.js`
 Self-heal script for required DB index contract.
 

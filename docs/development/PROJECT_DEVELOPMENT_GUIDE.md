@@ -1,9 +1,9 @@
 # PROJECT_DEVELOPMENT_GUIDE.md
 ## Universal Project Bootstrap Guide
 
-> **Version:** 1.0.0
+> **Version:** 1.1.1
 > **Audience:** Solo developers scaling to small teams (1-5 people)
-> **Last Updated:** January 2026
+> **Last Updated:** 2026-05-03
 
 ---
 
@@ -17,6 +17,7 @@
    - [File Structure Standard](#22-file-structure-standard)
    - [Repository Hygiene](#23-repository-hygiene)
    - [AI/ML Feature Documentation](#24-aiml-feature-documentation)
+   - [Workflow Mode Development](#25-workflow-mode-development)
 3. [Development Workflow](#3-development-workflow)
    - [Tier 1: Solo/Prototyping](#31-tier-1-soloprototyping)
    - [Tier 2: Team/Production](#32-tier-2-teamproduction)
@@ -49,6 +50,17 @@
 ---
 
 ## 1. Project Intent & Guardrails
+
+### Current SKUpervisor Overlay
+
+This guide is a general bootstrap reference plus project-specific guardrails. For this repository, always start implementation planning from `docs/START_HERE.md`, then `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, relevant ADRs, and the domain docs for the surface you are changing.
+
+Current project-specific development notes:
+- Hosting profiles are env-selected from one codebase: `shared` and `vps` are documented in `docs/ops/HOSTING_PROFILES.md`.
+- Use `backend/.env.example` for local development, `backend/.env.shared.example` for shared hosting, and `backend/.env.vps.example` for Redis-capable hosting. Frontend hosting templates live beside them as `frontend/.env.shared.example` and `frontend/.env.vps.example`.
+- Standard company registration defaults to `TENANT_REGISTRATION_APPROVAL_MODE=manual`. The temporary `auto_standard` mode provisions standard non-subscription tenants immediately and then the frontend signs the founder in through the normal login API.
+- Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` strict whenever `auto_standard` is enabled.
+- Payments remain disabled by default with `PAYMENTS_ENABLED=false`; premium/subscription registration and payment routes must keep returning the disabled contract unless payments are intentionally re-enabled.
 
 ### 1.1 Context Discovery Questionnaire
 
@@ -548,6 +560,14 @@ See [docs/ai/AI_GUIDELINES.md](docs/ai/AI_GUIDELINES.md) for user-facing documen
 
 ---
 
+### 2.5 Workflow Mode Development
+
+When tailoring a tenant workflow mode, use [MODE_DEVELOPMENT_PLAYBOOK.md](./MODE_DEVELOPMENT_PLAYBOOK.md) after the mandatory architecture lookup order. Each mode must become native to its business workflow across IMS, POS, Storefront, backend route guards, data contracts, tests, and documentation.
+
+Services Mode is the current reference implementation for this pattern. It includes service catalog metadata, booking lifecycle, provider/resource assignments, waitlist preferences, intake response capture, reminder outbox processing, client retention/no-show signals, stock-exempt POS service sales, and mode-native IMS/POS/Storefront surfaces.
+
+---
+
 ## 3. Development Workflow
 
 ### 3.1 Tier 1: Solo/Prototyping
@@ -720,7 +740,23 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 REDIS_URL=redis://localhost:6379
 ```
 
-See this project's example: [backend/.env.example](backend/.env.example)
+This project's current env templates:
+- [backend/.env.example](../../backend/.env.example)
+- [backend/.env.shared.example](../../backend/.env.shared.example)
+- [backend/.env.vps.example](../../backend/.env.vps.example)
+- [frontend/.env.shared.example](../../frontend/.env.shared.example)
+- [frontend/.env.vps.example](../../frontend/.env.vps.example)
+
+Current registration and hosting controls to keep synchronized with docs:
+```bash
+PAYMENTS_ENABLED=false
+TENANT_REGISTRATION_APPROVAL_MODE=manual
+RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000
+RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5
+HOSTING_PROFILE=shared # or vps
+AUTH_BLACKLIST_FAILURE_MODE=fail_open # shared
+TEMP_FILE_STORAGE=local # shared
+```
 
 ### 4.2 Security Rules for Secrets
 
@@ -750,7 +786,7 @@ git secrets --register-aws  # AWS credential patterns
 ```
 .env.development    # Local development
 .env.test           # Test environment
-.env.staging        # Staging environment
+.env.qa.local       # QA gate inputs for no-staging release checks
 .env.production     # Production (NEVER commit)
 ```
 
@@ -2062,6 +2098,7 @@ contact_links:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.1 | 2026-05-03 | Added SKUpervisor current-state overlay for hosting profiles, tenant registration approval mode, registration rate limits, and payment-disabled policy |
 | 1.1.0 | 2026-01-31 | Added Section 2.4: AI/ML Feature Documentation (documentation sync pattern) |
 | 1.0.0 | 2026-01 | Initial version |
 

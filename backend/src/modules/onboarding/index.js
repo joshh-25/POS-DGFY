@@ -7,7 +7,10 @@ import {
 import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
 
 export const getOnboardingStatusUseCase = buildGetOnboardingStatusUseCase({ onboardingRepository });
-export const saveOnboardingStepUseCase = buildSaveOnboardingStepUseCase({ onboardingRepository });
+export const saveOnboardingStepUseCase = buildSaveOnboardingStepUseCase({
+  onboardingRepository,
+  syncStorefrontDiscoveryWithReliability
+});
 export const completeOnboardingUseCase = buildCompleteOnboardingUseCase({
   onboardingRepository,
   syncStorefrontDiscoveryWithReliability

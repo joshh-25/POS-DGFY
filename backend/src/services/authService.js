@@ -17,6 +17,7 @@ import * as landlordService from './landlordService.js';
 import logger from '../config/logger.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { getTokenBlacklistFailureMode } from '../config/hostingProfile.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -104,20 +105,6 @@ const resolveTenantIdForToken = (user, explicitTenantId = null) => {
   }
 
   return null;
-};
-
-const getBlacklistFailureMode = () => {
-  const configuredMode = (process.env.AUTH_BLACKLIST_FAILURE_MODE || '').trim().toLowerCase();
-
-  if (configuredMode === 'fail_closed' || configuredMode === 'fail-closed') {
-    return 'fail_closed';
-  }
-
-  if (configuredMode === 'fail_open' || configuredMode === 'fail-open') {
-    return 'fail_open';
-  }
-
-  return process.env.NODE_ENV === 'production' ? 'fail_closed' : 'fail_open';
 };
 
 const requireTenantAuthContext = ({ operation = 'authentication' } = {}) => {
@@ -453,11 +440,18 @@ export const blacklistToken = async (token) => {
  * @returns {Promise<boolean>} - True if blacklisted
  */
 export const isTokenBlacklisted = async (token) => {
-  const failureMode = getBlacklistFailureMode();
+  const failureMode = getTokenBlacklistFailureMode();
 
   if (!process.env.REDIS_URL) {
-    logger.warn('Skipping token blacklist check: REDIS_URL not configured');
-    return false; // Fail Open if Redis is not configured (Dev/Test)
+    if (failureMode === 'fail_closed') {
+      logger.error('CRITICAL: REDIS_URL is not configured for token blacklist check. Denying access (Fail Closed).');
+      const error = new Error('Service unavailable: Validation check failed');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    logger.warn('Skipping token blacklist check: REDIS_URL not configured (Fail Open mode)');
+    return false;
   }
 
   if (!cacheService.isAvailable()) {

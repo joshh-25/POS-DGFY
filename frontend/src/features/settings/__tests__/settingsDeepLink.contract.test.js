@@ -26,6 +26,7 @@ describe('settings deep-link contract', () => {
     expect(SETTINGS_TABS).toEqual([
       'profile',
       'company',
+      'storefront',
       'subscription',
       'pos',
       'compliance',
@@ -35,6 +36,11 @@ describe('settings deep-link contract', () => {
 
   it('maps all required cross-surface section hashes to a tab', () => {
     expect(SETTINGS_HASH_TO_TAB['#receipt-contract-settings']).toBe('pos');
+    expect(SETTINGS_HASH_TO_TAB['#storefront-operations-settings']).toBe('storefront');
+    expect(SETTINGS_HASH_TO_TAB['#storefront-access-settings']).toBe('storefront');
+    expect(SETTINGS_HASH_TO_TAB['#storefront-locations-settings']).toBe('storefront');
+    expect(SETTINGS_HASH_TO_TAB['#storefront-branding-settings']).toBe('storefront');
+    expect(SETTINGS_HASH_TO_TAB['#storefront-content-settings']).toBe('storefront');
     expect(SETTINGS_HASH_TO_TAB['#section-profile']).toBe('compliance');
     expect(SETTINGS_HASH_TO_TAB['#section-artifacts']).toBe('compliance');
     expect(SETTINGS_HASH_TO_TAB['#section-peripherals']).toBe('compliance');
@@ -46,6 +52,11 @@ describe('settings deep-link contract', () => {
     const complianceContent = fs.readFileSync(compliancePanelPath, 'utf8');
 
     expect(settingsContent).toContain('id="receipt-contract-settings"');
+    expect(settingsContent).toContain('id="storefront-operations-settings"');
+    expect(settingsContent).toContain('id="storefront-access-settings"');
+    expect(settingsContent).toContain('id="storefront-locations-settings"');
+    expect(settingsContent).toContain('id="storefront-branding-settings"');
+    expect(settingsContent).toContain('id="storefront-content-settings"');
     expect(complianceContent).toContain('id="section-profile"');
     expect(complianceContent).toContain('id="section-artifacts"');
     expect(complianceContent).toContain('id="section-peripherals"');

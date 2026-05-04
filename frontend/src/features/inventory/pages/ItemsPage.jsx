@@ -56,6 +56,12 @@ import {
   uploadPosCatalogImage,
   deletePosCatalogImage
 } from '@/services/posCatalogService.js';
+import {
+  getStorefrontCatalogOverrides,
+  updateStorefrontCatalogOverride,
+  uploadStorefrontCatalogImage,
+  deleteStorefrontCatalogImage
+} from '@/services/storefrontCatalogService.js';
 import { replaceItemSuppliers } from '@/src/services/itemService.js';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
@@ -166,6 +172,7 @@ export default function Items() {
   const [itemToMove, setItemToMove] = useState(null);
   const [activeDragItem, setActiveDragItem] = useState(null);
   const [posCatalogOverrides, setPosCatalogOverrides] = useState({});
+  const [storefrontCatalogOverrides, setStorefrontCatalogOverrides] = useState({});
   const [showPosChecklistModal, setShowPosChecklistModal] = useState(false);
   const [posChecklistSearch, setPosChecklistSearch] = useState('');
   const [posChecklistCategory, setPosChecklistCategory] = useState('all');
@@ -222,6 +229,7 @@ export default function Items() {
   }, [isMsmeMode]);
 
   const canConfigurePosCatalog = can('items:edit');
+  const canConfigureStorefrontCatalog = can('items:edit');
   const canViewPosCatalog = can('pos:view');
   const hasPremiumFeatureAccess = useMemo(() => {
     if (tenantPlan !== 'premium') return false;
@@ -240,8 +248,13 @@ export default function Items() {
   }, [currentUser?.company?.grace_period_end, currentUser?.company?.subscription_status, tenantPlan]);
 
   const shouldLoadPosCatalogOverrides = !permissionsLoading && canViewPosCatalog && hasPremiumFeatureAccess;
+  const shouldLoadStorefrontCatalogOverrides = !permissionsLoading && canConfigureStorefrontCatalog;
 
   const getDefaultPosVisibility = useCallback((item) => (
+    item?.category === 'product' && item?.product_type === 'finished_goods'
+  ), []);
+
+  const getDefaultStorefrontVisibility = useCallback((item) => (
     item?.category === 'product' && item?.product_type === 'finished_goods'
   ), []);
 
@@ -271,6 +284,32 @@ export default function Items() {
     fetchPosOverrides();
   }, [fetchPosOverrides]);
 
+  const fetchStorefrontOverrides = useCallback(async () => {
+    if (!shouldLoadStorefrontCatalogOverrides) {
+      setStorefrontCatalogOverrides({});
+      return;
+    }
+
+    try {
+      const rows = await getStorefrontCatalogOverrides({ limit: 1000 });
+      const map = {};
+      (Array.isArray(rows) ? rows : []).forEach((row) => {
+        map[row.item_id] = row;
+      });
+      setStorefrontCatalogOverrides(map);
+    } catch (error) {
+      if (error?.response?.status === 403) {
+        setStorefrontCatalogOverrides({});
+        return;
+      }
+      console.warn('Failed to load storefront catalog overrides:', error);
+    }
+  }, [shouldLoadStorefrontCatalogOverrides]);
+
+  useEffect(() => {
+    fetchStorefrontOverrides();
+  }, [fetchStorefrontOverrides]);
+
   const resolvePosConfig = useCallback((item) => {
     const itemId = item?.item_id || item?.id;
     const override = posCatalogOverrides[itemId];
@@ -280,6 +319,15 @@ export default function Items() {
       pos_readiness: override?.pos_readiness || null
     };
   }, [getDefaultPosVisibility, posCatalogOverrides]);
+
+  const resolveStorefrontConfig = useCallback((item) => {
+    const itemId = item?.item_id || item?.id;
+    const override = storefrontCatalogOverrides[itemId];
+    return {
+      storefront_visible: override ? override.storefront_visible !== false : getDefaultStorefrontVisibility(item),
+      storefront_image_url: resolveAssetUrl(override?.storefront_image_url) || null
+    };
+  }, [getDefaultStorefrontVisibility, storefrontCatalogOverrides]);
 
   const handleTogglePosVisibility = async (item, nextVisible) => {
     const itemId = item?.item_id || item?.id;
@@ -345,6 +393,54 @@ export default function Items() {
       toast.success(`POS image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove POS image');
+    }
+  };
+
+  const handleToggleStorefrontVisibility = async (item, nextVisible) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !canConfigureStorefrontCatalog) return;
+
+    try {
+      const updated = await updateStorefrontCatalogOverride(itemId, { storefront_visible: Boolean(nextVisible) });
+      setStorefrontCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`Storefront visibility ${nextVisible ? 'enabled' : 'disabled'} for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update storefront visibility');
+    }
+  };
+
+  const handleUploadStorefrontImage = async (item, file) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !file || !canConfigureStorefrontCatalog) return;
+
+    try {
+      const updated = await uploadStorefrontCatalogImage(itemId, file);
+      setStorefrontCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`Storefront image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to upload storefront image');
+    }
+  };
+
+  const handleDeleteStorefrontImage = async (item) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !canConfigureStorefrontCatalog) return;
+
+    try {
+      const updated = await deleteStorefrontCatalogImage(itemId);
+      setStorefrontCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...(updated || {}), storefront_image_url: null }
+      }));
+      toast.success(`Storefront image removed for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to remove storefront image');
     }
   };
 
@@ -1480,6 +1576,7 @@ export default function Items() {
                 .filter(item => isItemUncategorized(item))
                 .map(item => {
                   const posConfigResolved = resolvePosConfig(item);
+                  const storefrontConfigResolved = resolveStorefrontConfig(item);
                   return (
                     <ItemCard
                       key={item.item_id || item.id}
@@ -1490,8 +1587,13 @@ export default function Items() {
                       onMoveToFolder={openMoveModal}
                       posReadiness={posReadinessByItemId[item.item_id || item.id]}
                       posVisible={posConfigResolved.pos_visible !== false}
+                      showPosVisibilityControl={canViewPosCatalog && hasPremiumFeatureAccess}
                       canTogglePosVisibility={canConfigurePosCatalog}
                       onTogglePosVisibility={handleTogglePosVisibility}
+                      storefrontVisible={storefrontConfigResolved.storefront_visible !== false}
+                      showStorefrontVisibilityControl={canConfigureStorefrontCatalog}
+                      canToggleStorefrontVisibility={canConfigureStorefrontCatalog}
+                      onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
                       onOpenInTerminal={openItemInTerminal}
                       isMsmeMode={isMsmeMode}
                       isSelected={selectedIds.has(item.item_id || item.id)}
@@ -1512,6 +1614,7 @@ export default function Items() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredItems.map(item => {
                 const posConfigResolved = resolvePosConfig(item);
+                const storefrontConfigResolved = resolveStorefrontConfig(item);
                 return (
                   <ItemCard
                     key={item.item_id || item.id}
@@ -1522,8 +1625,13 @@ export default function Items() {
                     onMoveToFolder={openMoveModal}
                     posReadiness={posReadinessByItemId[item.item_id || item.id]}
                     posVisible={posConfigResolved.pos_visible !== false}
+                    showPosVisibilityControl={canViewPosCatalog && hasPremiumFeatureAccess}
                     canTogglePosVisibility={canConfigurePosCatalog}
                     onTogglePosVisibility={handleTogglePosVisibility}
+                    storefrontVisible={storefrontConfigResolved.storefront_visible !== false}
+                    showStorefrontVisibilityControl={canConfigureStorefrontCatalog}
+                    canToggleStorefrontVisibility={canConfigureStorefrontCatalog}
+                    onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
                     onOpenInTerminal={openItemInTerminal}
                     isMsmeMode={isMsmeMode}
                     isSelected={selectedIds.has(item.item_id || item.id)}
@@ -1535,7 +1643,7 @@ export default function Items() {
           )
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full min-w-[1240px]">
+            <table className={cn('w-full', canConfigureStorefrontCatalog ? 'min-w-[1320px]' : 'min-w-[1240px]')}>
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="text-left p-4 font-medium text-slate-600">Item</th>
@@ -1545,6 +1653,9 @@ export default function Items() {
                   <th className="text-left p-4 font-medium text-slate-600">Stock Level</th>
                   <th className="text-left p-4 font-medium text-slate-600">Status</th>
                   <th className="text-left p-4 font-medium text-slate-600">POS Visible</th>
+                  {canConfigureStorefrontCatalog && (
+                    <th className="text-left p-4 font-medium text-slate-600">Storefront Visible</th>
+                  )}
                   <th className="text-left p-4 font-medium text-slate-600">Unit Cost</th>
                   <th className="text-left p-4 font-medium text-slate-600">Last Updated</th>
                 </tr>
@@ -1564,6 +1675,8 @@ export default function Items() {
                   const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
                   const posConfigResolved = resolvePosConfig(item);
                   const posVisible = posConfigResolved.pos_visible !== false;
+                  const storefrontConfigResolved = resolveStorefrontConfig(item);
+                  const storefrontVisible = storefrontConfigResolved.storefront_visible !== false;
 
                   return (
                     <tr
@@ -1637,6 +1750,22 @@ export default function Items() {
                           <span className="text-xs text-slate-500">{posVisible ? 'On' : 'Off'}</span>
                         </div>
                       </td>
+                      {canConfigureStorefrontCatalog && (
+                        <td
+                          className="p-4"
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={storefrontVisible}
+                              onCheckedChange={(nextValue) => handleToggleStorefrontVisibility(item, nextValue)}
+                              aria-label={`Toggle storefront visibility for ${item.name}`}
+                            />
+                            <span className="text-xs text-slate-500">{storefrontVisible ? 'On' : 'Off'}</span>
+                          </div>
+                        </td>
+                      )}
                       <td className="p-4 font-medium text-slate-900">₱{formatNumber(calculateTotalProductCost(item), 2)}</td>
                       <td className="p-4 text-slate-600">{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : (item.last_updated || 'N/A')}</td>
                     </tr>
@@ -1658,7 +1787,7 @@ export default function Items() {
             }
           }}
         >
-          <DialogContent className="sm:max-w-5xl">
+          <DialogContent className="sm:max-w-7xl">
             <DialogHeader>
               <DialogTitle className="text-xl">Make Item POS-Ready</DialogTitle>
               <DialogDescription>
@@ -1755,7 +1884,7 @@ export default function Items() {
                     onClick={() => applyBulkPosVisibility(true)}
                     disabled={bulkPosToggleLoading || checklistSelectedCount === 0}
                   >
-                    Enable Selected
+                    Enable POS
                   </Button>
                   <Button
                     type="button"
@@ -1764,7 +1893,7 @@ export default function Items() {
                     onClick={() => applyBulkPosVisibility(false)}
                     disabled={bulkPosToggleLoading || checklistSelectedCount === 0}
                   >
-                    Disable Selected
+                    Disable POS
                   </Button>
                 </div>
               </div>
@@ -1781,6 +1910,12 @@ export default function Items() {
                       <th className="p-3 text-left">Missing</th>
                       <th className="p-3 text-left">POS Visible</th>
                       <th className="p-3 text-left">Menu Image</th>
+                      {canConfigureStorefrontCatalog && (
+                        <>
+                          <th className="p-3 text-left">Storefront Visible</th>
+                          <th className="p-3 text-left">Storefront Image</th>
+                        </>
+                      )}
                       <th className="p-3 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -1791,6 +1926,9 @@ export default function Items() {
                       const posConfigResolved = resolvePosConfig(item);
                       const posVisible = posConfigResolved.pos_visible !== false;
                       const posImageUrl = posConfigResolved.pos_image_url || null;
+                      const storefrontConfigResolved = resolveStorefrontConfig(item);
+                      const storefrontVisible = storefrontConfigResolved.storefront_visible !== false;
+                      const storefrontImageUrl = storefrontConfigResolved.storefront_image_url || null;
                       const checked = posChecklistSelectedIds.has(itemId);
                       const readiness = posReadinessByItemId[itemId] || buildFallbackPosReadiness(item);
                       const missingCount = Array.isArray(readiness?.missing_requirements) ? readiness.missing_requirements.length : 0;
@@ -1881,6 +2019,59 @@ export default function Items() {
                               </div>
                             </div>
                           </td>
+                          {canConfigureStorefrontCatalog && (
+                            <>
+                              <td className="p-3">
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={storefrontVisible}
+                                    onCheckedChange={(nextValue) => handleToggleStorefrontVisibility(item, nextValue)}
+                                    aria-label={`Toggle storefront visibility for ${item.name}`}
+                                  />
+                                  <span className="text-xs text-slate-500">{storefrontVisible ? 'On' : 'Off'}</span>
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                <div className="space-y-2">
+                                  {storefrontImageUrl ? (
+                                    <img
+                                      src={storefrontImageUrl}
+                                      alt={`${item.name} storefront catalog`}
+                                      className="h-16 w-20 rounded-md border border-slate-200 object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-slate-500">No image</span>
+                                  )}
+                                  <div className="flex flex-wrap gap-2">
+                                    <label className="cursor-pointer rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                                      Upload
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(event) => {
+                                          const file = event.target.files?.[0];
+                                          if (file) {
+                                            handleUploadStorefrontImage(item, file);
+                                          }
+                                          event.target.value = '';
+                                        }}
+                                      />
+                                    </label>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteStorefrontImage(item)}
+                                      disabled={!storefrontImageUrl}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </div>
+                                </div>
+                              </td>
+                            </>
+                          )}
                           <td className="p-3">
                             <div className="flex flex-wrap gap-2">
                               <Button
@@ -1905,7 +2096,7 @@ export default function Items() {
                     })}
                     {posChecklistItems.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="p-6 text-center text-slate-500">
+                        <td colSpan={canConfigureStorefrontCatalog ? 11 : 9} className="p-6 text-center text-slate-500">
                           No items match the current filters.
                         </td>
                       </tr>
@@ -1948,9 +2139,14 @@ export default function Items() {
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
+          storefrontConfig={editingItem ? resolveStorefrontConfig(editingItem) : null}
+          showStorefrontCatalogControls={canConfigureStorefrontCatalog}
           onTogglePosVisibility={handleTogglePosVisibility}
           onUploadPosImage={handleUploadPosImage}
           onDeletePosImage={handleDeletePosImage}
+          onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
+          onUploadStorefrontImage={handleUploadStorefrontImage}
+          onDeleteStorefrontImage={handleDeleteStorefrontImage}
           onOpenBulkPosSetup={() => {
             if (editingItem) {
               launchPosReadinessFlow(editingItem);
@@ -1982,9 +2178,14 @@ export default function Items() {
             workflowMode={workflowMode}
             folders={productFolders}
             posConfig={editingProduct ? resolvePosConfig(editingProduct) : null}
+            storefrontConfig={editingProduct ? resolveStorefrontConfig(editingProduct) : null}
+            showStorefrontCatalogControls={canConfigureStorefrontCatalog}
             onTogglePosVisibility={handleTogglePosVisibility}
             onUploadPosImage={handleUploadPosImage}
             onDeletePosImage={handleDeletePosImage}
+            onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
+            onUploadStorefrontImage={handleUploadStorefrontImage}
+            onDeleteStorefrontImage={handleDeleteStorefrontImage}
             onOpenBulkPosSetup={() => {
               if (editingProduct) {
                 launchPosReadinessFlow(editingProduct);
@@ -2098,6 +2299,8 @@ export default function Items() {
                 onDelete={() => { }}
                 onMoveToFolder={() => { }}
                 posReadiness={posReadinessByItemId[activeDragItem.item_id || activeDragItem.id]}
+                showPosVisibilityControl={false}
+                showStorefrontVisibilityControl={false}
                 isMsmeMode={isMsmeMode}
               />
             </div>

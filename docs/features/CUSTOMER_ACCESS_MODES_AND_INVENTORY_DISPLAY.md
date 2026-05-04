@@ -1,0 +1,128 @@
+---
+status: reference
+authority_level: reference
+owner: product
+last_reviewed: 2026-05-04
+applies_to: customer_access_modes_and_storefront_inventory_display
+topic: customer_access_modes_inventory_display
+---
+
+# Customer Access Modes And Inventory Display
+
+## Summary
+Customer Access Mode replaces the old merchant-facing "Visibility Mode" wording with a capability contract: what customers can see and do after finding a business. Inventory Display is a separate Storefront control for how much stock information customers can see. Item-level `Show in Storefront` is a third control: it determines whether an individual item is included in the customer-facing catalog when the tenant's effective Customer Access Mode allows catalog browsing.
+
+This contract is implemented behind the backend rollout flag `CUSTOMER_ACCESS_MODES_ENABLED`. With the flag off, public storefront behavior remains transaction-capable for compatibility while onboarding and Settings can store the new mode settings. A controlled tenant rollout can be enabled with `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` while the global flag remains false. With either rollout path enabled for a tenant, public Storefront APIs enforce the effective Customer Access Mode.
+
+Authoritative docs used for this plan:
+
+- `docs/START_HERE.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/adr/0006-skupervisor-expansion-program-boundaries.md`
+- `docs/architecture/adr/0007-dual-mode-pos-compliance-program.md`
+- `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
+- `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
+- `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
+- `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
+- `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
+- `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
+
+## Mode Definitions
+Use the internal v1 codes already understood by the onboarding classifier, but never show the old names in merchant UI.
+
+| Code | Merchant label | Public behavior |
+|---|---|---|
+| `ghost` | Map Listing Only | Discovery/profile only. Show business name, category, location, and contact. Hide catalog, prices, cart, booking, quote, and checkout. |
+| `catalog` | Catalog Only | Show catalog/menu/services, photos, prices, and inventory presentation. Hide cart, booking, quote, and checkout. |
+| `inquiry` | Inquiry Mode | Show catalog plus contact calls to action. V1 uses phone/email/social links only; no stored lead inbox is introduced. |
+| `transaction` | Online Ordering Mode | Enable order, booking, quote, checkout, and payment options when compliance/payment readiness allows. |
+
+Inventory Display is independent:
+
+| Code | Customer-facing output |
+|---|---|
+| `hidden` | Hide inventory labels entirely. |
+| `availability` | Show availability status only. This is the default for existing tenants. |
+| `low_stock` | Show status plus low-stock copy such as `Only 3 left` under a tenant-configured threshold. |
+| `exact_quantity` | Show exact quantity only after explicit tenant selection. |
+
+## Implemented Integration
+1. Backend domain and settings
+- Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
+- Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
+- Existing and newly provisioned tenants default to `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`.
+- Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only.
+- Settings, onboarding classifier saves, tenant location changes, and storefront asset changes refresh the discovery index after successful use-case results so public search/profile rows do not carry stale access-mode or location data.
+
+2. Onboarding
+- The onboarding classifier UI uses Customer Access Mode copy.
+- The `business_classification` step stores both new settings and the legacy-compatible `online_visibility.mode`/`visibility_mode` alias.
+- Inventory Display selection is captured during onboarding with default `availability`.
+- Keep onboarding completion gates unchanged: onboarding remains a soft reminder and does not block IMS/POS access.
+
+3. Settings
+- The Storefront tab exposes `#storefront-access-settings` for Customer Access Mode and Inventory Display.
+- The section shows requested mode, effective mode, max allowed mode, limitation copy, and backend rollout-flag guidance.
+- Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
+- Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
+
+4. Storefront public APIs
+- Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and the rollout-enabled state so discovery cards can suppress Order Now without a tenant DB fanout.
+- For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items when the rollout flag is enabled.
+- For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed when the rollout flag is enabled.
+- For `transaction`, quote/checkout/booking remain available subject to existing location, stock, compliance, and payment gates.
+- Public product catalog payloads continue to omit `current_stock` and `cost_per_unit`; `inventory_display.display_quantity` is the only public quantity field.
+- `/store/catalog` item membership and checkout item eligibility use `storefront_catalog_overrides.storefront_visible`. `pos_catalog_overrides.pos_visible` remains POS-only after backfill, with a temporary missing-table fallback for additive rollout safety.
+- Storefront catalog images use `storefront_catalog_overrides.storefront_image_url`. POS menu images remain independent and are used only when the Storefront override table itself is unavailable during rollout compatibility fallback.
+- When the Storefront override table exists but an individual item has no Storefront override row, public Storefront reads use the Storefront default policy rather than inheriting POS state. For products, finished goods default visible and non-finished goods default hidden; services follow service storefront metadata.
+- POS and Storefront image replacement is visibility-preserving and failure-aware: upload stores the new file, commits the override update, then removes the old file. A failed override update cleans up the newly stored file and leaves the old image path intact.
+
+5. Storefront UI
+- Map Listing Only: shows map/profile/contact and hides catalog, cart, quote, checkout, booking, and Order Now.
+- Catalog Only: shows catalog browse UI and hides cart, booking, quote, checkout, and Order Now.
+- Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
+- Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
+- Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
+- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
+- Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
+
+## Registration And Compliance Rules
+Use declared onboarding registration status as the v1 merchant-stage signal, with compliance/payment state as stronger runtime evidence when available.
+
+| Stage | Max normal mode |
+|---|---|
+| Informal | `catalog` |
+| Partial | `inquiry` |
+| Registered | `transaction` |
+| Verified + payment ready | `transaction` plus online payment options |
+
+Runtime behavior:
+
+- The effective mode is the lower of requested mode and max normal mode unless a future platform override contract is added.
+- If a tenant requests a higher mode than allowed, Storefront uses the effective mode and exposes a limitation reason for Settings/admin UX.
+- Quote, checkout, booking, and payment actions return deterministic failure metadata when blocked by Customer Access Mode.
+- Compliance lifecycle rules from ADR 0007 still govern fiscal output and payment capability; Customer Access Mode must not mutate compliance state.
+
+## Test Plan
+- Backend unit tests: mode normalization, rank comparison, stage-derived max mode, inventory display serialization, Settings validator coverage, legacy `visibility_mode` compatibility.
+- Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
+- Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
+- Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
+- Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
+
+## Latest Validation Snapshot
+Current implementation readiness is code/test/build ready for controlled rollout, not yet fully production-proven until tenant canary smoke evidence is captured after migrations.
+
+Validated on 2026-05-04:
+- Backend targeted suites: onboarding schema compatibility, catalog visibility, store use cases, services use cases, customer access policy, settings validator, settings handlers, storefront discovery repository, runtime schema audit.
+- Frontend targeted suites: Storefront checkout rules, customer access helpers, Settings deep-link contract, onboarding modal behavior.
+- Governance/build gates: `npm run lint:docs`, `npm run check:architecture`, `npm run build:store`, `npm --prefix frontend run build:skupervisor`, and `git diff --check`.
+
+Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
+
+## Assumptions
+- Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.
+- Internal mode codes stay `ghost`, `catalog`, `inquiry`, and `transaction` for compatibility. UI copy uses only the new labels.
+- Existing tenants default to browseable catalog behavior with availability-only stock display.
+- No local source folder outside `docs/` remains as a planning source after this document is added.

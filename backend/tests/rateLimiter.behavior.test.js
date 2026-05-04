@@ -6,6 +6,7 @@ const originalEnv = { ...process.env };
 
 let generalLimiter;
 let authLimiter;
+let tenantRegistrationLimiter;
 let logger;
 
 beforeAll(async () => {
@@ -14,6 +15,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_AUTH_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_AUTH_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
 
   const loggerModule = await import('../src/config/logger.js');
@@ -22,6 +25,7 @@ beforeAll(async () => {
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
   authLimiter = limiterModule.authLimiter;
+  tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
 });
 
 afterAll(() => {
@@ -99,5 +103,31 @@ describe('Rate limiter behavior', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'beta@example.com', password: 'x' })
       .expect(200);
+  });
+
+  it('rate-limits tenant company registration with registration-scoped response metadata', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/admin/tenants/register', tenantRegistrationLimiter, (_req, res) => {
+      res.status(201).json({ success: true });
+    });
+
+    await request(app)
+      .post('/api/v1/admin/tenants/register')
+      .send({ name: 'Tenant A', adminEmail: 'owner-a@example.test' })
+      .expect(201);
+
+    const second = await request(app)
+      .post('/api/v1/admin/tenants/register')
+      .send({ name: 'Tenant B', adminEmail: 'owner-b@example.test' })
+      .expect(429);
+
+    expect(second.body).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Too many registration requests from this IP, please try again after an hour.',
+      limitScope: 'registration',
+      limitKeyType: 'ip',
+      retryAfterSeconds: expect.any(Number),
+    }));
   });
 });

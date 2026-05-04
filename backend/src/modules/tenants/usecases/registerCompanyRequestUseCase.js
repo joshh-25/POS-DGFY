@@ -7,6 +7,7 @@ import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
+import { TENANT_REGISTRATION_APPROVAL_MODES } from '../../../config/tenantRegistrationApproval.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
@@ -17,6 +18,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     emailService,
     hashPassword,
     idGenerator,
+    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
     logger
 }) => {
     return async ({ body, correlationId }) => {
@@ -178,6 +180,18 @@ export const buildRegisterCompanyRequestUseCase = ({
             let currentPeriodEnd = null;
             let billingCycleAnchor = null;
             let paymentMethod = 'manual';
+            let autoApprovalSource = null;
+            let shouldProvisionImmediately = false;
+
+            const approvalMode = getTenantRegistrationApprovalMode();
+            const shouldAutoApproveStandard = normalizedPlan === 'standard'
+                && !subscriptionId
+                && approvalMode === TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD;
+
+            if (shouldAutoApproveStandard) {
+                shouldProvisionImmediately = true;
+                autoApprovalSource = 'auto_standard';
+            }
 
             // Both Standard and Premium support PayPal (if subscriptionId provided) OR manual path.
             if (subscriptionId) {
@@ -185,9 +199,11 @@ export const buildRegisterCompanyRequestUseCase = ({
                     const subDetails = await paypalService.verifySubscription(subscriptionId);
                     if (subDetails && subDetails.status === 'ACTIVE') {
                         initialStatus = 'active';
+                        shouldProvisionImmediately = true;
                         subscriptionStatus = 'active';
                         paymentMethod = 'paypal';
                         validatedSubscriptionId = subscriptionId;
+                        autoApprovalSource = 'paypal';
 
                         const paypalNextBillingTime = toValidDate(subDetails.billing_info?.next_billing_time);
                         if (paypalNextBillingTime) {
@@ -221,7 +237,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                     ));
                 }
             }
-            // No subscriptionId → manual path (pending, requires admin approval) for any plan.
+            // No subscriptionId uses manual approval unless auto-standard mode is explicitly enabled.
 
             const uuid = idGenerator();
             const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -236,7 +252,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                 domain: subdomain,
                 db_name: dbName,
                 company_token: companyToken,
-                status: initialStatus,
+                status: shouldProvisionImmediately ? 'pending' : initialStatus,
                 admin_email: adminEmail,
                 admin_password_hash: passwordHash,
                 plan: normalizedPlan,
@@ -256,17 +272,21 @@ export const buildRegisterCompanyRequestUseCase = ({
                 }
             });
 
-            try {
-                await addEmailTenantMapping(adminEmail, tenant.id);
-            } catch (mappingError) {
-                logger?.warn?.(
-                    `[Registration] Failed to create email-tenant mapping for ${adminEmail}: ${mappingError.message}`
-                );
+            if (!shouldProvisionImmediately) {
+                try {
+                    await addEmailTenantMapping(adminEmail, tenant.id);
+                } catch (mappingError) {
+                    logger?.warn?.(
+                        `[Registration] Failed to create email-tenant mapping for ${adminEmail}: ${mappingError.message}`
+                    );
+                }
             }
 
-            if (initialStatus === 'active') {
-                logger?.info?.(`Auto-provisioning ${normalizedPlan} Tenant via PayPal: ${name}`);
-                await provisionTenant({
+            if (shouldProvisionImmediately) {
+                logger?.info?.(
+                    `[Registration] Auto-provisioning ${normalizedPlan} tenant (${autoApprovalSource || 'active'}): ${name}`
+                );
+                const provisionedTenant = await provisionTenant({
                     tenantId: tenant.id,
                     name: tenant.name,
                     dbName: tenant.db_name,
@@ -276,28 +296,43 @@ export const buildRegisterCompanyRequestUseCase = ({
                     workflowMode: normalizedWorkflowMode
                 });
 
+                let emailSent = false;
                 if (emailService?.isEmailConfigured?.()) {
-                    await emailService.sendCompanyApprovedEmail({
-                        email: tenant.admin_email,
-                        companyName: tenant.name,
-                        companyToken: tenant.company_token
-                    });
+                    try {
+                        await emailService.sendCompanyApprovedEmail({
+                            email: tenant.admin_email,
+                            companyName: tenant.name,
+                            companyToken: tenant.company_token
+                        });
+                        emailSent = true;
+                        logger?.info?.(`[Registration] Approval email sent to ${tenant.admin_email}`);
+                    } catch (emailError) {
+                        logger?.warn?.(
+                            `[Registration] Failed to send approval email to ${tenant.admin_email}: ${emailError.message}`
+                        );
+                    }
                 }
 
                 await tracker.succeeded({
                     tenantId: tenant.id,
                     subscriptionId: validatedSubscriptionId,
                     metadata: {
-                        status: tenant.status,
-                        auto_approved: true
+                        status: provisionedTenant?.status || 'active',
+                        auto_approved: true,
+                        auto_approval_source: autoApprovalSource,
+                        email_sent: emailSent
                     }
                 });
+
+                const activeMessage = autoApprovalSource === 'auto_standard'
+                    ? 'Company registered and activated successfully. You can sign in now.'
+                    : `Company registered and activated successfully! Welcome to ${normalizedPlan.charAt(0).toUpperCase() + normalizedPlan.slice(1)}.`;
 
                 return ok({
                     statusCode: 201,
                     payload: {
                         success: true,
-                        message: `Company registered and activated successfully! Welcome to ${normalizedPlan.charAt(0).toUpperCase() + normalizedPlan.slice(1)}.`,
+                        message: activeMessage,
                         data: {
                             id: tenant.id,
                             name: tenant.name,
@@ -305,7 +340,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                             plan: normalizedPlan,
                             compliance_mode_state: complianceModeState,
                             workflow_mode: normalizedWorkflowMode,
-                            company_token: tenant.company_token
+                            company_token: tenant.company_token,
+                            email_sent: emailSent
                         }
                     }
                 });

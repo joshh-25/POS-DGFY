@@ -1,12 +1,20 @@
 import dbStore from '../../../utils/dbStore.js';
 import { assertOnboardingRepositoryContract } from '../contracts/onboardingRepository.contract.js';
 import { buildBusinessClassificationSnapshot } from '../domain/businessClassification.js';
+import {
+  normalizeCustomerAccessMode,
+  normalizeInventoryDisplayMode,
+  normalizeLowStockDisplayThreshold
+} from '../../shared/utils/customerAccessPolicy.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
 const ONBOARDING_COMPLETED_AT_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_KEY = 'tenant_onboarding_progress';
 const POS_BUSINESS_NAME_KEY = 'pos_business_name';
+const CUSTOMER_ACCESS_MODE_KEY = 'customer_access_mode';
+const INVENTORY_DISPLAY_MODE_KEY = 'inventory_display_mode';
+const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY = 'inventory_low_stock_display_threshold';
 
 const ALLOWED_STATES = new Set(['not_started', 'in_progress', 'completed']);
 const REQUIRED_CHECK_KEYS = Object.freeze([
@@ -209,7 +217,10 @@ const readOnboardingSettings = async ({ transaction = null } = {}) => {
     ONBOARDING_STATE_KEY,
     ONBOARDING_STARTED_AT_KEY,
     ONBOARDING_COMPLETED_AT_KEY,
-    ONBOARDING_PROGRESS_KEY
+    ONBOARDING_PROGRESS_KEY,
+    CUSTOMER_ACCESS_MODE_KEY,
+    INVENTORY_DISPLAY_MODE_KEY,
+    INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY
   ], { transaction });
 
   const state = sanitizeState(rowMap.get(ONBOARDING_STATE_KEY)?.setting_value);
@@ -351,6 +362,30 @@ export const onboardingRepository = {
         description: 'Tenant onboarding progress and latest checklist snapshot',
         transaction
       });
+      if (safeStepKey === 'business_classification') {
+        const classification = nextProgress.classification_snapshot || {};
+        await upsertSetting(SystemSetting, rowMap, {
+          key: CUSTOMER_ACCESS_MODE_KEY,
+          value: normalizeCustomerAccessMode(classification.customer_access_mode || classification.visibility_mode),
+          dataType: 'string',
+          description: 'Requested storefront customer access mode (ghost | catalog | inquiry | transaction)',
+          transaction
+        });
+        await upsertSetting(SystemSetting, rowMap, {
+          key: INVENTORY_DISPLAY_MODE_KEY,
+          value: normalizeInventoryDisplayMode(classification.inventory_display_mode),
+          dataType: 'string',
+          description: 'Customer-facing inventory display mode (hidden | availability | low_stock | exact_quantity)',
+          transaction
+        });
+        await upsertSetting(SystemSetting, rowMap, {
+          key: INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY,
+          value: normalizeLowStockDisplayThreshold(classification.inventory_low_stock_display_threshold),
+          dataType: 'number',
+          description: 'Public low-stock display threshold for storefront inventory labels',
+          transaction
+        });
+      }
 
       responsePayload = toResponsePayload({
         state: nextState,

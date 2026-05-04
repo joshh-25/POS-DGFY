@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import L from 'leaflet';
+import QRCode from 'qrcode';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
@@ -14,6 +15,15 @@ import {
   classifyStoreCatalogError,
   normalizeStorefrontErrorMessage
 } from './storefrontErrorMessages.js';
+import {
+  canUseBooking,
+  canUseCheckout,
+  canUseProductCart,
+  canViewCatalog,
+  getAccessCapabilities,
+  getInventoryDisplayLabel
+} from './customerAccess.js';
+import { renderBusinessModePinSvg } from './businessModePins.js';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
@@ -164,6 +174,19 @@ const parseBooleanFlag = (value, fallback = false) => {
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   return fallback;
 };
+const buildAccessPolicyStorePatch = (accessPolicy = null) => {
+  if (!accessPolicy || typeof accessPolicy !== 'object') return null;
+  return {
+    customer_access_mode: accessPolicy.customer_access_mode,
+    effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+    max_customer_access_mode: accessPolicy.max_customer_access_mode,
+    inventory_display_mode: accessPolicy.inventory_display_mode,
+    inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
+    access_capabilities: accessPolicy.access_capabilities,
+    access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
+    customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
+  };
+};
 
 const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
@@ -273,6 +296,35 @@ const createStorePopupNode = (store = {}) => {
   return container;
 };
 
+const normalizeProfileLocations = (profile = {}) => (
+  (Array.isArray(profile?.active_location_snapshot) ? profile.active_location_snapshot : [])
+    .map((location) => ({
+      location_id: location.location_id ?? null,
+      name: location.name || profile.location_name || 'Main Branch',
+      address_line: location.address_line || profile.address_line || '',
+      latitude: location.latitude ?? profile.latitude ?? null,
+      longitude: location.longitude ?? profile.longitude ?? null,
+      is_open: location.is_open !== false,
+      is_active: location.is_active !== false,
+      is_primary_storefront: location.is_primary_storefront === true,
+      supports_delivery: location.supports_delivery !== false,
+      supports_pickup: location.supports_pickup !== false,
+      supports_dine_in: location.supports_dine_in !== false
+    }))
+    .filter((location) => location.location_id != null)
+);
+
+const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
+  const profileLocations = normalizeProfileLocations(profile);
+  if (!profileLocations.length) return true;
+  const profilePrimary = profileLocations.find((location) => location.is_primary_storefront) || profileLocations[0];
+  const returnedPrimary = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location.location_id) === Number(profilePrimary.location_id));
+  if (!returnedPrimary) return false;
+  return String(returnedPrimary.name || '').trim() === String(profilePrimary.name || '').trim()
+    && String(returnedPrimary.address_line || '').trim() === String(profilePrimary.address_line || '').trim();
+};
+
 const readStoreAuthToken = () => {
   if (typeof window === 'undefined') return '';
   const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
@@ -342,7 +394,97 @@ const buildStockExceededMessage = (violation = {}) => {
 const isItemAvailable = (item = {}) => {
   if (item?.is_available === true) return true;
   if (item?.is_available === false) return false;
-  return String(item?.availability_status || '').toLowerCase() === 'in_stock';
+  const status = String(item?.availability_status || '').toLowerCase();
+  return status === 'in_stock' || status === 'bookable';
+};
+
+const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+
+const downloadDataUrl = (dataUrl, filename) => {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = reject;
+  image.src = src;
+});
+
+const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
+  const booking = result.booking || null;
+  const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
+  const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
+  const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
+  const canvas = document.createElement('canvas');
+  canvas.width = 900;
+  canvas.height = 1250;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 42px Arial';
+  ctx.fillText(typeLabel, 64, 88);
+  ctx.font = '700 26px Arial';
+  ctx.fillText(storeName || DGFY_BRAND_NAME, 64, 132);
+  ctx.font = '400 22px Arial';
+  ctx.fillStyle = '#475569';
+  ctx.fillText(`Reference: ${reference}`, 64, 182);
+  ctx.fillText(`Payment: ${paymentStatus}`, 64, 218);
+  if (booking?.start_at) ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, 254);
+  if (booking?.service?.name || booking?.service_name) ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, 290);
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(64, 330);
+  ctx.lineTo(836, 330);
+  ctx.stroke();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 24px Arial';
+  ctx.fillText('Line Items', 64, 382);
+  ctx.font = '400 22px Arial';
+  let y = 426;
+  cartLines.slice(0, 10).forEach((line) => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText(`${Number(line.quantity || 1)} x ${line.name}`, 64, y);
+    ctx.fillStyle = '#475569';
+    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), 650, y);
+    y += 38;
+  });
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(64, y + 8);
+  ctx.lineTo(836, y + 8);
+  ctx.stroke();
+  y += 58;
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 28px Arial';
+  ctx.fillText('Total', 64, y);
+  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), 650, y);
+  y += 56;
+  ctx.font = '400 20px Arial';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
+  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
+  const qrImage = await loadImage(qrDataUrl);
+  ctx.drawImage(qrImage, 340, 900, 220, 220);
+  ctx.font = '700 22px Arial';
+  ctx.fillStyle = '#0f172a';
+  ctx.textAlign = 'center';
+  ctx.fillText(reference, 450, 1156);
+  ctx.textAlign = 'left';
+  return canvas.toDataURL('image/png');
+};
+
+const formatTicketDate = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unscheduled';
+  return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 const STOREFRONT_VISITOR_ID_STORAGE_KEY = 'dgfy_storefront_visitor_id';
@@ -357,15 +499,12 @@ const getOrCreateStorefrontVisitorId = () => {
   return generated;
 };
 
-const pinIcon = (selected = false) => L.divIcon({
+const pinIcon = (mode, selected = false) => L.divIcon({
   className: '',
-  iconSize: [26, 36],
-  iconAnchor: [13, 35],
+  iconSize: selected ? [38, 48] : [34, 44],
+  iconAnchor: selected ? [19, 47] : [17, 43],
   popupAnchor: [0, -30],
-  html: `<div style="position:relative;width:26px;height:36px;display:flex;align-items:center;justify-content:center;">
-    <div style="width:${selected ? 22 : 18}px;height:${selected ? 22 : 18}px;border-radius:999px;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);background:${selected ? 'linear-gradient(135deg,#0f766e,#14b8a6)' : 'linear-gradient(135deg,#334155,#64748b)'};"></div>
-    <div style="position:absolute;bottom:2px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid ${selected ? '#0f766e' : '#334155'};"></div>
-  </div>`
+  html: renderBusinessModePinSvg(mode, selected)
 });
 
 const userLocationIcon = L.divIcon({
@@ -408,7 +547,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
       const highlighted = selectedKey
         ? markerKey === String(selectedKey)
         : store.is_primary_storefront === true;
-      const marker = L.marker([lat, lng], { icon: pinIcon(highlighted) }).addTo(map);
+      const marker = L.marker([lat, lng], { icon: pinIcon(store.workflow_mode || store.business_mode, highlighted) }).addTo(map);
       marker.bindPopup(createStorePopupNode(store));
       marker.on('click', () => onSelectStore(store));
       markersRef.current.push(marker);
@@ -584,8 +723,12 @@ export function App() {
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerPin, setCustomerPin] = useState(null);
+  const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
+  const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
+  const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
   const [pinLocationLoading, setPinLocationLoading] = useState(false);
   const [pinLocationError, setPinLocationError] = useState('');
   const [quoteResult, setQuoteResult] = useState(null);
@@ -598,6 +741,7 @@ export function App() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
+  const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, orders: [], bookings: [] });
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
@@ -700,11 +844,16 @@ export function App() {
       const profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`);
       setSelectedStore(profile);
       let resolvedCatalogLocationId = null;
+      const profileLocations = normalizeProfileLocations(profile);
 
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug });
-        const locations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
-        const nextPrimaryLocationId = locationsData?.primary_location_id ?? null;
+        const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
+        const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
+        const locations = useProfileSnapshot ? profileLocations : apiLocations;
+        const nextPrimaryLocationId = useProfileSnapshot
+          ? (profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null)
+          : (locationsData?.primary_location_id ?? null);
         setStoreLocations(locations);
         setPrimaryLocationId(nextPrimaryLocationId);
         if (locations.length > 0) {
@@ -735,16 +884,21 @@ export function App() {
           setSelectedLocationId(null);
         }
       } catch {
-        setStoreLocations([]);
-        setPrimaryLocationId(null);
-        resolvedCatalogLocationId = null;
-        setSelectedLocationId(null);
+        const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        setStoreLocations(profileLocations);
+        setPrimaryLocationId(fallbackPrimaryLocationId);
+        resolvedCatalogLocationId = fallbackPrimaryLocationId;
+        setSelectedLocationId(fallbackPrimaryLocationId);
       }
 
       const catalogQuery = resolvedCatalogLocationId == null
         ? '/api/v1/store/catalog?limit=120'
         : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`;
       const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug });
+      const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
+      if (accessPatch) {
+        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+      }
       setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
     } catch (error) {
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
@@ -818,6 +972,10 @@ export function App() {
           : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`;
         const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug });
         if (cancelled) return;
+        const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
+        if (accessPatch) {
+          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+        }
         setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
       } catch (error) {
         if (cancelled) return;
@@ -1159,6 +1317,46 @@ export function App() {
     return 'ready';
   }, [loadingCatalog, catalogError, catalog.length, hasCatalogSearchQuery, filteredCatalog.length]);
   const isDeliveryOrder = orderMethod === 'delivery';
+  const serviceCartLines = useMemo(() => cart.filter((line) => line.category === 'service'), [cart]);
+  const hasServiceCart = serviceCartLines.length > 0;
+  const hasMixedServiceCart = hasServiceCart && serviceCartLines.length !== cart.length;
+  const firstServiceLine = serviceCartLines[0] || null;
+  const servicePaymentPolicy = firstServiceLine?.service_detail?.payment_policy || 'customer_choice';
+  const serviceIntakeFields = useMemo(() => {
+    const schema = firstServiceLine?.service_detail?.intake_form_schema;
+    const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
+    return fields
+      .map((field, index) => ({
+        id: String(field.id || field.key || field.name || `field_${index}`),
+        label: String(field.label || field.question || field.name || `Question ${index + 1}`),
+        type: ['textarea', 'select', 'checkbox', 'number', 'date', 'text'].includes(String(field.type || '').trim()) ? String(field.type).trim() : 'text',
+        required: field.required === true,
+        options: Array.isArray(field.options) ? field.options.map((option) => String(option)) : []
+      }))
+      .filter((field) => field.id && field.label);
+  }, [firstServiceLine]);
+  const missingRequiredIntake = useMemo(() => (
+    serviceIntakeFields.filter((field) => {
+      if (!field.required) return false;
+      const value = serviceIntakeResponses[field.id];
+      return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
+    })
+  ), [serviceIntakeFields, serviceIntakeResponses]);
+  const servicePaymentOptions = useMemo(() => {
+    if (servicePaymentPolicy === 'prepaid_required') return [{ value: 'prepaid', label: 'Pay Now' }];
+    if (servicePaymentPolicy === 'postpaid_only') return [{ value: 'postpaid', label: 'Pay Later' }];
+    if (servicePaymentPolicy === 'deposit_allowed') {
+      return [
+        { value: 'postpaid', label: 'Pay Later' },
+        { value: 'prepaid', label: 'Pay Now' },
+        { value: 'deposit', label: 'Deposit' }
+      ];
+    }
+    return [
+      { value: 'postpaid', label: 'Pay Later' },
+      { value: 'prepaid', label: 'Pay Now' }
+    ];
+  }, [servicePaymentPolicy]);
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
   ), [cart]);
@@ -1185,11 +1383,18 @@ export function App() {
   const isMobileViewport = viewportWidth < 768;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
+  const accessCapabilities = useMemo(() => getAccessCapabilities(selectedStore), [selectedStore]);
+  const catalogPermitted = canViewCatalog(selectedStore);
+  const productCartPermitted = canUseProductCart(selectedStore);
+  const checkoutPermitted = canUseCheckout(selectedStore);
+  const bookingPermitted = canUseBooking(selectedStore);
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
     checkoutLoading,
     hasStockViolation,
+    hasServiceCart,
+    accessCapabilities,
     quoteResult,
     quoteNeedsRefresh
   });
@@ -1198,9 +1403,20 @@ export function App() {
     cartCount,
     checkoutLoading,
     hasStockViolation,
+    hasServiceCart,
+    accessCapabilities,
     quoteResult,
     quoteNeedsRefresh
-  });
+  }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
+
+  useEffect(() => {
+    if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
+    if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
+    setCart([]);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setIsCheckoutOpen(false);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
 
   useEffect(() => {
     if (!storesWithNearestBranch.length) {
@@ -1218,7 +1434,16 @@ export function App() {
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
-  }, [cart, orderMethod, selectedLocationId, customerPin, isStorePage]);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, isStorePage]);
+  useEffect(() => {
+    if (!hasServiceCart) return;
+    if (!servicePaymentOptions.some((option) => option.value === servicePaymentTiming)) {
+      setServicePaymentTiming(servicePaymentOptions[0]?.value || 'postpaid');
+    }
+  }, [hasServiceCart, servicePaymentOptions, servicePaymentTiming]);
+  useEffect(() => {
+    setServiceIntakeResponses({});
+  }, [firstServiceLine?.item_id]);
   useEffect(() => {
     if (!Array.isArray(storeLocations) || storeLocations.length === 0) {
       if (selectedLocationId != null) setSelectedLocationId(null);
@@ -1236,6 +1461,10 @@ export function App() {
   }, [storeLocations, selectedLocationId, primaryLocationId]);
 
   const addToCart = (item) => {
+    if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
+      toast.error('This storefront is not accepting online checkout right now.');
+      return;
+    }
     let stockWarning = '';
     const normalizedItemId = Number(item?.item_id);
     if (Number.isFinite(normalizedItemId)) {
@@ -1251,6 +1480,10 @@ export function App() {
       const price = Number(item.default_sale_price ?? 0);
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       if (found) {
+        if (isServiceCatalogItem(item)) {
+          stockWarning = 'This service is already in your booking cart.';
+          return prev;
+        }
         const requestedQty = Number(found.quantity) + 1;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
         if (requestedQty > maxStock) {
@@ -1268,7 +1501,9 @@ export function App() {
       return [...prev, {
         item_id: item.item_id,
         name: item.name,
-        quantity: maxStock > 0 ? 1 : 0,
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? 1 : 0),
         price,
         image_url: withAssetOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
@@ -1316,6 +1551,7 @@ export function App() {
     order_method: orderMethod,
     customer_name: customerName,
     customer_phone: customerPhone,
+    customer_email: customerEmail,
     delivery_address: isDeliveryOrder ? customerAddress : '',
     delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
@@ -1443,10 +1679,17 @@ export function App() {
   const handleQuote = async () => {
     if (!selectedStore) return;
     setQuoteError('');
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      const message = 'This storefront is not accepting online checkout right now.';
+      setQuoteError(message);
+      toast.error(message);
+      return;
+    }
     try {
       const data = await requestJson('/api/v1/store/cart/quote', {
         method: 'POST',
         storeSlug: selectedStore.slug,
+        authToken: readStoreAuthToken(),
         body: checkoutPayload()
       });
       setQuoteResult(data);
@@ -1476,38 +1719,84 @@ export function App() {
       toast.error(message);
       return;
     }
-    if (checkoutBlockReason === 'missing_quote') {
+    if (checkoutBlockReason === 'access_mode') {
+      const message = 'This storefront is not accepting online checkout right now.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!hasServiceCart && checkoutBlockReason === 'missing_quote') {
       const message = 'Please click Quote first before checkout.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if (checkoutBlockReason === 'stale_quote') {
+    if (!hasServiceCart && checkoutBlockReason === 'stale_quote') {
       const message = 'Your cart changed. Please refresh Quote before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (hasMixedServiceCart) {
+      const message = 'Book services separately from regular product orders.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (hasServiceCart && !serviceAppointmentAt) {
+      const message = 'Choose an appointment date and time before booking.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (hasServiceCart && missingRequiredIntake.length > 0) {
+      const message = `Complete required intake question: ${missingRequiredIntake[0].label}`;
       setCheckoutError(message);
       toast.error(message);
       return;
     }
     setCheckoutLoading(true);
     try {
-      const data = await requestJson('/api/v1/store/checkout', {
-        method: 'POST',
-        storeSlug: selectedStore.slug,
-        body: {
-          ...checkoutPayload(),
-          idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
-          payment_type: 'cash'
-        }
-      });
-      setCheckoutResult(data);
+      const authToken = readStoreAuthToken();
+      const data = hasServiceCart
+        ? await requestJson('/api/v1/store/services/bookings', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            service_item_id: Number(firstServiceLine.item_id),
+            start_at: new Date(serviceAppointmentAt).toISOString(),
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            location_id: selectedLocationId ?? selectedStore?.location_id,
+            payment_timing: servicePaymentTiming,
+            intake_responses: serviceIntakeFields.length > 0 ? serviceIntakeResponses : null,
+            notes: Number(firstServiceLine.quantity || 1) > 1 ? `Service quantity/package count: ${firstServiceLine.quantity}` : ''
+          }
+        })
+        : await requestJson('/api/v1/store/checkout', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            ...checkoutPayload(),
+            idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+            payment_type: 'cash'
+          }
+        });
+      setCheckoutResult({ ...data, cart_lines: cart, totals: totalsForDisplay });
       if (data?.tracking_pin) {
         setTrackingPinInput(data.tracking_pin);
         setCheckoutTab('track');
       }
+      if (data?.booking?.public_reference) {
+        setTrackingPinInput(data.booking.public_reference);
+      }
       setCart([]);
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
-      toast.success('Checkout completed.');
+      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -1524,6 +1813,22 @@ export function App() {
     }
   };
 
+  const handleDownloadCheckoutImage = async () => {
+    if (!checkoutResult) return;
+    try {
+      const reference = checkoutResult.booking?.public_reference || checkoutResult.tracking_pin || checkoutResult.order?.tracking_pin || 'ticket';
+      const dataUrl = await buildTicketImage({
+        result: checkoutResult,
+        storeName: selectedStore?.tenant_name || routeSlug || DGFY_BRAND_NAME,
+        cartLines: Array.isArray(checkoutResult.cart_lines) ? checkoutResult.cart_lines : cart,
+        totals: checkoutResult.totals || totalsForDisplay
+      });
+      downloadDataUrl(dataUrl, `${String(reference).toLowerCase()}-ticket.png`);
+    } catch {
+      toast.error('Unable to generate ticket image.');
+    }
+  };
+
   const handleTrack = async () => {
     setTrackingError('');
     setTrackingResult(null);
@@ -1534,6 +1839,32 @@ export function App() {
       setTrackingResult(data);
     } catch (error) {
       setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+    }
+  };
+
+  const handleLoadAccountPanel = async () => {
+    if (!selectedStore?.slug) return;
+    const authToken = readStoreAuthToken();
+    if (!authToken) {
+      setAccountPanel({ loading: false, error: 'Sign in to view saved bookings, orders, tickets, and receipts.', me: null, orders: [], bookings: [] });
+      return;
+    }
+    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const [me, ordersData, bookingsData] = await Promise.all([
+        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken }),
+        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken }),
+        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken }).catch(() => ({ bookings: [] }))
+      ]);
+      setAccountPanel({
+        loading: false,
+        error: '',
+        me: me?.customer || me || null,
+        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
+        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : []
+      });
+    } catch (error) {
+      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, orders: [], bookings: [] });
     }
   };
 
@@ -1608,7 +1939,7 @@ export function App() {
               </div>
               <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
                 {discoveryCoords
-                  ? `Near Me is active (${discoveryCoords.latitude.toFixed(4)}, ${discoveryCoords.longitude.toFixed(4)}). Results are sorted by nearest active storefront branch${nearestDistanceKm != null ? ` â€¢ nearest: ${nearestDistanceKm.toFixed(2)} km` : ''}.`
+                  ? `Near Me is active (${discoveryCoords.latitude.toFixed(4)}, ${discoveryCoords.longitude.toFixed(4)}). Results are sorted by nearest active storefront branch${nearestDistanceKm != null ? ` - nearest: ${nearestDistanceKm.toFixed(2)} km` : ''}.`
                   : 'Tip: Near Me uses your browser location to sort stores by nearest active storefront branch.'}
                 {loadingDiscoveryLocations ? ' Syncing branch pins...' : ''}
                 {discoveryAppliedFilters
@@ -1757,7 +2088,7 @@ export function App() {
                               </div>
                             )}
                             <div style={{ marginTop: 8, color: '#425466', fontSize: 13 }}>{store.address_line || 'Address unavailable'}</div>
-                            <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) â€¢ Wait {store.estimated_wait_minutes} min</div>
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#4f46e5', fontWeight: 700 }}>{store.catalog_count} storefront item(s) - Wait {store.estimated_wait_minutes} min</div>
                             {storeV2Enabled && (
                               <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                 {storeReviewSummary?.score != null && (
@@ -1776,7 +2107,7 @@ export function App() {
                               <div style={{ marginTop: 4, fontSize: 12, color: '#334155' }}>
                                 {store.matching_item_count} matching item(s)
                                 {Array.isArray(store.matching_item_sample) && store.matching_item_sample.length > 0
-                                  ? ` â€¢ e.g. ${store.matching_item_sample.join(', ')}`
+                                  ? ` - e.g. ${store.matching_item_sample.join(', ')}`
                                   : ''}
                               </div>
                             )}
@@ -1792,7 +2123,7 @@ export function App() {
                             )}
                             <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                               <span style={{ fontSize: 12, color: '#0f766e', textDecoration: 'underline' }}>Open tenant storefront page</span>
-                              {storeV2Enabled && (
+                              {storeV2Enabled && getAccessCapabilities(store).checkout === true && (
                                 <span style={{ fontSize: 11, fontWeight: 700, color: '#ea580c', border: '1px solid #fed7aa', borderRadius: 999, padding: '3px 8px', background: '#fff7ed' }}>
                                   Order now
                                 </span>
@@ -1986,7 +2317,7 @@ export function App() {
                         <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                           {reviewHighlights.slice(0, 3).map((review, index) => (
                             <div key={`review-${index}`} style={{ borderTop: index === 0 ? 'none' : '1px solid #e2e8f0', paddingTop: index === 0 ? 0 : 8 }}>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `â€¢ ${review.rating}?` : ''}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `- ${review.rating}` : ''}</div>
                               <div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{String(review.comment || '')}</div>
                             </div>
                           ))}
@@ -2113,7 +2444,7 @@ export function App() {
                           <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                             {reviewHighlights.slice(0, 2).map((review, index) => (
                               <div key={`review-v2-${index}`} style={{ borderTop: index === 0 ? 'none' : '1px solid #e2e8f0', paddingTop: index === 0 ? 0 : 8 }}>
-                                <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `â€¢ ${review.rating}?` : ''}</div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>{String(review.reviewer_name || 'Customer')} {review.rating ? `- ${review.rating}` : ''}</div>
                                 <div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{String(review.comment || '')}</div>
                               </div>
                             ))}
@@ -2205,10 +2536,10 @@ export function App() {
                     )}
                   </div>
                   <p style={{ margin: 0, color: '#e2e8f0' }}>{selectedLocation?.address_line || selectedStore?.address_line || 'Tenant storefront page is loading or being configured.'}</p>
-                  {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} â€¢ {selectedStore.catalog_count} storefront item(s)</div>}
+                  {selectedStore && <div style={{ color: '#99f6e4', fontWeight: 700, fontSize: 13 }}>{selectedStore.storefront_open ? 'Open now' : 'Temporarily closed'} - {selectedStore.catalog_count} storefront item(s)</div>}
                   {isStorefrontV2 && (
                     <div style={{ color: '#f8fafc', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {heroReviewSummary?.score != null && <span>{heroReviewSummary.score.toFixed(1)}? ({heroReviewSummary.total_count ?? 0})</span>}
+                      {heroReviewSummary?.score != null && <span>{heroReviewSummary.score.toFixed(1)} rating ({heroReviewSummary.total_count ?? 0})</span>}
                       {heroCategories.length > 0 && <span>{heroCategories.join(', ')}</span>}
                       {(selectedLocation?.name || selectedStore?.location_name) && <span>{selectedLocation?.name || selectedStore?.location_name}</span>}
                     </div>
@@ -2220,7 +2551,9 @@ export function App() {
                     {String(selectedStore?.storefront_phone || '').trim() && (
                       <a href={`tel:${selectedStore.storefront_phone}`} style={{ textDecoration: 'none', borderRadius: 10, border: '1px solid rgba(255,255,255,.7)', color: '#fff', padding: '8px 12px', minHeight: 44, minWidth: 96, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: 'rgba(15,23,42,.25)' }}>Call</a>
                     )}
-                    <button type="button" aria-label="Open checkout order panel" onClick={() => setIsCheckoutOpen(true)} style={{ borderRadius: 10, border: '1px solid #fb923c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '8px 14px', minHeight: 44, minWidth: 110, fontWeight: 800, cursor: 'pointer' }}>Order Now</button>
+                    {checkoutPermitted && (
+                      <button type="button" aria-label="Open checkout order panel" onClick={() => setIsCheckoutOpen(true)} style={{ borderRadius: 10, border: '1px solid #fb923c', color: '#fff', background: 'linear-gradient(135deg,#ea580c,#f97316)', padding: '8px 14px', minHeight: 44, minWidth: 110, fontWeight: 800, cursor: 'pointer' }}>Order Now</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2237,6 +2570,7 @@ export function App() {
                         ? storeLocations.map((location) => ({
                           ...location,
                           tenant_name: selectedStore.tenant_name,
+                          workflow_mode: selectedStore.workflow_mode,
                           marker_key: `loc-${location.location_id}`,
                           location_name: location.name,
                           storefront_profile_image_url: selectedStore.storefront_profile_image_url || null
@@ -2264,6 +2598,7 @@ export function App() {
               ) : <div style={{ color: '#64748b' }}>Waiting for storefront map pin...</div>}
             </section>
 
+            {catalogPermitted && (
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h2 style={{ margin: 0, fontSize: isMobileViewport ? 26 : 34, letterSpacing: '-0.02em' }}>Store Catalog</h2>
@@ -2302,6 +2637,9 @@ export function App() {
                     const imageUrl = withAssetOrigin(item.image_url);
                     const imageBlocked = Number.isFinite(itemId) && catalogImageErrors.has(itemId);
                     const available = isItemAvailable(item);
+                    const serviceItem = isServiceCatalogItem(item);
+                    const canAddItem = serviceItem ? bookingPermitted : productCartPermitted;
+                    const inventoryDisplayLabel = getInventoryDisplayLabel(item);
                     return (
                       <div
                         key={item.item_id}
@@ -2364,10 +2702,19 @@ export function App() {
                             {item.name}
                           </div>
                           <div style={{ color: '#0f766e', fontWeight: 700 }}>{money(item.default_sale_price ?? 0)}</div>
-                          <div style={{ fontSize: 12, color: available ? '#0f766e' : '#b91c1c', fontWeight: 700 }}>
-                            Availability: {available ? 'In stock' : 'Out of stock'}
-                          </div>
-                          <button type="button" onClick={() => addToCart(item)} disabled={!available} style={{ marginTop: 'auto', width: '100%', borderRadius: 10, border: '1px solid #ea580c', background: available ? 'linear-gradient(135deg,#ea580c,#f97316)' : '#cbd5e1', color: '#fff', padding: '9px 10px', fontWeight: 800, cursor: available ? 'pointer' : 'not-allowed' }}>+ Add</button>
+                          {serviceItem && (
+                            <div style={{ fontSize: 12, color: '#475569' }}>
+                              {item.service_detail?.duration_minutes ? `${item.service_detail.duration_minutes} min` : 'Bookable service'} · {item.service_detail?.payment_policy || 'customer_choice'}
+                            </div>
+                          )}
+                          {inventoryDisplayLabel && (
+                            <div style={{ fontSize: 12, color: available ? '#0f766e' : '#b91c1c', fontWeight: 700 }}>
+                              {inventoryDisplayLabel}
+                            </div>
+                          )}
+                          {canAddItem && (
+                            <button type="button" onClick={() => addToCart(item)} disabled={!available} style={{ marginTop: 'auto', width: '100%', borderRadius: 10, border: '1px solid #ea580c', background: available ? 'linear-gradient(135deg,#ea580c,#f97316)' : '#cbd5e1', color: '#fff', padding: '9px 10px', fontWeight: 800, cursor: available ? 'pointer' : 'not-allowed' }}>+ Add</button>
+                          )}
                         </div>
                       </div>
                     );
@@ -2380,11 +2727,12 @@ export function App() {
                 </div>
               )}
             </section>
+            )}
           </>
         )}
       </div>
 
-      {isStorePage && (
+      {isStorePage && (checkoutPermitted || bookingPermitted) && (
         <>
           {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
             const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
@@ -2495,12 +2843,22 @@ export function App() {
                     </span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>Ã—</button>
+                <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>x</button>
               </div>
 
               <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-                {[{ id: 'checkout', label: 'Checkout' }, { id: 'track', label: 'Track' }].map((tab) => (
-                  <button key={tab.id} type="button" onClick={() => setCheckoutTab(tab.id)} style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}>{tab.label}</button>
+                {[{ id: 'checkout', label: 'Checkout' }, { id: 'track', label: 'Track' }, { id: 'account', label: 'Account' }].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setCheckoutTab(tab.id);
+                      if (tab.id === 'account') handleLoadAccountPanel();
+                    }}
+                    style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
               </div>
 
@@ -2549,7 +2907,71 @@ export function App() {
                             Phone Number
                             <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
                           </label>
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Email
+                            <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="For ticket or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                          </label>
                         </div>
+                        {hasServiceCart && (
+                          <>
+                            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                Appointment Date / Time
+                                <input type="datetime-local" value={serviceAppointmentAt} onChange={(e) => setServiceAppointmentAt(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                              </label>
+                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                Payment Timing
+                                <select value={servicePaymentTiming} onChange={(e) => setServicePaymentTiming(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}>
+                                  {servicePaymentOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            {serviceIntakeFields.length > 0 && (
+                              <section style={{ marginTop: 10, border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: '#f8fafc' }}>
+                                <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Service Intake</h3>
+                                <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                                  {serviceIntakeFields.map((field) => (
+                                    <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                      {field.label}{field.required ? ' *' : ''}
+                                      {field.type === 'textarea' ? (
+                                        <textarea
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', minHeight: 72, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        />
+                                      ) : field.type === 'select' ? (
+                                        <select
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        >
+                                          <option value="">Select</option>
+                                          {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                                        </select>
+                                      ) : field.type === 'checkbox' ? (
+                                        <input
+                                          type="checkbox"
+                                          checked={serviceIntakeResponses[field.id] === true}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.checked }))}
+                                          style={{ marginTop: 10 }}
+                                        />
+                                      ) : (
+                                        <input
+                                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        />
+                                      )}
+                                    </label>
+                                  ))}
+                                </div>
+                              </section>
+                            )}
+                          </>
+                        )}
                         <label style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 10 }}>
                           Delivery Address
                           <input
@@ -2648,10 +3070,10 @@ export function App() {
                               <div>
                                 <div style={{ fontWeight: 700, color: '#0f172a' }}>{line.name}</div>
                                 <div style={{ fontSize: 11, color: '#64748b' }}>
-                                  Unit: {money(line.price)} {line.unit_of_measure ? `â€¢ ${line.unit_of_measure}` : ''}
+                                  Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
                                 </div>
                                 <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
-                                  Availability checked on quote/checkout
+                                  {line.category === 'service' ? 'Bookable appointment' : 'Availability checked on quote/checkout'}
                                 </div>
                                 <button
                                   type="button"
@@ -2702,12 +3124,16 @@ export function App() {
                             </div>
                           </div>
                           <div style={{ marginTop: 10, fontSize: 12, opacity: .95 }}>
-                            {quoteResult
+                            {hasServiceCart
+                              ? 'Service booking totals are estimated from the selected service. Complete appointment details to book.'
+                              : quoteResult
                               ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
                               : 'No quote yet. Click Quote to unlock checkout.'}
                           </div>
                           <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                            <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>Quote</button>
+                            {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
+                              <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>Quote</button>
+                            )}
                             <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : 'Checkout'}</button>
                           </div>
                         </div>
@@ -2716,24 +3142,58 @@ export function App() {
                             Cannot checkout: one or more lines exceed current stock.
                           </p>
                         )}
-                        {!quoteResult && cart.length > 0 && (
+                        {!hasServiceCart && !quoteResult && cart.length > 0 && (
                           <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
                             Quote is required before checkout.
                           </p>
                         )}
-                        {quoteResult && quoteNeedsRefresh && (
+                        {!hasServiceCart && quoteResult && quoteNeedsRefresh && (
                           <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
                             Cart changed after quote. Click Quote again to proceed.
                           </p>
                         )}
+                        {hasMixedServiceCart && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Services must be booked separately from regular product orders.
+                          </p>
+                        )}
+                        {hasServiceCart && !serviceAppointmentAt && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Choose an appointment date and time before booking.
+                          </p>
+                        )}
                         {quoteError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
-                        {quoteResult && (
+                        {!hasServiceCart && quoteResult && (
                           <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>
                             Quote synced. Total due: {money(totalsForDisplay.total_amount)}
                           </p>
                         )}
                         {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                        {checkoutResult?.tracking_pin && <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>Order placed. Tracking PIN: <strong>{checkoutResult.tracking_pin}</strong></p>}
+                        {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
+                          <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
+                            <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
+                              {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
+                            </p>
+                            {checkoutResult?.account_action?.show_signup === true && (
+                              <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                                You can sign in or register to save this latest transaction to your account.
+                              </p>
+                            )}
+                            {checkoutResult?.payment?.checkout_url && (
+                              <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
+                                Pay Now
+                              </a>
+                            )}
+                            {checkoutResult?.account_action?.show_signup !== true && (
+                              <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                                This ticket can be kept as an image for your gallery.
+                              </p>
+                            )}
+                            <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
+                              Download Image
+                            </button>
+                          </div>
+                        )}
                         <p style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>{DGFY_ACRONYM}</p>
                       </div>
                     </section>
@@ -2750,6 +3210,52 @@ export function App() {
                     </div>
                     {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
                     {trackingResult && <div style={{ marginTop: 10, fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>Status: <strong>{trackingResult.status_label || trackingResult.status}</strong></div>}
+                  </div>
+                )}
+
+                {checkoutTab === 'account' && (
+                  <div style={{ display: 'grid', gap: 14, maxWidth: 860 }}>
+                    <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                        <div>
+                          <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>My Account</h3>
+                          <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Bookings, orders, tickets, receipts, and the latest linked transaction.</p>
+                        </div>
+                        <button type="button" onClick={handleLoadAccountPanel} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700 }}>Refresh</button>
+                      </div>
+                      {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
+                      {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
+                      {accountPanel.me && (
+                        <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
+                          <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
+                      <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
+                        {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
+                        {accountPanel.bookings.map((booking) => (
+                          <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                            <strong>{booking.public_reference}</strong>
+                            <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} · {booking.status}</div>
+                            <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} · {booking.payment_status}</div>
+                          </div>
+                        ))}
+                      </section>
+                      <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
+                        {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
+                        {accountPanel.orders.map((order) => (
+                          <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                            <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
+                            <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} · {money(order.total_amount)}</div>
+                            <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
+                          </div>
+                        ))}
+                      </section>
+                    </div>
                   </div>
                 )}
               </div>

@@ -8,6 +8,9 @@ Use this guide for:
 2. Recovery from deploy gate failures
 3. Post-deploy verification
 
+Hosting profile reference:
+- `docs/ops/HOSTING_PROFILES.md`
+
 No-staging release policy reference:
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 
@@ -19,10 +22,19 @@ No-staging release policy reference:
   ```
 - Clean local git state for the commit you intend to deploy
 - Required backend env vars present on server in `backend/.env`:
+  - `HOSTING_PROFILE` (`shared` or `vps`)
   - `DB_HOST`
   - `DB_USER`
   - `DB_NAME`
   - `JWT_SECRET`
+  - `JWT_REFRESH_SECRET`
+  - `CORS_ORIGIN`
+  - `AUTH_BLACKLIST_FAILURE_MODE`
+  - `TEMP_FILE_STORAGE`
+  - `TENANT_REGISTRATION_APPROVAL_MODE` (`manual` unless intentionally enabling temporary auto-accept)
+  - `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`
+  - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
+  - `REDIS_URL` when `HOSTING_PROFILE=vps`
   - Payment-provider config only when `PAYMENTS_ENABLED=true`
 - Optional deploy override:
   - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
@@ -31,6 +43,25 @@ No-staging release policy reference:
     - `1`: force billing checks even if payments are disabled
 
 ## Standard Deployment (Simplified)
+Before deploying to a new host type, validate the selected profile:
+
+```bash
+# Shared hosting without Redis
+npm run preflight:shared
+npm run test:hosting:shared
+
+# Redis-capable VPS
+npm run preflight:vps
+npm run test:hosting:vps
+```
+
+Shared hosting uses `backend/.env.shared.example` and `frontend/.env.shared.example` as templates. VPS/Redis hosting uses `backend/.env.vps.example` and `frontend/.env.vps.example` as templates. Do not leave placeholder secrets or `DB_AUTO_SYNC=true` in production.
+
+Tenant registration rollout note:
+1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=manual` unless the release explicitly enables temporary standard auto-accept.
+2. If `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, verify public registration rate limits are present and strict before deploy.
+3. `auto_standard` applies only to standard non-subscription registrations; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
+
 Run on the production server for a one-command deploy:
 
 ```bash
@@ -144,6 +175,9 @@ What `deploy.sh` does:
 11. Runs tenant schema sync and emits machine-readable report
 12. Applies tenant schema sync regression gate (`fail on new/mutated failures` vs baseline)
 13. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
+    - Hosting capability status is available at `/health`, `/api/v1/health`, and Admin > Hosting.
+    - In `shared` mode, Redis absence is expected and should be visible as an optional/degraded capability, not a failed deploy by itself.
+    - In `vps` mode, configured but disconnected Redis is a degraded runtime and should block production-ready sign-off.
 14. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
   - `https://skupervisor.surebizcorp.com`
   - `https://pos.surebizcorp.com`
@@ -307,6 +341,26 @@ pm2 save
 ```
 
 Do not use `pm2 restart all` as primary deployment strategy.
+
+## Hosting Profile Verification
+After every deploy or rollback:
+1. Open `/health` or `/api/v1/health`.
+2. Confirm `capabilities.hostingProfile` matches the intended host.
+3. For shared mode, expected values include:
+   - `redis.configured=false`
+   - `redis.connected=false`
+   - `tokenBlacklist.mode=fail_open`
+   - `tempFileStorage.mode=local`
+   - `rateLimitStore.mode=memory`
+   - `schedulerLock.mode=single_instance`
+4. For VPS mode, expected values include:
+   - `redis.configured=true`
+   - `redis.connected=true`
+   - `tokenBlacklist.mode=fail_closed`
+   - `tempFileStorage.mode=cache` when Redis is connected
+   - `rateLimitStore.mode=redis`
+   - `schedulerLock.mode=distributed`
+5. Open Admin > Hosting and use the readiness checklist, runbook actions, and copyable diagnostics before declaring the environment ready.
 
 ## Endpoint Targets
 - IMS: `https://skupervisor.surebizcorp.com`

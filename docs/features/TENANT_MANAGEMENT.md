@@ -16,12 +16,15 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 ## Tenant Lifecycle
 
 ### 1. Registration (Current Policy)
-- **Standard Account**: Uses the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
+- **Standard Account**: Defaults to the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
+- **Temporary Auto-Accept Mode**: When `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, standard registrations are immediately provisioned, activated, and the registration UI signs the founder in through the normal login API. `manual` remains the default and rollback mode.
 - **Premium/Subscription Onboarding**: Disabled for this phase. Requests that require subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
-- **Provisioning Trigger**: Database provisioning runs only after explicit admin approval for standard onboarding.
+- **Provisioning Trigger**: Database provisioning runs after explicit admin approval in `manual` mode, or during public registration in `auto_standard` mode.
+- **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
+- **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict when `auto_standard` is enabled because accepted registrations create tenant databases.
 
 ### 2. Approval & Provisioning (Active)
-- Admin clicks **Approve** in the Tenant Manager (for Standard accounts).
+- Admin clicks **Approve** in the Tenant Manager (for pending Standard accounts) or the public registration use case auto-accepts a Standard account when `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
 - System performs **Provisioning**:
     1.  Generates a unique database name (must start with `sku_tenant_` for safety).
     2.  Creates the database.
@@ -29,6 +32,9 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
     4.  Seeds the default Admin User.
     5.  Updates status to **Active**.
     6.  Sends specific email with login credentials.
+- Approval email delivery is non-blocking after successful provisioning. If SMTP fails, the active registration response still succeeds with `email_sent=false`, and the founder can continue through in-app auto-login or manual login fallback.
+- Auto-login is implemented as a frontend follow-up call to the normal `/auth/login` API using the just-submitted registration password in component state. The registration response does not return auth tokens and the password is not stored for handoff.
+- If the follow-up auto-login call fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with email and company token prefilled.
 
 ### 3. Rejection
 - Admin rejects a pending registration.

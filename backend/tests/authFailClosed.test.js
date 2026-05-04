@@ -94,4 +94,36 @@ describe('Auth Redis Failure Policy', () => {
             process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
         }
     });
+
+    test('should return 503 in fail-closed mode when REDIS_URL is missing', async () => {
+        mockCacheService.isAvailable.mockReturnValue(false);
+
+        const originalRedisUrl = process.env.REDIS_URL;
+        const originalFailureMode = process.env.AUTH_BLACKLIST_FAILURE_MODE;
+        delete process.env.REDIS_URL;
+        process.env.AUTH_BLACKLIST_FAILURE_MODE = 'fail_closed';
+
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature';
+
+        try {
+            const response = await request(app)
+                .get('/api/v1/users/me')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.status).toBe(503);
+            expect(response.body.success).toBe(false);
+            expect(response.body.message).toContain('Service unavailable');
+        } finally {
+            if (originalRedisUrl === undefined) {
+                delete process.env.REDIS_URL;
+            } else {
+                process.env.REDIS_URL = originalRedisUrl;
+            }
+            if (originalFailureMode === undefined) {
+                delete process.env.AUTH_BLACKLIST_FAILURE_MODE;
+            } else {
+                process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
+            }
+        }
+    });
 });

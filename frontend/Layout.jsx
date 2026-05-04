@@ -17,7 +17,8 @@ import {
   LogOut,
   Bot,
   PackageCheck,
-  ShoppingCart
+  ShoppingCart,
+  CalendarCheck
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
@@ -36,6 +37,7 @@ const ALL_NAV_ITEMS = [
   { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
   { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
   { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
+  { name: 'Services', icon: CalendarCheck, page: 'Services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
   { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },

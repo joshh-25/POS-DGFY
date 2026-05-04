@@ -80,3 +80,4 @@ const buildStrictImageUpload = ({ maxBytes = 5 * 1024 * 1024, maxFiles = 1 } = {
 
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
 export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
+export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });

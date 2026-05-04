@@ -37,6 +37,7 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
@@ -47,6 +48,12 @@ import UserLocationGrant from './UserLocationGrant.js';
 import StoreCustomer from './StoreCustomer.js';
 import StoreCustomerAddress from './StoreCustomerAddress.js';
 import StorefrontFollow from './StorefrontFollow.js';
+import ServiceItemDetail from './ServiceItemDetail.js';
+import ServiceResource from './ServiceResource.js';
+import ServiceProviderAssignment from './ServiceProviderAssignment.js';
+import ServiceBooking from './ServiceBooking.js';
+import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
+import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
@@ -251,6 +258,8 @@ Item.hasMany(ItemLocationStock, { foreignKey: 'item_id', as: 'locationStocks' })
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontCatalogOverride' });
+StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -299,6 +308,29 @@ UserLocationGrant.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'lo
 StoreCustomer.hasMany(StoreCustomerAddress, { foreignKey: 'customer_id', as: 'addresses' });
 StoreCustomerAddress.belongsTo(StoreCustomer, { foreignKey: 'customer_id', as: 'customer' });
 StoreCustomer.hasMany(PosTransaction, { foreignKey: 'store_customer_id', as: 'orders' });
+
+// Services associations
+Item.hasOne(ServiceItemDetail, { foreignKey: 'item_id', as: 'serviceDetail' });
+ServiceItemDetail.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(ServiceProviderAssignment, { foreignKey: 'item_id', as: 'serviceProviderAssignments' });
+ServiceProviderAssignment.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ServiceProviderAssignment.belongsTo(User, { foreignKey: 'user_id', as: 'providerUser' });
+ServiceProviderAssignment.belongsTo(ServiceResource, { foreignKey: 'resource_id', as: 'resource' });
+ServiceProviderAssignment.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceResource.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceBooking.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
+ServiceBooking.belongsTo(ServiceItemDetail, { foreignKey: 'service_detail_id', as: 'serviceDetail' });
+ServiceBooking.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+ServiceBooking.belongsTo(User, { foreignKey: 'provider_user_id', as: 'providerUser' });
+ServiceBooking.belongsTo(ServiceResource, { foreignKey: 'resource_id', as: 'resource' });
+ServiceBooking.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceBooking.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+ServiceBooking.hasMany(ServiceReminderOutbox, { foreignKey: 'booking_id', as: 'reminders' });
+ServiceReminderOutbox.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+Item.hasMany(ServiceBooking, { foreignKey: 'service_item_id', as: 'serviceBookings' });
+StoreCustomer.hasMany(ServiceBooking, { foreignKey: 'store_customer_id', as: 'serviceBookings' });
+ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
+ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -353,6 +385,7 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,
@@ -363,6 +396,12 @@ const db = {
   StoreCustomer,
   StoreCustomerAddress,
   StorefrontFollow,
+  ServiceItemDetail,
+  ServiceResource,
+  ServiceProviderAssignment,
+  ServiceBooking,
+  ServiceWaitlistEntry,
+  ServiceReminderOutbox,
   Tenant,
   UserTenantMapping,
   UserInvitation,
@@ -420,6 +459,7 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,
@@ -430,6 +470,12 @@ export {
   StoreCustomer,
   StoreCustomerAddress,
   StorefrontFollow,
+  ServiceItemDetail,
+  ServiceResource,
+  ServiceProviderAssignment,
+  ServiceBooking,
+  ServiceWaitlistEntry,
+  ServiceReminderOutbox,
   Tenant,
   UserTenantMapping,
   UserInvitation,

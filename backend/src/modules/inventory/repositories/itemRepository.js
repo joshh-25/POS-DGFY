@@ -14,6 +14,7 @@ import {
     normalizeWorkflowMode,
     resolveWorkflowModeFamily
 } from '../../shared/constants/workflowModes.js';
+import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
     getItemCostMetrics,
     getItemsCostMetrics,
@@ -44,6 +45,28 @@ const visibleItemWhere = (where = {}) => {
         excludeInactiveStatus: true
     });
 };
+
+const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
+
+const isMissingStorefrontCatalogOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
+};
+
+const isMissingPosCatalogOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('pos_catalog_overrides');
+};
+
+const toPlain = (value) => (
+    value && typeof value.toJSON === 'function'
+        ? value.toJSON()
+        : value
+);
 
 const getCachedSettingsForTenant = async () => {
     const store = dbStore.getStore();
@@ -820,10 +843,11 @@ export const itemRepository = {
                 dbFields.purchase_allowance = thresholds.purchase_allowance;
             }
 
+            const isServiceItem = String(dbFields.category || '').trim().toLowerCase() === 'service';
             const dataToCreate = { ...dbFields };
-            const initialStock = parseFloat(dbFields.current_stock || 0);
+            const initialStock = isServiceItem ? 0 : parseFloat(dbFields.current_stock || 0);
             const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
-            if (initialStock > 0) {
+            if (isServiceItem || initialStock > 0) {
                 dataToCreate.current_stock = 0;
             }
             delete dataToCreate.location_id;
@@ -967,9 +991,15 @@ export const itemRepository = {
 
             dbFields.updated_by = userId;
 
-            const newStockValue = dbFields.current_stock !== undefined
+            const nextCategory = String(dbFields.category || item.category || '').trim().toLowerCase();
+            if (nextCategory === 'service') {
+                dbFields.current_stock = 0;
+            }
+            const newStockValue = nextCategory === 'service'
+                ? null
+                : (dbFields.current_stock !== undefined
                 ? parseFloat(dbFields.current_stock || 0)
-                : null;
+                : null);
             const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
             let oldStockValue = parseFloat(item.current_stock || 0);
             if (movementLocationId && ItemLocationStock?.findOne) {
@@ -1592,6 +1622,190 @@ export const itemRepository = {
             }
             throw normalizeSkuConflictError(error);
         }
+    },
+    async listStorefrontCatalogOverrides({ search = '', limit = 200 } = {}) {
+        const Item = dbStore.get('Item');
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
+        const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+        const normalizedLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 200, 1000));
+        const normalizedSearch = String(search || '').trim();
+
+        const where = visibleItemWhere({});
+        if (normalizedSearch) {
+            where[Op.or] = [
+                { name: { [Op.like]: `%${normalizedSearch}%` } },
+                { sku_code: { [Op.like]: `%${normalizedSearch}%` } },
+                { description: { [Op.like]: `%${normalizedSearch}%` } }
+            ];
+        }
+
+        const baseQuery = {
+            where,
+            attributes: [
+                'item_id',
+                'name',
+                'sku_code',
+                'category',
+                'product_type',
+                'status',
+                'default_sale_price',
+                'current_stock'
+            ],
+            include: [
+                StorefrontCatalogOverride ? {
+                    model: StorefrontCatalogOverride,
+                    as: 'storefrontCatalogOverride',
+                    attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    required: false
+                } : null
+            ].filter(Boolean),
+            order: [['name', 'ASC']],
+            limit: normalizedLimit
+        };
+
+        const mapRow = (item, { allowLegacyPosFallback = false } = {}) => {
+            const payload = toPlain(item);
+            const override = payload?.storefrontCatalogOverride || null;
+            const legacyPosOverride = allowLegacyPosFallback ? (payload?.posCatalogOverride || null) : null;
+            return {
+                item_id: payload.item_id,
+                name: payload.name,
+                sku_code: payload.sku_code,
+                category: payload.category,
+                product_type: payload.product_type,
+                status: payload.status,
+                storefront_visible: resolveStorefrontCatalogVisibility({
+                    item: payload,
+                    override,
+                    legacyPosOverride
+                }),
+                storefront_image_path: override?.storefront_image_path || legacyPosOverride?.pos_image_path || null,
+                storefront_image_url: override?.storefront_image_url || legacyPosOverride?.pos_image_url || null,
+                has_storefront_override: Boolean(override)
+            };
+        };
+
+        try {
+            const rows = await Item.findAll(baseQuery);
+            return rows.map(mapRow);
+        } catch (error) {
+            if (!isMissingStorefrontCatalogOverrideTableError(error)) {
+                throw error;
+            }
+
+            logger.warn('[ItemRepository] Falling back to POS-derived storefront overrides while storefront override table is unavailable', {
+                event_type: 'storefront_catalog_override_fallback',
+                reason: error?.original?.code || error?.parent?.code || error?.code || 'unknown'
+            });
+
+            const fallbackRows = await Item.findAll({
+                ...baseQuery,
+                include: PosCatalogOverride ? [{
+                    model: PosCatalogOverride,
+                    as: 'posCatalogOverride',
+                    attributes: ['pos_visible', 'pos_image_path', 'pos_image_url'],
+                    required: false
+                }] : []
+            });
+            return fallbackRows.map((row) => mapRow(row, { allowLegacyPosFallback: true }));
+        }
+    },
+    async findStorefrontCatalogOverrideByItemId(itemId, options = {}) {
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
+        if (!StorefrontCatalogOverride) return null;
+
+        try {
+            return await StorefrontCatalogOverride.findOne({
+                where: { item_id: itemId },
+                transaction: options.transaction
+            });
+        } catch (error) {
+            if (isMissingStorefrontCatalogOverrideTableError(error)) {
+                return null;
+            }
+            throw error;
+        }
+    },
+    async getStorefrontCatalogReadinessByItemId(itemId, { forcedStorefrontVisible = null } = {}) {
+        const Item = dbStore.get('Item');
+        const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) return null;
+
+        const item = await Item.findOne({
+            where: visibleItemWhere({ item_id: normalizedItemId }),
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'status', 'default_sale_price', 'current_stock'],
+            include: ServiceItemDetail ? [{
+                model: ServiceItemDetail,
+                as: 'serviceDetail',
+                required: false
+            }] : []
+        });
+        if (!item) return null;
+
+        const payload = toPlain(item);
+        const override = toPlain(await this.findStorefrontCatalogOverrideByItemId(normalizedItemId));
+        const effectiveOverride = forcedStorefrontVisible === null
+            ? override
+            : { ...(override || {}), storefront_visible: forcedStorefrontVisible === true };
+
+        return {
+            item_id: payload.item_id,
+            storefront_visible: resolveStorefrontCatalogVisibility({
+                item: payload,
+                override: effectiveOverride,
+                legacyPosOverride: null
+            }),
+            storefront_image_path: effectiveOverride?.storefront_image_path || null,
+            storefront_image_url: effectiveOverride?.storefront_image_url || null
+        };
+    },
+    async upsertStorefrontCatalogOverride(itemId, payload = {}, options = {}) {
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
+        if (!StorefrontCatalogOverride) {
+            throw new Error('Storefront catalog override model is unavailable');
+        }
+
+        const transaction = options.transaction;
+        const existing = await this.findStorefrontCatalogOverrideByItemId(itemId, { transaction });
+        const defaultEnvelope = existing
+            ? null
+            : await this.getStorefrontCatalogReadinessByItemId(itemId);
+
+        const nextPayload = {
+            item_id: itemId,
+            storefront_visible: hasOwn(payload, 'storefront_visible')
+                ? payload.storefront_visible !== false
+                : (existing?.storefront_visible ?? defaultEnvelope?.storefront_visible ?? true),
+            storefront_image_path: payload.storefront_image_path ?? (existing?.storefront_image_path ?? null),
+            storefront_image_url: payload.storefront_image_url ?? (existing?.storefront_image_url ?? null)
+        };
+
+        if (existing) {
+            await existing.update(nextPayload, { transaction });
+            return existing;
+        }
+
+        return StorefrontCatalogOverride.create(nextPayload, { transaction });
+    },
+    async updateStorefrontCatalogImage(itemId, imageData = {}, options = {}) {
+        const payload = {
+            storefront_image_path: imageData.path || null,
+            storefront_image_url: imageData.url || null
+        };
+        if (typeof options.keepVisible === 'boolean') {
+            payload.storefront_visible = options.keepVisible;
+        }
+        return this.upsertStorefrontCatalogOverride(itemId, payload, options);
+    },
+    async clearStorefrontCatalogImage(itemId, options = {}) {
+        const existing = await this.findStorefrontCatalogOverrideByItemId(itemId, options);
+        if (!existing) return null;
+        await existing.update({
+            storefront_image_path: null,
+            storefront_image_url: null
+        }, { transaction: options.transaction });
+        return existing;
     },
     async listFolders() {
         const ItemFolder = dbStore.get('ItemFolder');

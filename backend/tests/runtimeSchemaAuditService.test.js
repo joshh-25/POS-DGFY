@@ -34,7 +34,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260427000001-add-storefront-pos-read-path-indexes.cjs' },
         { name: '20260428000001-add-storefront-profile-content-to-discovery-index.cjs' },
         { name: '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs' },
-        { name: '20260429000002-create-storefront-follows.cjs' }
+        { name: '20260429000002-create-storefront-follows.cjs' },
+        { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -221,6 +222,14 @@ const buildHealthySequelizeMock = () => ({
                     storefront_follow_enabled: {},
                     storefront_share_enabled: {},
                     storefront_review_summary: {},
+                    customer_access_mode: {},
+                    effective_customer_access_mode: {},
+                    max_customer_access_mode: {},
+                    inventory_display_mode: {},
+                    inventory_low_stock_display_threshold: {},
+                    access_capabilities: {},
+                    access_limitation_reason: {},
+                    customer_access_modes_enabled: {},
                     last_synced_at: {}
                 }
             };

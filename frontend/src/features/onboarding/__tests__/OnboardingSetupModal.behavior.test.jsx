@@ -114,7 +114,9 @@ describe('OnboardingSetupModal behavior', () => {
         eventKey: 'optional_asset_skipped',
         metadata: { surface: 'modal' }
       });
-      expect(screen.getByText(/3\) Business Classification \(Advisory\)/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Business Classification/i)).toBeTruthy();
+      expect(screen.getByText(/Customer Access Mode/i)).toBeTruthy();
+      expect(screen.getByLabelText(/Inventory Display/i)).toBeTruthy();
     });
 
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));

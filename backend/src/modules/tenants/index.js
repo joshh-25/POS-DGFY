@@ -6,6 +6,7 @@ import { paypalService } from '../../services/paypalService.js';
 import { provisionTenant, deleteTenantDatabase } from '../../services/tenantProvisioningService.js';
 import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
+import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
@@ -27,6 +28,7 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     emailService,
     hashPassword: bcrypt.hash,
     idGenerator: uuidv4,
+    getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
     logger
 });
 

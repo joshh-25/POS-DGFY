@@ -35,9 +35,11 @@ export const getTenantModels = (sequelize) => {
         'DispatchOrder', 'DispatchOrderLine',
         'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
         'PosZReadingSnapshot', 'PosOperationReplay',
-        'PosCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
+        'PosCatalogOverride', 'StorefrontCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
         'TenantLocation', 'StoreCustomer', 'StoreCustomerAddress',
-        'ItemLocationStock', 'UserLocationGrant'
+        'ItemLocationStock', 'UserLocationGrant',
+        'ServiceItemDetail', 'ServiceResource', 'ServiceProviderAssignment',
+        'ServiceBooking', 'ServiceWaitlistEntry', 'ServiceReminderOutbox'
     ];
 
     // Re-define each model on the new connection

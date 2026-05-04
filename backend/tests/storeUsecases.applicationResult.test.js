@@ -15,6 +15,16 @@ import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js
 import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
 
 describe('store use-cases application result contract', () => {
+    const originalCustomerAccessFlag = process.env.CUSTOMER_ACCESS_MODES_ENABLED;
+
+    afterEach(() => {
+        if (originalCustomerAccessFlag === undefined) {
+            delete process.env.CUSTOMER_ACCESS_MODES_ENABLED;
+        } else {
+            process.env.CUSTOMER_ACCESS_MODES_ENABLED = originalCustomerAccessFlag;
+        }
+    });
+
     it('listStoreCatalog returns availability-only fields without exposing current_stock', async () => {
         const useCase = buildListStoreCatalogUseCase({
             storeRepository: {
@@ -71,6 +81,119 @@ describe('store use-cases application result contract', () => {
         }));
         expect(result.data.items[0]).not.toHaveProperty('current_stock');
         expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
+    });
+
+    it('listStoreCatalog suppresses rows for ghost mode when enforcement is enabled', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const storeRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                { setting_key: 'customer_access_mode', setting_value: 'ghost' },
+                { setting_key: 'inventory_display_mode', setting_value: 'availability' }
+            ]),
+            listStoreCatalog: jest.fn().mockResolvedValue([
+                {
+                    item_id: 503,
+                    name: 'Hidden Item',
+                    current_stock: 10,
+                    default_sale_price: 25
+                }
+            ])
+        };
+        const useCase = buildListStoreCatalogUseCase({ storeRepository });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.items).toEqual([]);
+        expect(result.data.access_policy.effective_customer_access_mode).toBe('ghost');
+        expect(storeRepository.listStoreCatalog).not.toHaveBeenCalled();
+    });
+
+    it('storeCartQuote fail-closes for non-transaction effective modes', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findSellableItemsByIds: jest.fn(),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 3,
+                    name: 'Main',
+                    address_line: 'Test',
+                    latitude: 14.5,
+                    longitude: 121.0,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'inquiry' },
+                    {
+                        setting_key: 'tenant_onboarding_progress',
+                        setting_value: JSON.stringify({
+                            step_payloads: {
+                                business_classification: {
+                                    legitimacy: { registration_status: 'registered' }
+                                }
+                            }
+                        })
+                    },
+                    { setting_key: 'store_delivery_fee', setting_value: '0' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 3,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CUSTOMER_ACCESS_MODE_BLOCKED);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            requested_action: 'quote_checkout',
+            effective_mode: 'inquiry'
+        }));
+    });
+
+    it('listStoreCatalog adds inventory_display labels without exposing stock', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'inventory_display_mode', setting_value: 'low_stock' },
+                    { setting_key: 'inventory_low_stock_display_threshold', setting_value: '5' }
+                ]),
+                listStoreCatalog: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 504,
+                        name: 'Low Stock Item',
+                        current_stock: 3,
+                        default_sale_price: 25,
+                        availability_status: 'in_stock'
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.items[0].inventory_display).toEqual({
+            mode: 'low_stock',
+            label: 'Only 3 left',
+            display_quantity: 3
+        });
+        expect(result.data.items[0]).not.toHaveProperty('current_stock');
     });
 
     it('listStoreCatalog returns explicit location-invalid code when location_id is invalid', async () => {

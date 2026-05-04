@@ -65,6 +65,7 @@ export const saveOnboardingStep = async (req, res, next) => {
     const result = await saveOnboardingStepUseCase({
       stepKey: req.validatedData?.step_key,
       payload: req.validatedData?.payload || {},
+      tenantId: req.tenant?.id || null,
       storeNameBaseline: req.tenant?.name || ''
     });
 

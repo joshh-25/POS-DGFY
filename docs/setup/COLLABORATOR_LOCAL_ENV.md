@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: setup
-last_reviewed: 2026-04-29
+last_reviewed: 2026-05-04
 applies_to: local_development
 topic: collaborator_environment_setup
 ---
@@ -19,7 +19,7 @@ Production/live credentials are intentionally not included. The local and test/s
 - Node.js 18+
 - npm 9+
 - MySQL 8.0+
-- Redis 7.0+ recommended
+- Redis 7.0+ recommended. Shared-hosting profile work can run without Redis when configured intentionally.
 - Docker optional
 
 ## Install Dependencies
@@ -255,6 +255,14 @@ STOREFRONT_DEFAULT_WAIT_MINUTES=15
 # Payments are off by default for local development
 PAYMENTS_ENABLED=false
 
+# Tenant registration defaults to manual approval unless a local test needs auto-standard activation.
+TENANT_REGISTRATION_APPROVAL_MODE=manual
+
+# Customer Access Mode runtime enforcement is off by default.
+# Settings/onboarding can still store mode preferences while this is false.
+CUSTOMER_ACCESS_MODES_ENABLED=false
+CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
+
 # PayMongo test/sandbox values from the local development env
 PAYMONGO_MODE=test
 PAYMONGO_PUBLIC_KEY=pk_test_92M4xczP1CrP5kjuA1dKdRM6
@@ -350,7 +358,7 @@ npm run migrate
 npm run doctor:runtime
 ```
 
-There are currently no seed files in `backend/seeders`. If seeders are added later, run:
+The project includes seeders under `backend/src/seeders`, including the local admin account and starter settings. Run seeders only after migrations are healthy:
 
 ```bash
 cd backend
@@ -410,6 +418,31 @@ Local URLs:
 - POS app: `http://localhost:5174/`
 - Storefront discovery: `http://localhost:5175/tenant-store`
 - Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
+
+## Current Feature Flags And Rollout Defaults
+
+Use production-safe defaults for local setup unless a test specifically needs different behavior:
+
+```env
+TENANT_REGISTRATION_APPROVAL_MODE=manual
+CUSTOMER_ACCESS_MODES_ENABLED=false
+CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
+PAYMENTS_ENABLED=false
+```
+
+Customer Access Mode and Inventory Display settings are available to onboarding/settings flows, but public Storefront enforcement remains disabled unless `CUSTOMER_ACCESS_MODES_ENABLED=true` or the current tenant is listed in `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
+
+Services Mode is a first-class workflow mode. It uses normal migrations and does not require a separate setup script, but collaborators should run `npm run doctor:runtime` after migration so service booking, waitlist, reminder, and discovery-index tables are verified.
+
+## Hosting Profile Env Examples
+
+Use the profile-specific examples when testing deployment behavior:
+
+- `backend/.env.shared.example` for shared hosting without Redis.
+- `backend/.env.vps.example` for Redis-capable VPS deployments.
+- `frontend/.env.shared.example` and `frontend/.env.vps.example` for matching frontend builds.
+
+Shared hosting intentionally omits Redis and uses fail-open blacklist behavior. VPS mode expects Redis and fail-closed blacklist behavior.
 
 ## Docker Option
 

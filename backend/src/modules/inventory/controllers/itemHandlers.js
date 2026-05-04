@@ -11,6 +11,10 @@ import {
   validateCompositionUseCase,
   getItemSupplierCoverageUseCase,
   replaceItemSuppliersUseCase,
+  listStorefrontCatalogOverridesUseCase,
+  updateStorefrontCatalogOverrideUseCase,
+  uploadStorefrontCatalogImageUseCase,
+  deleteStorefrontCatalogImageUseCase,
   getFoldersUseCase,
   createFolderUseCase,
   updateFolderUseCase,
@@ -449,6 +453,104 @@ export const replaceItemSuppliers = async (req, res, next) => {
   }
 };
 
+export const listStorefrontCatalogOverrides = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => listStorefrontCatalogOverridesUseCase({ query: req.validatedQuery || req.query || {} }),
+      'Failed to retrieve storefront catalog overrides'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateStorefrontCatalogOverride = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => updateStorefrontCatalogOverrideUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        payload: req.validatedData || req.body || {},
+        user: req.user
+      }),
+      'Failed to update storefront catalog override'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog override updated successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadStorefrontCatalogImage = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => uploadStorefrontCatalogImageUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        file: req.file,
+        user: req.user
+      }),
+      'Failed to upload storefront catalog image'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog image uploaded successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteStorefrontCatalogImage = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => deleteStorefrontCatalogImageUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        user: req.user
+      }),
+      'Failed to delete storefront catalog image'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog image deleted successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getFolders = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -598,6 +700,10 @@ export default {
   validateComposition,
   getItemSupplierCoverage,
   replaceItemSuppliers,
+  listStorefrontCatalogOverrides,
+  updateStorefrontCatalogOverride,
+  uploadStorefrontCatalogImage,
+  deleteStorefrontCatalogImage,
   getFolders,
   createFolder,
   updateFolder,

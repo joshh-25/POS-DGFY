@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { login } from '../src/services/authService.js';
 import api from '../src/services/api.js';
 import { clearClientSession } from '../src/services/sessionCleanup.js';
@@ -11,10 +11,14 @@ import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight } from
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const registrationLoginState = location.state?.registration || null;
+  const initialRegistrationEmail = (registrationLoginState?.email || '').trim();
+  const initialRegistrationToken = (registrationLoginState?.companyToken || '').trim();
   const [formData, setFormData] = useState({
-    email: '',
+    email: initialRegistrationEmail,
     password: '',
-    companyToken: ''
+    companyToken: initialRegistrationToken
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -23,17 +27,17 @@ export default function Login() {
   const [showTokenField, setShowTokenField] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [availableTenants, setAvailableTenants] = useState([]);
-  const [lookupDone, setLookupDone] = useState(false);
+  const [lookupDone, setLookupDone] = useState(Boolean(initialRegistrationEmail && initialRegistrationToken));
   const [lookupError, setLookupError] = useState('');
 
   // Inactive / rejected tenant state
   const [tenantStatus, setTenantStatus] = useState(null); // 'inactive' | 'rejected' | null
   const [rejectionReason, setRejectionReason] = useState('');
-  const [identifiedToken, setIdentifiedToken] = useState('');
+  const [identifiedToken, setIdentifiedToken] = useState(initialRegistrationToken);
   const [isActioning, setIsActioning] = useState(false);
   const [actionSent, setActionSent] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [lastLookupEmail, setLastLookupEmail] = useState('');
+  const [lastLookupEmail, setLastLookupEmail] = useState(initialRegistrationEmail.toLowerCase());
 
   // Clear stale company token when landing on login page
   // and reset any stale in-memory state from a previous user session.

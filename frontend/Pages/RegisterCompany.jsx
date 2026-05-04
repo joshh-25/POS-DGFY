@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../src/services/api.js';
+import { login } from '../src/services/authService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,12 +16,13 @@ export default function RegisterCompany() {
         adminPassword: '',
         confirmPassword: '',
         complianceMode: 'non_compliant',
-        workflowMode: 'manufacturing'
+        workflowMode: 'food_manufacturing'
     });
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [autoLoginError, setAutoLoginError] = useState('');
 
     const passwordValidations = {
         minLength: formData.adminPassword.length >= 8,
@@ -37,6 +39,7 @@ export default function RegisterCompany() {
         e.preventDefault();
         setError('');
         setSuccess(null);
+        setAutoLoginError('');
 
         if (!passwordsMatch) {
             setError('Passwords do not match');
@@ -50,6 +53,7 @@ export default function RegisterCompany() {
 
         setIsLoading(true);
         try {
+            const registrationPassword = formData.adminPassword;
             const response = await api.post('/admin/tenants/register', {
                 name: formData.companyName,
                 adminEmail: formData.adminEmail,
@@ -60,11 +64,43 @@ export default function RegisterCompany() {
             });
 
             if (response.data.success) {
-                setSuccess({
+                const registrationSuccess = {
                     status: response.data.data.status,
                     message: response.data.message,
-                    company_token: response.data.data.company_token
-                });
+                    company_token: response.data.data.company_token,
+                    adminEmail: formData.adminEmail,
+                    companyName: formData.companyName,
+                    autoLoginFailed: false
+                };
+
+                if (registrationSuccess.status === 'active') {
+                    try {
+                        await login({
+                            email: formData.adminEmail,
+                            password: registrationPassword,
+                            companyToken: registrationSuccess.company_token
+                        });
+
+                        const redirectPath = localStorage.getItem('redirectAfterLogin') || '/';
+                        localStorage.removeItem('redirectAfterLogin');
+                        navigate(redirectPath);
+                        return;
+                    } catch (loginError) {
+                        setAutoLoginError(
+                            loginError.response?.data?.message
+                            || loginError.message
+                            || 'Automatic sign-in failed. Sign in manually to continue.'
+                        );
+                        registrationSuccess.autoLoginFailed = true;
+                    }
+                }
+
+                setSuccess(registrationSuccess);
+                setFormData((current) => ({
+                    ...current,
+                    adminPassword: '',
+                    confirmPassword: ''
+                }));
             } else {
                 setError(response.data.message || 'Registration failed');
             }
@@ -83,21 +119,41 @@ export default function RegisterCompany() {
     );
 
     if (success) {
+        const isActive = success.status === 'active';
+        const activeManualFallback = isActive && success.autoLoginFailed;
+
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
                 <div className="w-full max-w-md">
                     <div className="bg-white rounded-lg shadow-lg p-8 text-center">
                         <CheckCircle2 className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-                        <h1 className="text-2xl font-bold text-slate-900 mb-2">Request Submitted!</h1>
+                        <h1 className="text-2xl font-bold text-slate-900 mb-2">
+                            {isActive ? 'Company Created!' : 'Request Submitted!'}
+                        </h1>
                         <p className="text-slate-600 mb-6">{success.message}</p>
+                        {autoLoginError && (
+                            <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
+                                {autoLoginError}
+                            </div>
+                        )}
 
                         <div className="bg-blue-50 rounded-lg p-4 text-left mb-6">
-                            <p className="text-sm font-semibold text-blue-800 mb-2">What happens next?</p>
-                            <ul className="text-sm text-blue-700 space-y-1 mb-4">
-                                <li>- Our team will review your request</li>
-                                <li>- Subscription billing is currently disabled</li>
-                                <li>- You will receive login credentials via email once approved</li>
-                            </ul>
+                            <p className="text-sm font-semibold text-blue-800 mb-2">
+                                {isActive ? (activeManualFallback ? 'Sign in manually' : 'Your login is ready') : 'What happens next?'}
+                            </p>
+                            {isActive ? (
+                                <ul className="text-sm text-blue-700 space-y-1 mb-4">
+                                    <li>- Your company was created successfully</li>
+                                    <li>- Your company token will be filled in on the login page</li>
+                                    <li>- Use your admin email and password to sign in</li>
+                                </ul>
+                            ) : (
+                                <ul className="text-sm text-blue-700 space-y-1 mb-4">
+                                    <li>- Our team will review your request</li>
+                                    <li>- Subscription billing is currently disabled</li>
+                                    <li>- You will receive login credentials via email once approved</li>
+                                </ul>
+                            )}
                             {success.company_token && (
                                 <div className="pt-3 border-t border-blue-200">
                                     <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Your Company Token:</p>
@@ -114,8 +170,22 @@ export default function RegisterCompany() {
                             )}
                         </div>
 
-                        <Button onClick={() => navigate('/login')} className="w-full" variant="outline">
-                            Back to Login
+                        <Button
+                            onClick={() => navigate('/login', {
+                                state: isActive
+                                    ? {
+                                        registration: {
+                                            email: success.adminEmail,
+                                            companyToken: success.company_token,
+                                            companyName: success.companyName
+                                        }
+                                    }
+                                    : undefined
+                            })}
+                            className="w-full"
+                            variant={isActive ? 'default' : 'outline'}
+                        >
+                            {isActive ? 'Sign in manually' : 'Back to Login'}
                         </Button>
                     </div>
                 </div>
@@ -266,10 +336,10 @@ export default function RegisterCompany() {
                             className="w-full bg-slate-700 hover:bg-slate-800"
                             disabled={isLoading || !isPasswordValid || !passwordsMatch}
                         >
-                            {isLoading ? 'Creating Request...' : 'Submit Registration Request'}
+                            {isLoading ? 'Creating Company...' : 'Create Company'}
                         </Button>
                         <p className="text-xs text-center text-slate-500 mt-1">
-                            Admin will review and approve your request manually.
+                            Standard company registration may be activated immediately when auto-accept is enabled.
                         </p>
                     </form>
 

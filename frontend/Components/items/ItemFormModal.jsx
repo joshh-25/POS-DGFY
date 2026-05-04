@@ -177,9 +177,14 @@ export default function ItemFormModal({
   msmeMode = false,
   createPreset = MSME_ITEM_PRESET.INVENTORY_ONLY,
   posConfig = null,
+  storefrontConfig = null,
+  showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onUploadPosImage,
   onDeletePosImage,
+  onToggleStorefrontVisibility,
+  onUploadStorefrontImage,
+  onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
   const [formData, setFormData] = useState({
@@ -1183,6 +1188,73 @@ export default function ItemFormModal({
                 </p>
               )}
             </div>
+
+            {showStorefrontCatalogControls && (
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <Label>Storefront Catalog (Optional)</Label>
+                  <p className="text-xs text-slate-500">
+                    Configure customer-facing catalog visibility and image independently from POS.
+                  </p>
+                </div>
+                {item && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onToggleStorefrontVisibility && onToggleStorefrontVisibility(item, !(storefrontConfig?.storefront_visible !== false))}
+                    disabled={!onToggleStorefrontVisibility}
+                  >
+                    {storefrontConfig?.storefront_visible !== false ? 'Disable in Storefront' : 'Enable in Storefront'}
+                  </Button>
+                )}
+              </div>
+
+              {item ? (
+                <div className="space-y-3">
+                  {storefrontConfig?.storefront_image_url ? (
+                    <img
+                      src={resolveAssetUrl(storefrontConfig.storefront_image_url)}
+                      alt={`${item.name} storefront catalog`}
+                      className="h-28 w-40 rounded-md border border-slate-200 object-cover"
+                    />
+                  ) : (
+                    <p className="text-sm text-slate-500">No storefront image uploaded yet.</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+                      Upload Storefront Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file && onUploadStorefrontImage) {
+                            onUploadStorefrontImage(item, file);
+                          }
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item)}
+                      disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
+                    >
+                      Remove Storefront Image
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Save the item first, then reopen it to complete storefront catalog setup.
+                </p>
+              )}
+            </div>
+            )}
 
             {msmeMode && (
               <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">

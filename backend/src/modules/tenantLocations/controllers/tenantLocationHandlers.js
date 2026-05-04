@@ -30,7 +30,7 @@ export const listTenantLocations = async (req, res, next) => {
         const result = await listTenantLocationsUseCase({ includeInactive });
         let discoverySnapshot = null;
         let syncHealthSnapshot = null;
-        if (result?.ok && req.tenant?.id) {
+        if (result?.success && req.tenant?.id) {
             try {
                 discoverySnapshot = await getStorefrontDiscoveryIndexSnapshotForTenant({ tenantId: req.tenant.id });
                 syncHealthSnapshot = getStorefrontSyncHealth({ tenantId: req.tenant.id });
@@ -77,7 +77,7 @@ export const createTenantLocation = async (req, res, next) => {
         const result = await createTenantLocationUseCase({
             payload: req.validatedData || req.body
         });
-        if (result?.ok && req.tenant?.id) {
+        if (result?.success && req.tenant?.id) {
             syncStorefrontDiscoveryWithReliability({
                 tenantId: req.tenant.id,
                 source: 'tenant_locations_create',
@@ -120,7 +120,7 @@ export const updateTenantLocation = async (req, res, next) => {
             locationId: req.validatedParams?.id || req.params.id,
             payload: req.validatedData || req.body
         });
-        if (result?.ok && req.tenant?.id) {
+        if (result?.success && req.tenant?.id) {
             syncStorefrontDiscoveryWithReliability({
                 tenantId: req.tenant.id,
                 source: 'tenant_locations_update',
@@ -164,7 +164,7 @@ export const deactivateTenantLocation = async (req, res, next) => {
         const result = await deactivateTenantLocationUseCase({
             locationId: req.validatedParams?.id || req.params.id
         });
-        if (result?.ok && req.tenant?.id) {
+        if (result?.success && req.tenant?.id) {
             syncStorefrontDiscoveryWithReliability({
                 tenantId: req.tenant.id,
                 source: 'tenant_locations_deactivate',

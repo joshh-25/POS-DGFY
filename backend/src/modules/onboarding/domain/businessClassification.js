@@ -1,13 +1,18 @@
 import { WORKFLOW_MODE_VALUES } from '../../shared/constants/workflowModes.js';
+import {
+  CUSTOMER_ACCESS_MODES,
+  normalizeCustomerAccessMode,
+  normalizeInventoryDisplayMode,
+  normalizeLowStockDisplayThreshold
+} from '../../shared/utils/customerAccessPolicy.js';
 
-const VISIBILITY_MODES = Object.freeze(['ghost', 'catalog', 'inquiry', 'transaction']);
 const TIER_BY_VISIBILITY = Object.freeze({
   ghost: 'tier_0',
   catalog: 'tier_1',
   inquiry: 'tier_2',
   transaction: 'tier_3'
 });
-const WORKFLOW_MODES = Object.freeze(['msme', 'manufacturing']);
+const WORKFLOW_MODES = Object.freeze(WORKFLOW_MODE_VALUES);
 const BUSINESS_MODE_TEMPLATES = Object.freeze(WORKFLOW_MODE_VALUES);
 const COMPLIANCE_HINTS = Object.freeze([
   'regulated_ready',
@@ -103,7 +108,7 @@ const deriveBusinessModeTemplateRecommendation = ({ payload, complexityScore }) 
     return 'food_manufacturing';
   }
   if (hasAnyIndustryToken(industryTokens, ['manufacturing', 'factory', 'production'])) {
-    return 'manufacturing';
+    return 'food_manufacturing';
   }
 
   const hasPhysicalProduct = offeringTypes.includes('physical_product');
@@ -125,7 +130,7 @@ const deriveBusinessModeTemplateRecommendation = ({ payload, complexityScore }) 
   if (hasServiceOnly) return 'services';
   if (hasPhysicalProduct) return 'retail';
   if (offeringTypes.includes('time_service')) return 'services';
-  return 'manufacturing';
+  return 'food_manufacturing';
 };
 
 const parseSalesEstimate = (value) => {
@@ -139,8 +144,8 @@ const parseSalesEstimate = (value) => {
 };
 
 const normalizeVisibilityMode = (rawVisibilityMode, paymentConfiguration = {}) => {
-  const normalized = normalizeLower(rawVisibilityMode);
-  if (VISIBILITY_MODES.includes(normalized)) return normalized;
+  const raw = normalizeLower(rawVisibilityMode);
+  if (CUSTOMER_ACCESS_MODES.includes(raw)) return normalizeCustomerAccessMode(raw);
 
   const acceptsOnline = normalizeBoolean(paymentConfiguration.accepts_online_payments);
   return acceptsOnline ? 'transaction' : 'catalog';
@@ -183,8 +188,14 @@ export const normalizeBusinessClassificationPayload = (rawPayload = {}) => {
     },
     online_visibility: {
       mode: normalizeVisibilityMode(
-        normalized.online_visibility?.mode,
+        normalized.customer_access_mode || normalized.online_visibility?.mode,
         normalized.payment_configuration
+      )
+    },
+    inventory_display: {
+      mode: normalizeInventoryDisplayMode(normalized.inventory_display_mode || normalized.inventory_display?.mode),
+      low_stock_threshold: normalizeLowStockDisplayThreshold(
+        normalized.inventory_low_stock_display_threshold || normalized.inventory_display?.low_stock_threshold
       )
     },
     payment_configuration: {
@@ -225,11 +236,13 @@ export const deriveBusinessClassification = (normalizedPayload = {}) => {
     payload.growth_intent.estimated_monthly_sales >= 250000
   ];
   const complexityScore = complexitySignals.filter(Boolean).length;
-  const workflowModeRecommendation = complexityScore >= 3 ? 'manufacturing' : 'msme';
   const businessModeTemplateRecommendation = deriveBusinessModeTemplateRecommendation({
     payload,
     complexityScore
   });
+  const workflowModeRecommendation = businessModeTemplateRecommendation === 'msme'
+    ? 'msme'
+    : businessModeTemplateRecommendation;
 
   const registrationStatus = payload.legitimacy.registration_status;
   const wantsOfficialReceipt = payload.legitimacy.requires_official_receipt;
@@ -242,7 +255,10 @@ export const deriveBusinessClassification = (normalizedPayload = {}) => {
   }
 
   return {
-    visibility_mode: VISIBILITY_MODES.includes(visibilityMode) ? visibilityMode : 'catalog',
+    visibility_mode: CUSTOMER_ACCESS_MODES.includes(visibilityMode) ? visibilityMode : 'catalog',
+    customer_access_mode: CUSTOMER_ACCESS_MODES.includes(visibilityMode) ? visibilityMode : 'catalog',
+    inventory_display_mode: payload.inventory_display.mode,
+    inventory_low_stock_display_threshold: payload.inventory_display.low_stock_threshold,
     monetization_tier: TIER_BY_VISIBILITY[visibilityMode] ? monetizationTier : 'tier_1',
     workflow_mode_recommendation: WORKFLOW_MODES.includes(workflowModeRecommendation) ? workflowModeRecommendation : 'msme',
     business_mode_template_recommendation: BUSINESS_MODE_TEMPLATES.includes(businessModeTemplateRecommendation)

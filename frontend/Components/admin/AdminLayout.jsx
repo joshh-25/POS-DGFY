@@ -9,7 +9,8 @@ import {
     ChevronRight,
     RefreshCw,
     AlertCircle,
-    DollarSign
+    DollarSign,
+    Server
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
     { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
     { path: '/admin/pricing', label: 'Plan Pricing', icon: DollarSign },
+    { path: '/admin/hosting', label: 'Hosting', icon: Server },
 ];
 
 export default function AdminLayout() {

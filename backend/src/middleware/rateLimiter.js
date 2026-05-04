@@ -26,6 +26,8 @@ const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVEN
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
+const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -204,20 +206,30 @@ import { getRedisClient, isRedisConnected } from '../config/redis.js';
 
 import { MemoryStore } from 'express-rate-limit';
 
+const dynamicStores = new Set();
+
 // A robust DynamicStore that wraps MemoryStore (local) and RedisStore (distributed).
 // It attempts to use Redis if available, falling back seamlessly to MemoryStore
 // if the Redis connection is lost or unavailable.
-class DynamicStore {
+export class DynamicStore {
   constructor(prefix) {
     this.prefix = prefix;
     this.memoryStore = new MemoryStore();
     this.redisStore = null;
     this.options = null;
+    dynamicStores.add(this);
   }
 
   init(options) {
     this.options = options;
     this.memoryStore.init?.(options);
+    this.ensureRedisStore();
+  }
+
+  ensureRedisStore() {
+    if (this.redisStore || !this.options || !isRedisConnected()) {
+      return;
+    }
 
     const client = getRedisClient();
     if (client && client.sendCommand) {
@@ -236,7 +248,8 @@ class DynamicStore {
           },
           prefix: `rl:${this.prefix}:`
         });
-        this.redisStore.init?.(options);
+        this.redisStore.init?.(this.options);
+        logger.info(`[RateLimiter] RedisStore initialized for ${this.prefix}`);
       } catch (err) {
         logger.error(`[RateLimiter] RedisStore init failed for ${this.prefix}:`, err);
       }
@@ -244,11 +257,17 @@ class DynamicStore {
   }
 
   getStore() {
+    this.ensureRedisStore();
     // We only use Redis if both the store is initialized AND we have a live connection.
     if (this.redisStore && isRedisConnected()) {
       return this.redisStore;
     }
     return this.memoryStore;
+  }
+
+  getMode() {
+    this.ensureRedisStore();
+    return this.redisStore && isRedisConnected() ? 'redis' : 'memory';
   }
 
   async increment(key) {
@@ -274,6 +293,16 @@ class DynamicStore {
     return store.resetKey(key);
   }
 }
+
+export const getRateLimiterStoreMode = () => {
+  for (const store of dynamicStores) {
+    if (store.getMode() === 'redis') {
+      return 'redis';
+    }
+  }
+
+  return process.env.REDIS_URL ? 'memory_fallback' : 'memory';
+};
 
 // General API rate limiter
 export const generalLimiter = rateLimit({
@@ -594,8 +623,8 @@ export const lookupLimiter = rateLimit({
 
 // Strict rate limiter for tenant registration (prevents DoS via auto-provisioning)
 export const tenantRegistrationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: isDevelopment ? 50 : 5, // 5 per hour in prod, 50 in dev
+  windowMs: tenantRegistrationWindowMs,
+  max: tenantRegistrationMaxRequests,
   message: createRateLimitError('Too many registration requests from this IP, please try again after an hour.'),
   standardHeaders: true,
   legacyHeaders: false,

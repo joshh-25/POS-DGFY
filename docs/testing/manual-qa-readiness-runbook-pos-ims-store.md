@@ -27,7 +27,7 @@ npm run dev:store
 Expected local URLs:
 1. IMS (Skupervisor): `http://localhost:5173`
 2. POS: `http://localhost:5174`
-3. Store: `http://localhost:5175`
+3. Store: `http://localhost:5175` by default, or the Vite-assigned preview/dev port shown in the terminal (for example `http://127.0.0.1:4175`)
 4. Backend health: `http://localhost:5000/health`
 
 Baseline test account (if seed/default exists):
@@ -164,7 +164,47 @@ Pass gate:
 Pass gate:
 1. No data-sync mismatch across IMS, POS, and Store for tested scenarios.
 
-## 9) Phase F - High-Value Negative Tests
+## 9) Phase F - Services Mode QA Path
+
+Run this phase for a tenant whose workflow/business mode is `services`.
+
+IMS Services:
+1. Login to SKUpervisor and open `/services`.
+2. Confirm the Services workspace renders Today, Calendar, Services, Team & Resources, Waitlist, Reminders, and Clients.
+3. Confirm dashboard cards show future bookings, expected revenue, postpaid aging, and no-show signals without API errors.
+4. Create or verify one service catalog row:
+   - `category=service`
+   - duration and sale price configured
+   - `visible_in_pos=true`
+   - `visible_in_storefront=true`
+   - `bookable=true`
+   - at least one intake question when the service requires customer preparation.
+5. Confirm provider/resource assignment, waitlist entry creation, reminder queue, and client history views load without manufacturing/job-order language.
+
+Storefront Services:
+1. Open `tenant-store/<services-slug>`.
+2. Confirm the service appears as a service/booking offer, not as a stock-controlled product.
+3. Select a service, choose appointment date/time, complete required intake fields, and submit a postpaid booking.
+4. Expected result:
+   - booking/ticket reference is returned
+   - payment status is unpaid for postpaid
+   - ticket/receipt image download option is available
+   - account/register prompt follows the account rules from ADR 0016.
+5. Verify public booking lookup by reference redacts customer contact data.
+
+POS Services:
+1. Open POS for the same tenant.
+2. Confirm Services Queue shows active requested/confirmed/check-in/in-service bookings.
+3. Move one booking through an allowed status transition and verify invalid lifecycle jumps are blocked.
+4. Confirm the service appears in POS catalog with `Service sale` (not `Out of stock`) even when inventory stock is zero.
+5. Add the service to cart and confirm order method includes `Appointment`.
+6. Complete a non-fiscal cash checkout for the service and verify the transaction appears in POS history/Sales without stock deduction.
+
+Pass gate:
+1. Services Mode works across IMS, Storefront, and POS without manufacturing copy or stock-only product assumptions.
+2. Booking, ticket, intake, queue, and postpaid POS collection paths complete end-to-end.
+
+## 10) Phase G - High-Value Negative Tests
 
 1. Attempt compliance-sensitive actions without required setup/declaration context.
 2. Attempt restricted actions with limited role.
@@ -176,7 +216,28 @@ Pass gate:
 1. App fails closed on policy/security/compliance constraints.
 2. User receives clear, non-ambiguous error feedback.
 
-## 10) Release-Ready Signoff Criteria
+## 11) Phase H - PWA Readiness Checks
+
+1. Build all frontend surfaces with `npm --prefix frontend run build:all`.
+2. Confirm production output contains manifest and service-worker files for SKUpervisor, POS, and Storefront.
+3. In browser devtools Application panel, confirm each surface exposes the expected manifest and service worker.
+4. Install SKUpervisor/admin shell on desktop Chrome or Edge and verify:
+   - app title and icon are correct
+   - Settings opens in standalone mode
+   - Settings tabs scroll and remain usable on a narrow/mobile viewport
+   - Save/revert controls remain reachable above the mobile safe area
+5. Install or add to home screen on a real mobile device when available.
+6. Temporarily go offline after a successful load:
+   - static shell reload may use cached assets
+   - `/api/` and `/uploads/` must not be served stale from service-worker cache
+   - authenticated data errors must remain explicit, not silent or blank
+
+Pass gate:
+1. Installability metadata is present and accepted by the browser.
+2. Installed/mobile Settings remains usable.
+3. No stale API/upload data is served by the service worker.
+
+## 12) Release-Ready Signoff Criteria
 
 All must be true:
 1. All critical paths in Phases A-E are PASS.
@@ -185,8 +246,9 @@ All must be true:
 4. Cross-app data consistency checks all PASS.
 5. Evidence links/screenshots/logs are attached to each FAIL or suspicious PASS.
 6. Role-based journey in `docs/features/IMS_POS_SALES_UX_JOURNEY.md` passes without blocker.
+7. PWA readiness checks in Phase H pass for all release-targeted surfaces.
 
-## 11) Defect Severity Guide
+## 13) Defect Severity Guide
 
 1. Sev-1: data corruption, security/compliance bypass, checkout blocked for all users.
 2. Sev-2: major flow broken for one app/persona, incorrect totals/stock sync.

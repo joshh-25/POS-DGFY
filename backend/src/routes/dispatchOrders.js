@@ -10,9 +10,11 @@ import {
 } from '../validators/dispatchOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireWorkflowCapability('productionWorkflows', 'Dispatch Orders'));
 
 // Read operations — any authenticated user with do:view
 router.get('/stats', checkPermission(PERMISSIONS.DISPATCH.actions.VIEW_DO), dispatchOrderController.getDispatchStats);

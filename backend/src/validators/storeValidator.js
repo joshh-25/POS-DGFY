@@ -71,6 +71,10 @@ const storeCancelOrderSchema = Joi.object({
     cancel_proof: Joi.string().trim().max(2048).optional()
 });
 
+const storeClaimOrderSchema = Joi.object({
+    claim_token: Joi.string().trim().min(16).max(2048).required()
+});
+
 const storeOrderHistoryQuerySchema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(20),
@@ -124,6 +128,7 @@ export const validateStoreUpdateAddress = validateSchema(storeAddressUpdateSchem
 export const validateStoreAddressIdParam = validateSchema(storeAddressIdParamSchema, 'params', 'validatedParams');
 export const validateStoreTrackingPinParam = validateSchema(storeTrackingPinParamSchema, 'params', 'validatedParams');
 export const validateStoreCancelOrder = validateSchema(storeCancelOrderSchema, 'body', 'validatedData');
+export const validateStoreClaimOrder = validateSchema(storeClaimOrderSchema, 'body', 'validatedData');
 export const validateStoreOrderHistoryQuery = validateSchema(storeOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateStoreCatalogQuery = validateSchema(storeCatalogQuerySchema, 'query', 'validatedQuery');
 

@@ -7,6 +7,13 @@ import {
     getRuntimeSchemaHealthService,
     applyRuntimeSchemaHealthStatus
 } from './runtimeSchemaHealthService.js';
+import {
+    getHostingProfile,
+    getTokenBlacklistFailureMode,
+    isRedisConfigured,
+    resolveSchedulerLockMode,
+    resolveTempFileStorageMode
+} from '../config/hostingProfile.js';
 
 const buildUptime = (seconds) => `${Math.floor(seconds)}s`;
 
@@ -14,6 +21,7 @@ export const buildHealthResponse = async ({
     testConnectionFn,
     isRedisConnectedFn,
     getTenantPoolStatsFn,
+    getRateLimiterStoreModeFn,
     runtimeSchemaAuditState = {},
     schemaIndexAuditState = {},
     billingFunnelAuditState = {},
@@ -21,6 +29,9 @@ export const buildHealthResponse = async ({
     timestamp = new Date().toISOString(),
     uptimeSeconds = process.uptime()
 } = {}) => {
+    const hostingProfile = getHostingProfile();
+    const redisConfigured = isRedisConfigured();
+    const redisRequired = hostingProfile === 'vps';
     const health = {
         success: true,
         message: 'Server is running',
@@ -61,22 +72,63 @@ export const buildHealthResponse = async ({
         health.success = false;
     }
 
+    let redisConnected = false;
+
     // Check Redis connection
     try {
-        const redisConnected = isRedisConnectedFn();
+        redisConnected = isRedisConnectedFn();
         health.services.redis = {
-            status: redisConnected ? 'connected' : 'disconnected',
-            message: redisConnected ? 'Redis connection healthy' : 'Redis not available (optional)',
-            available: redisConnected
+            status: redisConnected ? 'connected' : (redisRequired ? 'degraded' : 'disconnected'),
+            message: redisConnected
+                ? 'Redis connection healthy'
+                : (redisRequired ? 'Redis is required for this hosting profile but is not connected' : 'Redis not available (optional)'),
+            available: redisConnected,
+            configured: redisConfigured,
+            connected: redisConnected,
+            required: redisRequired
         };
-        // Redis is optional, so don't mark health as failed if it's not connected
+        if (redisRequired && !redisConnected) {
+            health.success = false;
+        }
     } catch (error) {
         health.services.redis = {
             status: 'error',
             message: error.message,
-            available: false
+            available: false,
+            configured: redisConfigured,
+            connected: false,
+            required: redisRequired
         };
+        if (redisRequired) {
+            health.success = false;
+        }
     }
+
+    const rateLimitStoreMode = typeof getRateLimiterStoreModeFn === 'function'
+        ? getRateLimiterStoreModeFn()
+        : (redisConnected ? 'redis' : (redisConfigured ? 'memory_fallback' : 'memory'));
+
+    health.capabilities = {
+        hostingProfile,
+        redis: {
+            configured: redisConfigured,
+            connected: redisConnected,
+            required: redisRequired,
+            status: redisConnected ? 'available' : (redisRequired ? 'degraded' : 'optional_unavailable')
+        },
+        tokenBlacklist: {
+            mode: getTokenBlacklistFailureMode()
+        },
+        tempFileStorage: {
+            mode: resolveTempFileStorageMode({ cacheAvailable: redisConnected })
+        },
+        rateLimitStore: {
+            mode: rateLimitStoreMode
+        },
+        schedulerLock: {
+            mode: resolveSchedulerLockMode({ redisConnected })
+        }
+    };
 
     // Tenant connection pool stats
     try {

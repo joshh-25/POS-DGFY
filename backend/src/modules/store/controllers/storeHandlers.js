@@ -12,6 +12,7 @@ import {
     storeCartQuoteUseCase,
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
+    claimStoreOrderUseCase,
     cancelStoreOrderUseCase,
     listStoreCustomerOrdersUseCase,
     getStorefrontFollowStatusUseCase,
@@ -303,6 +304,30 @@ export const trackOrder = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const claimOrder = async (req, res, next) => {
+    try {
+        const result = await claimStoreOrderUseCase({
+            trackingPin: req.validatedParams?.tracking_pin || req.params.tracking_pin,
+            tenantId: resolveTenantId(req),
+            storeCustomer: resolveStoreCustomer(req),
+            payload: req.validatedData || req.body
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Order linked successfully',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

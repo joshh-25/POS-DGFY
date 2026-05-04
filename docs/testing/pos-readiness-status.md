@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-04-28
+Last updated: 2026-05-04
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -87,6 +87,26 @@ Overall status: in_progress
 - queue storage: IndexedDB-first with fallback compatibility path
 - statuses: `queued`, `replaying`, `replayed`, `failed_manual_resolution_required`
 - replay ownership in terminal workspace mode is centralized to prevent duplicate replay loops
+30. SKUpervisor/admin PWA infrastructure is now explicit:
+- root admin and `apps/skupervisor` builds publish manifests and service workers
+- admin service-worker registration is production-only and non-blocking
+- `/api/` and `/uploads/` bypass service-worker caching to avoid stale authenticated data and stale tenant uploads
+- POS and Storefront keep their existing service-worker entrypoints
+31. POS and Storefront catalog controls are split:
+- POS visibility uses `pos_catalog_overrides.pos_visible`; POS image upload/removal preserves the existing visibility state.
+- Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; Storefront image upload/removal preserves the existing visibility state.
+- Storefront catalog images are independent from POS menu images.
+- Public Storefront catalog payloads remain availability-only and must not expose `current_stock` or `cost_per_unit`.
+32. Storefront catalog fallback boundaries are now explicit:
+- When `storefront_catalog_overrides` exists, a missing per-item Storefront override row uses Storefront default policy and must not inherit POS visibility or POS image state.
+- POS-derived Storefront membership/media is allowed only as table-missing rollout compatibility fallback, with warning logging.
+- Public `/store/catalog` retries without optional Storefront/POS/service include tables when those tables are unavailable during additive rollout, instead of returning `500`.
+33. POS and Storefront image replacement is failure-aware:
+- upload stores the new file, commits the override update, then best-effort removes the previous file
+- if the override update fails after storage succeeds, the newly stored file is removed and the old image remains referenced
+34. Inventory UI Storefront controls are permission-aware:
+- `Show in Storefront` and Storefront item image controls are shown only when the user can configure item Storefront catalog state
+- users without `items:edit` do not see disabled Storefront controls backed only by inferred default data
 
 ## 3) Automated Gate Status (Latest)
 
@@ -292,6 +312,76 @@ Overall status: in_progress
    - `npm run check:architecture` -> PASS
    - `npm run check:compliance` -> PASS
    - `npm run gate:release:local` -> PASS
+
+### 3.15 Settings Sectioning + Admin PWA Infrastructure Rerun (2026-04-30)
+
+1. Settings sectioning update:
+   - added dedicated Storefront tab for customer-facing DGFY operations, locations, media, and content
+   - kept POS Setup focused on legal receipt metadata, cashier closeout, terminal policy, DGFY fee policy, and POS discounts
+   - kept Company focused on tenant identity, users, and workflow/business mode
+2. Admin/SKUpervisor PWA update:
+   - added root admin and `apps/skupervisor` manifests
+   - added root admin and `apps/skupervisor` service workers
+   - added production-only admin service-worker registration
+3. Regression coverage:
+   - `npm --prefix frontend test -- src/features/settings/__tests__/settingsDeepLink.contract.test.js src/pages/__tests__/Settings.deepLinking.integration.test.jsx src/pages/__tests__/Settings.subscriptionVisibility.component.test.jsx` -> PASS (`3 files`, `20 tests`)
+4. Build and static PWA checks:
+   - `npm --prefix frontend run build` -> PASS
+   - `npm --prefix frontend run build:skupervisor` -> PASS
+   - `npm --prefix frontend run build:all` -> PASS
+   - `node --check frontend/public/sw.js` -> PASS
+   - `node --check frontend/apps/skupervisor/public/sw.js` -> PASS
+   - manifest JSON parse checks -> PASS
+5. Governance:
+   - `npm run check:architecture` -> PASS
+   - `git diff --check` -> PASS with line-ending warnings only
+
+### 3.16 Services Mode Connection + POS Service Sale Hardening (2026-05-03)
+
+1. Services Mode cross-surface verification:
+   - Storefront Services tenant page loads the service catalog, active storefront location, and booking controls without browser console errors.
+   - IMS `/services` renders Services dashboard metrics, service catalog, intake-form signal, and service workspace tabs after authenticated login.
+   - POS `/pos` renders Services Queue and service catalog rows for the same tenant.
+2. POS service sale hardening:
+   - backend POS catalog now loads `ServiceItemDetail` and evaluates Services rows with POS surface visibility (`visible_in_pos`)
+   - service rows are stock-exempt and remain POS-addable when `current_stock=0`
+   - POS UI labels service rows as `Service sale` instead of `Out of stock`
+   - POS order method includes `Appointment` and service additions select the appointment path
+3. API evidence:
+   - `/api/v1/services/dashboard`, `/catalog`, `/bookings`, `/clients`, `/waitlist`, `/resources`, `/assignments`, `/reminders` -> PASS
+   - `/api/v1/store/catalog` and `/api/v1/store/services/catalog` include the service row for the Services tenant -> PASS
+   - `/api/v1/pos/catalog` includes the service row with `category=service` and `pos_visible=true` -> PASS
+   - service POS checkout succeeds as a non-fiscal appointment transaction without stock deduction -> PASS
+4. Regression coverage:
+   - `npm --prefix backend test -- --runTestsByPath tests/catalogVisibilityPolicy.test.js tests/servicesMode.usecases.test.js tests/workflowModes.crossLayer.contract.test.js` -> PASS (`21` tests)
+   - `npm --prefix frontend test -- --run apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/businessModePins.test.js src/features/settings/__tests__/workflowMode.services.test.js` -> PASS (`8` tests)
+5. Build and governance:
+   - `npm --prefix frontend run build:pos` -> PASS
+   - `npm --prefix frontend run build:skupervisor` -> PASS
+   - `npm --prefix frontend run build:store` -> PASS
+   - `npm run check:architecture` -> PASS
+   - `npm run lint:docs` -> PASS
+
+### 3.17 POS/Storefront Catalog Split Hardening (2026-05-04)
+
+1. Root-cause closure:
+   - Storefront catalog runtime reads previously allowed row-missing Storefront override data to fall back to POS visibility/media, which could make newly missing or unbackfilled Storefront rows appear to follow POS state again.
+   - `/store/catalog` optional-table retry covered Storefront/POS override tables but not the service details include table.
+   - POS and Storefront image replacement removed the old file before the override update was proven, and a failed update after storing the new file could orphan the new file.
+2. Implemented fixes:
+   - `backend/src/modules/store/repositories/storeRepository.js` uses POS-derived visibility/media only when the Storefront override table itself is unavailable.
+   - `backend/src/modules/inventory/repositories/itemRepository.js` applies the same boundary for inventory-facing Storefront override listing.
+   - POS and Storefront image upload use safe replacement order and clean up newly stored files after failed override updates.
+   - Inventory item cards, item modal, table view, and product setup step hide Storefront controls when the user cannot load/configure Storefront override data.
+3. Regression coverage and gates:
+   - `npm --prefix backend test -- --runTestsByPath tests/storeRepository.locationStockFallback.test.js tests/storefrontCatalogUseCases.test.js tests/posUsecases.applicationResult.test.js` -> PASS (`26` tests)
+   - `npm --prefix frontend test -- Components/items/__tests__/ItemCard.catalogToggles.test.jsx` -> PASS (`4` tests)
+   - `npm run check:architecture` -> PASS
+   - `npm run lint:docs` -> PASS
+   - `npm run build:skupervisor` -> PASS
+   - `npm run build:pos` -> PASS
+   - `npm run build:store` -> PASS
+   - `git diff --check` -> PASS with line-ending warnings only
 
 ## 4) Canonical UAT Assets
 

@@ -240,6 +240,7 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByLabelText(/Remove terminal 1/i)).toBeTruthy();
     expect(await screen.findByLabelText(/Terminal location 1/i)).toBeTruthy();
 
+    await user.click(screen.getByRole('button', { name: /Storefront/i }));
     await user.type(screen.getByPlaceholderText('Main Branch'), 'HQ Branch');
     await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Iloilo City');
     await user.click(screen.getByRole('button', { name: /Add Location/i }));
@@ -279,8 +280,8 @@ describe('Settings deep-linking and action wiring', () => {
 
   it('supports storefront cover/profile upload and remove actions', async () => {
     const user = userEvent.setup();
-    renderSettings('/settings?tab=company');
-    await screen.findByRole('button', { name: /Company/i });
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Storefront/i });
 
     const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
     expect(fileInputs.length).toBeGreaterThanOrEqual(2);
@@ -313,8 +314,8 @@ describe('Settings deep-linking and action wiring', () => {
     };
     mocks.userServiceMock.getCurrentUser.mockResolvedValue(mocks.storeState.currentUser);
 
-    renderSettings('/settings?tab=company');
-    await screen.findByRole('button', { name: /Company/i });
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Storefront/i });
 
     const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
     expect(fileInputs.length).toBeGreaterThanOrEqual(2);
@@ -339,8 +340,8 @@ describe('Settings deep-linking and action wiring', () => {
     };
     mocks.userServiceMock.getCurrentUser.mockResolvedValue(mocks.storeState.currentUser);
 
-    renderSettings('/settings?tab=company');
-    await screen.findByRole('button', { name: /Company/i });
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Storefront/i });
 
     const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
     expect(fileInputs.length).toBeGreaterThanOrEqual(2);
@@ -351,7 +352,7 @@ describe('Settings deep-linking and action wiring', () => {
 
   it('reset clears local storefront media previews', async () => {
     const user = userEvent.setup();
-    renderSettings('/settings?tab=company');
+    renderSettings('/settings?tab=storefront');
     await screen.findByRole('button', { name: /Save Changes/i });
     expect(screen.getByAltText('Storefront cover preview')).toBeTruthy();
     expect(screen.getByAltText('Storefront profile preview')).toBeTruthy();

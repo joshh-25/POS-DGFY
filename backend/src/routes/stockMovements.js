@@ -2,6 +2,7 @@ import express from 'express';
 import * as stockMovementController from '../controllers/stockMovementController.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import {
   validateCreateStockMovement,
   validateVoidMovement,
@@ -10,6 +11,7 @@ import {
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireWorkflowCapability('inventory', 'Stock Movements'));
 
 // Read operations - all authenticated users
 router.get('/stats', stockMovementController.getMovementStats);

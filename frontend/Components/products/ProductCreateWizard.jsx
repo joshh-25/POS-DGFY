@@ -95,9 +95,14 @@ export default function ProductCreateWizard({
   product,
   workflowMode = 'manufacturing',
   posConfig = null,
+  storefrontConfig = null,
+  showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onUploadPosImage,
   onDeletePosImage,
+  onToggleStorefrontVisibility,
+  onUploadStorefrontImage,
+  onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
   const [step, setStep] = useState(1);
@@ -579,9 +584,14 @@ export default function ProductCreateWizard({
               loadingLocations={loadingLocations}
               productItem={product}
               posConfig={posConfig}
+              storefrontConfig={storefrontConfig}
+              showStorefrontCatalogControls={showStorefrontCatalogControls}
               onTogglePosVisibility={onTogglePosVisibility}
               onUploadPosImage={onUploadPosImage}
               onDeletePosImage={onDeletePosImage}
+              onToggleStorefrontVisibility={onToggleStorefrontVisibility}
+              onUploadStorefrontImage={onUploadStorefrontImage}
+              onDeleteStorefrontImage={onDeleteStorefrontImage}
               onOpenBulkPosSetup={onOpenBulkPosSetup}
             />
           </div>

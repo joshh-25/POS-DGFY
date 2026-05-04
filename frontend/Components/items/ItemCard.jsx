@@ -40,8 +40,13 @@ export default function ItemCard({
   posReadiness,
   onOpenInTerminal,
   posVisible = false,
+  showPosVisibilityControl = true,
   canTogglePosVisibility = false,
   onTogglePosVisibility,
+  storefrontVisible = false,
+  showStorefrontVisibilityControl = true,
+  canToggleStorefrontVisibility = false,
+  onToggleStorefrontVisibility,
   isSelected,
   onSelect,
   isMsmeMode = false
@@ -90,6 +95,11 @@ export default function ItemCard({
   const handleTogglePos = (nextValue) => {
     if (!canTogglePosVisibility || typeof onTogglePosVisibility !== 'function') return;
     onTogglePosVisibility(item, nextValue);
+  };
+
+  const handleToggleStorefront = (nextValue) => {
+    if (!canToggleStorefrontVisibility || typeof onToggleStorefrontVisibility !== 'function') return;
+    onToggleStorefrontVisibility(item, nextValue);
   };
 
   return (
@@ -182,19 +192,40 @@ export default function ItemCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4">
-        <div
-          className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <span className="text-xs font-semibold text-slate-600">Show in POS</span>
-          <Switch
-            checked={Boolean(posVisible)}
-            onCheckedChange={handleTogglePos}
-            disabled={!canTogglePosVisibility}
-            aria-label={`Toggle POS visibility for ${item.name}`}
-          />
-        </div>
+        {(showPosVisibilityControl || showStorefrontVisibilityControl) && (
+          <div className="space-y-2">
+            {showPosVisibilityControl && (
+              <div
+                className="flex min-h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className="text-xs font-semibold text-slate-600">Show in POS</span>
+                <Switch
+                  checked={Boolean(posVisible)}
+                  onCheckedChange={handleTogglePos}
+                  disabled={!canTogglePosVisibility}
+                  aria-label={`Toggle POS visibility for ${item.name}`}
+                />
+              </div>
+            )}
+            {showStorefrontVisibilityControl && (
+              <div
+                className="flex min-h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className="text-xs font-semibold text-slate-600">Show in Storefront</span>
+                <Switch
+                  checked={Boolean(storefrontVisible)}
+                  onCheckedChange={handleToggleStorefront}
+                  disabled={!canToggleStorefrontVisibility}
+                  aria-label={`Toggle storefront visibility for ${item.name}`}
+                />
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
             {isDraft && statusStyle.icon && <statusStyle.icon className="w-3 h-3 mr-1" />}

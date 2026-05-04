@@ -17,7 +17,7 @@ const Item = sequelize.define('Item', {
     allowNull: false
   },
   category: {
-    type: DataTypes.ENUM('raw_material', 'packaging', 'product', 'supplies'),
+    type: DataTypes.ENUM('raw_material', 'packaging', 'product', 'supplies', 'service'),
     allowNull: false
   },
   product_type: {
@@ -214,4 +214,3 @@ const Item = sequelize.define('Item', {
 });
 
 export default Item;
-

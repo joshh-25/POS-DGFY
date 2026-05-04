@@ -21,7 +21,9 @@ When to use:
 - Operational contract matrix for location-scoped stock, POS read/write safety, and phased rollout controls.
 7. `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md`
 - Current implementation status and operating contract for first-login onboarding that connects DGFY storefront, DGFY POS, and SKUpervisor.
-8. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
+8. `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`
+- Implemented-behind-flag contract for Customer Access Mode and Inventory Display across onboarding, Settings, discovery/profile/catalog metadata, inventory display serialization, Storefront UI gating, quote/checkout blocking, and public service booking/waitlist enforcement.
+9. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
 
 ## Usage Notes
@@ -37,3 +39,5 @@ When to use:
 - `docs/architecture/adr/0010-weighted-average-cost-valuation-and-variance-analytics.md`
 - `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
+- `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
+- `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-04-28
+last_reviewed: 2026-05-04
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -16,13 +16,15 @@ Start here for all planning and implementation work:
 ## High-Value Sections
 - `docs/architecture`: architecture boundaries, governance, ADRs
 - `docs/api`: API specs and integration guides
-- `docs/ops`: production runbooks, no-staging hard-gate policy, and release checklists
+- `docs/ops`: production runbooks, hosting profile guidance, no-staging hard-gate policy, and release checklists
+  - shared/VPS hosting profile runbook: `docs/ops/HOSTING_PROFILES.md`
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
   - includes evidence and submission packet docs under `docs/compliance/evidence/` and `docs/compliance/submission/`
   - active compliance docs index: `docs/compliance/README.md`
 - `docs/database`: schema contracts
 - `docs/development`: environment setup and workflow docs
+- `docs/deployment/PWA_SURFACE_CONTRACT.md`: PWA manifest/service-worker surface contract and readiness checklist
 - `docs/features`: feature behavior docs
 - `docs/setup`: operational setup steps
 - `docs/testing`: verification and audit protocols
@@ -34,6 +36,9 @@ Start here for all planning and implementation work:
 - `frontend/apps/skupervisor`: tenant/admin IMS workflows
 - `frontend/apps/pos`: POS terminal and operations
 - `frontend/apps/store`: public storefront, quote, checkout, and tracking
+
+## Implemented Behind Flag
+- Customer Access Modes and Inventory Display controls are implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and the tenant-scoped rollout allowlist `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`. Current behavior, rollout constraints, public API metadata, and validation evidence are tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
@@ -51,7 +56,7 @@ Start here for all planning and implementation work:
 - Compliance activation readiness browser E2E guidance is maintained in `docs/testing/README.md`.
 
 ## Current Behavior Notes
-1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008 and ADR 0014.
+1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008, ADR 0014, and ADR 0016. User-facing `manufacturing` is Food Manufacturing, while `manufacturing` remains a legacy alias.
 2. POS setup is wizard-first; item cards no longer host single-item POS setup widgets.
 3. POS visibility enablement is readiness-gated with deterministic denial metadata for unresolved requirements.
 4. Final Review documentary readiness is tenant self-serve in Settings > Compliance; repo submission docs are reference artifacts, not tenant input.
@@ -63,7 +68,16 @@ Start here for all planning and implementation work:
 10. POS terminal location safety now includes audited shift-location remediation and strict-binding readiness guardrails before enabling `pos_terminal_location_binding_enforced=true`.
 11. POS offline operations (including checkout replay) use a durable queue contract with explicit statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) and operator-facing Sync Queue controls.
 12. Storefront discovery/catalog read endpoints now publish explicit HTTP cache contracts while checkout/mutation flows remain `no-store`.
-11. Tenant first-login onboarding now supports advisory business classification (`business_classification`) with deterministic snapshot outputs (`visibility_mode`, `monetization_tier`, `workflow_mode_recommendation`, `compliance_path_hint`) while keeping readiness completion gates unchanged.
+13. Tenant first-login onboarding now supports business classification (`business_classification`) with deterministic snapshot outputs (`visibility_mode`, `customer_access_mode`, `inventory_display_mode`, `monetization_tier`, `workflow_mode_recommendation`, `compliance_path_hint`) while keeping readiness completion gates unchanged.
+14. Settings information architecture is split by user mental model: Profile, Company, Storefront, POS Setup, Compliance, and System (`docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`).
+15. SKUpervisor/admin, POS, and Storefront all have PWA source contracts with manifests and service-worker entrypoints; admin/SKUpervisor service-worker caching bypasses `/api/` and `/uploads/`.
+16. Hosting mode is selected from one codebase by environment profile (`shared` or `vps`) and validated by `npm run preflight:shared` / `npm run preflight:vps`; runtime capabilities are visible through `/health`, `/api/v1/health`, and Admin > Hosting.
+17. Services Mode is a first-class workflow mode across IMS, POS, and Storefront. It uses item-backed service catalog rows plus service metadata, appointment bookings, resources/providers, waitlist, intake forms, reminder outbox, client signals, and stock-exempt POS service sales.
+18. Standard company registration defaults to manual platform-admin approval. `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the temporary opt-in path for immediately provisioning standard tenants and signing the founder in through the normal login API; premium/subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
+19. Public company registration has its own strict IP limiter (`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`) because `auto_standard` can create tenant databases from a public request.
+20. Customer Access Mode is the runtime storefront capability contract behind a controlled rollout flag. Discovery/profile/catalog responses expose additive access metadata; `ghost` suppresses public item-search/catalog rows, `catalog` and `inquiry` suppress cart/quote/checkout/booking, and `transaction` preserves current ordering/booking behavior subject to existing stock, location, compliance, and payment gates.
+21. Inventory Display is independent from Customer Access Mode. Public storefront payloads keep raw `current_stock` and `cost_per_unit` private while exposing only the normalized `inventory_display` object allowed by tenant settings.
+22. POS and Storefront item catalog controls are independent. POS uses `pos_catalog_overrides`; Storefront uses `storefront_catalog_overrides`. POS-derived Storefront fallback is allowed only when the Storefront override table is unavailable during rollout, not when an individual Storefront override row is missing.
 
 ## Rules
 1. Use authoritative docs first.

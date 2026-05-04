@@ -116,7 +116,7 @@ export const updateSettings = async (req, res, next) => {
     if (result?.success) {
       invalidateTenantCache(req);
     }
-    if (result?.ok && req.tenant?.id) {
+    if (result?.success && req.tenant?.id) {
       syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,
         source: 'settings_update_bulk',
@@ -178,7 +178,7 @@ export const updateSettingByKey = async (req, res, next) => {
     if (result?.success) {
       invalidateTenantCache(req);
     }
-    if (result?.ok && req.tenant?.id) {
+    if (result?.success && req.tenant?.id) {
       syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,
         source: 'settings_update_single',
@@ -296,7 +296,7 @@ export const uploadStorefrontAsset = async (req, res, next) => {
     if (result?.success) {
       invalidateTenantCache(req);
     }
-    if (result?.ok && req.tenant?.id) {
+    if (result?.success && req.tenant?.id) {
       const syncResult = await syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,
         source: 'settings_storefront_asset_upload',
@@ -346,7 +346,7 @@ export const deleteStorefrontAsset = async (req, res, next) => {
     if (result?.success) {
       invalidateTenantCache(req);
     }
-    if (result?.ok && req.tenant?.id) {
+    if (result?.success && req.tenant?.id) {
       const syncResult = await syncStorefrontDiscoveryWithReliability({
         tenantId: req.tenant.id,
         source: 'settings_storefront_asset_delete',

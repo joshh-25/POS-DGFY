@@ -8,8 +8,15 @@ import { bumpStorefrontDiscoveryCacheVersion } from './storefrontDiscoveryCacheS
 import { invalidateStorefrontDiscoverySharedSignatureCache } from './storefrontDiscoveryFreshnessService.js';
 import { isCatalogItemVisible } from '../modules/shared/utils/catalogVisibilityPolicy.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
+import {
+    CUSTOMER_ACCESS_SETTING_KEYS,
+    isCustomerAccessModesEnabled,
+    resolveAccessPolicyFromSettings
+} from '../modules/shared/utils/customerAccessPolicy.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
+    'ops_workflow_mode',
     'store_tenant_slug',
     'store_is_visible',
     'store_delivery_fee',
@@ -32,7 +39,8 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'storefront_delivery_partners',
     'storefront_follow_enabled',
     'storefront_share_enabled',
-    'storefront_review_summary'
+    'storefront_review_summary',
+    ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
 const SEARCH_SNAPSHOT_VERSION = 1;
 
@@ -264,6 +272,7 @@ const buildTenantSnapshot = async (tenant) => {
         TenantLocation,
         Item,
         PosCatalogOverride,
+        ServiceItemDetail,
         ItemLocationStock
     } = getTenantModels(tenantConnection);
 
@@ -360,11 +369,22 @@ const buildTenantSnapshot = async (tenant) => {
             required: false
         }]
         : [];
+    const serviceDetailInclude = ServiceItemDetail
+        ? [{
+            model: ServiceItemDetail,
+            as: 'serviceDetail',
+            attributes: ['bookable', 'visible_in_storefront'],
+            required: false
+        }]
+        : [];
     let catalogRows;
     try {
         catalogRows = await Item.findAll({
             ...baseCatalogQuery,
-            include: overrideInclude
+            include: [
+                ...overrideInclude,
+                ...serviceDetailInclude
+            ]
         });
     } catch (error) {
         if (!isMissingPosCatalogOverrideTableError(error)) {
@@ -411,19 +431,36 @@ const buildTenantSnapshot = async (tenant) => {
         stockByItemId.set(itemId, bucket);
     });
 
+    const customerAccessFeatureEnabled = isCustomerAccessModesEnabled({
+        tenantId: tenant?.id,
+        companyToken: tenant?.company_token,
+        tenantName: tenant?.name,
+        slug
+    });
+    const accessPolicy = resolveAccessPolicyFromSettings({
+        ...settings,
+        tenant_onboarding_progress: parseJsonObject(settings.tenant_onboarding_progress) || null
+    }, {
+        featureEnabled: customerAccessFeatureEnabled
+    });
+    const canExposeCatalog = !customerAccessFeatureEnabled || accessPolicy.access_capabilities.catalog === true;
+
     const fallbackPrimaryLocationId = Number(location.location_id);
-    const itemSearchSnapshot = visibleCatalogRows
+    const itemSearchSnapshot = canExposeCatalog ? visibleCatalogRows
         .map((row) => {
             const itemId = Number(row.item_id);
             const stockBucket = stockByItemId.get(itemId);
             const matchingLocationIds = stockBucket
                 ? Array.from(stockBucket.matchingLocationIds)
                 : activeLocationIds;
-            const inStockLocationIds = stockBucket
-                ? Array.from(stockBucket.inStockLocationIds)
-                : (Number(row.current_stock || 0) > 0 && Number.isInteger(fallbackPrimaryLocationId) && fallbackPrimaryLocationId > 0
+            const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
+            const inStockLocationIds = isServiceItem
+                ? matchingLocationIds
+                : (stockBucket
+                    ? Array.from(stockBucket.inStockLocationIds)
+                    : (Number(row.current_stock || 0) > 0 && Number.isInteger(fallbackPrimaryLocationId) && fallbackPrimaryLocationId > 0
                     ? [fallbackPrimaryLocationId]
-                    : []);
+                    : []));
             const text = buildItemSearchText(row);
             if (!text) return null;
             return {
@@ -434,7 +471,7 @@ const buildTenantSnapshot = async (tenant) => {
                 in_stock_location_ids: inStockLocationIds
             };
         })
-        .filter(Boolean);
+        .filter(Boolean) : [];
 
     const storefrontOpen = parseBoolean(settings.pos_open_status, true) && location.is_open !== false;
     const storefrontWhyChooseUs = parseJsonArray(settings.storefront_why_choose_us)
@@ -489,6 +526,7 @@ const buildTenantSnapshot = async (tenant) => {
         tenant_company_token: tenant.company_token,
         slug,
         storefront_open: storefrontOpen,
+        workflow_mode: normalizeWorkflowMode(settings.ops_workflow_mode || DEFAULT_WORKFLOW_MODE),
         is_visible: true,
         location_id: location.location_id || null,
         location_name: location.name || null,
@@ -501,7 +539,15 @@ const buildTenantSnapshot = async (tenant) => {
         supports_pickup: location.supports_pickup !== false,
         supports_dine_in: location.supports_dine_in !== false,
         store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
-        catalog_count: Number(catalogCount) || 0,
+        catalog_count: canExposeCatalog ? (Number(catalogCount) || 0) : 0,
+        customer_access_mode: accessPolicy.customer_access_mode,
+        effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+        max_customer_access_mode: accessPolicy.max_customer_access_mode,
+        inventory_display_mode: accessPolicy.inventory_display_mode,
+        inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
+        access_capabilities: accessPolicy.access_capabilities,
+        access_limitation_reason: accessPolicy.limitation_reason,
+        customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
         storefront_cover_image_url: sanitizeStorefrontAssetUrl({
             tenant,
             key: 'storefront_cover_image_url',

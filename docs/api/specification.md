@@ -715,6 +715,86 @@ Get item-supplier coverage statistics showing which items have/lack supplier ass
 - Used by the PO Wizard to validate item selection
 - Used by the Item Coverage Panel on the Suppliers page
 
+### GET /items/storefront-overrides
+List item-level Storefront catalog overrides for authenticated inventory setup screens.
+
+**Permission**: `items:edit`
+
+**Query Parameters**
+```
+?search=milk
+&limit=200
+```
+
+**Response Data**
+```json
+[
+  {
+    "item_id": 1,
+    "name": "Milk Tea",
+    "sku_code": "FG-001",
+    "category": "product",
+    "product_type": "finished_goods",
+    "storefront_visible": true,
+    "storefront_image_url": "/uploads/storefront-catalog/default/item-1.png",
+    "has_storefront_override": true
+  }
+]
+```
+
+**Notes**
+- This is an inventory-facing authenticated setup endpoint, not a public Storefront read.
+- `storefront_visible` controls customer-facing catalog membership for one item when Customer Access Mode permits catalog browsing.
+- POS visibility remains controlled by `/pos/catalog-overrides` and `pos_visible`.
+- When `storefront_catalog_overrides` exists, rows without an explicit Storefront override use Storefront defaults and do not inherit POS visibility or POS image data. POS-derived data is compatibility fallback only when the Storefront override table is unavailable during rollout.
+
+### PATCH /items/:item_id/storefront-override
+Create/update item-level Storefront catalog visibility.
+
+**Permission**: `items:edit`
+
+**Request**
+```json
+{
+  "storefront_visible": false
+}
+```
+
+**Notes**
+- Does not mutate `pos_visible`.
+- Does not upload, remove, or infer an image.
+
+### POST /items/:item_id/storefront-image
+Upload/replace the Storefront catalog image override.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with `image` file field.
+
+**Accepted image MIME types**
+- `image/jpeg`
+- `image/png`
+- `image/gif`
+- `image/webp`
+- `image/bmp`
+- `image/avif`
+
+**Security Contract**
+- Maximum file size is 5 MB.
+- Backend validates both reported MIME type and binary signature.
+- Stored paths are served through `/uploads` with `nosniff` static serving.
+- Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
+- Replacement is failure-aware: the backend stores the new file, commits the Storefront image override, then best-effort removes the previous Storefront image. If the override update fails after storage succeeds, the newly stored file is removed and the old image path remains intact.
+
+### DELETE /items/:item_id/storefront-image
+Remove the Storefront catalog image override.
+
+**Permission**: `items:edit`
+
+**Notes**
+- Clears only `storefront_image_path` and `storefront_image_url`.
+- Preserves `storefront_visible`.
+- Does not mutate POS menu image fields.
+
 ### GET /items/folders
 List inventory folders.
 
@@ -1772,7 +1852,7 @@ Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
 
 ## POS Endpoints
 
-Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. POS writes create `goods_issue` stock movements using `reference_type='POS'`.
+Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. Stock-controlled product checkouts create `goods_issue` stock movements using `reference_type='POS'`; Services Mode service rows are stock-exempt and do not require inventory stock to be sold.
 
 Gating notes:
 - Plan gate uses `requirePremium`.
@@ -1795,11 +1875,13 @@ List sellable POS catalog items.
 
 **Notes:**
 - Response enforces `pos_visible !== false`.
-- Response includes out-of-stock rows; POS clients should display unavailable state for `current_stock <= 0`.
+- Response includes out-of-stock rows. POS clients should display unavailable state for stock-controlled products with `current_stock <= 0`.
+- Services Mode rows (`category=service`) are visible when service metadata exists and `service_item_details.visible_in_pos` is not false. They remain addable even when `current_stock=0`.
 - POS folder chips should only show folders where `show_in_pos_filter = true`.
 - Hidden folders (`show_in_pos_filter = false`) are not listed as POS filters, but their eligible items remain discoverable in unfiltered/search catalog results.
 - Default visibility policy when no override row exists:
   - `category=product` + `product_type=finished_goods`: visible by default
+  - `category=service` + service metadata with `visible_in_pos !== false`: visible by default in POS
   - other categories/types: hidden until explicitly enabled (`pos_visible=true`)
 
 ### GET /pos/catalog-overrides
@@ -1849,6 +1931,8 @@ Upload/replace POS catalog image override (multipart file upload).
 
 **Image URL Contract**
 - Backend stores and returns `pos_image_url` as a path under `/uploads/...`.
+- Upload preserves existing `pos_visible`; it must not silently show a hidden POS item.
+- POS menu image fields are independent from Storefront catalog image fields.
 - Local frontend dev/prod-preview surfaces must proxy `/uploads` to backend target (same as `/api`) so catalog/terminal/storefront images render correctly from local app hosts (for example `localhost:5173`, `localhost:5174`, `localhost:5175`).
 - If `/uploads` proxy is missing, images appear as broken placeholders even when upload succeeds.
 - Frontend clients must treat returned `/uploads/...` paths as backend assets; when API origin differs from app origin, resolve these paths with this precedence:
@@ -1862,11 +1946,15 @@ Remove POS image override and revert to default item image behavior.
 **Permission**: `items:edit`  
 **Plan Gate**: Premium (`requirePremium`)
 
+**Notes**
+- Preserves `pos_visible`.
+- Does not mutate Storefront catalog visibility or image fields.
+
 ### POST /pos/checkouts
 Execute a POS checkout transaction (atomic). Creates:
 1. `pos_transactions` header
 2. `pos_transaction_lines` with immutable VAT snapshots
-3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`)
+3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`) for stock-controlled product lines only
 
 Route mapping note:
 - This spec uses module-relative paths (for example `/pos/checkouts`).
@@ -2306,7 +2394,8 @@ List publicly discoverable stores for list/grid/map storefront views.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
 - `union` mode returns the union of store-field matches and eligible item matches.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
-- Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+- Storefront-visible item-search eligibility follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when Storefront override data is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`.
+- When `CUSTOMER_ACCESS_MODES_ENABLED=true`, or when a tenant is listed in `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`, tenants whose effective Customer Access Mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches.
 
 **Discovery Row Metadata**
 - When `include_match_meta=true`, discovery rows include:
@@ -2320,6 +2409,15 @@ List publicly discoverable stores for list/grid/map storefront views.
 - Discovery rows also include optional tenant branding fields:
   - `storefront_cover_image_url`
   - `storefront_profile_image_url`
+- Discovery rows include additive Customer Access metadata materialized from the public discovery index so clients can hide order/cart CTAs before profile load:
+  - `customer_access_mode`
+  - `effective_customer_access_mode`
+  - `max_customer_access_mode`
+  - `inventory_display_mode`
+  - `inventory_low_stock_display_threshold`
+  - `access_capabilities`
+  - `access_limitation_reason`
+  - `customer_access_modes_enabled`
 
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.
@@ -2332,6 +2430,16 @@ Resolve one storefront profile by tenant slug for public storefront entry.
 Profile payload may include optional tenant branding fields:
 - `storefront_cover_image_url`
 - `storefront_profile_image_url`
+
+Profile payload may also include additive Customer Access metadata:
+- `customer_access_mode`
+- `effective_customer_access_mode`
+- `max_customer_access_mode`
+- `inventory_display_mode`
+- `inventory_low_stock_display_threshold`
+- `access_capabilities`
+- `access_limitation_reason`
+- `customer_access_modes_enabled`
 
 ### GET /store/catalog
 List tenant storefront catalog items (public read).
@@ -2350,29 +2458,83 @@ List tenant storefront catalog items (public read).
 Catalog rows include:
 - `item_id`, `name`, `category`, `unit_of_measure`
 - `is_available` (`true`/`false`)
-- `availability_status` (`in_stock`/`out_of_stock`)
+- `availability_status` (`in_stock`/`out_of_stock`; Services Mode service rows return `bookable`)
+- `inventory_display`:
+  - `mode` (`hidden | availability | low_stock | exact_quantity`)
+  - `label` (customer-facing string or `null`)
+  - `display_quantity` only when the inventory display policy explicitly allows a public quantity
 - `default_sale_price`
 - `vat_type`
-- `image_url` (from POS catalog override when available)
+- `image_url` (from Storefront catalog override when available; POS image is table-missing rollout fallback only)
   - may be an absolute URL or backend-relative `/uploads/...` path
   - storefront/POS clients should gracefully show a placeholder when image load fails
+- `service_detail` for Services Mode service rows, including duration, payment policy, bookable/storefront visibility, and normalized `intake_form_schema` fields when configured
 
 **Availability Contract**
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
 - `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
-- Exact quantity remains server-side and is enforced during quote/checkout validation.
+- Exact raw stock remains server-side and is enforced during quote/checkout validation. When Inventory Display is `exact_quantity`, the public response may include normalized `inventory_display.display_quantity`; this is not the raw item record.
+- Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
 **Catalog Search Note**
-- `search` narrows by item name only; out-of-stock rows are still returned when storefront-visible.
-- Storefront-visible follows POS policy precedence: explicit `pos_visible` override first; otherwise default visibility is `category=product` + `product_type=finished_goods`.
+- `search` narrows by item name only; out-of-stock rows are still returned when `storefront_visible=true`.
+- Storefront-visible follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when the new Storefront override table is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`. A missing row in an existing Storefront override table does not inherit POS state.
 
 **Error Code Contract (Catalog Read)**
 - `error_code=STORE_CATALOG_LOCATION_INVALID` (`422`) when `location_id` is invalid.
 - `error_code=STORE_CATALOG_RUNTIME_ERROR` (`500`) for unexpected catalog runtime failures.
+- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective mode is `ghost`, catalog read returns `200` with `items=[]` and additive `access_policy` metadata.
 - Compatibility fallback path (missing `item_location_stocks` table/columns) remains non-error and should still return `200`.
 - Storefront clients should map catalog error UX from `error_code` first (code-driven guidance), not message-substring heuristics.
 - Storefront catalog rendering should be deterministic by state (`loading`, `error`, `empty_setup`, `empty_search_on_zero`, `empty_no_match`, `ready`) to avoid blank states.
+
+### Storefront Services Endpoints
+
+Services Mode storefront routes are public or Store JWT-authenticated tenant routes under `/api/v1/store`. They require a Services-capable tenant and use the same public tenant resolution as catalog/checkout (`x-store-slug` header).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/store/services/catalog` | Public | List bookable storefront-visible service rows with service metadata and normalized intake form schema |
+| `POST` | `/store/services/bookings` | Optional Store JWT | Create a service booking/ticket with payment timing, intake responses, and guest/account claim behavior |
+| `GET` | `/store/services/bookings` | Store JWT | List authenticated customer's service bookings |
+| `GET` | `/store/services/bookings/:public_reference` | Public limited lookup | Read redacted public ticket/booking status by reference |
+| `POST` | `/store/services/bookings/:public_reference/claim` | Store JWT | Claim a booking into the authenticated customer account using a valid short-lived claim token |
+| `POST` | `/store/services/waitlist` | Optional Store JWT | Add a customer to the service waitlist |
+
+**Booking/Ticket Contract**
+- When `CUSTOMER_ACCESS_MODES_ENABLED=true`, public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true`.
+- Ticket means booking/order confirmation; receipt means payment proof.
+- Public booking lookup redacts customer contact details.
+- Authenticated customers are auto-linked to new bookings and receive image-download choice only.
+- Guests whose email has no existing StoreCustomer account receive a short-lived claim token plus image download.
+- Guests whose email already belongs to a StoreCustomer account are not prompted to register/sign in from the receipt prompt; image download remains available.
+- Required `intake_form_schema` fields must be answered before booking is accepted.
+- `payment_timing=postpaid` creates an unpaid booking/ticket for POS collection later; `payment_timing=prepaid` depends on the configured commerce adapter and remains separate from fiscal/non-fiscal receipt issuance.
+
+## Services Admin Endpoints
+
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard.
+
+| Method | Path | Permission | Purpose |
+|---|---|---|---|
+| `GET` | `/services/dashboard` | `reports:view` | Service desk metrics, future bookings, expected revenue, postpaid aging, reminders due, waitlist counts |
+| `GET` | `/services/catalog` | `items:view` | List service catalog entries with service metadata |
+| `POST` | `/services/catalog` | `items:create` | Create item-backed service catalog entry and service detail metadata |
+| `PUT` | `/services/catalog/:item_id` | `items:edit` | Update service catalog metadata |
+| `GET`/`POST` | `/services/resources` | `items:view` / `items:edit` | List/create service resources such as providers, rooms, equipment, vehicles, or stations |
+| `GET`/`POST`/`PATCH` | `/services/assignments` | `items:view` / `items:edit` | Link services to resources/providers/locations and deactivate assignments |
+| `GET`/`POST` | `/services/bookings` | `pos:view` / `pos:transact` | List/create operator bookings |
+| `PATCH` | `/services/bookings/:booking_id/status` | `pos:transact` | Move bookings through allowed lifecycle transitions |
+| `GET`/`POST`/`PATCH` | `/services/waitlist` | `pos:view` / `pos:transact` | Manage waitlist entries |
+| `GET` | `/services/clients` | `reports:view` | Client history, repeat-client, no-show, and spend signals |
+| `GET`/`POST` | `/services/reminders` | `pos:view` / `pos:transact` | List reminder outbox rows and queue/process due reminders |
+
+**Lifecycle Contract**
+- Booking statuses are `requested`, `confirmed`, `checked_in`, `in_service`, `completed`, `cancelled`, and `no_show`.
+- Status updates are transition-guarded; arbitrary jumps are rejected.
+- Resource/provider validation enforces active resources, weekly availability, blackout dates, capacity, and service assignment compatibility.
+- Reminder sends are auditable: rows can be queued, sent, skipped, or failed; SMTP-missing state is skipped, not treated as sent.
 
 ### GET /store/locations
 List active tenant fulfillment locations for a specific storefront tenant page.
@@ -2399,6 +2561,8 @@ Route mapping note:
 
 **Validation Note**
 - When requested quantity exceeds current stock, response is `422` with machine-readable stock violation details in `errors`.
+- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
+- Customer Access Mode block details include `requested_action`, `requested_mode`, `effective_mode`, `limitation_reason`, and `allowed_capabilities`.
 
 **Pricing Contract**
 - Response totals now include:
@@ -2420,6 +2584,7 @@ Route mapping note:
 
 **Validation Note**
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
+- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 
 **Persistence Contract**
@@ -2979,6 +3144,8 @@ Frontend                          Backend
 - **Authenticated Users**: 1000 requests per hour
 - **Unauthenticated**: 100 requests per hour
 - **Burst Limit**: 50 requests per minute
+- **Company Registration**: production default 5 requests per IP per hour (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5`, `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000`)
+- **Email Lookup**: production default 5 requests per IP per 15 minutes
 
 ### Headers
 ```
@@ -3205,6 +3372,64 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 > **Note**: These endpoints are for the Developer Portal (superadmin) and are NOT tenant-isolated. They manage company registrations across the entire platform.
 >
 > **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
+
+### POST /admin/tenants/register
+Submit a public company registration request.
+
+**Access:** Public, rate-limited.
+
+**Current policy**
+- `TENANT_REGISTRATION_APPROVAL_MODE=manual` (default): standard registrations return `status: "pending"` and require platform admin approval before login.
+- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`: standard registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
+- Premium/subscription registration remains disabled while `PAYMENTS_ENABLED=false` and returns `503` with `PAYMENTS_DISABLED`.
+- Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
+- Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
+- Manual pending registrations create founder email lookup mappings during registration. Auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
+- Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict when `auto_standard` is enabled because each accepted registration provisions an isolated tenant database.
+- Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
+
+**Request**
+```json
+{
+  "name": "ACME Corp",
+  "adminEmail": "admin@acme.com",
+  "adminPassword": "StrongPass1!",
+  "plan": "standard",
+  "complianceMode": "non_compliant",
+  "workflowMode": "food_manufacturing"
+}
+```
+
+**Response (201, manual mode)**
+```json
+{
+  "success": true,
+  "message": "Your standard plan registration has been submitted for review. You will be notified once approved.",
+  "data": {
+    "id": "tenant-id",
+    "name": "ACME Corp",
+    "status": "pending",
+    "plan": "standard",
+    "company_token": "token-acme-123"
+  }
+}
+```
+
+**Response (201, auto_standard mode)**
+```json
+{
+  "success": true,
+  "message": "Company registered and activated successfully. You can sign in now.",
+  "data": {
+    "id": "tenant-id",
+    "name": "ACME Corp",
+    "status": "active",
+    "plan": "standard",
+    "company_token": "token-acme-123",
+    "email_sent": false
+  }
+}
+```
 
 ### GET /admin/tenants
 List all tenant registrations with their status.
@@ -3624,8 +3849,11 @@ Get tenant onboarding status snapshot for the authenticated tenant master admin.
   - `checklist_snapshot` (`required_total`, `completed_required_count`, `missing_requirements`, `is_ready`)
   - `classification_snapshot`:
     - `visibility_mode` (`ghost | catalog | inquiry | transaction`)
+    - `customer_access_mode` (`ghost | catalog | inquiry | transaction`)
+    - `inventory_display_mode` (`hidden | availability | low_stock | exact_quantity`)
+    - `inventory_low_stock_display_threshold` (number)
     - `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
-    - `workflow_mode_recommendation` (`msme | manufacturing`)
+    - `workflow_mode_recommendation` (`msme | retail | services | fnb | food_manufacturing | hospitality | healthcare | education_institutions | logistics_distribution | ticketing_transport`)
     - `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
     - `payload` (normalized questionnaire payload)
 

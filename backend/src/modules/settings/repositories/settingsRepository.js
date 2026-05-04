@@ -5,18 +5,24 @@ import { assertSettingsRepositoryContract } from '../contracts/settingsRepositor
 import logger from '../../../config/logger.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
+    normalizeCustomerAccessMode,
+    normalizeInventoryDisplayMode,
+    normalizeLowStockDisplayThreshold
+} from '../../shared/utils/customerAccessPolicy.js';
+import {
     normalizeStorefrontAssetPath,
     normalizeStorefrontAssetUrl
 } from '../../shared/utils/storefrontAssetPolicy.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const ORDER_METHOD_DEFAULT_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
     pickup: 'Pickup Fee',
     delivery: 'Delivery Fee',
-    online: 'Online Fee'
+    online: 'Online Fee',
+    appointment: 'Appointment Fee'
 };
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 
@@ -284,6 +290,15 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     }
     if (settingKey === 'ops_workflow_mode') {
         return normalizeWorkflowMode(value);
+    }
+    if (settingKey === 'customer_access_mode') {
+        return normalizeCustomerAccessMode(value);
+    }
+    if (settingKey === 'inventory_display_mode') {
+        return normalizeInventoryDisplayMode(value);
+    }
+    if (settingKey === 'inventory_low_stock_display_threshold') {
+        return normalizeLowStockDisplayThreshold(value);
     }
     if (settingKey === 'storefront_cover_image_url' || settingKey === 'storefront_profile_image_url') {
         return normalizeStorefrontAssetUrl(value);

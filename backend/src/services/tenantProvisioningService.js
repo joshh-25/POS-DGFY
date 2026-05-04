@@ -10,6 +10,11 @@ import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
 } from '../modules/shared/constants/workflowModes.js';
+import {
+    DEFAULT_CUSTOMER_ACCESS_MODE,
+    DEFAULT_INVENTORY_DISPLAY_MODE,
+    DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD
+} from '../modules/shared/utils/customerAccessPolicy.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
 // Strict allowlist pattern for all tenant database names.
@@ -54,6 +59,9 @@ const ONBOARDING_STATE_SETTING_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_SETTING_KEY = 'tenant_onboarding_started_at';
 const ONBOARDING_COMPLETED_AT_SETTING_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_SETTING_KEY = 'tenant_onboarding_progress';
+const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
+const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
+const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 
 const seedDefaultStorefrontLocation = async (tenantSequelize) => {
     const { getTenantModels } = await import('../utils/tenantModelFactory.js');
@@ -196,6 +204,46 @@ const seedDefaultOnboardingSettings = async (tenantSequelize) => {
     }
 };
 
+const seedDefaultCustomerAccessSettings = async (tenantSequelize) => {
+    const defaults = [
+        {
+            key: CUSTOMER_ACCESS_MODE_SETTING_KEY,
+            value: DEFAULT_CUSTOMER_ACCESS_MODE,
+            dataType: 'string',
+            description: 'Requested storefront customer access mode (ghost | catalog | inquiry | transaction)'
+        },
+        {
+            key: INVENTORY_DISPLAY_MODE_SETTING_KEY,
+            value: DEFAULT_INVENTORY_DISPLAY_MODE,
+            dataType: 'string',
+            description: 'Customer-facing inventory display mode (hidden | availability | low_stock | exact_quantity)'
+        },
+        {
+            key: INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY,
+            value: String(DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD),
+            dataType: 'number',
+            description: 'Public low-stock display threshold for storefront inventory labels'
+        }
+    ];
+
+    for (const setting of defaults) {
+        await tenantSequelize.query(
+            `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+             VALUES (?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE
+               setting_key = setting_key`,
+            {
+                replacements: [
+                    setting.key,
+                    setting.value,
+                    setting.dataType,
+                    setting.description
+                ]
+            }
+        );
+    }
+};
+
 /**
  * Provision a tenant - supports both:
  * 1. Full provisioning (new request with name, adminEmail, adminPassword)
@@ -210,7 +258,7 @@ export const provisionTenant = async (options) => {
         plan = 'standard',        // Default to standard if not provided
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
-        workflowMode = 'manufacturing',
+        workflowMode = 'food_manufacturing',
         // Option 2: Approval provisioning (new workflow)
         tenantId,
         dbName: providedDbName,
@@ -346,6 +394,10 @@ export const provisionTenant = async (options) => {
 
             await seedDefaultOnboardingSettings(tenantSequelize);
             logger.info('[Provisioning] Onboarding baseline settings seeded', {
+                tenantId: uuid
+            });
+            await seedDefaultCustomerAccessSettings(tenantSequelize);
+            logger.info('[Provisioning] Customer access settings seeded', {
                 tenantId: uuid
             });
 

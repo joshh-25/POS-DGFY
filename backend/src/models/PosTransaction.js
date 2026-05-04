@@ -49,7 +49,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         defaultValue: 'in_store'
     },
     order_method: {
-        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online'),
+        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment'),
         allowNull: false,
         defaultValue: 'dine_in'
     },
@@ -183,7 +183,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     service_fee_method_snapshot: {
-        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online'),
+        type: DataTypes.ENUM('dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment'),
         allowNull: true
     },
     service_fee_overridden: {

@@ -1,9 +1,18 @@
 import express from 'express';
 import * as storeController from '../controllers/storeController.js';
+import {
+    listPublicCatalog as listPublicServiceCatalog,
+    listPublicBookings as listPublicServiceBookings,
+    createPublicBooking as createPublicServiceBooking,
+    getPublicBooking as getPublicServiceBooking,
+    claimPublicBooking as claimPublicServiceBooking,
+    createPublicWaitlistEntry as createPublicServiceWaitlistEntry
+} from '../modules/services/controllers/serviceHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
 import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter } from '../middleware/rateLimiter.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import {
     validateStoreRegister,
     validateStoreLogin,
@@ -15,10 +24,19 @@ import {
     validateStoreAddressIdParam,
     validateStoreTrackingPinParam,
     validateStoreCancelOrder,
+    validateStoreClaimOrder,
     validateStoreOrderHistoryQuery,
     validateStorefrontFollowBody,
     validateStorefrontFollowQuery
 } from '../validators/storeValidator.js';
+import {
+    validateServiceCatalogQuery,
+    validateServiceBookingQuery,
+    validateCreateServiceBooking,
+    validateServiceBookingReferenceParam,
+    validateClaimServiceBooking,
+    validateCreateServiceWaitlistEntry
+} from '../validators/serviceValidator.js';
 
 const router = express.Router();
 router.use(requireTenantContext);
@@ -45,6 +63,7 @@ const trackingReadCacheControl = setReadCacheControl({
 });
 
 router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
 router.post('/auth/login', setNoStoreCacheControl, storeAuthLimiter, validateStoreLogin, storeController.loginStoreCustomer);
@@ -58,8 +77,14 @@ router.delete('/addresses/:id', setNoStoreCacheControl, authenticateStoreCustome
 
 router.post('/cart/quote', setNoStoreCacheControl, optionalStoreCustomer, validateStoreQuote, storeController.cartQuote);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);
+router.get('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingQuery, listPublicServiceBookings);
+router.post('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBooking, createPublicServiceBooking);
+router.get('/services/bookings/:public_reference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, validateServiceBookingReferenceParam, getPublicServiceBooking);
+router.post('/services/bookings/:public_reference/claim', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingReferenceParam, validateClaimServiceBooking, claimPublicServiceBooking);
+router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);
 
 router.get('/track/:tracking_pin', storeTrackingLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
+router.post('/orders/:tracking_pin/claim', setNoStoreCacheControl, storeTrackingLimiter, authenticateStoreCustomer, validateStoreTrackingPinParam, validateStoreClaimOrder, storeController.claimOrder);
 router.patch('/orders/:tracking_pin/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStoreTrackingPinParam, validateStoreCancelOrder, storeController.cancelOrder);
 router.get('/orders', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreOrderHistoryQuery, storeController.listStoreCustomerOrders);
 router.get('/follow/status', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowQuery, storeController.getStorefrontFollowStatus);

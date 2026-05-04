@@ -20,6 +20,7 @@ import {
     SAFE_IMAGE_MIME_TYPES,
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
+import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -27,7 +28,7 @@ const NON_FISCAL_COUNTER_KEY = 'POS_NFS';
 const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
@@ -828,7 +829,9 @@ const buildOnlineOrderStockMovements = (order = {}) => {
         );
     }
 
-    return lines.map((line, index) => {
+    return lines
+        .filter((line) => String(line?.item?.category || line?.category || '').trim().toLowerCase() !== 'service')
+        .map((line, index) => {
         const itemId = parsePositiveInt(line?.item_id);
         const quantity = Number(line?.quantity);
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
@@ -1354,8 +1357,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     );
                 }
 
+                const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
                 const currentStock = Number(item.current_stock) || 0;
-                if (currentStock + 0.000001 < quantity) {
+                if (!isServiceItem && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -1410,7 +1414,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     item_name: item.name,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
-                    cost_snapshot: item.cost_per_unit != null ? round4(item.cost_per_unit) : null,
+                    cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
                     sale_price: round4(resolvedPrice),
                     sale_price_overridden: salePriceOverridden,
                     price_override_reason: salePriceOverridden ? priceOverrideReason : null,
@@ -1525,6 +1529,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             }, { transaction });
 
             for (const line of preparedLines) {
+                const item = itemMap.get(Number(line.item_id));
+                if (String(item?.category || '').trim().toLowerCase() === 'service') {
+                    continue;
+                }
                 await stockMovementService.createStockMovement({
                     item_id: line.item_id,
                     quantity: Number(line.quantity),
@@ -2016,6 +2024,8 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
 export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage }) => {
     return async ({ itemId, file, user }) => {
         const normalizedItemId = parsePositiveInt(itemId);
+        let stored = null;
+        let storedCommitted = false;
         if (!normalizedItemId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2071,11 +2081,13 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             }
 
             const existing = await posRepository.findCatalogOverrideByItemId(normalizedItemId);
-            if (existing?.pos_image_path) {
-                await imageStorage.remove({ path: existing.pos_image_path });
-            }
+            const keepVisible = resolveCatalogVisibility({
+                item,
+                override: existing || null,
+                surface: 'pos'
+            }) !== false;
 
-            const stored = await imageStorage.store({
+            stored = await imageStorage.store({
                 itemId: normalizedItemId,
                 originalName: file.originalname,
                 tempPath: file.path
@@ -2084,10 +2096,32 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             const data = await posRepository.updateCatalogImage(normalizedItemId, {
                 path: stored.path,
                 url: stored.url
+            }, {
+                keepVisible
             });
+            storedCommitted = true;
+
+            if (existing?.pos_image_path && existing.pos_image_path !== stored.path) {
+                try {
+                    await imageStorage.remove({ path: existing.pos_image_path });
+                } catch (cleanupError) {
+                    logger.warn('[PosUseCases] Failed to remove previous POS catalog image after replacement', {
+                        event_type: 'pos_catalog_image_cleanup_failed',
+                        item_id: normalizedItemId,
+                        reason: cleanupError?.message || 'unknown'
+                    });
+                }
+            }
 
             return ok(toSerializable(data));
         } catch (error) {
+            if (stored && !storedCommitted) {
+                try {
+                    await imageStorage.remove({ path: stored.path });
+                } catch {
+                    // ignore cleanup errors for stored uploads
+                }
+            }
             if (file?.path) {
                 try {
                     await fs.unlink(file.path);

@@ -15,6 +15,13 @@ import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
 import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
 import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
 import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
+import {
+  buildListStorefrontCatalogOverridesUseCase,
+  buildUpdateStorefrontCatalogOverrideUseCase,
+  buildUploadStorefrontCatalogImageUseCase,
+  buildDeleteStorefrontCatalogImageUseCase
+} from './usecases/storefrontCatalogUseCases.js';
+import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
@@ -32,6 +39,16 @@ export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
 export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
 export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });
 export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
+export const listStorefrontCatalogOverridesUseCase = buildListStorefrontCatalogOverridesUseCase({ itemRepository });
+export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({ itemRepository });
+export const uploadStorefrontCatalogImageUseCase = buildUploadStorefrontCatalogImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const deleteStorefrontCatalogImageUseCase = buildDeleteStorefrontCatalogImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
 
 export * from './contracts/itemRepository.contract.js';
 export * from './repositories/itemRepository.js';

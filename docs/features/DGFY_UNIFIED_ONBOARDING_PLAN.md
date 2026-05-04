@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-26
+last_reviewed: 2026-05-04
 applies_to: tenant_onboarding_and_storefront_bootstrap
 topic: dgfy_unified_onboarding_plan
 ---
@@ -15,7 +15,7 @@ topic: dgfy_unified_onboarding_plan
 - `SKUpervisor`: Inventory management system.
 - Product direction: all three surfaces are connected.
 
-## 1) Vision Alignment Status (As Of 2026-04-26)
+## 1) Vision Alignment Status (As Of 2026-05-04)
 
 ### Vision Target
 1. Store owner registers a store.
@@ -23,7 +23,7 @@ topic: dgfy_unified_onboarding_plan
 3. A tenant storefront page in DGFY is automatically available using template-based UI/UX.
 
 ### Current Closeness Score
-- **Overall closeness: 97%**
+- **Overall closeness: 98%**
 
 ### Layman Evidence (What Exists Today)
 1. Registration remains manual-approval first before activation.
@@ -156,12 +156,22 @@ topic: dgfy_unified_onboarding_plan
 2. Questionnaire payload is normalized and persisted under onboarding step payloads.
 3. Deterministic advisory classifier output is persisted/exposed as `tenant_onboarding_progress.classification_snapshot` with:
 - `visibility_mode` (`ghost | catalog | inquiry | transaction`)
+- `customer_access_mode` (`ghost | catalog | inquiry | transaction`)
+- `inventory_display_mode` (`hidden | availability | low_stock | exact_quantity`)
 - `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
-- `workflow_mode_recommendation` (`msme | manufacturing`)
+- `workflow_mode_recommendation` (`msme | retail | services | fnb | food_manufacturing | hospitality | healthcare | education_institutions | logistics_distribution | ticketing_transport`)
 - `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
-4. Classifier output is advisory-only in MVP (no hard API gating, no compliance lifecycle mutation, no workflow mode auto-write).
+4. Classifier output remains a soft onboarding signal for IMS/POS access. Customer Access Mode enforcement is handled by Storefront runtime policy behind `CUSTOMER_ACCESS_MODES_ENABLED`; no compliance lifecycle mutation or workflow mode auto-write is introduced.
 5. Added classifier telemetry event keys:
 - `classifier_viewed`, `classifier_saved`, `classifier_skipped`
+
+## Customer Access Mode Evolution
+1. ADR: `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.
+2. Feature contract: `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`.
+3. Merchant-facing onboarding copy now uses Customer Access Mode while preserving `visibility_mode` as a compatibility alias.
+4. Inventory Display is captured as a separate onboarding preference and editable from Settings > Storefront.
+5. Storefront runtime enforcement is implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and supports tenant-scoped canaries through `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
+6. Business-classification saves refresh storefront discovery so public discovery/profile rows can reflect current access-mode preferences before onboarding completion.
 
 ## 6) Verification
 1. Backend full suite pass (`npm --prefix backend test -- --runInBand`)

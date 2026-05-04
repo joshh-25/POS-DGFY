@@ -11,8 +11,8 @@ export const createItemSchema = Joi.object({
     'string.max': 'Name must not exceed 255 characters',
     'any.required': 'Name is required'
   }),
-  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').required().messages({
-    'any.only': 'Category must be one of: raw_material, packaging, product, supplies',
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies', 'service').required().messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies, service',
     'any.required': 'Category is required'
   }),
   product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
@@ -159,8 +159,8 @@ export const createItemDraftSchema = Joi.object({
     'string.min': 'SKU code must be at least 1 character',
     'string.max': 'SKU code must not exceed 50 characters'
   }),
-  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').allow(null, '').messages({
-    'any.only': 'Category must be one of: raw_material, packaging, product, supplies'
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies', 'service').allow(null, '').messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies, service'
   }),
   product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
     is: 'product',
@@ -441,6 +441,19 @@ const folderIdParamSchema = Joi.object({
   folder_id: Joi.number().integer().positive().required()
 });
 
+const itemIdParamSchema = Joi.object({
+  item_id: Joi.number().integer().positive().required()
+});
+
+const storefrontCatalogOverridesQuerySchema = Joi.object({
+  search: Joi.string().trim().max(255).allow('', null).optional(),
+  limit: Joi.number().integer().min(1).max(1000).optional()
+});
+
+const updateStorefrontCatalogOverrideSchema = Joi.object({
+  storefront_visible: Joi.boolean().required()
+});
+
 const updateFolderSchema = Joi.object({
   show_in_pos_filter: Joi.boolean().required()
 });
@@ -489,6 +502,8 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 };
 
 export const validateFolderIdParam = validateSchema(folderIdParamSchema, 'params', 'validatedParams');
+export const validateItemIdParam = validateSchema(itemIdParamSchema, 'params', 'validatedParams');
+export const validateStorefrontCatalogOverridesQuery = validateSchema(storefrontCatalogOverridesQuerySchema, 'query', 'validatedQuery');
+export const validateUpdateStorefrontCatalogOverride = validateSchema(updateStorefrontCatalogOverrideSchema, 'body', 'validatedData');
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
-

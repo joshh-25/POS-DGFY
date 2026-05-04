@@ -146,18 +146,31 @@ const toPlain = (row) => (
         : row
 );
 
+const buildServiceDetailInclude = () => {
+    const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+    return ServiceItemDetail
+        ? [{
+            model: ServiceItemDetail,
+            as: 'serviceDetail',
+            attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+            required: false
+        }]
+        : [];
+};
+
 const buildPosReadiness = ({ item, override }) => {
     const payload = toPlain(item) || {};
+    const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
     const currentStock = toNumber(payload.current_stock, 0);
     const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
     const status = String(payload.status || '').trim().toLowerCase();
 
     const checks = {
-        pos_visible: resolveCatalogVisibility({ item: payload, override }) !== false,
+        pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }) !== false,
         has_sale_price: defaultSalePrice > 0,
         stock_non_negative: currentStock >= 0,
         status_active: status === 'active',
-        has_available_stock: currentStock > 0
+        has_available_stock: isServiceItem || currentStock > 0
     };
 
     const missingRequirements = [];
@@ -240,7 +253,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
     return normalizedItems
         .map((item) => {
             const override = overrideMap.get(item.item_id);
-            const posVisible = resolveCatalogVisibility({ item, override });
+            const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
             return {
                 ...item,
                 pos_visible: posVisible,
@@ -304,11 +317,12 @@ const loadLocationStockMap = async (itemIds = [], locationId = null, options = {
 const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
     (Array.isArray(items) ? items : []).map((item) => {
         const payload = toPlain(item);
+        const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
         const mappedStock = locationStockMap.get(Number(payload.item_id));
         const stockValue = Number.isFinite(mappedStock) ? Math.max(0, mappedStock) : 0;
         return {
             ...payload,
-            current_stock: stockValue
+            current_stock: isServiceItem ? 0 : stockValue
         };
     })
 );
@@ -321,7 +335,7 @@ const buildTransactionInclude = () => ([
             {
                 model: dbStore.get('Item'),
                 as: 'item',
-                attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure']
+                attributes: ['item_id', 'name', 'sku_code', 'category', 'unit_of_measure']
             }
         ]
     },
@@ -413,7 +427,8 @@ export const posRepository = {
                 },
                 { statusField: 'status', excludeInactiveStatus: true }
             ),
-            attributes: POS_ITEM_ATTRIBUTES_WITH_VAT
+            attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
+            include: buildServiceDetailInclude()
         };
 
         if (options.transaction) {
@@ -915,6 +930,7 @@ export const posRepository = {
         const queryOptions = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
+            include: buildServiceDetailInclude(),
             order: [['name', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500)
         };
@@ -975,6 +991,7 @@ export const posRepository = {
                 'product_folder'
             ],
             include: [
+                ...buildServiceDetailInclude(),
                 {
                     model: ItemFolder,
                     as: 'folder',
@@ -993,7 +1010,7 @@ export const posRepository = {
             const readiness = buildPosReadiness({ item: payload, override });
             return {
                 ...payload,
-                pos_visible: resolveCatalogVisibility({ item: payload, override }),
+                pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
                 has_override: Boolean(override),
@@ -1026,6 +1043,7 @@ export const posRepository = {
                 'product_folder'
             ],
             include: [
+                ...buildServiceDetailInclude(),
                 {
                     model: ItemFolder,
                     as: 'folder',
@@ -1045,7 +1063,7 @@ export const posRepository = {
 
         return {
             item_id: payload.item_id,
-            pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride }),
+            pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride, surface: 'pos' }),
             pos_image_url: effectiveOverride?.pos_image_url || null,
             pos_image_path: effectiveOverride?.pos_image_path || null,
             pos_readiness: readiness
@@ -1080,7 +1098,9 @@ export const posRepository = {
 
         const nextPayload = {
             item_id: itemId,
-            pos_visible: payload.pos_visible !== false,
+            pos_visible: Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                ? payload.pos_visible !== false
+                : (existing?.pos_visible ?? true),
             pos_image_path: payload.pos_image_path ?? (existing?.pos_image_path ?? null),
             pos_image_url: payload.pos_image_url ?? (existing?.pos_image_url ?? null)
         };
@@ -1094,11 +1114,14 @@ export const posRepository = {
     },
 
     async updateCatalogImage(itemId, imageData = {}, options = {}) {
-        return this.upsertCatalogOverride(itemId, {
-            pos_visible: options.keepVisible === false ? false : true,
+        const payload = {
             pos_image_path: imageData.path || null,
             pos_image_url: imageData.url || null
-        }, options);
+        };
+        if (typeof options.keepVisible === 'boolean') {
+            payload.pos_visible = options.keepVisible;
+        }
+        return this.upsertCatalogOverride(itemId, payload, options);
     },
 
     async clearCatalogImage(itemId, options = {}) {

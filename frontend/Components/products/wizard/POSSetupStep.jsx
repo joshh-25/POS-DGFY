@@ -6,9 +6,14 @@ import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 export default function POSSetupStep({
   productItem,
   posConfig,
+  storefrontConfig,
+  showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onUploadPosImage,
   onDeletePosImage,
+  onToggleStorefrontVisibility,
+  onUploadStorefrontImage,
+  onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
   const missing = Array.isArray(posConfig?.pos_readiness?.missing_requirements)
@@ -23,7 +28,6 @@ export default function POSSetupStep({
           Configure POS visibility and menu image from the product wizard.
         </p>
       </div>
-
       <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -111,6 +115,71 @@ export default function POSSetupStep({
           </p>
         )}
       </div>
-    </div>
-  );
-}
+
+      {showStorefrontCatalogControls && (
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label>Storefront Catalog</Label>
+            <p className="text-xs text-slate-500">Customer-facing visibility and image are independent from POS.</p>
+          </div>
+          {productItem && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onToggleStorefrontVisibility && onToggleStorefrontVisibility(productItem, !(storefrontConfig?.storefront_visible !== false))}
+              disabled={!onToggleStorefrontVisibility}
+            >
+              {storefrontConfig?.storefront_visible !== false ? 'Disable in Storefront' : 'Enable in Storefront'}
+            </Button>
+          )}
+        </div>
+
+        {productItem ? (
+          <div className="space-y-3">
+            {storefrontConfig?.storefront_image_url ? (
+              <img
+                src={resolveAssetUrl(storefrontConfig.storefront_image_url)}
+                alt={`${productItem?.name || 'Product'} storefront catalog`}
+                className="h-28 w-40 rounded-md border border-slate-200 object-cover"
+              />
+            ) : (
+              <p className="text-sm text-slate-500">No storefront image uploaded yet.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+                Upload Storefront Image
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file && onUploadStorefrontImage) {
+                      onUploadStorefrontImage(productItem, file);
+                    }
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem)}
+                disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
+              >
+                Remove Storefront Image
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Save the product first, then reopen it to configure storefront visibility and image.
+          </p>
+        )}
+        </div>
+        )}
+      </div>
+    );
+  }

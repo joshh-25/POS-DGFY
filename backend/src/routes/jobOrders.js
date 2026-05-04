@@ -7,9 +7,11 @@ import {
 } from '../validators/jobOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireWorkflowCapability('productionWorkflows', 'Job Orders'));
 
 // Read operations - all authenticated users
 router.get('/', jobOrderController.getJobOrders);

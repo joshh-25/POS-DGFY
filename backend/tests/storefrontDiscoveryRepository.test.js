@@ -72,6 +72,25 @@ const makeEntry = (overrides = {}) => ({
   storefront_follow_enabled: overrides.storefront_follow_enabled ?? false,
   storefront_share_enabled: overrides.storefront_share_enabled ?? false,
   storefront_review_summary: overrides.storefront_review_summary ?? null,
+  customer_access_mode: overrides.customer_access_mode ?? 'catalog',
+  effective_customer_access_mode: overrides.effective_customer_access_mode ?? 'transaction',
+  max_customer_access_mode: overrides.max_customer_access_mode ?? 'transaction',
+  inventory_display_mode: overrides.inventory_display_mode ?? 'availability',
+  inventory_low_stock_display_threshold: overrides.inventory_low_stock_display_threshold ?? 5,
+  access_capabilities: overrides.access_capabilities ?? {
+    profile: true,
+    contact: true,
+    catalog: true,
+    inventory: true,
+    inquiry: false,
+    cart: true,
+    quote: true,
+    checkout: true,
+    booking: true,
+    payment: true
+  },
+  access_limitation_reason: overrides.access_limitation_reason ?? null,
+  customer_access_modes_enabled: overrides.customer_access_modes_enabled ?? false,
   search_snapshot_version: overrides.search_snapshot_version ?? 1,
   active_location_snapshot: overrides.active_location_snapshot || [
     {
@@ -107,7 +126,25 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
   it('returns discovery rows from landlord index and never exposes company token', async () => {
     const repository = await loadRepository();
     findAllMock.mockResolvedValue([
-      makeEntry({ tenant_id: 'tenant-1', slug: 'acme-store', catalog_count: 42 })
+      makeEntry({
+        tenant_id: 'tenant-1',
+        slug: 'acme-store',
+        catalog_count: 42,
+        effective_customer_access_mode: 'catalog',
+        access_capabilities: {
+          profile: true,
+          contact: true,
+          catalog: true,
+          inventory: true,
+          inquiry: false,
+          cart: false,
+          quote: false,
+          checkout: false,
+          booking: false,
+          payment: false
+        },
+        customer_access_modes_enabled: true
+      })
     ]);
 
     const result = await repository.listDiscovery({ limit: 10 });
@@ -115,7 +152,13 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows[0]).toEqual(expect.objectContaining({
       tenant_id: 'tenant-1',
       slug: 'acme-store',
-      catalog_count: 42
+      catalog_count: 42,
+      effective_customer_access_mode: 'catalog',
+      access_capabilities: expect.objectContaining({
+        catalog: true,
+        checkout: false
+      }),
+      customer_access_modes_enabled: true
     }));
     expect(result.rows[0]).not.toHaveProperty('company_token');
     expect(reconcileMock).not.toHaveBeenCalled();

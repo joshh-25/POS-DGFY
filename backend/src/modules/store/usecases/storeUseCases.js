@@ -4,17 +4,28 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapStoreUseCaseError } from './storeUseCaseError.js';
 import logger from '../../../config/logger.js';
+import dbStore from '../../../utils/dbStore.js';
 import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
 import {
     generateStoreCancelProof,
+    generateStoreClaimToken,
     generateStoreToken,
     getStoreTokenConfig,
     normalizeTenantIdentifier,
-    verifyStoreCancelProof
+    verifyStoreCancelProof,
+    verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
+import { normalizeIntakeFormSchema } from '../../shared/utils/intakeFormSchema.js';
+import {
+    CUSTOMER_ACCESS_SETTING_KEYS,
+    applyInventoryDisplayPolicy,
+    buildCustomerAccessModeBlockedError,
+    isCustomerAccessModesEnabled,
+    resolveAccessPolicyFromSettings
+} from '../../shared/utils/customerAccessPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -178,6 +189,12 @@ const mapSettings = (rows = []) => {
     }
     return result;
 };
+const CHECKOUT_SETTING_KEYS = Object.freeze([
+    'store_delivery_fee',
+    'pos_open_status',
+    'pos_wait_time_minutes',
+    ...CUSTOMER_ACCESS_SETTING_KEYS
+]);
 
 const toNumberOrNull = (value) => {
     const parsed = Number(value);
@@ -222,6 +239,7 @@ const serializeOrderLines = (order) => {
         item_id: line.item_id,
         item_name: line.item?.name || line.item_name || null,
         sku_code: line.item?.sku_code || null,
+        category: line.item?.category || null,
         quantity: line.quantity,
         unit_of_measure: line.unit_of_measure,
         sale_price: line.sale_price,
@@ -491,8 +509,9 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             );
         }
 
+        const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
         const currentStock = Number(item.current_stock || 0);
-        if (!allowOutOfStockSales && currentStock + 0.000001 < quantity) {
+        if (!isServiceItem && !allowOutOfStockSales && currentStock + 0.000001 < quantity) {
             const stockViolation = {
                 item_id: item.item_id,
                 item_name: item.name,
@@ -532,7 +551,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             item_name: item.name,
             quantity: round4(quantity),
             unit_of_measure: item.unit_of_measure || null,
-            cost_snapshot: item.cost_per_unit != null ? round4(item.cost_per_unit) : null,
+            cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
             sale_price: round4(resolvedPrice),
             sale_price_overridden: false,
             price_override_reason: null,
@@ -579,7 +598,11 @@ const buildOrderHistoryResponse = (result = {}) => ({
 });
 
 const normalizeAvailabilityStatus = (item = {}) => {
+    if (String(item?.category || '').trim().toLowerCase() === 'service') {
+        return 'bookable';
+    }
     const rawStatus = String(item?.availability_status || '').trim().toLowerCase();
+    if (rawStatus === 'bookable') return rawStatus;
     if (rawStatus === 'in_stock' || rawStatus === 'out_of_stock') {
         return rawStatus;
     }
@@ -588,9 +611,15 @@ const normalizeAvailabilityStatus = (item = {}) => {
     return 'out_of_stock';
 };
 
-const serializeStoreCatalogItem = (item = {}) => {
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
-    const isAvailable = availabilityStatus === 'in_stock';
+    const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
+    const serviceDetail = item.service_detail
+        ? {
+            ...item.service_detail,
+            intake_form_schema: normalizeIntakeFormSchema(item.service_detail.intake_form_schema)
+        }
+        : null;
     return {
         item_id: item.item_id,
         name: item.name,
@@ -600,9 +629,45 @@ const serializeStoreCatalogItem = (item = {}) => {
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
         image_url: item.image_url || null,
+        service_detail: serviceDetail,
         is_available: isAvailable,
-        availability_status: availabilityStatus
+        availability_status: availabilityStatus,
+        inventory_display: applyInventoryDisplayPolicy(
+            { ...item, is_available: isAvailable, availability_status: availabilityStatus },
+            accessPolicy
+        )
     };
+};
+
+const currentTenantAccessContext = () => {
+    const store = dbStore.getStore?.() || {};
+    return {
+        tenantId: store.tenantId,
+        tenantToken: store.tenantToken,
+        tenantName: store.tenantName
+    };
+};
+
+const isCustomerAccessEnabledForCurrentTenant = () => (
+    isCustomerAccessModesEnabled(currentTenantAccessContext())
+);
+
+const resolveStorefrontAccessPolicy = async ({ storeRepository, options = {} } = {}) => {
+    if (typeof storeRepository?.getSettingsByKeys !== 'function') {
+        return resolveAccessPolicyFromSettings({}, {
+            featureEnabled: isCustomerAccessEnabledForCurrentTenant()
+        });
+    }
+    const rows = await storeRepository.getSettingsByKeys(CUSTOMER_ACCESS_SETTING_KEYS, options);
+    return resolveAccessPolicyFromSettings(mapSettings(Array.isArray(rows) ? rows : []), {
+        featureEnabled: isCustomerAccessEnabledForCurrentTenant()
+    });
+};
+
+const assertStorefrontActionAllowed = ({ action, capability, accessPolicy }) => {
+    if (!isCustomerAccessEnabledForCurrentTenant()) return;
+    if (accessPolicy?.access_capabilities?.[capability] === true) return;
+    throw buildCustomerAccessModeBlockedError({ action, accessPolicy });
 };
 
 const generateUniqueTrackingPin = async (storeRepository, options = {}) => {
@@ -643,6 +708,66 @@ const buildCancelProofForOrder = ({ order, tenantId }) => {
     }
 };
 
+const buildOrderAccountAction = async ({ storeRepository, order, tenantId, storeCustomer = null, options = {} }) => {
+    const orderId = parsePositiveInt(order?.pos_transaction_id);
+    const trackingPin = String(order?.tracking_pin || '').trim().toUpperCase();
+    const authenticatedCustomerId = parsePositiveInt(storeCustomer?.customer_id);
+    if (authenticatedCustomerId) {
+        return {
+            type: 'linked_authenticated',
+            allow_image_download: true,
+            show_signup: false,
+            claim_token: null
+        };
+    }
+
+    const email = String(order?.customer_email || '').trim().toLowerCase();
+    if (!email || !orderId || !trackingPin) {
+        return {
+            type: 'download_only_guest_no_email',
+            allow_image_download: true,
+            show_signup: false,
+            claim_token: null
+        };
+    }
+
+    const existingCustomer = await storeRepository.findCustomerByEmail(email, options);
+    if (existingCustomer?.customer_id) {
+        return {
+            type: 'existing_account_download_only',
+            allow_image_download: true,
+            show_signup: false,
+            claim_token: null
+        };
+    }
+
+    try {
+        return {
+            type: 'offer_signup',
+            allow_image_download: true,
+            show_signup: true,
+            claim_token: generateStoreClaimToken({
+                trackingPin,
+                tenantId,
+                orderId,
+                email
+            }),
+            claim_token_expires_in: getStoreTokenConfig().claimTokenExpiresIn
+        };
+    } catch (error) {
+        logger.error('[StoreSecurity] Failed to generate order claim token', {
+            error: error.message,
+            order_id: orderId
+        });
+        return {
+            type: 'download_only_claim_unavailable',
+            allow_image_download: true,
+            show_signup: false,
+            claim_token: null
+        };
+    }
+};
+
 const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer = null, options = {} }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -675,7 +800,7 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
                     ? storeRepository.findDefaultActiveLocation(options)
                     : Promise.resolve(null)
             ),
-        storeRepository.getSettingsByKeys(['store_delivery_fee', 'pos_open_status', 'pos_wait_time_minutes'], options)
+        storeRepository.getSettingsByKeys(CHECKOUT_SETTING_KEYS, options)
     ]);
 
     if (normalized.location_id && !requestedLocation) {
@@ -689,6 +814,14 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
     const location = requestedLocation || fallbackLocation;
 
     const settings = mapSettings(settingsRows);
+    const accessPolicy = resolveAccessPolicyFromSettings(settings, {
+        featureEnabled: isCustomerAccessEnabledForCurrentTenant()
+    });
+    assertStorefrontActionAllowed({
+        action: 'quote_checkout',
+        capability: 'checkout',
+        accessPolicy
+    });
     assertCheckoutLocationOperationalReadiness({
         location,
         settings,
@@ -843,13 +976,27 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                 );
             }
 
+            const accessPolicy = await resolveStorefrontAccessPolicy({ storeRepository });
+            if (isCustomerAccessEnabledForCurrentTenant() && accessPolicy.access_capabilities.catalog !== true) {
+                return ok({
+                    items: [],
+                    pagination: {
+                        limit: Number.isFinite(Number(query.limit))
+                            ? Math.max(1, Math.min(200, Number(query.limit)))
+                            : 60,
+                        count: 0
+                    },
+                    access_policy: accessPolicy
+                });
+            }
+
             const items = await storeRepository.listStoreCatalog({
                 search: query.search,
                 limit: query.limit,
                 location_id: requestedLocationId
             });
             const serializedItems = (Array.isArray(items) ? items : []).map((item) => (
-                serializeStoreCatalogItem(item)
+                serializeStoreCatalogItem(item, accessPolicy)
             ));
 
             return ok({
@@ -859,7 +1006,8 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                         ? Math.max(1, Math.min(200, Number(query.limit)))
                         : 60,
                     count: serializedItems.length
-                }
+                },
+                access_policy: accessPolicy
             });
         } catch (error) {
             if (error instanceof DomainError) {
@@ -1370,12 +1518,20 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     order: existing,
                     tenantId: normalizedTenantId
                 });
+                const accountAction = await buildOrderAccountAction({
+                    storeRepository,
+                    order: existing,
+                    tenantId: normalizedTenantId,
+                    storeCustomer: normalizedStoreCustomer,
+                    options: { transaction }
+                });
 
                 await transaction.commit();
                 return ok({
                     idempotent_replay: true,
                     order: serializeOrderForCustomer(existing),
                     tracking_pin: existing.tracking_pin,
+                    account_action: accountAction,
                     cancel_proof: cancelProof,
                     cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
                 });
@@ -1437,12 +1593,20 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 order: created,
                 tenantId: normalizedTenantId
             });
+            const accountAction = await buildOrderAccountAction({
+                storeRepository,
+                order: created,
+                tenantId: normalizedTenantId,
+                storeCustomer: normalizedStoreCustomer,
+                options: { transaction }
+            });
             await transaction.commit();
 
             return ok({
                 idempotent_replay: false,
                 tracking_pin: trackingPin,
                 order: serializeOrderForCustomer(created),
+                account_action: accountAction,
                 cancel_proof: cancelProof,
                 cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
             });
@@ -1502,6 +1666,86 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                 });
             }
             return fail(mapStoreUseCaseError(error, 'Failed to track store order'));
+        }
+    };
+};
+
+export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
+    return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
+        const normalizedCustomerId = parsePositiveInt(storeCustomer?.customer_id);
+        if (!normalizedCustomerId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Store customer authentication is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        const transaction = await storeRepository.beginTransaction();
+        try {
+            const normalizedTenantId = ensureTenantContext(tenantId);
+            const normalizedTrackingPin = ensureValidTrackingPin(trackingPin);
+            const token = String(payload.claim_token || '').trim();
+            if (!token) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'claim_token is required',
+                    { statusCode: 422 }
+                );
+            }
+            let proof;
+            try {
+                proof = verifyStoreClaimToken(token);
+            } catch {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Claim token is invalid or expired',
+                    { statusCode: 403 }
+                );
+            }
+
+            const proofTenantId = normalizeTenantIdentifier(proof?.tenant_id);
+            const proofOrderId = parsePositiveInt(proof?.order_id);
+            const proofTrackingPin = String(proof?.tracking_pin || '').trim().toUpperCase();
+            const proofEmail = String(proof?.email || '').trim().toLowerCase();
+            const customerEmail = String(storeCustomer?.email || '').trim().toLowerCase();
+            if (
+                proof?.type !== 'store_order_claim'
+                || proofTenantId !== normalizedTenantId
+                || proofTrackingPin !== normalizedTrackingPin
+                || !proofOrderId
+                || !proofEmail
+                || !customerEmail
+                || proofEmail !== customerEmail
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Claim token does not match this order or account',
+                    { statusCode: 403 }
+                );
+            }
+
+            const order = await storeRepository.getOrderById(proofOrderId, {
+                transaction,
+                lock: true
+            });
+            if (!order || String(order.tracking_pin || '').trim().toUpperCase() !== normalizedTrackingPin) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Order not found', { statusCode: 404 });
+            }
+            if (order.store_customer_id) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Order is already linked to an account', { statusCode: 409 });
+            }
+            await storeRepository.updateOrderById(order.pos_transaction_id, {
+                store_customer_id: normalizedCustomerId
+            }, { transaction, lock: true });
+            const updated = await storeRepository.getOrderById(order.pos_transaction_id, { transaction });
+            await transaction.commit();
+            return ok({ order: serializeOrderForCustomer(updated) });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapStoreUseCaseError(error, 'Failed to claim order'));
         }
     };
 };

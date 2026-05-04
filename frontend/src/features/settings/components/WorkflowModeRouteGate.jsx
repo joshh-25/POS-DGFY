@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWorkflowMode } from '../WorkflowModeContext.jsx';
-import { isMsmeWorkflowMode } from '../workflowMode.js';
+import { isMsmeWorkflowMode, isServicesWorkflowMode, modeHasCapability } from '../workflowMode.js';
 
 function WorkflowModeRedirect({ moduleLabel, fromPath }) {
   const navigate = useNavigate();
@@ -11,7 +11,7 @@ function WorkflowModeRedirect({ moduleLabel, fromPath }) {
   useEffect(() => {
     if (!notifiedRef.current) {
       notifiedRef.current = true;
-      toast.info(`${moduleLabel} is hidden in MSME Mode. Redirected to Dashboard.`);
+      toast.info(`${moduleLabel} is hidden in this Business Mode. Redirected to Dashboard.`);
     }
     navigate('/', {
       replace: true,
@@ -29,6 +29,8 @@ function WorkflowModeRedirect({ moduleLabel, fromPath }) {
 
 export default function WorkflowModeRouteGate({
   blockInMsme = false,
+  blockInServices = false,
+  requiredCapability = '',
   moduleLabel = 'This module',
   children
 }) {
@@ -44,6 +46,16 @@ export default function WorkflowModeRouteGate({
   }
 
   if (blockInMsme && isMsmeWorkflowMode(workflowMode)) {
+    const fromPath = `${location.pathname}${location.search || ''}`;
+    return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
+  }
+
+  if (blockInServices && isServicesWorkflowMode(workflowMode)) {
+    const fromPath = `${location.pathname}${location.search || ''}`;
+    return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
+  }
+
+  if (requiredCapability && !modeHasCapability(workflowMode, requiredCapability)) {
     const fromPath = `${location.pathname}${location.search || ''}`;
     return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
   }

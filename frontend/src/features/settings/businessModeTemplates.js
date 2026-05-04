@@ -59,20 +59,22 @@ export const BUSINESS_MODE_TEMPLATE_REGISTRY = Object.freeze({
     wizardLabels: { item_create_label: 'Create Retail SKU' }
   }),
   services: createTemplate({
-    itemDefaults: { category: 'product', product_type: 'finished_goods', unit_of_measure: 'service', max_capacity: 50, fifo_enabled: false },
-    productDefaults: { unit_of_measure: 'service', fifo_enabled: false, max_capacity: 50 },
-    posDefaults: { preferred_order_method: 'dine_in', show_online_queue: true },
-    wizardLabels: { item_create_label: 'Create Service SKU', product_create_label: 'Create Service Bundle' }
+    itemDefaults: { category: 'service', product_type: null, unit_of_measure: 'service', max_capacity: 1, current_stock: 0, fifo_enabled: false },
+    productDefaults: { unit_of_measure: 'service', fifo_enabled: false, max_capacity: 1 },
+    posDefaults: { preferred_order_method: 'appointment', show_online_queue: true },
+    wizardLabels: { item_create_label: 'Create Service', product_create_label: 'Create Service Package', pos_workspace_label: 'Services POS' }
   }),
   manufacturing: createTemplate({
-    itemDefaults: { category: 'raw_material', product_type: null, unit_of_measure: 'kg', max_capacity: 500 },
-    productDefaults: { unit_of_measure: 'units', max_capacity: 1500 },
-    posDefaults: { preferred_order_method: 'dine_in' }
+    itemDefaults: { category: 'raw_material', product_type: null, unit_of_measure: 'kg', max_capacity: 300 },
+    productDefaults: { unit_of_measure: 'units', max_capacity: 1000 },
+    posDefaults: { preferred_order_method: 'takeout' },
+    wizardLabels: { item_create_label: 'Create Food Manufacturing Item', product_create_label: 'Create Food Product' }
   }),
   food_manufacturing: createTemplate({
     itemDefaults: { category: 'raw_material', product_type: null, unit_of_measure: 'kg', max_capacity: 300 },
     productDefaults: { unit_of_measure: 'units', max_capacity: 1000 },
-    posDefaults: { preferred_order_method: 'takeout' }
+    posDefaults: { preferred_order_method: 'takeout' },
+    wizardLabels: { item_create_label: 'Create Food Manufacturing Item', product_create_label: 'Create Food Product' }
   }),
   fnb: createTemplate({
     itemDefaults: { category: 'product', product_type: 'finished_goods', unit_of_measure: 'serving', max_capacity: 180 },
@@ -147,4 +149,3 @@ export const resolveBusinessModePosDefaults = (workflowMode) => (
 export const resolveBusinessModeWizardLabels = (workflowMode) => (
   resolveBusinessModeTemplate(workflowMode).wizardLabels
 );
-

@@ -116,7 +116,9 @@ describe('onboardingRepository schema compatibility', () => {
     const snapshot = result.tenant_onboarding_progress.classification_snapshot;
     expect(snapshot.visibility_mode).toBe('transaction');
     expect(snapshot.monetization_tier).toBe('tier_3');
-    expect(snapshot.workflow_mode_recommendation).toBe('manufacturing');
+    expect(snapshot.workflow_mode_recommendation).toBe('food_manufacturing');
+    expect(snapshot.customer_access_mode).toBe('transaction');
+    expect(snapshot.inventory_display_mode).toBe('availability');
     expect(snapshot.compliance_path_hint).toBe('regulated_ready');
   });
 });

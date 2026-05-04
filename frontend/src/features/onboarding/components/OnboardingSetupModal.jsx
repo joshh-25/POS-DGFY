@@ -13,10 +13,17 @@ const WIZARD_STEPS = Object.freeze([
 ]);
 
 const VISIBILITY_OPTIONS = Object.freeze([
-  { value: 'ghost', label: 'Ghost listing (map presence only)' },
-  { value: 'catalog', label: 'Catalog mode (listings only)' },
-  { value: 'inquiry', label: 'Inquiry mode (lead generation)' },
-  { value: 'transaction', label: 'Transaction mode (online ordering)' }
+  { value: 'ghost', label: 'Ghost (profile and contact only)' },
+  { value: 'catalog', label: 'Catalog Only' },
+  { value: 'inquiry', label: 'Inquiry' },
+  { value: 'transaction', label: 'Transaction' }
+]);
+
+const INVENTORY_DISPLAY_OPTIONS = Object.freeze([
+  { value: 'hidden', label: 'Hidden' },
+  { value: 'availability', label: 'Availability' },
+  { value: 'low_stock', label: 'Low Stock' },
+  { value: 'exact_quantity', label: 'Exact Quantity' }
 ]);
 
 const OFFERING_OPTIONS = Object.freeze([
@@ -100,6 +107,7 @@ const deriveClassificationPayload = (onboarding) => {
       product_service: { offering_types: [] },
       order_booking: { order_modes: ['walk_in'], fulfillment_methods: ['pickup'] },
       online_visibility: { mode: 'catalog' },
+      inventory_display: { mode: 'availability', low_stock_threshold: 5 },
       payment_configuration: { accepted_in_store_payments: ['cash'], accepts_online_payments: false, payout_destination: 'bank_transfer', settlement_preference: 'daily' },
       branding: { branding_level: 'basic', has_custom_domain: false },
       customer_interaction: { preferred_channels: ['sms'], tracks_customer_data: false },
@@ -134,7 +142,11 @@ const deriveClassificationPayload = (onboarding) => {
       fulfillment_methods: normalizeList(existing?.order_booking?.fulfillment_methods)
     },
     online_visibility: {
-      mode: String(existing?.online_visibility?.mode || 'catalog').trim().toLowerCase()
+      mode: String(existing?.customer_access_mode || existing?.online_visibility?.mode || 'catalog').trim().toLowerCase()
+    },
+    inventory_display: {
+      mode: String(existing?.inventory_display_mode || existing?.inventory_display?.mode || 'availability').trim().toLowerCase(),
+      low_stock_threshold: Number(existing?.inventory_low_stock_display_threshold || existing?.inventory_display?.low_stock_threshold || 5)
     },
     payment_configuration: {
       accepted_in_store_payments: normalizeList(existing?.payment_configuration?.accepted_in_store_payments),
@@ -350,6 +362,9 @@ export default function OnboardingSetupModal({
           ...classificationForm.operations_staff,
           pos_user_count: Number(classificationForm.operations_staff?.pos_user_count || 0)
         },
+        customer_access_mode: String(classificationForm.online_visibility?.mode || 'catalog').trim().toLowerCase(),
+        inventory_display_mode: String(classificationForm.inventory_display?.mode || 'availability').trim().toLowerCase(),
+        inventory_low_stock_display_threshold: Number(classificationForm.inventory_display?.low_stock_threshold || 5),
         growth_intent: {
           ...classificationForm.growth_intent,
           estimated_monthly_sales: Number(classificationForm.growth_intent?.estimated_monthly_sales || 0)
@@ -358,6 +373,11 @@ export default function OnboardingSetupModal({
       const data = await saveOnboardingStep({
         stepKey: 'business_classification',
         payload
+      });
+      await updateSettings({
+        customer_access_mode: payload.customer_access_mode,
+        inventory_display_mode: payload.inventory_display_mode,
+        inventory_low_stock_display_threshold: payload.inventory_low_stock_display_threshold
       });
       setClassificationSnapshot(data?.tenant_onboarding_progress?.classification_snapshot || null);
       await trackOnboardingEvent({
@@ -546,9 +566,9 @@ export default function OnboardingSetupModal({
 
           {step === 'business_classification' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">3) Business Classification (Advisory)</h3>
+              <h3 className="text-sm font-semibold text-slate-900">3) Business Classification</h3>
               <p className="mt-1 text-xs text-slate-600">
-                This questionnaire configures advisory visibility/tier/workflow insights only. It does not gate access.
+                Configure customer access, inventory display, tier, workflow, and compliance signals for this tenant.
               </p>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -572,7 +592,7 @@ export default function OnboardingSetupModal({
                 </label>
 
                 <label className="text-xs text-slate-700">
-                  Visibility mode
+                  Customer Access Mode
                   <select
                     className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
                     value={classificationForm.online_visibility.mode}
@@ -588,6 +608,43 @@ export default function OnboardingSetupModal({
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  Inventory Display
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.inventory_display?.mode || 'availability'}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      inventory_display: {
+                        ...prev.inventory_display,
+                        mode: event.target.value
+                      }
+                    }))}
+                  >
+                    {INVENTORY_DISPLAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  Low stock display threshold
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    value={classificationForm.inventory_display?.low_stock_threshold ?? 5}
+                    onChange={(event) => setClassificationForm((prev) => ({
+                      ...prev,
+                      inventory_display: {
+                        ...prev.inventory_display,
+                        low_stock_threshold: event.target.value
+                      }
+                    }))}
+                  />
                 </label>
 
                 <label className="text-xs text-slate-700">
@@ -746,7 +803,10 @@ export default function OnboardingSetupModal({
                     Current advisory tier: <span className="font-semibold">{tierLabelMap[classificationSnapshot.monetization_tier] || classificationSnapshot.monetization_tier}</span>
                   </p>
                   <p className="mt-1">
-                    Visibility: <span className="font-semibold">{classificationSnapshot.visibility_mode}</span>
+                    Customer access: <span className="font-semibold">{classificationSnapshot.customer_access_mode || classificationSnapshot.visibility_mode}</span>
+                  </p>
+                  <p className="mt-1">
+                    Inventory display: <span className="font-semibold">{classificationSnapshot.inventory_display_mode || 'availability'}</span>
                   </p>
                   <p className="mt-1">
                     Workflow recommendation: <span className="font-semibold">{workflowLabelMap[classificationSnapshot.business_mode_template_recommendation] || workflowLabelMap[classificationSnapshot.workflow_mode_recommendation] || classificationSnapshot.business_mode_template_recommendation || classificationSnapshot.workflow_mode_recommendation}</span>

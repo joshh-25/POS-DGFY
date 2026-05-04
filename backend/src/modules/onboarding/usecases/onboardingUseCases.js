@@ -43,8 +43,8 @@ export const buildGetOnboardingStatusUseCase = ({ onboardingRepository }) => {
   };
 };
 
-export const buildSaveOnboardingStepUseCase = ({ onboardingRepository }) => {
-  return async ({ stepKey, payload, storeNameBaseline = '' }) => {
+export const buildSaveOnboardingStepUseCase = ({ onboardingRepository, syncStorefrontDiscoveryWithReliability = null }) => {
+  return async ({ stepKey, payload, tenantId = null, storeNameBaseline = '' }) => {
     if (!stepKey || String(stepKey).trim().length === 0) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -55,7 +55,25 @@ export const buildSaveOnboardingStepUseCase = ({ onboardingRepository }) => {
 
     try {
       const data = await onboardingRepository.saveStep({ stepKey, payload, storeNameBaseline });
-      return ok(data);
+      let sync = null;
+      if (
+        tenantId
+        && stepKey === 'business_classification'
+        && typeof syncStorefrontDiscoveryWithReliability === 'function'
+      ) {
+        sync = await syncStorefrontDiscoveryWithReliability({
+          tenantId,
+          source: 'tenant_onboarding_business_classification'
+        }).catch((error) => ({
+          ok: false,
+          attempts: 0,
+          errors: [error?.message || 'unknown_error']
+        }));
+      }
+      return ok({
+        ...data,
+        storefront_sync: sync
+      });
     } catch (error) {
       return fail(mapError(error, 'Failed to save onboarding step'));
     }

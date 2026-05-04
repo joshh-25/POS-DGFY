@@ -189,6 +189,42 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(byKey.paypal_product_id).toBe(`prod-${testSuffix}`);
     });
 
+    it('auto-accepts standard public registration when auto_standard mode is enabled', async () => {
+        const previousMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
+        process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'auto_standard';
+
+        try {
+            const response = await request(app)
+                .post('/api/v1/admin/tenants/register')
+                .send({
+                    name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
+                    adminEmail: `auto-register-${testSuffix}@example.test`,
+                    adminPassword: 'StrongPass1!',
+                    plan: 'standard',
+                    complianceMode: 'non_compliant',
+                    workflowMode: 'food_manufacturing'
+                });
+
+            expect(response.status).toBe(201);
+            expect(response.body.success).toBe(true);
+            expect(response.body.message).toBe('Company registered and activated successfully. You can sign in now.');
+            expect(response.body.data.status).toBe('active');
+            expect(response.body.data.email_sent).toBe(false);
+            expect(response.body.data.company_token).toMatch(/^token-admingatetest/);
+            expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
+                name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
+                adminEmail: `auto-register-${testSuffix}@example.test`,
+                workflowMode: 'food_manufacturing'
+            }));
+        } finally {
+            if (previousMode === undefined) {
+                delete process.env.TENANT_REGISTRATION_APPROVAL_MODE;
+            } else {
+                process.env.TENANT_REGISTRATION_APPROVAL_MODE = previousMode;
+            }
+        }
+    });
+
     it('approves pending tenant and calls provisioning with stored admin data', async () => {
         const tenant = await createAdminTestTenant({ status: 'pending' });
 

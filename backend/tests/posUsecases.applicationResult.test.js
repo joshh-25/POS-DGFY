@@ -1,4 +1,7 @@
 import { jest } from '@jest/globals';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import {
     buildListPosTransactionsUseCase,
     buildGetPosTransactionByIdUseCase,
@@ -6,6 +9,7 @@ import {
     buildListPosCatalogUseCase,
     buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
+    buildUploadPosCatalogImageUseCase,
     buildUpdateOnlineOrderStatusUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
@@ -254,6 +258,109 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(getCatalogReadinessByItemId).not.toHaveBeenCalled();
         expect(upsertCatalogOverride).toHaveBeenCalledWith(203, { pos_visible: false });
+    });
+
+    it('uploadPosCatalogImage preserves an existing hidden POS visibility flag', async () => {
+        const tempPath = path.join(os.tmpdir(), `pos-image-${Date.now()}.png`);
+        await fs.writeFile(tempPath, Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]));
+
+        const updateCatalogImage = jest.fn().mockResolvedValue({
+            item_id: 204,
+            pos_visible: false,
+            pos_image_url: '/uploads/pos.png'
+        });
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 204,
+                    category: 'product',
+                    product_type: 'finished_goods'
+                }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 204,
+                    pos_visible: false,
+                    pos_image_path: null
+                }),
+                updateCatalogImage
+            },
+            imageStorage: {
+                store: jest.fn().mockResolvedValue({ path: 'uploads/pos.png', url: '/uploads/pos.png' }),
+                remove: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            itemId: 204,
+            file: {
+                path: tempPath,
+                mimetype: 'image/png',
+                originalname: 'menu.png',
+                size: 12
+            },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(updateCatalogImage).toHaveBeenCalledWith(204, {
+            path: 'uploads/pos.png',
+            url: '/uploads/pos.png'
+        }, {
+            keepVisible: false
+        });
+
+        await fs.rm(tempPath, { force: true });
+    });
+
+    it('uploadPosCatalogImage removes a newly stored file when the catalog update fails', async () => {
+        const tempPath = path.join(os.tmpdir(), `pos-image-fail-${Date.now()}.png`);
+        await fs.writeFile(tempPath, Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]));
+
+        const remove = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 205,
+                    category: 'product',
+                    product_type: 'finished_goods'
+                }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 205,
+                    pos_visible: true,
+                    pos_image_path: 'pos-catalog/tenant/old.png'
+                }),
+                updateCatalogImage: jest.fn().mockRejectedValue(new Error('database unavailable'))
+            },
+            imageStorage: {
+                store: jest.fn().mockResolvedValue({
+                    path: 'pos-catalog/tenant/new.png',
+                    url: '/uploads/pos-catalog/tenant/new.png'
+                }),
+                remove
+            }
+        });
+
+        const result = await useCase({
+            itemId: 205,
+            file: {
+                path: tempPath,
+                mimetype: 'image/png',
+                originalname: 'menu.png',
+                size: 12
+            },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(false);
+        expect(remove).toHaveBeenCalledWith({ path: 'pos-catalog/tenant/new.png' });
+        expect(remove).not.toHaveBeenCalledWith({ path: 'pos-catalog/tenant/old.png' });
+
+        await fs.rm(tempPath, { force: true });
     });
 
     it('updateOnlineOrderStatus deducts inventory when online order transitions to completed', async () => {

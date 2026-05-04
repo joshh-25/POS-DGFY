@@ -8,6 +8,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
         get: (name) => {
             if (name === 'Item') return { findAll: itemFindAllMock };
             if (name === 'PosCatalogOverride') return {};
+            if (name === 'StorefrontCatalogOverride') return {};
+            if (name === 'ServiceItemDetail') return {};
             if (name === 'ItemLocationStock') return { findAll: itemLocationStockFindAllMock };
             throw new Error(`Unexpected model lookup in test: ${name}`);
         },
@@ -33,6 +35,22 @@ const missingLocationStockColumnError = () => ({
     }
 });
 
+const missingStorefrontCatalogOverrideTableError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_NO_SUCH_TABLE',
+        sqlMessage: "Table 'tenant_db.storefront_catalog_overrides' doesn't exist"
+    }
+});
+
+const missingServiceItemDetailsTableError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_NO_SUCH_TABLE',
+        sqlMessage: "Table 'tenant_db.service_item_details' doesn't exist"
+    }
+});
+
 const buildCatalogRow = (overrides = {}) => ({
     item_id: overrides.item_id || 10,
     name: overrides.name || 'Test Item',
@@ -43,10 +61,16 @@ const buildCatalogRow = (overrides = {}) => ({
     default_sale_price: 25,
     cost_per_unit: 12,
     vat_type: 'vatable',
-    posCatalogOverride: {
+    posCatalogOverride: overrides.posCatalogOverride ?? {
         pos_visible: true,
         pos_image_url: '/uploads/item-10.png'
-    }
+    },
+    storefrontCatalogOverride: Object.prototype.hasOwnProperty.call(overrides, 'storefrontCatalogOverride')
+        ? overrides.storefrontCatalogOverride
+        : {
+            storefront_visible: true,
+            storefront_image_url: '/uploads/storefront/item-10.png'
+        }
 });
 
 describe('storeRepository location-stock schema fallback', () => {
@@ -105,5 +129,109 @@ describe('storeRepository location-stock schema fallback', () => {
             is_available: true,
             availability_status: 'in_stock'
         }));
+    });
+
+    it('listStoreCatalog honors storefront override visibility and image before POS fallback', async () => {
+        itemFindAllMock.mockResolvedValue([
+            buildCatalogRow({
+                item_id: 400,
+                storefrontCatalogOverride: {
+                    storefront_visible: false,
+                    storefront_image_url: '/uploads/storefront/hidden.png'
+                }
+            }),
+            buildCatalogRow({
+                item_id: 401,
+                storefrontCatalogOverride: {
+                    storefront_visible: true,
+                    storefront_image_url: '/uploads/storefront/visible.png'
+                }
+            })
+        ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 401,
+            image_url: '/uploads/storefront/visible.png'
+        }));
+    });
+
+    it('listStoreCatalog does not inherit POS visibility or image when the storefront table exists but the row is missing', async () => {
+        itemFindAllMock.mockResolvedValue([
+            buildCatalogRow({
+                item_id: 500,
+                posCatalogOverride: {
+                    pos_visible: false,
+                    pos_image_url: '/uploads/pos/hidden.png'
+                },
+                storefrontCatalogOverride: null
+            })
+        ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 500,
+            image_url: null
+        }));
+    });
+
+    it('listStoreCatalog only uses POS-derived visibility when the storefront override table is unavailable', async () => {
+        itemFindAllMock
+            .mockRejectedValueOnce(missingStorefrontCatalogOverrideTableError())
+            .mockResolvedValueOnce([
+                buildCatalogRow({
+                    item_id: 600,
+                    posCatalogOverride: {
+                        pos_visible: false,
+                        pos_image_url: '/uploads/pos/hidden.png'
+                    },
+                    storefrontCatalogOverride: null
+                })
+            ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toEqual([]);
+    });
+
+    it('listStoreCatalog retries without service details when that optional table is unavailable', async () => {
+        itemFindAllMock
+            .mockRejectedValueOnce(missingServiceItemDetailsTableError())
+            .mockResolvedValueOnce([buildCatalogRow({ item_id: 700, current_stock: 4 })]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 700,
+            is_available: true,
+            availability_status: 'in_stock'
+        }));
+        const retryQuery = itemFindAllMock.mock.calls[1][0];
+        expect(retryQuery.include.some((entry) => entry.as === 'serviceDetail')).toBe(false);
     });
 });

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, lazy, Suspense } from 'react'
+import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
@@ -15,6 +15,31 @@ import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.j
 import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
+const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
+const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
+
+const registerAdminServiceWorker = async () => {
+  if (typeof window === 'undefined') return
+  if (import.meta.env.DEV) return
+  if (!('serviceWorker' in navigator)) return
+
+  try {
+    const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' })
+    const contentType = String(probe.headers.get('content-type') || '').toLowerCase()
+    const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript')
+    if (!probe.ok || !scriptLike) return
+
+    const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: appBasePath === '/' ? '/' : `${appBasePath}/`
+    })
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+    }
+  } catch {
+    // Service worker support is optional and should not block the admin shell.
+  }
+}
+
 // Lazy-loaded pages â€” each page is a separate JS chunk downloaded on first visit
 const Dashboard = lazy(() => import('../Pages/Dashboard.jsx'))
 const Items = lazy(() => import('./features/inventory/pages/ItemsPage.jsx'))
@@ -22,6 +47,7 @@ const Suppliers = lazy(() => import('../Pages/Suppliers.jsx'))
 const PurchaseOrders = lazy(() => import('../Pages/PurchaseOrders.jsx'))
 const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.jsx'))
 const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))
+const Services = lazy(() => import('./features/services/pages/ServicesPage.jsx'))
 const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
@@ -39,6 +65,7 @@ const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
+const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
 
 function App() {
   const location = useLocation()
@@ -125,7 +152,7 @@ function App() {
         } />
         <Route path="/job-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme moduleLabel="Job Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Job Orders">
               <Layout currentPageName={currentPageName}>
                 <JobOrders />
               </Layout>
@@ -134,7 +161,7 @@ function App() {
         } />
         <Route path="/stock-movements" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme moduleLabel="Stock Movements">
+            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Stock Movements">
               <Layout currentPageName={currentPageName}>
                 <StockMovements />
               </Layout>
@@ -143,7 +170,7 @@ function App() {
         } />
         <Route path="/dispatch-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme moduleLabel="Dispatch Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Dispatch Orders">
               <Layout currentPageName={currentPageName}>
                 <DispatchOrders />
               </Layout>
@@ -171,6 +198,15 @@ function App() {
             <Layout currentPageName={currentPageName}>
               <POSPage />
             </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/services" element={
+          <ProtectedRoute>
+            <WorkflowModeRouteGate requiredCapability="services" moduleLabel="Services">
+              <Layout currentPageName={currentPageName}>
+                <Services />
+              </Layout>
+            </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
         <Route path="/terminal" element={<TerminalPage />} />
@@ -202,6 +238,7 @@ function App() {
           <Route path="feedback" element={<FeedbackDashboard />} />
           <Route path="tenants" element={<TenantManager />} />
           <Route path="pricing" element={<AdminPricing />} />
+          <Route path="hosting" element={<HostingStatus />} />
         </Route>
 
         {/* Legacy route - redirect to new admin portal */}
@@ -232,5 +269,7 @@ ReactDOM.createRoot(rootElement).render(
     </ErrorBoundary>
   </React.StrictMode>,
 )
+
+registerAdminServiceWorker()
 
 

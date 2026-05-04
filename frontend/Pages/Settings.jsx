@@ -152,8 +152,8 @@ const SETTINGS_FIELD_LABELS = {
   pos_petty_cash_amount: 'Petty Cash Amount',
   ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
-  store_tenant_slug: 'Store Slug',
-  pos_wait_time_minutes: 'POS Wait Time',
+  store_tenant_slug: 'Storefront Slug',
+  pos_wait_time_minutes: 'Customer Wait Time',
   storefront_tagline: 'Storefront Tagline',
   storefront_about: 'Storefront About',
   storefront_phone: 'Storefront Phone',
@@ -169,8 +169,47 @@ const SETTINGS_FIELD_LABELS = {
   storefront_gallery_images: 'Storefront Gallery Images',
   storefront_delivery_partners: 'Storefront Delivery Partners',
   storefront_follow_enabled: 'Storefront Follow Enabled',
-  storefront_share_enabled: 'Storefront Share Enabled'
+  storefront_share_enabled: 'Storefront Share Enabled',
+  customer_access_mode: 'Customer Access Mode',
+  inventory_display_mode: 'Inventory Display Mode',
+  inventory_low_stock_display_threshold: 'Low Stock Display Threshold'
 };
+
+const SETTINGS_CARD_TITLE_CLASS = 'flex items-start gap-2 text-xl leading-tight sm:items-center sm:text-2xl';
+const CUSTOMER_ACCESS_MODE_OPTIONS = [
+  { value: 'ghost', label: 'Ghost', description: 'Profile and contact only; catalog, cart, checkout, and booking are hidden.' },
+  { value: 'catalog', label: 'Catalog Only', description: 'Customers can browse catalog, prices, and inventory labels only.' },
+  { value: 'inquiry', label: 'Inquiry', description: 'Customers can browse and contact you through existing channels.' },
+  { value: 'transaction', label: 'Transaction', description: 'Customers can quote, checkout, and book services online.' }
+];
+const INVENTORY_DISPLAY_MODE_OPTIONS = [
+  { value: 'hidden', label: 'Hidden' },
+  { value: 'availability', label: 'Availability' },
+  { value: 'low_stock', label: 'Low Stock' },
+  { value: 'exact_quantity', label: 'Exact Quantity' }
+];
+const CUSTOMER_ACCESS_MODE_RANK = { ghost: 0, catalog: 1, inquiry: 2, transaction: 3 };
+const normalizeCustomerAccessMode = (value) => (
+  CUSTOMER_ACCESS_MODE_OPTIONS.some((option) => option.value === String(value || '').trim().toLowerCase())
+    ? String(value || '').trim().toLowerCase()
+    : 'catalog'
+);
+const normalizeInventoryDisplayMode = (value) => (
+  INVENTORY_DISPLAY_MODE_OPTIONS.some((option) => option.value === String(value || '').trim().toLowerCase())
+    ? String(value || '').trim().toLowerCase()
+    : 'availability'
+);
+const maxAccessModeForStage = (stage) => {
+  const normalized = String(stage || '').trim().toLowerCase();
+  if (normalized === 'registered') return 'transaction';
+  if (normalized === 'partial' || normalized === 'pending' || normalized === 'in_progress') return 'inquiry';
+  return 'catalog';
+};
+const minAccessMode = (left, right) => (
+  CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(left)] <= CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(right)]
+    ? normalizeCustomerAccessMode(left)
+    : normalizeCustomerAccessMode(right)
+);
 
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
 
@@ -383,6 +422,11 @@ export default function Settings() {
     storeIsVisible: true,
     posOpenStatus: true,
     posWaitTimeMinutes: 15,
+    customerAccessMode: 'catalog',
+    inventoryDisplayMode: 'availability',
+    inventoryLowStockDisplayThreshold: 5,
+    customerAccessRegistrationStage: 'informal',
+    customerAccessFlagStatus: 'backend-controlled',
     storefrontTagline: '',
     storefrontAbout: '',
     storefrontPhone: '',
@@ -541,6 +585,12 @@ export default function Settings() {
         const storefrontDeliveryPartnersRaw = Array.isArray(systemSettings.storefront_delivery_partners?.value)
           ? systemSettings.storefront_delivery_partners.value
           : [];
+        const onboardingProgress = parseJsonObjectSetting(systemSettings.tenant_onboarding_progress?.value);
+        const customerAccessRegistrationStage = String(
+          onboardingProgress?.step_payloads?.business_classification?.legitimacy?.registration_status
+          || onboardingProgress?.classification_snapshot?.payload?.legitimacy?.registration_status
+          || 'informal'
+        ).trim().toLowerCase() || 'informal';
         const storefrontCategoriesRaw = Array.isArray(systemSettings.storefront_categories?.value)
           ? systemSettings.storefront_categories.value
           : [];
@@ -575,6 +625,11 @@ export default function Settings() {
           storeIsVisible: systemSettings.store_is_visible?.value ?? true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
+          customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+          inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
+          inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
+          customerAccessRegistrationStage,
+          customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === true ? 'enabled' : 'backend-controlled',
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
@@ -1352,6 +1407,9 @@ export default function Settings() {
         store_is_visible: settings.storeIsVisible === true,
         pos_open_status: settings.posOpenStatus === true,
         pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0),
+        customer_access_mode: normalizeCustomerAccessMode(settings.customerAccessMode),
+        inventory_display_mode: normalizeInventoryDisplayMode(settings.inventoryDisplayMode),
+        inventory_low_stock_display_threshold: Number(settings.inventoryLowStockDisplayThreshold || 5),
         storefront_tagline: String(settings.storefrontTagline || '').trim(),
         storefront_about: String(settings.storefrontAbout || '').trim(),
         storefront_phone: String(settings.storefrontPhone || '').trim(),
@@ -1656,7 +1714,7 @@ export default function Settings() {
         <div className="pt-8 grid md:grid-cols-2 gap-3">
           <div className="rounded-lg border border-slate-200 p-3 space-y-2">
             <p className="text-sm font-semibold text-slate-900">Cover photo</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="file"
                 accept="image/*"
@@ -1670,6 +1728,7 @@ export default function Settings() {
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 disabled={!canEditStorefrontBranding || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'}
                 onClick={() => handleDeleteStorefrontAsset('cover')}
               >
@@ -1679,7 +1738,7 @@ export default function Settings() {
           </div>
           <div className="rounded-lg border border-slate-200 p-3 space-y-2">
             <p className="text-sm font-semibold text-slate-900">Profile icon</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="file"
                 accept="image/*"
@@ -1693,6 +1752,7 @@ export default function Settings() {
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 disabled={!canEditStorefrontBranding || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'}
                 onClick={() => handleDeleteStorefrontAsset('profile')}
               >
@@ -1713,23 +1773,30 @@ export default function Settings() {
     </div>
   );
 
+  const requestedCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMode);
+  const maxCustomerAccessMode = maxAccessModeForStage(settings.customerAccessRegistrationStage);
+  const effectiveCustomerAccessMode = minAccessMode(requestedCustomerAccessMode, maxCustomerAccessMode);
+  const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
+    ? `Registration stage ${settings.customerAccessRegistrationStage || 'informal'} allows up to ${maxCustomerAccessMode} mode.`
+    : 'No registration-stage cap is reducing the requested mode.';
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-4 pb-28 sm:space-y-6 sm:pb-0 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
-          <p className="text-slate-500 mt-1">Configure your workspace and profile</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight sm:text-3xl">Settings</h1>
+          <p className="text-sm text-slate-500 mt-1 sm:text-base">Configure your workspace and profile</p>
           <p className="text-xs text-slate-400 mt-1">Build {settingsBuildStamp}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="hidden gap-3 sm:flex">
           {currentTab !== 'compliance' ? (
             <>
-              <Button type="button" variant="outline" onClick={handleReset}>
+              <Button type="button" variant="outline" onClick={handleReset} className="whitespace-nowrap">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Reset
               </Button>
-              <Button type="button" onClick={handleSave} className="bg-teal-600 hover:bg-teal-700">
+              <Button type="button" onClick={handleSave} className="whitespace-nowrap bg-teal-600 hover:bg-teal-700">
                 <Save className="w-4 h-4 mr-2" />
                 Save Changes
               </Button>
@@ -1743,26 +1810,30 @@ export default function Settings() {
       </div>
 
       <Tabs value={currentTab} onValueChange={(v) => setSettingsTab(v, { preserveHash: false })} className="w-full">
-        <TabsList className={`mb-8 flex h-auto w-full flex-wrap gap-1 ${subscriptionFeaturesEnabled ? 'lg:w-[920px]' : 'lg:w-[780px]'} lg:flex-nowrap`}>
-          <TabsTrigger value="profile" className="flex-1 sm:flex-none">Profile</TabsTrigger>
-          <TabsTrigger value="company" className="flex-1 sm:flex-none">Company</TabsTrigger>
-          {subscriptionFeaturesEnabled && <TabsTrigger value="subscription" className="flex-1 sm:flex-none">Subscription</TabsTrigger>}
-          <TabsTrigger value="pos" className="flex-1 sm:flex-none">POS Setup</TabsTrigger>
-          <TabsTrigger value="compliance" className="flex-1 sm:flex-none">Compliance</TabsTrigger>
-          <TabsTrigger value="system" className="flex-1 sm:flex-none">System</TabsTrigger>
+        <TabsList
+          aria-label="Settings sections"
+          className="sticky top-16 z-20 -mx-6 mb-4 flex h-auto w-[calc(100%+3rem)] justify-start gap-1 overflow-x-auto rounded-none border-y border-slate-200 bg-slate-50/95 px-6 py-2 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:static sm:mx-0 sm:mb-8 sm:w-full sm:rounded-lg sm:border-0 sm:bg-slate-100 sm:p-1"
+        >
+          <TabsTrigger value="profile" className="flex-none px-4">Profile</TabsTrigger>
+          <TabsTrigger value="company" className="flex-none px-4">Company</TabsTrigger>
+          <TabsTrigger value="storefront" className="flex-none px-4">Storefront</TabsTrigger>
+          {subscriptionFeaturesEnabled && <TabsTrigger value="subscription" className="flex-none px-4">Subscription</TabsTrigger>}
+          <TabsTrigger value="pos" className="flex-none px-4">POS Setup</TabsTrigger>
+          <TabsTrigger value="compliance" className="flex-none px-4">Compliance</TabsTrigger>
+          <TabsTrigger value="system" className="flex-none px-4">System</TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
         <TabsContent value="profile" id="tab-profile" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                 <User className="w-5 h-5 text-teal-600" />
                 Profile Settings
               </CardTitle>
               <CardDescription>Manage your account security</CardDescription>
               <p className="text-xs text-slate-500">
-                Storefront cover/profile image uploads are in <span className="font-semibold">Company</span> tab under <span className="font-semibold">Storefront Branding</span>.
+                Storefront cover/profile image uploads are in <span className="font-semibold">Storefront</span> tab under <span className="font-semibold">Storefront Media</span>.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1816,7 +1887,7 @@ export default function Settings() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                     <Building2 className="w-5 h-5 text-teal-600" />
                     Company Details
                   </CardTitle>
@@ -1882,14 +1953,437 @@ export default function Settings() {
             </Card>
           )}
 
-          <Card id="storefront-branding-settings">
+          <Card id="business-mode-settings">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                 <Building2 className="w-5 h-5 text-teal-600" />
-                Storefront Branding
+                Business Mode
               </CardTitle>
               <CardDescription>
-                Upload cover photo and profile icon used in storefront discovery cards, map popups, and tenant storefront page header.
+                Template mode controls presets and navigation behavior. Manufacturing-family modes keep full IMS/POS surfaces, while Simple (MSME) keeps streamlined flows.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label>Workflow Mode</Label>
+                <select
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
+                  value={normalizeWorkflowMode(settings.opsWorkflowMode)}
+                  onChange={(event) => handleChange('opsWorkflowMode', normalizeWorkflowMode(event.target.value))}
+                  disabled={currentUser?.is_master_admin !== true}
+                >
+                  {WORKFLOW_MODE_VALUES.map((mode) => (
+                    <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-slate-600">
+                Active mode after save: <span className="font-semibold text-slate-900">{getWorkflowModeLabel(settings.opsWorkflowMode)}</span>
+              </p>
+              {currentUser?.is_master_admin !== true && (
+                <p className="text-xs text-amber-700">
+                  Only master admin can change Business Mode.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Storefront Tab */}
+        <TabsContent value="storefront" id="tab-storefront" className="space-y-6">
+          <Card id="storefront-operations-settings">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Storefront Visibility & Ordering
+              </CardTitle>
+              <CardDescription>
+                Control the public store URL, discovery visibility, buyer-facing open status, wait time, and delivery fee.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Storefront Slug</Label>
+                  <Input
+                    value={settings.storeTenantSlug}
+                    onChange={(e) => handleChange('storeTenantSlug', e.target.value)}
+                    placeholder="your-store-slug"
+                    maxLength={80}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Used for the public storefront URL path: `/store/:slug`.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Store Delivery Fee (PHP)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={settings.storeDeliveryFee}
+                    onChange={(e) => handleChange('storeDeliveryFee', e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Public Store Visibility</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Show this tenant in general store discovery</span>
+                    <Switch
+                      checked={settings.storeIsVisible === true}
+                      onCheckedChange={(v) => handleChange('storeIsVisible', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Storefront Open Status</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Open or closed status shown to buyers</span>
+                    <Switch
+                      checked={settings.posOpenStatus === true}
+                      onCheckedChange={(v) => handleChange('posOpenStatus', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Wait Time (minutes)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="720"
+                    value={settings.posWaitTimeMinutes}
+                    onChange={(e) => handleChange('posWaitTimeMinutes', e.target.value)}
+                    placeholder="15"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card id="storefront-access-settings">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Storefront Access
+              </CardTitle>
+              <CardDescription>
+                Control what customers can do on the storefront and how inventory is presented publicly.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Customer Access Mode</Label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    value={requestedCustomerAccessMode}
+                    onChange={(e) => handleChange('customerAccessMode', e.target.value)}
+                  >
+                    {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    Effective mode: <span className="font-semibold text-slate-900">{effectiveCustomerAccessMode}</span>. Max allowed: <span className="font-semibold text-slate-900">{maxCustomerAccessMode}</span>.
+                  </p>
+                  <p className="text-xs text-slate-500">{customerAccessLimitation}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Inventory Display</Label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    value={normalizeInventoryDisplayMode(settings.inventoryDisplayMode)}
+                    onChange={(e) => handleChange('inventoryDisplayMode', e.target.value)}
+                  >
+                    {INVENTORY_DISPLAY_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    Raw stock and cost remain private; storefront APIs expose customer-facing labels.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Low Stock Display Threshold</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="9999"
+                    value={settings.inventoryLowStockDisplayThreshold}
+                    onChange={(e) => handleChange('inventoryLowStockDisplayThreshold', e.target.value)}
+                  />
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">Rollout flag</p>
+                  <p>Enforcement is controlled by the backend <code>CUSTOMER_ACCESS_MODES_ENABLED</code> flag. Settings can be saved before the flag is enabled.</p>
+                </div>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                  <div key={option.value} className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                    <p className="text-xs text-slate-600">{option.description}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card id="storefront-locations-settings">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <Warehouse className="w-5 h-5 text-teal-600" />
+                Storefront Locations & Fulfillment
+              </CardTitle>
+              <CardDescription>
+                Manage buyer-facing fulfillment locations, storefront discovery health, and the primary map pin.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                <p className="text-sm font-semibold text-sky-900">{primaryStorefrontHealthCopy}</p>
+                <p className="text-xs text-sky-700">Discovery last synced: {primaryStorefrontLastSyncCopy}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">Storefront Sync Health</p>
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${storefrontSyncHealthClass}`}>
+                    {storefrontSyncHealthLabel}
+                  </span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2 text-xs text-slate-600">
+                  <p>Last checked: {storefrontSyncCheckedAtCopy}</p>
+                  <p>Source: {storefrontSyncHealth?.source || 'N/A'}</p>
+                  <p>Attempts: {Number.isFinite(Number(storefrontSyncHealth?.attempts)) ? Number(storefrontSyncHealth.attempts) : 0}</p>
+                  <p>Recovered by reconcile: {storefrontSyncHealth?.reconciled === true ? 'Yes' : 'No'}</p>
+                </div>
+                {Array.isArray(storefrontSyncHealth?.errors) && storefrontSyncHealth.errors.length > 0 && (
+                  <p className="text-xs text-amber-700">
+                    Recent sync issues: {storefrontSyncHealth.errors.slice(0, 3).join(' | ')}
+                  </p>
+                )}
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Location Name</Label>
+                  <Input
+                    value={locationForm.name}
+                    onChange={(e) => handleLocationFormChange('name', e.target.value)}
+                    placeholder="Main Branch"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <Input
+                    value={locationForm.address_line}
+                    onChange={(e) => handleLocationFormChange('address_line', e.target.value)}
+                    placeholder="Street, City, Province"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Map Pin (OpenStreetMap)</Label>
+                  <OpenStreetMapPinPicker
+                    latitude={locationForm.latitude}
+                    longitude={locationForm.longitude}
+                    deliveryRadiusKm={locationForm.delivery_radius_km}
+                    onChange={handleLocationPinChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Delivery Radius (km)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={locationForm.delivery_radius_km}
+                    onChange={(e) => handleLocationFormChange('delivery_radius_km', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Wait Time (minutes)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="720"
+                    value={locationForm.current_wait_time_minutes}
+                    onChange={(e) => handleLocationFormChange('current_wait_time_minutes', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Location Is Open</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Open status visible to buyers</span>
+                    <Switch
+                      checked={locationForm.is_open === true}
+                      onCheckedChange={(v) => handleLocationFormChange('is_open', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Primary Storefront Pin</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Use this as the storefront discovery map pin</span>
+                    <Switch
+                      checked={locationForm.is_primary_storefront === true}
+                      disabled={locationForm.is_active !== true}
+                      onCheckedChange={(v) => handleLocationFormChange('is_primary_storefront', v)}
+                    />
+                  </div>
+                  {locationForm.is_active !== true && (
+                    <p className="text-xs text-amber-700">Primary storefront pin can only be set on an active location.</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Allow Out-Of-Stock Sales</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Allow ordering items even when stock is zero</span>
+                    <Switch
+                      checked={locationForm.allow_out_of_stock_sales === true}
+                      onCheckedChange={(v) => handleLocationFormChange('allow_out_of_stock_sales', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Supports Delivery</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Enable delivery orders for this location</span>
+                    <Switch
+                      checked={locationForm.supports_delivery === true}
+                      onCheckedChange={(v) => handleLocationFormChange('supports_delivery', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Supports Pickup</Label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <span className="text-sm text-slate-600">Enable pickup orders for this location</span>
+                    <Switch
+                      checked={locationForm.supports_pickup === true}
+                      onCheckedChange={(v) => handleLocationFormChange('supports_pickup', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <div>
+                      <Label>Supports Dine-In</Label>
+                      <p className="text-xs text-slate-500">Enable dine-in reservations or walk-in routing for this location</p>
+                    </div>
+                    <Switch
+                      checked={locationForm.supports_dine_in === true}
+                      onCheckedChange={(v) => handleLocationFormChange('supports_dine_in', v)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" onClick={handleSaveLocation} disabled={locationSaving}>
+                  {locationSaving ? 'Saving...' : editingLocationId ? 'Update Location' : 'Add Location'}
+                </Button>
+                {editingLocationId && (
+                  <Button type="button" variant="outline" onClick={resetLocationForm} disabled={locationSaving}>
+                    Cancel Edit
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={() => loadTenantLocations()} disabled={locationsLoading || locationSaving}>
+                  Refresh List
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Configured Locations</Label>
+                {locationsLoading ? (
+                  <p className="text-sm text-slate-500">Loading locations...</p>
+                ) : tenantLocations.length === 0 ? (
+                  <p className="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg p-3">
+                    No locations configured yet.
+                  </p>
+                ) : (
+                  tenantLocations.map((location) => (
+                    <div
+                      key={`tenant-location-${location.location_id}`}
+                      className="rounded-lg border border-slate-200 p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{location.name}</p>
+                          <p className="text-xs text-slate-500">{location.address_line}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${location.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {location.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${location.is_open ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {location.is_open ? 'Open' : 'Closed'}
+                          </span>
+                          {location.is_primary_storefront === true && (
+                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-sky-100 text-sky-700">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-600">
+                        <p>Lat: {location.latitude}</p>
+                        <p>Lng: {location.longitude}</p>
+                        <p>Radius: {location.delivery_radius_km} km</p>
+                        <p>Wait: {location.current_wait_time_minutes} min</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSetPrimaryLocation(location)}
+                          disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
+                        >
+                          {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
+                        </Button>
+                        {location.is_active ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeactivateLocation(location.location_id)}
+                            disabled={locationSaving}
+                          >
+                            Deactivate
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReactivateLocation(location.location_id)}
+                            disabled={locationSaving}
+                          >
+                            Reactivate
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card id="storefront-branding-settings">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <Building2 className="w-5 h-5 text-teal-600" />
+                Storefront Media
+              </CardTitle>
+              <CardDescription>
+                Upload public storefront cover photo and profile icon used in discovery cards, map popups, and the tenant storefront header.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1899,7 +2393,7 @@ export default function Settings() {
 
           <Card id="storefront-content-settings">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                 <Star className="w-5 h-5 text-orange-500" />
                 Storefront Content
               </CardTitle>
@@ -2072,40 +2566,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          <Card id="business-mode-settings">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-teal-600" />
-                Business Mode
-              </CardTitle>
-              <CardDescription>
-                Template mode controls presets and navigation behavior. Manufacturing-family modes keep full IMS/POS surfaces, while Simple (MSME) keeps streamlined flows.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <Label>Workflow Mode</Label>
-                <select
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
-                  value={normalizeWorkflowMode(settings.opsWorkflowMode)}
-                  onChange={(event) => handleChange('opsWorkflowMode', normalizeWorkflowMode(event.target.value))}
-                  disabled={currentUser?.is_master_admin !== true}
-                >
-                  {WORKFLOW_MODE_VALUES.map((mode) => (
-                    <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-xs text-slate-600">
-                Active mode after save: <span className="font-semibold text-slate-900">{getWorkflowModeLabel(settings.opsWorkflowMode)}</span>
-              </p>
-              {currentUser?.is_master_admin !== true && (
-                <p className="text-xs text-amber-700">
-                  Only master admin can change Business Mode.
-                </p>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {subscriptionFeaturesEnabled && (
@@ -2117,7 +2577,7 @@ export default function Settings() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                     <CreditCard className="w-5 h-5 text-teal-600" />
                     Subscription Management
                   </CardTitle>
@@ -2376,12 +2836,12 @@ export default function Settings() {
         <TabsContent value="pos" id="tab-pos" className="space-y-6">
           <Card id="receipt-contract-settings">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                 <Building2 className="w-5 h-5 text-teal-600" />
-                POS Setup & Receipt Metadata
+                Receipt & POS Metadata
               </CardTitle>
               <CardDescription>
-                Configure business and compliance header details shown on digital receipts.
+                Configure receipt identity, cashier closeout defaults, terminal policy, and checkout presets.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2442,6 +2902,10 @@ export default function Settings() {
                     placeholder="Optional receipt footer"
                   />
                 </div>
+                <div className="md:col-span-2 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Cashier closeout defaults</h3>
+                  <p className="text-xs text-slate-500">Used by shifts and daily reconciliation without changing receipt identity.</p>
+                </div>
                 <div className="space-y-2">
                   <Label>Petty Cash Currency Symbol</Label>
                   <Input
@@ -2465,59 +2929,9 @@ export default function Settings() {
                     Used for cashier reconciliation and daily closeout context. Not counted as sales.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Store Tenant Slug</Label>
-                  <Input
-                    value={settings.storeTenantSlug}
-                    onChange={(e) => handleChange('storeTenantSlug', e.target.value)}
-                    placeholder="your-store-slug"
-                    maxLength={80}
-                  />
-                  <p className="text-xs text-slate-500">
-                    Used for storefront URL path: `/store/:slug`.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Store Delivery Fee (PHP)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    value={settings.storeDeliveryFee}
-                    onChange={(e) => handleChange('storeDeliveryFee', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Public Store Visibility</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Show this tenant in general store discovery</span>
-                    <Switch
-                      checked={settings.storeIsVisible === true}
-                      onCheckedChange={(v) => handleChange('storeIsVisible', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>POS Open Status</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Storefront open/closed status reflected to buyers</span>
-                    <Switch
-                      checked={settings.posOpenStatus === true}
-                      onCheckedChange={(v) => handleChange('posOpenStatus', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>POS Wait Time (minutes)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="720"
-                    value={settings.posWaitTimeMinutes}
-                    onChange={(e) => handleChange('posWaitTimeMinutes', e.target.value)}
-                    placeholder="15"
-                  />
+                <div className="md:col-span-2 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Terminal and checkout controls</h3>
+                  <p className="text-xs text-slate-500">Set terminal identity rules, non-editable fee policy context, and cashier discount presets.</p>
                 </div>
                 <div className="space-y-3 md:col-span-2">
                   <div className="flex items-center justify-between">
@@ -2719,248 +3133,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Warehouse className="w-5 h-5 text-teal-600" />
-                Storefront & Tenant Locations
-              </CardTitle>
-              <CardDescription>
-                Manage active fulfillment locations used by the storefront and POS terminal.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-                <p className="text-sm font-semibold text-sky-900">{primaryStorefrontHealthCopy}</p>
-                <p className="text-xs text-sky-700">Discovery last synced: {primaryStorefrontLastSyncCopy}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">Storefront Sync Health</p>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${storefrontSyncHealthClass}`}>
-                    {storefrontSyncHealthLabel}
-                  </span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-2 text-xs text-slate-600">
-                  <p>Last checked: {storefrontSyncCheckedAtCopy}</p>
-                  <p>Source: {storefrontSyncHealth?.source || 'N/A'}</p>
-                  <p>Attempts: {Number.isFinite(Number(storefrontSyncHealth?.attempts)) ? Number(storefrontSyncHealth.attempts) : 0}</p>
-                  <p>Recovered by reconcile: {storefrontSyncHealth?.reconciled === true ? 'Yes' : 'No'}</p>
-                </div>
-                {Array.isArray(storefrontSyncHealth?.errors) && storefrontSyncHealth.errors.length > 0 && (
-                  <p className="text-xs text-amber-700">
-                    Recent sync issues: {storefrontSyncHealth.errors.slice(0, 3).join(' | ')}
-                  </p>
-                )}
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Location Name</Label>
-                  <Input
-                    value={locationForm.name}
-                    onChange={(e) => handleLocationFormChange('name', e.target.value)}
-                    placeholder="Main Branch"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Address</Label>
-                  <Input
-                    value={locationForm.address_line}
-                    onChange={(e) => handleLocationFormChange('address_line', e.target.value)}
-                    placeholder="Street, City, Province"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Map Pin (OpenStreetMap)</Label>
-                  <OpenStreetMapPinPicker
-                    latitude={locationForm.latitude}
-                    longitude={locationForm.longitude}
-                    deliveryRadiusKm={locationForm.delivery_radius_km}
-                    onChange={handleLocationPinChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Delivery Radius (km)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={locationForm.delivery_radius_km}
-                    onChange={(e) => handleLocationFormChange('delivery_radius_km', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Wait Time (minutes)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="720"
-                    value={locationForm.current_wait_time_minutes}
-                    onChange={(e) => handleLocationFormChange('current_wait_time_minutes', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Location Is Open</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Open status visible to buyers</span>
-                    <Switch
-                      checked={locationForm.is_open === true}
-                      onCheckedChange={(v) => handleLocationFormChange('is_open', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Primary Storefront Pin</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Use this as the storefront discovery map pin</span>
-                    <Switch
-                      checked={locationForm.is_primary_storefront === true}
-                      disabled={locationForm.is_active !== true}
-                      onCheckedChange={(v) => handleLocationFormChange('is_primary_storefront', v)}
-                    />
-                  </div>
-                  {locationForm.is_active !== true && (
-                    <p className="text-xs text-amber-700">Primary storefront pin can only be set on an active location.</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>Allow Out-Of-Stock Sales</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Allow ordering items even when stock is zero</span>
-                    <Switch
-                      checked={locationForm.allow_out_of_stock_sales === true}
-                      onCheckedChange={(v) => handleLocationFormChange('allow_out_of_stock_sales', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Supports Delivery</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Enable delivery orders for this location</span>
-                    <Switch
-                      checked={locationForm.supports_delivery === true}
-                      onCheckedChange={(v) => handleLocationFormChange('supports_delivery', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Supports Pickup</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Enable pickup orders for this location</span>
-                    <Switch
-                      checked={locationForm.supports_pickup === true}
-                      onCheckedChange={(v) => handleLocationFormChange('supports_pickup', v)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <div>
-                      <Label>Supports Dine-In</Label>
-                      <p className="text-xs text-slate-500">Enable dine-in reservations or walk-in routing for this location</p>
-                    </div>
-                    <Switch
-                      checked={locationForm.supports_dine_in === true}
-                      onCheckedChange={(v) => handleLocationFormChange('supports_dine_in', v)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" onClick={handleSaveLocation} disabled={locationSaving}>
-                  {locationSaving ? 'Saving...' : editingLocationId ? 'Update Location' : 'Add Location'}
-                </Button>
-                {editingLocationId && (
-                  <Button type="button" variant="outline" onClick={resetLocationForm} disabled={locationSaving}>
-                    Cancel Edit
-                  </Button>
-                )}
-                <Button type="button" variant="outline" onClick={() => loadTenantLocations()} disabled={locationsLoading || locationSaving}>
-                  Refresh List
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Configured Locations</Label>
-                {locationsLoading ? (
-                  <p className="text-sm text-slate-500">Loading locations...</p>
-                ) : tenantLocations.length === 0 ? (
-                  <p className="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg p-3">
-                    No locations configured yet.
-                  </p>
-                ) : (
-                  tenantLocations.map((location) => (
-                    <div
-                      key={`tenant-location-${location.location_id}`}
-                      className="rounded-lg border border-slate-200 p-3 space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{location.name}</p>
-                          <p className="text-xs text-slate-500">{location.address_line}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${location.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {location.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${location.is_open ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {location.is_open ? 'Open' : 'Closed'}
-                          </span>
-                          {location.is_primary_storefront === true && (
-                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-sky-100 text-sky-700">
-                              Primary
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-600">
-                        <p>Lat: {location.latitude}</p>
-                        <p>Lng: {location.longitude}</p>
-                        <p>Radius: {location.delivery_radius_km} km</p>
-                        <p>Wait: {location.current_wait_time_minutes} min</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSetPrimaryLocation(location)}
-                          disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
-                        >
-                          {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
-                        </Button>
-                        {location.is_active ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDeactivateLocation(location.location_id)}
-                            disabled={locationSaving}
-                          >
-                            Deactivate
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReactivateLocation(location.location_id)}
-                            disabled={locationSaving}
-                          >
-                            Reactivate
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="compliance" id="tab-compliance" className="space-y-6">
@@ -2971,7 +3143,7 @@ export default function Settings() {
         <TabsContent value="system" id="tab-system" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
                 <SettingsIcon className="w-5 h-5 text-teal-600" />
                 Stock Thresholds
               </CardTitle>
@@ -3089,6 +3261,25 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
+        {currentTab !== 'compliance' ? (
+          <div className="mx-auto flex max-w-4xl gap-2 pr-14">
+            <Button type="button" variant="outline" onClick={handleReset} className="flex-1">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Revert
+            </Button>
+            <Button type="button" onClick={handleSave} className="flex-[1.35] bg-teal-600 hover:bg-teal-700">
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-4xl rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 pr-14 text-xs text-emerald-800">
+            Compliance sections save independently.
+          </div>
+        )}
+      </div>
 
       {/* User Management Modal */}
       {showUserManagement && (

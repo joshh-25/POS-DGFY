@@ -25,7 +25,7 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
 import { metricsMiddleware } from './middleware/metricsMiddleware.js';
 import logger from './config/logger.js';
-import { generalLimiter } from './middleware/rateLimiter.js';
+import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
 import { initBillingScheduler } from './schedulers/billingScheduler.js';
@@ -184,10 +184,14 @@ const isDevelopmentOriginAllowed = (origin) => {
   const developmentOriginPatterns = [
     /^http:\/\/localhost:517[0-9]$/,
     /^http:\/\/127\.0\.0\.1:517[0-9]$/,
+    /^http:\/\/localhost:417[0-9]$/,
+    /^http:\/\/127\.0\.0\.1:417[0-9]$/,
     /^http:\/\/localhost:5000$/,
     /^http:\/\/127\.0\.0\.1:5000$/,
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:517[0-9]$/,
+    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
+    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
   ];
 
@@ -208,11 +212,15 @@ const isDevelopmentOriginAllowed = (origin) => {
   }
 };
 
-const resolveCorsAllowed = (origin) => (
-  configuredCorsOrigins.length > 0
-    ? isExplicitOriginAllowed(origin)
-    : isDevelopmentOriginAllowed(origin)
-);
+const resolveCorsAllowed = (origin) => {
+  if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(origin)) {
+    return true;
+  }
+  if (!isProduction) {
+    return isDevelopmentOriginAllowed(origin);
+  }
+  return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(origin);
+};
 
 const corsOptionsDelegate = (req, callback) => {
   const origin = req.headers.origin || null;
@@ -558,11 +566,12 @@ const scheduleBillingFunnelAudit = () => {
 };
 
 // Health check — intentionally before tenantHandler (no business middleware)
-app.get('/health', async (req, res) => {
+const handleHealthCheck = async (req, res) => {
   const { health, statusCode } = await buildHealthResponse({
     testConnectionFn: testConnection,
     isRedisConnectedFn: isRedisConnected,
     getTenantPoolStatsFn: () => tenantConnector.getPoolStats(),
+    getRateLimiterStoreModeFn: getRateLimiterStoreMode,
     runtimeSchemaAuditState,
     schemaIndexAuditState,
     billingFunnelAuditState,
@@ -570,7 +579,9 @@ app.get('/health', async (req, res) => {
   });
 
   res.status(statusCode).json(health);
-});
+};
+app.get('/health', handleHealthCheck);
+app.get('/api/v1/health', handleHealthCheck);
 
 app.get('/metrics', (req, res) => {
   if (!metricsEnabled()) {
@@ -619,6 +630,7 @@ import analyticsRoutes from './routes/analytics.js';
 import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
+import servicesRoutes from './routes/services.js';
 import salesRoutes from './routes/sales.js';
 import tenantLocationRoutes from './routes/tenantLocations.js';
 import storeRoutes from './routes/store.js';
@@ -645,6 +657,7 @@ app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/tenant-locations', tenantLocationRoutes);
 app.use('/api/v1/store', storeRoutes);

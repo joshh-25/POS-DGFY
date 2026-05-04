@@ -13,6 +13,7 @@ import {
     buildStoreCartQuoteUseCase,
     buildStoreCheckoutUseCase,
     buildTrackStoreOrderUseCase,
+    buildClaimStoreOrderUseCase,
     buildCancelStoreOrderUseCase,
     buildListStoreCustomerOrdersUseCase,
     buildGetStorefrontFollowStatusUseCase,
@@ -33,6 +34,7 @@ export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddress
 export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository });
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
+export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({ storeRepository });

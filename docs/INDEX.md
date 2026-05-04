@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-04-28
+last_reviewed: 2026-05-04
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -37,9 +37,16 @@ Canonical planning entry:
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
 - POS/storefront source separation contract is maintained in `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md` with validation evidence in `docs/testing/pos-readiness-status.md`.
 - Expanded workflow-mode template behavior and backward-compatible family semantics are governed by ADR 0008 + ADR 0014 and current feature/testing docs.
+- Services Mode independence, booking/ticketing, mode-native IMS/POS/Storefront behavior, stock-exempt POS service sales, and the Food Manufacturing rename are governed by ADR 0016 and `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`.
 - POS offline replay hardening (durable queue statuses + Sync Queue operations console) is tracked in POS feature/testing docs and ADR 0014.
 - Storefront discovery/catalog cache-header contracts and route-level no-store behavior are tracked in API/testing docs and ADR 0014.
 - Tenant first-login onboarding advisory questionnaire classification is tracked in `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md` and API contracts in `docs/api/specification.md`.
+- Customer Access Modes and Inventory Display are implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and the tenant allowlist `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`. The feature contract is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by ADR 0017.
+- Settings tab/section ownership and deep-link anchors are tracked in `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`.
+- PWA installability and service-worker surface ownership are tracked in `docs/deployment/PWA_SURFACE_CONTRACT.md`.
+- Shared-hosting degraded mode and Redis-capable VPS mode are tracked in `docs/ops/HOSTING_PROFILES.md`, with profile validation through `scripts/check-hosting-profile.js`.
+- Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `manual` remains the default, while `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` temporarily provisions standard registrations immediately and follows with a normal frontend login call.
+- Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.
 - Compliance Final Review documentary requirements are tenant self-serve in Settings > Compliance (backend stores tenant records; submission docs remain internal reference).
@@ -51,5 +58,7 @@ Canonical planning entry:
 
 ## Current Repository Notes
 - Build artifacts are generated into `dist-apps/` and `frontend/dist/` and should be treated as disposable outputs.
+- Vite caches under `frontend/node_modules/.vite*`, repository `.tmp/` gate output, and root `logs/` runtime output are generated/local artifacts; delete only after confirming they are not needed as current evidence.
+- Local AI export temp files are runtime data under `backend/storage/temp-ai-exports/`; they are private runtime artifacts, ignored by Git, and must not be moved under public `/uploads`.
 - Deployment state metadata is kept in `.deploy-state/` and is used by `scripts/deploy.sh` as runtime state only.
 - Historical/non-governed root docs are supplemental only; governed sources are under `docs/`.
