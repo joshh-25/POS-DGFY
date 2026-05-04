@@ -280,10 +280,6 @@ module.exports = {
         created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
         updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
       });
-      await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['public_reference'], {
-        unique: true,
-        name: 'uq_service_bookings_public_reference'
-      });
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['service_item_id'], { name: 'idx_service_bookings_item' });
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['store_customer_id'], { name: 'idx_service_bookings_customer' });
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['provider_user_id'], { name: 'idx_service_bookings_provider' });
