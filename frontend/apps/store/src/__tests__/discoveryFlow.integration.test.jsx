@@ -5,26 +5,41 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
-vi.mock('leaflet', () => {
-  const markerApi = () => ({
+vi.mock('maplibre-gl', () => {
+  function PopupApi() {
+    return {
+    setDOMContent: vi.fn().mockReturnThis(),
+    setHTML: vi.fn().mockReturnThis(),
+    setLngLat: vi.fn().mockReturnThis(),
+    addTo: vi.fn().mockReturnThis()
+    };
+  }
+  function MarkerApi() {
+    return {
+    setLngLat: vi.fn().mockReturnThis(),
     addTo: vi.fn().mockReturnThis(),
-    bindPopup: vi.fn().mockReturnThis(),
-    on: vi.fn().mockReturnThis(),
-    remove: vi.fn().mockReturnThis()
-  });
+    remove: vi.fn().mockReturnThis(),
+    setPopup: vi.fn().mockReturnThis(),
+    getElement: vi.fn(() => document.createElement('div'))
+    };
+  }
+  function MapApi() {
+    return {
+      on: vi.fn().mockReturnThis(),
+      off: vi.fn().mockReturnThis(),
+      flyTo: vi.fn().mockReturnThis(),
+      fitBounds: vi.fn().mockReturnThis(),
+      getZoom: vi.fn(() => 13),
+      resize: vi.fn(),
+      remove: vi.fn(),
+      getCanvas: vi.fn(() => ({ style: {} }))
+    };
+  }
   return {
     default: {
-      map: vi.fn(() => ({
-        setView: vi.fn().mockReturnThis(),
-        fitBounds: vi.fn().mockReturnThis(),
-        on: vi.fn().mockReturnThis(),
-        off: vi.fn().mockReturnThis(),
-        invalidateSize: vi.fn(),
-        getContainer: vi.fn(() => ({ style: {} }))
-      })),
-      tileLayer: vi.fn(() => ({ addTo: vi.fn().mockReturnThis() })),
-      marker: vi.fn(markerApi),
-      divIcon: vi.fn((options) => options)
+      Map: vi.fn(MapApi),
+      Marker: vi.fn(MarkerApi),
+      Popup: vi.fn(PopupApi)
     }
   };
 });

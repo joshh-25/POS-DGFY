@@ -29,6 +29,7 @@
     "katex": "^0.16.33",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
+    "maplibre-gl": "^5.24.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
