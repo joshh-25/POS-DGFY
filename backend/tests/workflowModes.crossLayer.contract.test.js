@@ -32,6 +32,8 @@ describe('workflow mode cross-layer contracts', () => {
     it('keeps backend and frontend mode pin metadata aligned', () => {
         expect(frontendPins).toEqual(backendPins);
         expect(frontendPins.services.icon).toBe('CalendarCheck');
+        expect(frontendPins.fnb.label).toBe('Food & Beverage');
+        expect(frontendPins.fnb.icon).toBe('Utensils');
         expect(frontendPins.food_manufacturing.icon).toBe('Factory');
     });
 
@@ -61,5 +63,18 @@ describe('workflow mode cross-layer contracts', () => {
         expect(backendModeHasCapability('services', 'productionWorkflows')).toBe(false);
         expect(frontendModeHasCapability('food_manufacturing', 'productionWorkflows')).toBe(true);
         expect(backendModeHasCapability('food_manufacturing', 'services')).toBe(false);
+    });
+
+    it('keeps Food & Beverage mode restaurant-native and out of manufacturing production workflows', () => {
+        expect(backendLabels.fnb).toBe('Food & Beverage');
+        expect(frontendLabels.fnb).toBe('Food & Beverage');
+        expect(backendModeHasCapability('fnb', 'fnbDining')).toBe(true);
+        expect(backendModeHasCapability('fnb', 'menuModifiers')).toBe(true);
+        expect(backendModeHasCapability('fnb', 'tableService')).toBe(true);
+        expect(backendModeHasCapability('fnb', 'kitchenQueue')).toBe(true);
+        expect(backendModeHasCapability('fnb', 'restaurantServiceCharge')).toBe(true);
+        expect(backendModeHasCapability('fnb', 'productionWorkflows')).toBe(false);
+        expect(frontendModeHasCapability('fnb', 'fnbDining')).toBe(true);
+        expect(frontendModeHasCapability('fnb', 'productionWorkflows')).toBe(false);
     });
 });

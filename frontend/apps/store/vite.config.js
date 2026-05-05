@@ -53,6 +53,18 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/store'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('maplibre-gl')) return 'vendor-map';
+          if (id.includes('qrcode')) return 'vendor-qr';
+          if (id.includes('sonner')) return 'vendor-feedback';
+          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+          return 'vendor';
+        }
+      }
+    }
   }
 });

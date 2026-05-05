@@ -127,6 +127,7 @@ Before enabling a tenant:
 2. Run `npm run doctor:runtime`.
 3. Refresh or verify storefront discovery indexing for that tenant.
 4. Confirm Storefront hides quote/checkout/booking for non-transaction effective modes.
+5. Confirm stock-bearing items show both location stock and FIFO batch data on item detail views. These two surfaces are paired: location stock shows where quantity exists, and FIFO batches show the per-location batch differences operators use for depletion, age, cost, and expiry decisions.
 
 ## Hosting Profile Notes
 

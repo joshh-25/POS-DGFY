@@ -38,6 +38,7 @@ Each mode must feel native to its business type across IMS, POS, and Storefront.
 3. Define mode-native nouns.
    - Services uses services, appointments, clients, providers, resources, waitlist, tickets, and receipts.
    - Food Manufacturing uses production, job orders, dispatch, batches, stock movements, and inventory.
+   - Food & Beverage uses menus, modifiers, dining areas, tables, checks, guests, servers, courses, kitchen stations, kitchen tickets, reservations, waitlist requests, ingredients, allergen notes, and restaurant service charge.
    - Do not borrow nouns from another mode unless the domain truly shares the workflow.
 
 4. Add backend route guards.
@@ -48,6 +49,7 @@ Each mode must feel native to its business type across IMS, POS, and Storefront.
    - Keep shared primitives where they are correct, such as `item_id` for sellable lines.
    - Add side tables or mode-specific metadata where the shared model does not express the mode.
    - Avoid destructive migration of data hidden by a mode.
+   - Declare stock behavior for every sellable line type as `stock_bearing` or `stock_exempt`. Stock-bearing lines in every mode must use location-scoped FIFO; stock-exempt lines must state why no inventory batch can be affected.
 
 6. Build IMS as the admin/operator console for that mode.
    - Start with the daily workflow.
@@ -108,6 +110,7 @@ A mode cannot be called production-ready while any of these are true:
 - It introduces architecture allowlist entries without an ADR and removal plan.
 - It treats communications as sent without an auditable outbox, delivery status, or provider configuration state.
 - It stores mode-specific setup data but does not render or enforce it in the customer/operator workflow.
+- It sells or consumes stock-bearing items without preserving the paired `item_location_stocks` plus `fifo_batches.location_id` contract needed for operators to compare per-location batch differences in the frontend.
 
 ## Documentation Requirements
 

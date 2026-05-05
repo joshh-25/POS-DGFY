@@ -7,12 +7,13 @@ import {
     buildGetPosTransactionByIdUseCase,
     buildGetDailyZReadingUseCase,
     buildListPosCatalogUseCase,
+    buildScanPosBarcodeUseCase,
     buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
     buildUploadPosCatalogImageUseCase,
     buildUpdateOnlineOrderStatusUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
-import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import { DomainError, DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import dbStore from '../src/utils/dbStore.js';
 
 describe('pos use-cases application result contract', () => {
@@ -131,6 +132,217 @@ describe('pos use-cases application result contract', () => {
             { item_id: 2, name: 'Visible Out Of Stock', pos_visible: true, current_stock: 0 },
             { item_id: 4, name: 'Implicit Visible In Stock', current_stock: 1 }
         ]);
+    });
+
+    it('scanPosBarcode resolves a package barcode into a suggested POS line after eligibility passes', async () => {
+        const resolveCatalogScan = jest.fn().mockResolvedValue({
+            status: 'resolved',
+            barcode: {
+                item_barcode_id: 44,
+                code: 'CASE-6',
+                normalized_code: 'CASE-6',
+                scope: 'package',
+                packaging_level: 'case',
+                quantity_multiplier: 6
+            },
+            item: {
+                item_id: 10,
+                name: 'Bottled Juice',
+                category: 'product',
+                status: 'active',
+                pos_visible: true,
+                current_stock: 24,
+                default_sale_price: 35,
+                pos_readiness: { missing_requirements: [] }
+            }
+        });
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: { resolveCatalogScan },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+        });
+
+        const result = await dbStore.run({
+            tenantId: 'barcode-pos-test',
+            tenantComplianceModeState: 'non_compliant_active',
+            tenantComplianceModeChoiceRequired: false,
+            tenantComplianceProfile: {}
+        }, () => useCase({
+            payload: { code: 'case-6', location_id: 3 },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.status).toBe('resolved');
+        expect(result.data.suggested_line).toEqual(expect.objectContaining({
+            item_id: 10,
+            quantity: 6,
+            source: 'barcode_scan'
+        }));
+        expect(result.data.suggested_line.scan_metadata).toEqual(expect.objectContaining({
+            barcode_id: 44,
+            code: 'CASE-6',
+            quantity_multiplier: 6,
+            location_id: 3
+        }));
+    });
+
+    it('scanPosBarcode keeps service rows stock-exempt while still requiring POS eligibility', async () => {
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: {
+                resolveCatalogScan: jest.fn().mockResolvedValue({
+                    status: 'resolved',
+                    barcode: {
+                        item_barcode_id: 50,
+                        code: 'SVC-HAIRCUT',
+                        normalized_code: 'SVC-HAIRCUT',
+                        scope: 'service',
+                        packaging_level: 'service',
+                        quantity_multiplier: 1
+                    },
+                    item: {
+                        item_id: 20,
+                        name: 'Haircut',
+                        category: 'service',
+                        status: 'active',
+                        pos_visible: true,
+                        current_stock: 0,
+                        default_sale_price: 150,
+                        serviceDetail: { visible_in_pos: true },
+                        pos_readiness: { missing_requirements: [] }
+                    }
+                })
+            },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 8 })
+        });
+
+        const result = await dbStore.run({
+            tenantId: 'barcode-pos-service-test',
+            tenantComplianceModeState: 'non_compliant_active',
+            tenantComplianceModeChoiceRequired: false,
+            tenantComplianceProfile: {}
+        }, () => useCase({
+            payload: { code: 'svc-haircut', location_id: 8 },
+            user: { user_id: 16 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.status).toBe('resolved');
+        expect(result.data.suggested_line.item_id).toBe(20);
+    });
+
+    it('scanPosBarcode returns an explicit unauthorized-location blocked reason', async () => {
+        const resolveCatalogScan = jest.fn();
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: { resolveCatalogScan },
+            resolveLocationScope: jest.fn().mockRejectedValue(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'User is not allowed to operate this location.',
+                {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_LOCATION_ACCESS_DENIED' }
+                }
+            ))
+        });
+
+        const result = await useCase({
+            payload: { code: '012345678905', location_id: 99 },
+            user: { user_id: 17 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'blocked',
+            reason_code: 'UNAUTHORIZED_LOCATION'
+        }));
+        expect(resolveCatalogScan).not.toHaveBeenCalled();
+    });
+
+    it('scanPosBarcode blocks barcodes that are not scoped for POS', async () => {
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: {
+                resolveCatalogScan: jest.fn().mockResolvedValue({
+                    status: 'blocked',
+                    reason_code: 'BARCODE_SCOPE_NOT_POS'
+                })
+            },
+            resolveLocationScope: jest.fn().mockResolvedValue({
+                location_id: 1,
+                location: { location_id: 1 }
+            })
+        });
+
+        const result = await dbStore.run({
+            tenantId: 'barcode-pos-scope-test',
+            tenantComplianceModeState: 'non_compliant_active',
+            tenantComplianceModeChoiceRequired: false,
+            tenantComplianceProfile: {}
+        }, () => useCase({
+            payload: { code: 'INV-ONLY', location_id: 1 },
+            user: { user_id: 18, tenantId: 'barcode-pos-scope-test' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'blocked',
+            reason_code: 'BARCODE_SCOPE_NOT_POS'
+        }));
+    });
+
+    it('scanPosBarcode routes service booking ticket scans outside POS cart entry', async () => {
+        const resolveCatalogScan = jest.fn();
+        const resolveLocationScope = jest.fn();
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: { resolveCatalogScan },
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            payload: {
+                code: JSON.stringify({ type: 'service_booking', reference: 'SB-456' }),
+                location_id: 1
+            },
+            user: { user_id: 19 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'routed',
+            kind: 'service_booking',
+            reason_code: 'SERVICE_BOOKING_SCAN_ROUTED',
+            booking_reference: 'SB-456'
+        }));
+        expect(result.data).not.toHaveProperty('suggested_line');
+        expect(resolveLocationScope).not.toHaveBeenCalled();
+        expect(resolveCatalogScan).not.toHaveBeenCalled();
+    });
+
+    it('scanPosBarcode gives ticket-scope barcodes a non-cartable ticket reason', async () => {
+        const useCase = buildScanPosBarcodeUseCase({
+            posRepository: {
+                resolveCatalogScan: jest.fn().mockResolvedValue({
+                    status: 'blocked',
+                    reason_code: 'BARCODE_SCOPE_NOT_POS',
+                    blocked_scopes: ['ticket']
+                })
+            },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 1 })
+        });
+
+        const result = await dbStore.run({
+            tenantId: 'barcode-pos-ticket-scope-test',
+            tenantComplianceModeState: 'non_compliant_active',
+            tenantComplianceModeChoiceRequired: false,
+            tenantComplianceProfile: {}
+        }, () => useCase({
+            payload: { code: 'TICKET-ONLY', location_id: 1 },
+            user: { user_id: 20 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'blocked',
+            reason_code: 'TICKET_SCAN_NOT_CARTABLE'
+        }));
     });
 
     it('listPosCatalog requires an authenticated user for location fail-closed enforcement', async () => {

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -18,6 +18,7 @@ Start here for all planning and implementation work:
 - `docs/api`: API specs and integration guides
 - `docs/ops`: production runbooks, hosting profile guidance, no-staging hard-gate policy, and release checklists
   - shared/VPS hosting profile runbook: `docs/ops/HOSTING_PROFILES.md`
+  - Namecheap shared GitHub Actions deploy lane: `docs/ops/NAMECHEAP_SHARED_CICD.md`
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
   - includes evidence and submission packet docs under `docs/compliance/evidence/` and `docs/compliance/submission/`
@@ -26,6 +27,7 @@ Start here for all planning and implementation work:
 - `docs/development`: environment setup and workflow docs
 - `docs/deployment/PWA_SURFACE_CONTRACT.md`: PWA manifest/service-worker surface contract and readiness checklist
 - `docs/features`: feature behavior docs
+  - Food & Beverage Mode: `docs/features/FOOD_AND_BEVERAGE_MODE.md`
 - `docs/setup`: operational setup steps
 - `docs/testing`: verification and audit protocols
 - `docs/reference`: supporting plans, checklists, and quick references
@@ -39,6 +41,10 @@ Start here for all planning and implementation work:
 
 ## Implemented Behind Flag
 - Customer Access Modes and Inventory Display controls are implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and the tenant-scoped rollout allowlist `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`. Current behavior, rollout constraints, public API metadata, and validation evidence are tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.
+
+## Current Cross-Boundary Programs
+- Barcode Identity, Labels, and Scan Routing is governed by `docs/architecture/adr/0018-barcode-identity-labels-and-scan-routing.md` and described in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md`. It keeps barcode identities separate from `sku_code`, supports manufacturer/imported and tenant-generated internal codes, emits browser-print label contracts, and routes scans through existing IMS/POS/Storefront/Services rules instead of bypassing them.
+- Food & Beverage Mode is governed by `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md` and described in `docs/features/FOOD_AND_BEVERAGE_MODE.md`. It keeps `fnb` as the stable internal workflow code, labels it `Food & Beverage`, and adds restaurant-native tables/checks/modifiers/kitchen/reservation/service-charge contracts without reusing manufacturing job-order workflows.
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
@@ -56,7 +62,7 @@ Start here for all planning and implementation work:
 - Compliance activation readiness browser E2E guidance is maintained in `docs/testing/README.md`.
 
 ## Current Behavior Notes
-1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008, ADR 0014, and ADR 0016. User-facing `manufacturing` is Food Manufacturing, while `manufacturing` remains a legacy alias.
+1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008, ADR 0014, ADR 0016, and ADR 0019. User-facing `manufacturing` is Food Manufacturing, `fnb` is Food & Beverage, and `manufacturing` remains a legacy alias.
 2. POS setup is wizard-first; item cards no longer host single-item POS setup widgets.
 3. POS visibility enablement is readiness-gated with deterministic denial metadata for unresolved requirements.
 4. Final Review documentary readiness is tenant self-serve in Settings > Compliance; repo submission docs are reference artifacts, not tenant input.
@@ -71,13 +77,15 @@ Start here for all planning and implementation work:
 13. Tenant first-login onboarding now supports business classification (`business_classification`) with deterministic snapshot outputs (`visibility_mode`, `customer_access_mode`, `inventory_display_mode`, `monetization_tier`, `workflow_mode_recommendation`, `compliance_path_hint`) while keeping readiness completion gates unchanged.
 14. Settings information architecture is split by user mental model: Profile, Company, Storefront, POS Setup, Compliance, and System (`docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`).
 15. SKUpervisor/admin, POS, and Storefront all have PWA source contracts with manifests and service-worker entrypoints; admin/SKUpervisor service-worker caching bypasses `/api/` and `/uploads/`.
-16. Hosting mode is selected from one codebase by environment profile (`shared` or `vps`) and validated by `npm run preflight:shared` / `npm run preflight:vps`; runtime capabilities are visible through `/health`, `/api/v1/health`, and Admin > Hosting.
+16. Hosting mode is selected from one codebase by environment profile (`shared` or `vps`) and validated by `npm run preflight:shared` / `npm run preflight:vps`; runtime capabilities are visible through `/health`, `/api/v1/health`, and Admin > Hosting. Namecheap shared production deploys use `.github/workflows/deploy-namecheap-shared.yml` plus the runbook in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
 17. Services Mode is a first-class workflow mode across IMS, POS, and Storefront. It uses item-backed service catalog rows plus service metadata, appointment bookings, resources/providers, waitlist, intake forms, reminder outbox, client signals, and stock-exempt POS service sales.
 18. Standard company registration defaults to manual platform-admin approval. `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the temporary opt-in path for immediately provisioning standard tenants and signing the founder in through the normal login API; premium/subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 19. Public company registration has its own strict IP limiter (`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`) because `auto_standard` can create tenant databases from a public request.
 20. Customer Access Mode is the runtime storefront capability contract behind a controlled rollout flag. Discovery/profile/catalog responses expose additive access metadata; `ghost` suppresses public item-search/catalog rows, `catalog` and `inquiry` suppress cart/quote/checkout/booking, and `transaction` preserves current ordering/booking behavior subject to existing stock, location, compliance, and payment gates.
 21. Inventory Display is independent from Customer Access Mode. Public storefront payloads keep raw `current_stock` and `cost_per_unit` private while exposing only the normalized `inventory_display` object allowed by tenant settings.
 22. POS and Storefront item catalog controls are independent. POS uses `pos_catalog_overrides`; Storefront uses `storefront_catalog_overrides`. POS-derived Storefront fallback is allowed only when the Storefront override table is unavailable during rollout, not when an individual Storefront override row is missing.
+23. Barcode scans identify inventory/POS/Storefront/service/ticket/package context only. Assignment conflicts fail closed, POS scans are readiness-gated, service booking/ticket QR scans route instead of becoming cart lines, Storefront QR follows Customer Access Mode, service scans stay stock-exempt, label print intent is audited, and offline POS replay revalidates stored scan metadata server-side.
+24. Food & Beverage Mode is a first-class restaurant workflow across IMS, POS, and Storefront. IMS exposes menu modifiers, dining areas/tables, kitchen stations, checks, multi-table reservations/waitlist requests, and restaurant service-charge settings. POS checkout accepts additive F&B table/check/server/guest/course/modifier/kitchen/service-charge snapshots while keeping the DGFY convenience fee in `service_fee_amount`. Storefront lazy-loads F&B reservation and map components so restaurant-only UI does not inflate the initial public catalog entry.
 
 ## Rules
 1. Use authoritative docs first.

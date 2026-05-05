@@ -5,6 +5,15 @@ export const fetchPosCatalog = async (params = {}) => {
     return response.data?.data || [];
 };
 
+export const scanPosBarcode = async (payload = {}) => {
+    const response = await api.post('/pos/scan', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined
+    });
+    return response.data?.data;
+};
+
 export const createPosCheckout = async (payload) => {
     const response = await api.post('/pos/checkouts', payload, {
         headers: payload?.terminal_id
@@ -89,6 +98,7 @@ export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) =>
 
 export default {
     fetchPosCatalog,
+    scanPosBarcode,
     createPosCheckout,
     fetchPosTransactions,
     fetchPosTransactionById,

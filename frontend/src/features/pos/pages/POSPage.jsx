@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import POSCheckoutTerminal from '../components/POSCheckoutTerminal';
 import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
-import { isServicesWorkflowMode } from '../../settings/workflowMode.js';
+import { isFnbWorkflowMode, isServicesWorkflowMode } from '../../settings/workflowMode.js';
 import { listServiceBookings, updateServiceBookingStatus } from '../../services/api/servicesApi.js';
+
+const FnbDiningPanel = lazy(() => import('../../fnb/components/FnbDiningPanel.jsx'));
 
 const servicePosActions = [
     { status: 'confirmed', label: 'Confirm', icon: CalendarCheck },
@@ -84,7 +86,7 @@ function ServicesPosQueue() {
                             <div>
                                 <p className="text-sm font-semibold text-slate-900">{booking.public_reference}</p>
                                 <p className="mt-1 text-sm text-slate-600">{booking.service_name || booking.serviceItem?.name || 'Service'}</p>
-                                <p className="text-xs text-slate-500">{booking.customer_name || 'Guest'} · {formatBookingTime(booking.start_at)}</p>
+                                <p className="text-xs text-slate-500">{booking.customer_name || 'Guest'} - {formatBookingTime(booking.start_at)}</p>
                             </div>
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{booking.status}</span>
                         </div>
@@ -118,6 +120,7 @@ export default function POSPage() {
     const { workflowMode } = useWorkflowMode();
     const canViewPos = can('pos:view');
     const canTransactPos = can('pos:transact');
+    const [fnbCheckoutContext, setFnbCheckoutContext] = useState(null);
 
     if (loading) {
         return <p className="text-sm text-slate-500">Loading POS permissions...</p>;
@@ -134,7 +137,12 @@ export default function POSPage() {
                 <p className="text-sm text-slate-500">Checkout POS-visible items, collect service payments, issue digital receipts, and generate daily Z-reading.</p>
             </div>
             {isServicesWorkflowMode(workflowMode) && <ServicesPosQueue />}
-            <POSCheckoutTerminal canViewHistory={canViewPos} />
+            {isFnbWorkflowMode(workflowMode) && (
+                <Suspense fallback={<section className="rounded-lg border border-red-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Food & Beverage service controls...</section>}>
+                    <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />
+                </Suspense>
+            )}
+            <POSCheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />
         </div>
     );
 }

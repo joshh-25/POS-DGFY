@@ -29,6 +29,7 @@ import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
 import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
+import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
@@ -54,6 +55,19 @@ import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
+import FnbModifierGroup from './FnbModifierGroup.js';
+import FnbModifierOption from './FnbModifierOption.js';
+import FnbItemModifierGroup from './FnbItemModifierGroup.js';
+import FnbDiningArea from './FnbDiningArea.js';
+import FnbDiningTable from './FnbDiningTable.js';
+import FnbKitchenStation from './FnbKitchenStation.js';
+import FnbItemKitchenRoute from './FnbItemKitchenRoute.js';
+import FnbCheck from './FnbCheck.js';
+import FnbCheckLine from './FnbCheckLine.js';
+import FnbKitchenTicket from './FnbKitchenTicket.js';
+import FnbReservationRequest from './FnbReservationRequest.js';
+import FnbReservationTable from './FnbReservationTable.js';
+import FnbRestaurantServiceChargeSnapshot from './FnbRestaurantServiceChargeSnapshot.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
@@ -135,6 +149,8 @@ Item.hasMany(JOIngredient, { foreignKey: 'item_id', as: 'joIngredients' });
 
 Item.hasMany(StockMovement, { foreignKey: 'item_id', as: 'stockMovements' });
 Item.hasOne(ItemEmbedding, { foreignKey: 'item_id', as: 'embedding' });
+Item.hasMany(ItemBarcode, { foreignKey: 'item_id', as: 'barcodes' });
+ItemBarcode.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 
 // Supplier associations
 Supplier.hasMany(SupplierItem, { foreignKey: 'supplier_id', as: 'supplierItems' });
@@ -248,6 +264,7 @@ PosTransaction.belongsTo(User, { foreignKey: 'accepted_by', as: 'acceptedByUser'
 PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
@@ -332,6 +349,55 @@ StoreCustomer.hasMany(ServiceBooking, { foreignKey: 'store_customer_id', as: 'se
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 
+// Food & Beverage associations
+FnbModifierGroup.hasMany(FnbModifierOption, { foreignKey: 'modifier_group_id', as: 'options' });
+FnbModifierOption.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'group' });
+FnbModifierOption.belongsTo(Item, { foreignKey: 'sku_item_id', as: 'skuItem' });
+Item.belongsToMany(FnbModifierGroup, {
+  through: FnbItemModifierGroup,
+  foreignKey: 'item_id',
+  otherKey: 'modifier_group_id',
+  as: 'fnbModifierGroups'
+});
+FnbModifierGroup.belongsToMany(Item, {
+  through: FnbItemModifierGroup,
+  foreignKey: 'modifier_group_id',
+  otherKey: 'item_id',
+  as: 'menuItems'
+});
+FnbItemModifierGroup.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+FnbItemModifierGroup.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'modifierGroup' });
+FnbDiningArea.hasMany(FnbDiningTable, { foreignKey: 'dining_area_id', as: 'tables' });
+FnbDiningTable.belongsTo(FnbDiningArea, { foreignKey: 'dining_area_id', as: 'area' });
+FnbDiningTable.hasMany(FnbCheck, { foreignKey: 'table_id', as: 'checks' });
+FnbDiningTable.hasMany(FnbReservationRequest, { foreignKey: 'table_id', as: 'reservations' });
+FnbDiningTable.hasMany(FnbReservationTable, { foreignKey: 'table_id', as: 'reservationAssignments' });
+FnbKitchenStation.hasMany(FnbItemKitchenRoute, { foreignKey: 'kitchen_station_id', as: 'itemRoutes' });
+FnbItemKitchenRoute.belongsTo(FnbKitchenStation, { foreignKey: 'kitchen_station_id', as: 'station' });
+FnbItemKitchenRoute.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(FnbItemKitchenRoute, { foreignKey: 'item_id', as: 'fnbKitchenRoutes' });
+FnbCheck.belongsTo(FnbDiningTable, { foreignKey: 'table_id', as: 'table' });
+FnbCheck.belongsTo(FnbDiningArea, { foreignKey: 'dining_area_id', as: 'area' });
+FnbCheck.belongsTo(User, { foreignKey: 'server_id', as: 'server' });
+FnbCheck.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+FnbCheck.hasMany(FnbCheckLine, { foreignKey: 'check_id', as: 'lines' });
+FnbCheck.hasMany(FnbKitchenTicket, { foreignKey: 'check_id', as: 'kitchenTickets' });
+FnbCheckLine.belongsTo(FnbCheck, { foreignKey: 'check_id', as: 'check' });
+FnbCheckLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+FnbCheckLine.belongsTo(FnbKitchenStation, { foreignKey: 'kitchen_station_id', as: 'kitchenStation' });
+FnbKitchenTicket.belongsTo(FnbCheck, { foreignKey: 'check_id', as: 'check' });
+FnbKitchenTicket.belongsTo(FnbKitchenStation, { foreignKey: 'kitchen_station_id', as: 'station' });
+FnbReservationRequest.belongsTo(FnbDiningTable, { foreignKey: 'table_id', as: 'table' });
+FnbReservationRequest.hasMany(FnbReservationTable, { foreignKey: 'reservation_request_id', as: 'reservationTables' });
+FnbReservationTable.belongsTo(FnbReservationRequest, { foreignKey: 'reservation_request_id', as: 'reservation' });
+FnbReservationTable.belongsTo(FnbDiningTable, { foreignKey: 'table_id', as: 'table' });
+PosTransaction.belongsTo(FnbCheck, { foreignKey: 'fnb_check_id', as: 'fnbCheck' });
+PosTransaction.belongsTo(FnbDiningTable, { foreignKey: 'fnb_table_id', as: 'fnbTable' });
+FnbCheck.hasMany(PosTransaction, { foreignKey: 'fnb_check_id', as: 'transactions' });
+FnbRestaurantServiceChargeSnapshot.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+FnbRestaurantServiceChargeSnapshot.belongsTo(FnbCheck, { foreignKey: 'check_id', as: 'check' });
+PosTransaction.hasOne(FnbRestaurantServiceChargeSnapshot, { foreignKey: 'pos_transaction_id', as: 'restaurantServiceChargeSnapshot' });
+
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -377,6 +443,7 @@ const db = {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
   PosTransaction,
@@ -402,6 +469,19 @@ const db = {
   ServiceBooking,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  FnbModifierGroup,
+  FnbModifierOption,
+  FnbItemModifierGroup,
+  FnbDiningArea,
+  FnbDiningTable,
+  FnbKitchenStation,
+  FnbItemKitchenRoute,
+  FnbCheck,
+  FnbCheckLine,
+  FnbKitchenTicket,
+  FnbReservationRequest,
+  FnbReservationTable,
+  FnbRestaurantServiceChargeSnapshot,
   Tenant,
   UserTenantMapping,
   UserInvitation,
@@ -451,6 +531,7 @@ export {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
   PosTransaction,
@@ -476,6 +557,19 @@ export {
   ServiceBooking,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  FnbModifierGroup,
+  FnbModifierOption,
+  FnbItemModifierGroup,
+  FnbDiningArea,
+  FnbDiningTable,
+  FnbKitchenStation,
+  FnbItemKitchenRoute,
+  FnbCheck,
+  FnbCheckLine,
+  FnbKitchenTicket,
+  FnbReservationRequest,
+  FnbReservationTable,
+  FnbRestaurantServiceChargeSnapshot,
   Tenant,
   UserTenantMapping,
   UserInvitation,

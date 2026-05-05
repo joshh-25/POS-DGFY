@@ -57,3 +57,14 @@ This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDA
 - POS service catalog visibility is evaluated against `service_item_details.visible_in_pos`; service rows are stock-exempt, display as service sales, and can be checked out without inventory stock deduction.
 - IMS Services can define a starter intake question on service creation, queue/process reminders, view reminder outcomes, select providers from the existing users API, and review client retention/no-show signals.
 - Reminder, intake, waitlist, client history, provider/resource assignment, lifecycle, and dashboard behavior must remain covered by focused use-case and contract tests before readiness ratings are raised.
+
+## FIFO And Location Stock Addendum (2026-05-06)
+
+Services Mode does not remove FIFO or location stock from the tenant. It only exempts truly service-only sale lines from stock deduction. If a Services Mode tenant sells or consumes a physical item, add-on, product, kit, consumable, or supply, that line is stock-bearing and must use the same location-scoped FIFO contract as every other mode.
+
+Implications:
+
+- Service booking, ticketing, reminder, intake, provider, resource, waitlist, and client-history records are non-stock workflow records.
+- `items.category = service` rows remain stock-exempt unless a future package/component model explicitly attaches stock-bearing components.
+- Physical catalog rows shown in Services Mode POS or Storefront must show location availability and deduct from FIFO batches at the operating/fulfillment location.
+- Frontend item detail views should continue showing location stock and batch differences for stock-bearing Services Mode inventory so operators can see which location and batch will be affected.

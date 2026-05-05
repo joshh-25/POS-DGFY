@@ -21,6 +21,10 @@ import {
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import {
+    normalizeBarcodeValue,
+    parseBarcodeStructuredPayload
+} from '../../shared/utils/barcodePolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -29,6 +33,7 @@ const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
+const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
@@ -327,6 +332,7 @@ const normalizeZReadingSummary = (summary = {}) => ({
     subtotal_amount: round4(summary?.subtotal_amount),
     discount_amount: round4(summary?.discount_amount),
     service_fee_total: round4(summary?.service_fee_total),
+    restaurant_service_charge_total: round4(summary?.restaurant_service_charge_total),
     vatable_sales: round4(summary?.vatable_sales),
     vat_amount: round4(summary?.vat_amount),
     vat_exempt_sales: round4(summary?.vat_exempt_sales),
@@ -907,6 +913,212 @@ const resolveCheckoutServiceFee = ({ payload, grossSubtotal }) => {
     };
 };
 
+const parseSettingJsonValue = (settings = {}, key, fallback = null) => {
+    const raw = settings?.[key]?.value;
+    if (raw == null) return fallback;
+    if (typeof raw === 'object') return raw;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return fallback;
+    }
+};
+
+const normalizeFnbCourse = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return FNB_COURSES.has(normalized) ? normalized : null;
+};
+
+const normalizeFnbModifiersSnapshot = (value) => {
+    if (!Array.isArray(value)) return null;
+    return value
+        .map((modifier) => {
+            if (!isPlainObject(modifier)) return null;
+            const optionName = String(modifier.option_name || modifier.name || '').trim();
+            const groupName = String(modifier.group_name || modifier.group || '').trim();
+            return {
+                modifier_group_id: parsePositiveInt(modifier.modifier_group_id),
+                modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
+                group_name: groupName || null,
+                option_name: optionName || null,
+                price_delta: round4(modifier.price_delta || 0)
+            };
+        })
+        .filter((modifier) => (
+            modifier
+            && (
+                modifier.modifier_group_id
+                || modifier.modifier_option_id
+                || modifier.group_name
+                || modifier.option_name
+                || modifier.price_delta
+            )
+        ));
+};
+
+const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext }) => {
+    const requestedModifiers = normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || [];
+    const groups = Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : [];
+    if (!hasFnbCheckoutContext && requestedModifiers.length === 0) {
+        return {
+            modifiersSnapshot: null,
+            modifierPriceDelta: 0
+        };
+    }
+    if (groups.length === 0) {
+        if (requestedModifiers.length > 0) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Item "${item.name}" does not have configured F&B modifier groups`,
+                { statusCode: 422, details: { item_id: item.item_id } }
+            );
+        }
+        return {
+            modifiersSnapshot: null,
+            modifierPriceDelta: 0
+        };
+    }
+
+    const requestedByGroup = new Map();
+    for (const modifier of requestedModifiers) {
+        const groupId = parsePositiveInt(modifier.modifier_group_id);
+        const optionId = parsePositiveInt(modifier.modifier_option_id);
+        if (!groupId || !optionId) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier selections for "${item.name}" must include modifier_group_id and modifier_option_id`,
+                { statusCode: 422, details: { item_id: item.item_id } }
+            );
+        }
+        const entries = requestedByGroup.get(groupId) || [];
+        entries.push(optionId);
+        requestedByGroup.set(groupId, entries);
+    }
+
+    const snapshots = [];
+    let modifierPriceDelta = 0;
+    for (const group of groups) {
+        const groupId = parsePositiveInt(group.modifier_group_id);
+        const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
+        const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
+        const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : Number.parseInt(group.min_select || 0, 10) || 0;
+        const maxSelect = Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
+        const selectedOptionIds = requestedByGroup.get(groupId) || [];
+        if (selectedOptionIds.length < minSelect || selectedOptionIds.length > maxSelect) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier group "${group.display_name || group.name}" requires ${minSelect}-${maxSelect} selections`,
+                {
+                    statusCode: 422,
+                    details: {
+                        item_id: item.item_id,
+                        modifier_group_id: groupId,
+                        selected_count: selectedOptionIds.length,
+                        min_select: minSelect,
+                        max_select: maxSelect
+                    }
+                }
+            );
+        }
+        const options = Array.isArray(group.options) ? group.options : [];
+        for (const optionId of selectedOptionIds) {
+            const option = options.find((entry) => Number(entry.modifier_option_id) === Number(optionId));
+            if (!option || option.is_active === false) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Selected modifier option is not active for "${item.name}"`,
+                    {
+                        statusCode: 422,
+                        details: { item_id: item.item_id, modifier_group_id: groupId, modifier_option_id: optionId }
+                    }
+                );
+            }
+            const priceDelta = round4(option.price_delta || 0);
+            modifierPriceDelta = round4(modifierPriceDelta + priceDelta);
+            snapshots.push({
+                modifier_group_id: groupId,
+                modifier_option_id: optionId,
+                group_name: group.display_name || group.name || null,
+                option_name: option.name || null,
+                price_delta: priceDelta,
+                allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+            });
+        }
+        requestedByGroup.delete(groupId);
+    }
+
+    if (requestedByGroup.size > 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `One or more modifier groups are not configured for "${item.name}"`,
+            { statusCode: 422, details: { item_id: item.item_id, modifier_group_ids: Array.from(requestedByGroup.keys()) } }
+        );
+    }
+
+    return {
+        modifiersSnapshot: snapshots.length > 0 ? snapshots : null,
+        modifierPriceDelta
+    };
+};
+
+const normalizeRestaurantServiceChargeInput = ({ payload = {}, settings = {}, useSettings = true } = {}) => {
+    const fromPayload = isPlainObject(payload.restaurant_service_charge)
+        ? payload.restaurant_service_charge
+        : null;
+    const fromSettings = useSettings ? parseSettingJsonValue(settings, 'fnb_restaurant_service_charge', {}) : {};
+    const source = fromPayload || fromSettings || {};
+    const enabled = source.enabled === true;
+    const rate = Math.min(100, Math.max(0, round4(source.rate || 0)));
+    const amount = source.amount == null ? null : Math.max(0, round4(source.amount));
+    const label = String(source.label || 'Restaurant service charge').trim().slice(0, 120) || 'Restaurant service charge';
+    return {
+        enabled,
+        amount,
+        label,
+        rate,
+        taxable: source.taxable === true,
+        source: fromPayload ? 'payload' : 'settings'
+    };
+};
+
+const resolveRestaurantServiceCharge = ({
+    payload = {},
+    settings = {},
+    netItemsTotal = 0,
+    useSettings = true
+} = {}) => {
+    const normalized = normalizeRestaurantServiceChargeInput({ payload, settings, useSettings });
+    if (!normalized.enabled) {
+        return {
+            restaurantServiceChargeAmount: 0,
+            restaurantServiceChargeLabelSnapshot: null,
+            restaurantServiceChargeRateSnapshot: null,
+            restaurantServiceChargeTaxable: false,
+            restaurantServiceChargeSnapshot: null
+        };
+    }
+
+    const amount = normalized.amount == null
+        ? round4(netItemsTotal * (normalized.rate / 100))
+        : round4(normalized.amount);
+
+    return {
+        restaurantServiceChargeAmount: amount,
+        restaurantServiceChargeLabelSnapshot: amount > 0 ? normalized.label : null,
+        restaurantServiceChargeRateSnapshot: amount > 0 ? normalized.rate : null,
+        restaurantServiceChargeTaxable: normalized.taxable,
+        restaurantServiceChargeSnapshot: amount > 0
+            ? {
+                enabled: true,
+                label: normalized.label,
+                rate: normalized.rate,
+                taxable: normalized.taxable,
+                source: normalized.source
+            }
+            : null
+    };
+};
+
 const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
     const profileName = String(payload?.discount_profile_name || '').trim();
     const requestedDiscount = round4(payload?.discount_amount || 0);
@@ -1111,12 +1323,38 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
         }
 
         const requestedTerminalId = sanitizeTerminalId(payload.terminal_id);
+        const fnbCheckId = parsePositiveInt(payload.fnb_check_id || payload.check_id);
+        const fnbTableId = parsePositiveInt(payload.fnb_table_id || payload.table_id);
+        const fnbGuestCount = parsePositiveInt(payload.fnb_guest_count || payload.guest_count);
+        const fnbServerId = parsePositiveInt(payload.fnb_server_id || payload.server_id);
+        const fnbTableLabelSnapshot = String(payload.fnb_table_label_snapshot || payload.table_label_snapshot || '').trim().slice(0, 120) || null;
+        const hasFnbLineContext = lines.some((line) => (
+            normalizeFnbCourse(line?.course)
+            || Array.isArray(line?.line_modifiers)
+            || Array.isArray(line?.modifiers)
+            || parsePositiveInt(line?.kitchen_station_id)
+            || String(line?.special_instructions || '').trim()
+        ));
+        const hasFnbCheckoutContext = Boolean(
+            fnbCheckId
+            || fnbTableId
+            || fnbGuestCount
+            || fnbServerId
+            || fnbTableLabelSnapshot
+            || hasFnbLineContext
+        );
         const normalizedRequestPayload = {
             terminal_id: requestedTerminalId || null,
             location_id: requestedLocationId,
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
             service_fee_amount: null,
+            fnb_check_id: fnbCheckId,
+            fnb_table_id: fnbTableId,
+            fnb_table_label_snapshot: fnbTableLabelSnapshot,
+            fnb_guest_count: fnbGuestCount,
+            fnb_server_id: fnbServerId,
+            restaurant_service_charge: normalizeRestaurantServiceChargeInput({ payload, useSettings: false }),
             discount_profile_name: String(payload.discount_profile_name || '').trim() || null,
             discount_rate: payload.discount_rate == null ? null : round4(payload.discount_rate),
             discount_amount: round4(payload.discount_amount || 0),
@@ -1132,11 +1370,17 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }
                 : null,
             lines: lines
-                .map((line) => ({
+                .map((line, index) => ({
+                    sequence: index,
                     item_id: Number.parseInt(line.item_id, 10),
                     quantity: round4(line.quantity),
                     sale_price: line.sale_price == null ? null : round4(line.sale_price),
-                    price_override_reason: String(line.price_override_reason || '').trim() || null
+                    price_override_reason: String(line.price_override_reason || '').trim() || null,
+                    course: normalizeFnbCourse(line.course),
+                    line_modifiers: normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || [],
+                    special_instructions: String(line.special_instructions || '').trim() || null,
+                    kitchen_station_id: parsePositiveInt(line.kitchen_station_id),
+                    scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null
                 }))
                 .sort((a, b) => a.item_id - b.item_id)
         };
@@ -1180,7 +1424,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
                 terminal_id: normalizedTerminalId || null,
-                location_id: enforcedCheckoutLocationId
+                location_id: enforcedCheckoutLocationId,
+                restaurant_service_charge: normalizeRestaurantServiceChargeInput({
+                    payload,
+                    settings,
+                    useSettings: hasFnbCheckoutContext
+                })
             });
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
@@ -1268,6 +1517,18 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 locationId: enforcedCheckoutLocationId
             });
             const itemMap = new Map(items.map((item) => [item.item_id, item]));
+            const productCompositions = hasFnbCheckoutContext && typeof posRepository.listProductCompositionsForItems === 'function'
+                ? await posRepository.listProductCompositionsForItems(itemIds, {
+                    transaction,
+                    lock: true
+                })
+                : [];
+            const compositionMap = new Map();
+            for (const composition of productCompositions) {
+                const productId = Number(composition.product_id);
+                if (!compositionMap.has(productId)) compositionMap.set(productId, []);
+                compositionMap.get(productId).push(composition);
+            }
 
             const normalizedShiftId = parsePositiveInt(payload.shift_id);
             if (payload.shift_id != null) {
@@ -1343,11 +1604,42 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
 
             let subtotalAmount = 0;
             const preparedLines = [];
+            const recipeMovementPlanByPreparedLine = [];
 
             for (const line of lines) {
                 const itemId = Number.parseInt(line.item_id, 10);
                 const quantity = Number(line.quantity);
                 const item = itemMap.get(itemId);
+
+                if (line.scan_metadata?.code) {
+                    const replayScan = await posRepository.resolveCatalogScan({
+                        code: line.scan_metadata.code,
+                        location_id: enforcedCheckoutLocationId
+                    });
+                    const replayBlocked = resolvePosScanBlockedReason({ scanResult: replayScan });
+                    const replayBarcodeId = Number(replayScan?.barcode?.item_barcode_id || 0);
+                    const expectedBarcodeId = Number(line.scan_metadata?.barcode_id || 0);
+                    if (
+                        replayBlocked
+                        || replayScan?.status !== 'resolved'
+                        || Number(replayScan?.item?.item_id) !== itemId
+                        || (expectedBarcodeId > 0 && replayBarcodeId !== expectedBarcodeId)
+                    ) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Queued barcode scan must be revalidated before checkout',
+                            {
+                                statusCode: 409,
+                                details: {
+                                    reason_code: replayBlocked?.reason_code || 'BARCODE_REPLAY_REVALIDATION_FAILED',
+                                    item_id: itemId,
+                                    expected_barcode_id: expectedBarcodeId || null,
+                                    resolved_barcode_id: replayBarcodeId || null
+                                }
+                            }
+                        );
+                    }
+                }
 
                 if (!Number.isFinite(quantity) || quantity <= 0) {
                     throw new DomainError(
@@ -1359,24 +1651,51 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
 
                 const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
                 const currentStock = Number(item.current_stock) || 0;
-                if (!isServiceItem && currentStock + 0.000001 < quantity) {
+                const recipeCompositions = compositionMap.get(itemId) || [];
+                const lineRecipeMovements = [];
+                if (!isServiceItem && recipeCompositions.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
                         { statusCode: 400 }
                     );
                 }
+                for (const composition of recipeCompositions) {
+                    const ingredient = composition.ingredient || {};
+                    const ingredientQuantity = round4(Number(composition.quantity_required || 0) * quantity);
+                    if (ingredientQuantity <= 0) continue;
+                    const ingredientStock = Number(ingredient.current_stock || 0);
+                    if (ingredientStock + 0.000001 < ingredientQuantity) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            `Insufficient ingredient stock for "${item.name}": ${ingredient.name || `item ${composition.ingredient_id}`}. Available: ${ingredientStock}, requested: ${ingredientQuantity}`,
+                            {
+                                statusCode: 400,
+                                details: {
+                                    product_item_id: itemId,
+                                    ingredient_item_id: composition.ingredient_id,
+                                    available: ingredientStock,
+                                    requested: ingredientQuantity
+                                }
+                            }
+                        );
+                    }
+                    lineRecipeMovements.push({
+                        product_item_id: itemId,
+                        product_name: item.name,
+                        ingredient_item_id: Number(composition.ingredient_id),
+                        quantity: ingredientQuantity
+                    });
+                }
 
-                const resolvedPrice = line.sale_price == null
-                    ? (
-                        item.default_sale_price != null
-                            ? Number(item.default_sale_price)
-                            : Number(item.cost_per_unit || 0)
-                    )
-                    : Number(line.sale_price);
-                const defaultSalePrice = item.default_sale_price != null
+                const modifierResolution = resolveFnbLineModifiers({ item, line, hasFnbCheckoutContext });
+                const baseSalePrice = item.default_sale_price != null
                     ? Number(item.default_sale_price)
                     : Number(item.cost_per_unit || 0);
+                const defaultSalePrice = round4(baseSalePrice + modifierResolution.modifierPriceDelta);
+                const resolvedPrice = line.sale_price == null
+                    ? defaultSalePrice
+                    : Number(line.sale_price);
 
                 if (!Number.isFinite(resolvedPrice) || resolvedPrice < 0) {
                     throw new DomainError(
@@ -1420,8 +1739,15 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     price_override_reason: salePriceOverridden ? priceOverrideReason : null,
                     line_subtotal: lineSubtotal,
                     vat_type_snapshot: item.vat_type || 'vatable',
-                    vat_rate_snapshot: VAT_RATE
+                    vat_rate_snapshot: VAT_RATE,
+                    fnb_course_snapshot: normalizeFnbCourse(line.course),
+                    fnb_modifiers_snapshot: modifierResolution.modifiersSnapshot,
+                    fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
+                    fnb_kitchen_station_snapshot: parsePositiveInt(line.kitchen_station_id)
+                        ? { kitchen_station_id: parsePositiveInt(line.kitchen_station_id) }
+                        : null
                 });
+                recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
             }
 
             subtotalAmount = round4(subtotalAmount);
@@ -1442,7 +1768,14 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 grossSubtotal: subtotalAmount
             });
             const serviceFeeAmount = round4(serviceFeeResolution.serviceFeeAmount);
-            const totalAmount = round4(netItemsTotal + serviceFeeAmount);
+            const restaurantServiceChargeResolution = resolveRestaurantServiceCharge({
+                payload,
+                settings,
+                netItemsTotal,
+                useSettings: hasFnbCheckoutContext
+            });
+            const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
+            const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
             const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
 
             for (const line of preparedLines) {
@@ -1475,6 +1808,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             vatableGross = round4(vatableGross);
             vatExemptSales = round4(vatExemptSales);
             zeroRatedSales = round4(zeroRatedSales);
+            if (
+                restaurantServiceChargeAmount > 0
+                && restaurantServiceChargeResolution.restaurantServiceChargeTaxable === true
+            ) {
+                vatableGross = round4(vatableGross + restaurantServiceChargeAmount);
+            }
 
             const vatableSales = round4(vatableGross / (1 + VAT_RATE));
             const vatAmount = round4(vatableGross - vatableSales);
@@ -1489,6 +1828,19 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 invoiceCounterKey,
                 { transaction, prefix: invoicePrefix }
             );
+            const fnbTableSnapshot = fnbTableId
+                ? await posRepository.getFnbTableById(fnbTableId, { transaction })
+                : null;
+            if (fnbTableId && !fnbTableSnapshot) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'F&B dining table not found',
+                    { statusCode: 404 }
+                );
+            }
+            const resolvedFnbTableLabel = fnbTableSnapshot
+                ? String(fnbTableSnapshot.label || fnbTableSnapshot.table_number || '').trim().slice(0, 120) || fnbTableLabelSnapshot
+                : fnbTableLabelSnapshot;
 
             const posTransactionId = await posRepository.createTransactionWithLines({
                 header: {
@@ -1521,6 +1873,31 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     service_fee_label_snapshot: serviceFeeResolution.serviceFeeLabelSnapshot,
                     service_fee_method_snapshot: serviceFeeResolution.serviceFeeMethodSnapshot,
                     service_fee_overridden: serviceFeeResolution.serviceFeeOverridden,
+                    fnb_check_id: fnbCheckId,
+                    fnb_table_id: fnbTableId,
+                    fnb_table_label_snapshot: resolvedFnbTableLabel,
+                    fnb_guest_count: fnbGuestCount,
+                    fnb_server_id: fnbServerId,
+                    restaurant_service_charge_amount: restaurantServiceChargeAmount,
+                    restaurant_service_charge_label_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeLabelSnapshot,
+                    restaurant_service_charge_rate_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeRateSnapshot,
+                    restaurant_service_charge_taxable: restaurantServiceChargeResolution.restaurantServiceChargeTaxable,
+                    fnb_metadata: (
+                        fnbCheckId
+                        || fnbTableId
+                        || fnbGuestCount
+                        || fnbServerId
+                        || restaurantServiceChargeAmount > 0
+                    )
+                        ? {
+                            check_id: fnbCheckId,
+                            table_id: fnbTableId,
+                            table_label: resolvedFnbTableLabel,
+                            guest_count: fnbGuestCount,
+                            server_id: fnbServerId,
+                            restaurant_service_charge: restaurantServiceChargeResolution.restaurantServiceChargeSnapshot
+                        }
+                        : null,
                     total_amount: totalAmount,
                     delivery_fee: 0,
                     status: 'completed'
@@ -1528,9 +1905,44 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 lines: preparedLines
             }, { transaction });
 
-            for (const line of preparedLines) {
+            if (restaurantServiceChargeAmount > 0) {
+                await posRepository.createFnbServiceChargeSnapshot({
+                    pos_transaction_id: posTransactionId,
+                    check_id: fnbCheckId,
+                    label_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeLabelSnapshot,
+                    amount: restaurantServiceChargeAmount,
+                    rate_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeRateSnapshot,
+                    taxable: restaurantServiceChargeResolution.restaurantServiceChargeTaxable,
+                    settings_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeSnapshot
+                }, { transaction });
+            }
+
+            if (fnbCheckId) {
+                await posRepository.settleFnbCheck({
+                    checkId: fnbCheckId,
+                    posTransactionId
+                }, { transaction, lock: true });
+            }
+
+            for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
+                const line = preparedLines[lineIndex];
                 const item = itemMap.get(Number(line.item_id));
                 if (String(item?.category || '').trim().toLowerCase() === 'service') {
+                    continue;
+                }
+                const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
+                if (recipeMovements.length > 0) {
+                    for (const movement of recipeMovements) {
+                        await stockMovementService.createStockMovement({
+                            item_id: movement.ingredient_item_id,
+                            quantity: Number(movement.quantity),
+                            movement_type: 'goods_issue',
+                            location_id: enforcedCheckoutLocationId,
+                            reference_type: 'POS',
+                            reference_id: String(posTransactionId),
+                            notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
+                        }, normalizedUserId, transaction);
+                    }
                     continue;
                 }
                 await stockMovementService.createStockMovement({
@@ -1607,6 +2019,229 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
             return ok(data);
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list POS transactions'));
+        }
+    };
+};
+
+const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}) => {
+    if (complianceError) {
+        return {
+            reason_code: 'COMPLIANCE_BLOCKED',
+            message: complianceError.message || 'Compliance readiness blocked this scan'
+        };
+    }
+
+    if (!scanResult || scanResult.status === 'not_found') {
+        return {
+            reason_code: scanResult?.reason_code || 'BARCODE_NOT_FOUND',
+            message: 'Barcode was not found'
+        };
+    }
+    if (scanResult.status === 'conflict') {
+        return {
+            reason_code: 'BARCODE_CONFLICT',
+            message: 'Barcode maps to more than one active record'
+        };
+    }
+    if (scanResult.status === 'blocked') {
+        const blockedScopes = Array.isArray(scanResult.blocked_scopes)
+            ? scanResult.blocked_scopes.map((scope) => String(scope || '').trim().toLowerCase())
+            : [];
+        if (blockedScopes.includes('ticket')) {
+            return {
+                reason_code: 'TICKET_SCAN_NOT_CARTABLE',
+                message: 'Ticket or booking scans must be handled through the Services booking flow, not POS cart entry'
+            };
+        }
+        return {
+            reason_code: scanResult.reason_code || 'BARCODE_BLOCKED',
+            message: scanResult.reason_code === 'BARCODE_SCOPE_NOT_POS'
+                ? 'Barcode is not configured for POS scanning'
+                : 'Barcode is blocked for this POS action'
+        };
+    }
+
+    const item = scanResult.item || {};
+    const readiness = item.pos_readiness || {};
+    const missing = Array.isArray(readiness.missing_requirements) ? readiness.missing_requirements : [];
+    const hasMissing = (code) => missing.some((entry) => entry?.code === code);
+    const status = String(item.status || '').trim().toLowerCase();
+    const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
+    const stock = Number(item.current_stock || 0);
+
+    if (status !== 'active') {
+        return { reason_code: 'ITEM_INACTIVE', message: 'Item is inactive, draft, or deleted' };
+    }
+    if (item.pos_visible === false || hasMissing('POS_VISIBILITY_DISABLED')) {
+        return { reason_code: 'NOT_POS_VISIBLE', message: 'Item is not visible in POS' };
+    }
+    if (hasMissing('SALE_PRICE_MISSING') || Number(item.default_sale_price || 0) <= 0) {
+        return { reason_code: 'MISSING_PRICE', message: 'Item is missing a sale price' };
+    }
+    if (!isServiceItem && stock <= 0) {
+        return { reason_code: 'OUT_OF_STOCK', message: 'Item is out of stock at this location' };
+    }
+    if (isServiceItem && item.serviceDetail?.visible_in_pos === false) {
+        return { reason_code: 'SERVICE_UNAVAILABLE', message: 'Service is unavailable in POS' };
+    }
+
+    return null;
+};
+
+const resolveServiceBookingTicketScan = (code) => {
+    const structured = parseBarcodeStructuredPayload(code);
+    const normalized = normalizeBarcodeValue(code);
+    const structuredType = String(structured?.type || '').trim().toLowerCase();
+    const structuredReference = String(structured?.reference || '').trim();
+    if (structuredType === 'service_booking' && structuredReference) {
+        return {
+            reference: structuredReference.toUpperCase(),
+            code: normalized || `SERVICE_BOOKING:${structuredReference.toUpperCase()}`
+        };
+    }
+    const match = String(normalized || '').match(/^SERVICE_BOOKING[:|](.+)$/i);
+    if (match?.[1]) {
+        return {
+            reference: match[1].trim().toUpperCase(),
+            code: normalized
+        };
+    }
+    return null;
+};
+
+export const buildScanPosBarcodeUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ payload = {}, user }) => {
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        const code = String(payload.code || '').trim();
+        if (!code) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'barcode code is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const serviceBookingTicket = resolveServiceBookingTicketScan(code);
+            if (serviceBookingTicket) {
+                return ok({
+                    status: 'routed',
+                    kind: 'service_booking',
+                    reason_code: 'SERVICE_BOOKING_SCAN_ROUTED',
+                    message: 'Service booking ticket scan recognized. Open Services > Bookings to check in or update this booking.',
+                    booking_reference: serviceBookingTicket.reference,
+                    scan_metadata: {
+                        code: serviceBookingTicket.code,
+                        reference: serviceBookingTicket.reference,
+                        cart_allowed: false,
+                        stock_movement_allowed: false,
+                        routed_at: new Date().toISOString()
+                    }
+                });
+            }
+            let locationScope;
+            try {
+                locationScope = await resolveLocationScope({
+                    requestedLocationId: payload.location_id,
+                    userId: normalizedUserId,
+                    operationLabel: 'POS barcode scan'
+                });
+            } catch (error) {
+                if (error instanceof DomainError) {
+                    const locationReason = error?.details?.reason_code;
+                    if (
+                        locationReason === LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED
+                        || locationReason === LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED
+                        || locationReason === LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED
+                    ) {
+                        return ok({
+                            status: 'blocked',
+                            reason_code: locationReason === LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED
+                                ? 'UNAUTHORIZED_LOCATION'
+                                : 'LOCATION_CONTEXT_REQUIRED',
+                            message: error.message || 'POS barcode scan requires an authorized location',
+                            location_scope: null
+                        });
+                    }
+                }
+                throw error;
+            }
+            let complianceError = null;
+            try {
+                await assertPosComplianceAllowed({
+                    operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+                    context: {
+                        terminal_id: String(payload.terminal_id || '').trim() || null,
+                        terminal_action: 'barcode_scan',
+                        location_id: locationScope.location_id
+                    },
+                    user
+                });
+            } catch (error) {
+                complianceError = error;
+            }
+
+            const scanResult = await posRepository.resolveCatalogScan({
+                code,
+                location_id: locationScope.location_id
+            });
+            const blocked = resolvePosScanBlockedReason({ scanResult, complianceError });
+            if (blocked) {
+                return ok({
+                    status: 'blocked',
+                    ...blocked,
+                    scan: scanResult,
+                    location_scope: locationScope
+                });
+            }
+
+            const quantityMultiplier = Number(scanResult.barcode?.quantity_multiplier || 1);
+            const requestedQuantity = Number(payload.quantity || 1);
+            const quantity = Math.max(0.0001, Math.round(quantityMultiplier * requestedQuantity * 10000) / 10000);
+
+            return ok({
+                status: 'resolved',
+                reason_code: null,
+                barcode: scanResult.barcode,
+                item: scanResult.item,
+                suggested_line: {
+                    item_id: scanResult.item.item_id,
+                    quantity,
+                    unit_price: Number(scanResult.item.default_sale_price || 0),
+                    source: 'barcode_scan',
+                    scan_metadata: {
+                        barcode_id: scanResult.barcode.item_barcode_id,
+                        code: scanResult.barcode.code,
+                        normalized_code: scanResult.barcode.normalized_code,
+                        scope: scanResult.barcode.scope,
+                        packaging_level: scanResult.barcode.packaging_level,
+                        quantity_multiplier: quantityMultiplier,
+                        location_id: locationScope.location_id,
+                        resolved_at: new Date().toISOString()
+                    }
+                },
+                location_scope: locationScope
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to resolve POS barcode scan'));
         }
     };
 };

@@ -191,6 +191,48 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: false
     },
+    fnb_check_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    fnb_table_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    fnb_table_label_snapshot: {
+        type: DataTypes.STRING(120),
+        allowNull: true
+    },
+    fnb_guest_count: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    fnb_server_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    restaurant_service_charge_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    restaurant_service_charge_label_snapshot: {
+        type: DataTypes.STRING(120),
+        allowNull: true
+    },
+    restaurant_service_charge_rate_snapshot: {
+        type: DataTypes.DECIMAL(7, 4),
+        allowNull: true
+    },
+    restaurant_service_charge_taxable: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    fnb_metadata: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     total_amount: {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false,
@@ -224,6 +266,9 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['fulfillment_status'] },
         { fields: ['location_id'] },
         { fields: ['store_customer_id'] },
+        { fields: ['fnb_check_id'] },
+        { fields: ['fnb_table_id'] },
+        { fields: ['fnb_server_id'] },
         { fields: ['cashier_id'] },
         { fields: ['shift_id'] },
         { fields: ['created_at'] },

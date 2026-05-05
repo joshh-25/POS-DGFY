@@ -1,0 +1,36 @@
+{
+  "repository": {
+    "owner": "your-github-owner",
+    "name": "SKU-Inventory-Manager",
+    "branch": "main"
+  },
+  "workflow": "deploy-namecheap-shared.yml",
+  "secrets": {
+    "FTP_SERVER": "ftp.example.com",
+    "FTP_USERNAME": "cpanel_or_ftp_user",
+    "FTP_PASSWORD": "replace_with_real_password",
+    "DEPLOY_TOKEN": "replace_with_long_random_helper_token"
+  },
+  "variables": {
+    "PROD_IMS_URL": "https://skupervisor.dgfy.ph",
+    "PROD_POS_URL": "https://pos.dgfy.ph",
+    "PROD_STOREFRONT_URL": "https://dgfy.ph",
+    "PROD_BACKEND_URL": "https://api.dgfy.ph",
+    "PROD_API_URL": "https://api.dgfy.ph/api/v1",
+    "PROD_DEPLOY_CONTROL_URL": "https://dgfy.ph",
+    "PROD_STORE_TEST_SLUG": "known-test-tenant",
+    "FTP_DEPLOY_CONTROL_DIR": "public_html",
+    "FTP_BACKEND_DIR": "backend",
+    "FTP_IMS_DIR": "skupervisor.dgfy.ph",
+    "FTP_POS_DIR": "pos.dgfy.ph",
+    "FTP_STOREFRONT_DIR": "public_html"
+  },
+  "dispatch": {
+    "sha": "",
+    "deploy_backend": "auto",
+    "deploy_ims": "auto",
+    "deploy_pos": "auto",
+    "deploy_storefront": "auto",
+    "confirm_production": "DEPLOY"
+  }
+}

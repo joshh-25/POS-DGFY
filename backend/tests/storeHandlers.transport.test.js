@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 
 const mockRegisterStoreCustomerUseCase = jest.fn();
 const mockListStoreCatalogUseCase = jest.fn();
+const mockResolveStoreQrUseCase = jest.fn();
 const mockListStoreLocationsUseCase = jest.fn();
 const mockLoginStoreCustomerUseCase = jest.fn();
 const mockGetStoreCustomerMeUseCase = jest.fn();
@@ -13,6 +14,7 @@ const mockDeleteStoreCustomerAddressUseCase = jest.fn();
 const mockStoreCartQuoteUseCase = jest.fn();
 const mockStoreCheckoutUseCase = jest.fn();
 const mockTrackStoreOrderUseCase = jest.fn();
+const mockClaimStoreOrderUseCase = jest.fn();
 const mockCancelStoreOrderUseCase = jest.fn();
 const mockListStoreCustomerOrdersUseCase = jest.fn();
 const mockGetStorefrontFollowStatusUseCase = jest.fn();
@@ -21,6 +23,7 @@ const mockUnfollowStorefrontUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     listStoreCatalogUseCase: mockListStoreCatalogUseCase,
+    resolveStoreQrUseCase: mockResolveStoreQrUseCase,
     listStoreLocationsUseCase: mockListStoreLocationsUseCase,
     registerStoreCustomerUseCase: mockRegisterStoreCustomerUseCase,
     loginStoreCustomerUseCase: mockLoginStoreCustomerUseCase,
@@ -33,6 +36,7 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     storeCartQuoteUseCase: mockStoreCartQuoteUseCase,
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
     trackStoreOrderUseCase: mockTrackStoreOrderUseCase,
+    claimStoreOrderUseCase: mockClaimStoreOrderUseCase,
     cancelStoreOrderUseCase: mockCancelStoreOrderUseCase,
     listStoreCustomerOrdersUseCase: mockListStoreCustomerOrdersUseCase,
     getStorefrontFollowStatusUseCase: mockGetStorefrontFollowStatusUseCase,

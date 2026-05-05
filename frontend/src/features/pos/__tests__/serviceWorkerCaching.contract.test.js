@@ -23,7 +23,7 @@ describe('service worker caching contracts', () => {
 
   it('keeps Storefront service worker runtime caching bounded and API-safe', () => {
     const source = readSource(storeServiceWorkerPath);
-    expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/'];");
+    expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/', '/openfreemap'];");
     expect(source).toContain('const STATIC_CACHEABLE_DESTINATIONS = new Set');
     expect(source).toContain('const MAX_RUNTIME_CACHE_ENTRIES = 120;');
     expect(source).toContain('if (!shouldHandleRuntimeRequest(event.request, requestUrl)) return;');

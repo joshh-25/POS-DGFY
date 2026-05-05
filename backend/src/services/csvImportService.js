@@ -10,9 +10,16 @@ import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/appl
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
-    resolveWorkflowModeFamily,
-    resolveWorkflowTemplateMode
+    resolveWorkflowModeFamily
 } from '../modules/shared/constants/workflowModes.js';
+import {
+    detectBarcodeSymbology,
+    normalizeBarcodeMultiplier,
+    normalizeBarcodePackagingLevel,
+    normalizeBarcodeScope,
+    normalizeBarcodeSource,
+    normalizeBarcodeValue
+} from '../modules/shared/utils/barcodePolicy.js';
 
 // Valid values for enums
 const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
@@ -22,6 +29,14 @@ const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'pean
 const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', 'msme'];
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const TEMPLATE_SCHEMA_VERSION = 'v1';
+const BARCODE_TEMPLATE_HEADERS = Object.freeze([
+    'barcode',
+    'barcode_source',
+    'barcode_scope',
+    'barcode_packaging_level',
+    'barcode_quantity_multiplier',
+    'barcode_aliases'
+]);
 
 /**
  * Parse CSV content and transform rows to item format
@@ -230,9 +245,132 @@ const transformRow = (row) => {
     return item;
 };
 
+const parseBarcodeAliasesFromRow = (row = {}) => {
+    const code = String(row.barcode || row.primary_barcode || '').trim();
+    const aliases = [];
+    const appendAlias = ({
+        aliasCode,
+        source = row.barcode_source,
+        scope = row.barcode_scope,
+        packagingLevel = row.barcode_packaging_level,
+        multiplier = row.barcode_quantity_multiplier
+    } = {}) => {
+        const normalizedAliasCode = String(aliasCode || '').trim();
+        if (!normalizedAliasCode) return;
+        const normalizedCode = normalizeBarcodeValue(normalizedAliasCode);
+        if (!normalizedCode || aliases.some((alias) => alias.normalized_code === normalizedCode)) return;
+        aliases.push({
+            code: normalizedAliasCode,
+            normalized_code: normalizedCode,
+            symbology: detectBarcodeSymbology(normalizedAliasCode),
+            source: normalizeBarcodeSource(source, 'manufacturer'),
+            scope: normalizeBarcodeScope(scope, 'inventory'),
+            packaging_level: normalizeBarcodePackagingLevel(packagingLevel, 'unit'),
+            quantity_multiplier: normalizeBarcodeMultiplier(multiplier, 1)
+        });
+    };
+
+    appendAlias({ aliasCode: code });
+
+    String(row.barcode_aliases || '')
+        .split(';')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .forEach((entry) => {
+            const [aliasCode, source, scope, packagingLevel, multiplier] = entry.split('|').map((part) => String(part || '').trim());
+            appendAlias({ aliasCode, source, scope, packagingLevel, multiplier });
+        });
+
+    return aliases;
+};
+
 const normalizeSkuLookupKey = (value) => {
     const normalized = String(value || '').trim().toUpperCase();
     return normalized || null;
+};
+
+const loadActiveBarcodeMap = async (normalizedCodes = []) => {
+    const codes = Array.from(new Set((normalizedCodes || []).filter(Boolean)));
+    if (codes.length === 0) return new Map();
+    let ItemBarcode = null;
+    try {
+        ItemBarcode = dbStore.get('ItemBarcode');
+    } catch {
+        return new Map();
+    }
+    if (!ItemBarcode || typeof ItemBarcode.findAll !== 'function') return new Map();
+
+    const rows = await ItemBarcode.findAll({
+        attributes: ['item_barcode_id', 'item_id', 'code', 'normalized_code'],
+        where: {
+            normalized_code: { [Op.in]: codes },
+            is_active: true
+        }
+    });
+
+    return new Map(rows.map((row) => {
+        const payload = row?.toJSON ? row.toJSON() : row;
+        return [normalizeBarcodeValue(payload.normalized_code || payload.code), payload];
+    }).filter(([code]) => Boolean(code)));
+};
+
+const syncBarcodeAliasesForItem = async ({ itemId, aliases = [], userId = null }) => {
+    const normalizedItemId = Number.parseInt(itemId, 10);
+    if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0 || aliases.length === 0) return;
+
+    let ItemBarcode = null;
+    try {
+        ItemBarcode = dbStore.get('ItemBarcode');
+    } catch {
+        return;
+    }
+    if (!ItemBarcode || typeof ItemBarcode.findOne !== 'function') return;
+
+    for (const alias of aliases) {
+        const normalizedCode = normalizeBarcodeValue(alias.code);
+        if (!normalizedCode) continue;
+        const existing = await ItemBarcode.findOne({
+            where: {
+                normalized_code: normalizedCode,
+                is_active: true
+            }
+        });
+        const existingPayload = existing?.toJSON ? existing.toJSON() : existing;
+        if (existingPayload && Number(existingPayload.item_id) !== normalizedItemId) {
+            const error = new Error(`Barcode ${alias.code} is already assigned to another active item`);
+            error.statusCode = 409;
+            throw error;
+        }
+        if (existingPayload && Number(existingPayload.item_id) === normalizedItemId) {
+            continue;
+        }
+
+        const activeCount = await ItemBarcode.count({
+            where: {
+                item_id: normalizedItemId,
+                is_active: true
+            }
+        });
+        await ItemBarcode.create({
+            item_id: normalizedItemId,
+            code: alias.code,
+            normalized_code: normalizedCode,
+            symbology: alias.symbology || detectBarcodeSymbology(alias.code),
+            source: alias.source,
+            scope: alias.scope,
+            packaging_level: alias.packaging_level,
+            quantity_multiplier: alias.quantity_multiplier,
+            is_primary: activeCount === 0,
+            is_active: true,
+            metadata: {
+                imported_from: 'csv',
+                imported_by: userId || null,
+                imported_at: new Date().toISOString()
+            },
+            created_by: userId || null,
+            updated_by: userId || null
+        });
+    }
 };
 
 /**
@@ -316,7 +454,9 @@ const resolveTenantWorkflowMode = async () => {
     return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
 };
 
-const resolveTenantTemplateWorkflowMode = (workflowMode) => resolveWorkflowTemplateMode(workflowMode);
+const resolveTenantTemplateWorkflowMode = (workflowMode) => (
+    resolveWorkflowModeFamily(workflowMode) === 'msme' ? 'msme' : 'manufacturing'
+);
 
 const normalizeTemplateWorkflowMode = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -541,6 +681,11 @@ export const previewImport = async (csvContent) => {
             .filter(([skuKey]) => Boolean(skuKey))
     );
     const seenSkuRows = new Map();
+    const rowBarcodeAliases = records.map(parseBarcodeAliasesFromRow);
+    const activeBarcodeMap = await loadActiveBarcodeMap(
+        rowBarcodeAliases.flat().map((alias) => alias.normalized_code)
+    );
+    const seenBarcodeRows = new Map();
 
     // Transform and validate each row
     const previewRows = [];
@@ -551,6 +696,7 @@ export const previewImport = async (csvContent) => {
     for (let i = 0; i < records.length; i++) {
         const row = records[i];
         const itemData = transformRow(row);
+        const barcodeAliases = rowBarcodeAliases[i] || [];
         const validation = await validateItem(itemData, i + 1, existingSkus);
         const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
         if (skuLookupKey) {
@@ -559,6 +705,20 @@ export const previewImport = async (csvContent) => {
                 validation.errors.push(`Duplicate SKU code in import file (first seen on row ${seenSkuRows.get(skuLookupKey)})`);
             } else {
                 seenSkuRows.set(skuLookupKey, i + 1);
+            }
+        }
+        for (const alias of barcodeAliases) {
+            if (seenBarcodeRows.has(alias.normalized_code)) {
+                validation.valid = false;
+                validation.errors.push(`Duplicate barcode in import file (first seen on row ${seenBarcodeRows.get(alias.normalized_code)})`);
+            } else {
+                seenBarcodeRows.set(alias.normalized_code, i + 1);
+            }
+            const existingBarcode = activeBarcodeMap.get(alias.normalized_code);
+            const targetItemId = validation.existingItemId || null;
+            if (existingBarcode && (!targetItemId || Number(existingBarcode.item_id) !== Number(targetItemId))) {
+                validation.valid = false;
+                validation.errors.push(`Barcode ${alias.code} is already assigned to item #${existingBarcode.item_id}`);
             }
         }
 
@@ -580,6 +740,7 @@ export const previewImport = async (csvContent) => {
             action: validation.action,
             valid: validation.valid,
             errors: validation.errors,
+            barcode_aliases: barcodeAliases,
             data: {
                 ...validation.data,
                 template_workflow_mode: templateWorkflowMode,
@@ -695,10 +856,20 @@ export const confirmImport = async (rows, userId) => {
             .filter(([skuKey]) => Boolean(skuKey))
     );
     const seenSkuRows = new Map();
+    const allBarcodeAliases = rows.map((row) => (
+        Array.isArray(row.barcode_aliases)
+            ? row.barcode_aliases
+            : parseBarcodeAliasesFromRow(row.data || row)
+    ));
+    const activeBarcodeMap = await loadActiveBarcodeMap(
+        allBarcodeAliases.flat().map((alias) => alias.normalized_code)
+    );
+    const seenBarcodeRows = new Map();
 
     // Re-validate and sanitize all rows on the backend
     const validRows = [];
-    for (const row of rows) {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
         // Fix 6.1: RE-VALIDATE everything on the backend.
         // Even if client says it is valid, we don't trust it.
         const validation = await validateItem(row.data, row.rowNumber, existingSkus);
@@ -709,6 +880,21 @@ export const confirmImport = async (rows, userId) => {
                 validation.errors.push(`Duplicate SKU code in import file (first seen on row ${seenSkuRows.get(skuLookupKey)})`);
             } else {
                 seenSkuRows.set(skuLookupKey, row.rowNumber);
+            }
+        }
+        const barcodeAliases = allBarcodeAliases[rowIndex] || [];
+        for (const alias of barcodeAliases) {
+            if (seenBarcodeRows.has(alias.normalized_code)) {
+                validation.valid = false;
+                validation.errors.push(`Duplicate barcode in import file (first seen on row ${seenBarcodeRows.get(alias.normalized_code)})`);
+            } else {
+                seenBarcodeRows.set(alias.normalized_code, row.rowNumber);
+            }
+            const existingBarcode = activeBarcodeMap.get(alias.normalized_code);
+            const targetItemId = validation.existingItemId || null;
+            if (existingBarcode && (!targetItemId || Number(existingBarcode.item_id) !== Number(targetItemId))) {
+                validation.valid = false;
+                validation.errors.push(`Barcode ${alias.code} is already assigned to item #${existingBarcode.item_id}`);
             }
         }
 
@@ -723,6 +909,7 @@ export const confirmImport = async (rows, userId) => {
             validRows.push({
                 ...row,
                 data: validation.data,
+                barcode_aliases: barcodeAliases,
                 action: validation.action,
                 existingItemId: validation.existingItemId
             });
@@ -761,15 +948,31 @@ export const confirmImport = async (rows, userId) => {
                     });
                     await transaction.commit();
 
-                    // Map results back to rows
-                    createdItems.forEach((item, idx) => {
+                    // Map results back to rows and attach optional barcode aliases after item creation.
+                    for (let idx = 0; idx < createdItems.length; idx += 1) {
+                        const item = createdItems[idx];
+                        const sourceRow = batch[idx];
+                        try {
+                            await syncBarcodeAliasesForItem({
+                                itemId: item.item_id,
+                                aliases: sourceRow.barcode_aliases || [],
+                                userId
+                            });
+                        } catch (barcodeError) {
+                            results.failed.push({
+                                rowNumber: sourceRow.rowNumber,
+                                sku_code: sourceRow.sku_code,
+                                errors: [`Barcode import failed after item create: ${barcodeError.message}`]
+                            });
+                            continue;
+                        }
                         results.created.push({
-                            rowNumber: batch[idx].rowNumber,
+                            rowNumber: sourceRow.rowNumber,
                             item_id: item.item_id,
                             sku_code: item.sku_code,
                             name: item.name
                         });
-                    });
+                    }
                 } catch (err) {
                     await transaction.rollback();
                     // If bulk fails, mark all in batch as failed
@@ -811,6 +1014,20 @@ export const confirmImport = async (rows, userId) => {
                 const batchResults = await Promise.allSettled(promises);
                 for (const result of batchResults) {
                     if (result.status === 'fulfilled' && result.value.success) {
+                        try {
+                            await syncBarcodeAliasesForItem({
+                                itemId: result.value.row.existingItemId,
+                                aliases: result.value.row.barcode_aliases || [],
+                                userId
+                            });
+                        } catch (barcodeError) {
+                            results.failed.push({
+                                rowNumber: result.value.row.rowNumber,
+                                sku_code: result.value.row.sku_code,
+                                errors: [`Barcode import failed after item update: ${barcodeError.message}`]
+                            });
+                            continue;
+                        }
                         results.updated.push({
                             rowNumber: result.value.row.rowNumber,
                             item_id: result.value.row.existingItemId,
@@ -871,6 +1088,20 @@ export const confirmImport = async (rows, userId) => {
                 if (result.status === 'fulfilled' && result.value.success) {
                     const { action, row, item } = result.value;
                     if (action === 'CREATE') {
+                        try {
+                            await syncBarcodeAliasesForItem({
+                                itemId: item.item_id,
+                                aliases: row.barcode_aliases || [],
+                                userId
+                            });
+                        } catch (barcodeError) {
+                            results.failed.push({
+                                rowNumber: row.rowNumber,
+                                sku_code: row.sku_code,
+                                errors: [`Barcode import failed after product create: ${barcodeError.message}`]
+                            });
+                            continue;
+                        }
                         results.created.push({
                             rowNumber: row.rowNumber,
                             item_id: item.item_id,
@@ -878,6 +1109,20 @@ export const confirmImport = async (rows, userId) => {
                             name: item.name
                         });
                     } else {
+                        try {
+                            await syncBarcodeAliasesForItem({
+                                itemId: row.existingItemId,
+                                aliases: row.barcode_aliases || [],
+                                userId
+                            });
+                        } catch (barcodeError) {
+                            results.failed.push({
+                                rowNumber: row.rowNumber,
+                                sku_code: row.sku_code,
+                                errors: [`Barcode import failed after product update: ${barcodeError.message}`]
+                            });
+                            continue;
+                        }
                         results.updated.push({
                             rowNumber: row.rowNumber,
                             item_id: row.existingItemId,
@@ -937,7 +1182,8 @@ export const ITEMS_HEADERS = [
     'packaging_thickness',
     'packaging_material',
     'packaging_design',
-    'packaging_contents'
+    'packaging_contents',
+    ...BARCODE_TEMPLATE_HEADERS
 ];
 
 // Products template headers (WIP, Finished Goods)
@@ -1016,7 +1262,8 @@ export const PRODUCTS_HEADERS = [
     'compliance_haccp_plan',
     'compliance_organic_certified',
     'compliance_kosher_certified',
-    'compliance_halal_certified'
+    'compliance_halal_certified',
+    ...BARCODE_TEMPLATE_HEADERS
 ];
 
 const TEMPLATE_MARKER_HEADERS = Object.freeze([
@@ -1056,6 +1303,7 @@ export const MANUFACTURING_TEMPLATE_HEADERS = Object.freeze([
     'packaging_design',
     'packaging_contents',
     'allergens',
+    ...BARCODE_TEMPLATE_HEADERS,
     ...TEMPLATE_MARKER_HEADERS
 ]);
 
@@ -1083,6 +1331,7 @@ export const MSME_TEMPLATE_HEADERS = Object.freeze([
     'packaging_design',
     'packaging_contents',
     'allergens',
+    ...BARCODE_TEMPLATE_HEADERS,
     ...TEMPLATE_MARKER_HEADERS
 ]);
 
@@ -1168,7 +1417,7 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
         && workflowMode !== null
         && String(workflowMode).trim() !== '';
     if (hasWorkflowModeInput) {
-        return resolveWorkflowTemplateMode(workflowMode);
+        return resolveWorkflowModeFamily(workflowMode) === 'msme' ? 'msme' : 'manufacturing';
     }
 
     // Backwards compatibility:
@@ -1210,8 +1459,8 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
             filename: 'msme_items_import_template.csv',
             headers: [...MSME_TEMPLATE_HEADERS],
             sampleRows: appendTemplateMarkersToRows([
-                ['MSME-PROD-001', 'Chocolate Cookies Pack', 'product', 'finished_goods', 'vatable', 'Retail-ready cookies', '120', '40', '20', '10', 'pack', '65.00', '95.00', 'TRUE', '60', '20', '12', '8', '0.05', 'plastic', 'Retail pouch', '10 pcs', 'wheat,milk'],
-                ['MSME-SUP-001', 'Paper Bag Medium', 'supplies', '', '', 'Takeout packaging bag', '500', '180', '75', '30', 'pcs', '4.50', '8.00', 'FALSE', '', '', '12', '6', '0.01', 'paper', 'Brown kraft', '1 bag', '']
+                ['MSME-PROD-001', 'Chocolate Cookies Pack', 'product', 'finished_goods', 'vatable', 'Retail-ready cookies', '120', '40', '20', '10', 'pack', '65.00', '95.00', 'TRUE', '60', '20', '12', '8', '0.05', 'plastic', 'Retail pouch', '10 pcs', 'wheat,milk', 'MSME-PROD-001-UNIT', 'tenant_generated', 'inventory', 'unit', '1', 'MSME-PROD-001-CASE|supplier|package|case|24'],
+                ['MSME-SUP-001', 'Paper Bag Medium', 'supplies', '', '', 'Takeout packaging bag', '500', '180', '75', '30', 'pcs', '4.50', '8.00', 'FALSE', '', '', '12', '6', '0.01', 'paper', 'Brown kraft', '1 bag', '', 'MSME-SUP-001-CASE', 'supplier', 'package', 'case', '100', '']
             ], resolvedWorkflowMode)
         };
     }
@@ -1221,9 +1470,9 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
         filename: 'manufacturing_items_import_template.csv',
         headers: [...MANUFACTURING_TEMPLATE_HEADERS],
         sampleRows: appendTemplateMarkersToRows([
-            ['RM-001', 'Flour - All Purpose', 'raw_material', '', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', '70.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', 'wheat'],
-            ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', '25.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake', ''],
-            ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'vatable', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', '680.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', 'milk,eggs,wheat']
+            ['RM-001', 'Flour - All Purpose', 'raw_material', '', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', '70.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', 'wheat', 'RM-001-SACK', 'supplier', 'package', 'case', '25', 'RM-001-UNIT|manufacturer|inventory|unit|1'],
+            ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', '25.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake', '', 'PKG-001-CASE', 'supplier', 'package', 'case', '50', ''],
+            ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'vatable', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', '680.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', 'milk,eggs,wheat', 'FG-001-QR', 'tenant_generated', 'storefront_qr', 'unit', '1', 'FG-001-POS|tenant_generated|pos|unit|1']
         ], resolvedWorkflowMode)
     };
 };
@@ -1268,7 +1517,8 @@ export const getTemplateHeaders = (type = TEMPLATE_TYPES.MASTER) => {
                 'packaging_material',
                 'packaging_design',
                 'packaging_contents',
-                'allergens'
+                'allergens',
+                ...BARCODE_TEMPLATE_HEADERS
             ];
     }
 };

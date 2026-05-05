@@ -4,6 +4,7 @@
 
 export {
     listCatalog,
+    scanBarcode,
     checkout,
     listTransactions,
     getTransactionById,
@@ -27,6 +28,7 @@ export {
 
 import {
     listCatalog,
+    scanBarcode,
     checkout,
     listTransactions,
     getTransactionById,
@@ -50,6 +52,7 @@ import {
 
 export default {
     listCatalog,
+    scanBarcode,
     checkout,
     listTransactions,
     getTransactionById,

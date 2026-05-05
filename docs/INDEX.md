@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -42,9 +42,12 @@ Canonical planning entry:
 - Storefront discovery/catalog cache-header contracts and route-level no-store behavior are tracked in API/testing docs and ADR 0014.
 - Tenant first-login onboarding advisory questionnaire classification is tracked in `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md` and API contracts in `docs/api/specification.md`.
 - Customer Access Modes and Inventory Display are implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and the tenant allowlist `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`. The feature contract is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by ADR 0017.
+- Barcode Identity, Labels, and Scan Routing is tracked in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md` and governed by ADR 0018. It covers tenant-local manufacturer/internal barcodes, printable labels, IMS scan prefill, POS scan eligibility, Storefront QR, Services/tickets, offline replay revalidation, and conflict handling.
+- Food & Beverage Mode is tracked in `docs/features/FOOD_AND_BEVERAGE_MODE.md` and governed by ADR 0019. It covers restaurant menu modifiers, dining areas/tables, open checks, kitchen tickets, multi-table reservations/waitlist requests, restaurant service-charge snapshots, POS additive metadata, and lazy Storefront restaurant/map surfaces.
 - Settings tab/section ownership and deep-link anchors are tracked in `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`.
 - PWA installability and service-worker surface ownership are tracked in `docs/deployment/PWA_SURFACE_CONTRACT.md`.
 - Shared-hosting degraded mode and Redis-capable VPS mode are tracked in `docs/ops/HOSTING_PROFILES.md`, with profile validation through `scripts/check-hosting-profile.js`.
+- Namecheap shared-hosting artifact deploys are tracked in `docs/ops/NAMECHEAP_SHARED_CICD.md`, with CI artifacts and `.github/workflows/deploy-namecheap-shared.yml`.
 - Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `manual` remains the default, while `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` temporarily provisions standard registrations immediately and follows with a normal frontend login call.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.

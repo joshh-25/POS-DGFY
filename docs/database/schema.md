@@ -14,6 +14,7 @@
 
 ### Recent Addenda
 - [POS Shift-Location Safety Addendum (2026-04-21)](#pos-shift-location-safety-addendum-2026-04-21)
+- [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 
 ### Table Definitions
 - [1. Users Table](#1-users-table)
@@ -36,6 +37,7 @@
 - [18. POS Catalog Overrides Table](#18-pos-catalog-overrides-table)
 - [19. POS Terminal Shifts Table](#19-pos-terminal-shifts-table)
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
+- [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 
 ### Database Administration
 - [Key Indexes & Performance Optimization](#key-indexes--performance-optimization)
@@ -160,6 +162,55 @@ Primary migrations:
 
 1. `20260421000001-add-pos-shift-location-binding.cjs`
 2. `20260421000002-remediate-pos-shift-location-backfill.cjs`
+
+---
+
+## Food & Beverage Mode Addendum (2026-05-06)
+
+Food & Beverage Mode adds restaurant-only side tables while reusing shared `items`, nutrition/allergen, product composition, POS transaction, and stock-movement contracts.
+
+Primary migration:
+
+1. `20260505000002-create-fnb-restaurant-mode-tables.cjs`
+
+Tenant-local F&B tables:
+
+1. `fnb_modifier_groups`
+2. `fnb_modifier_options`
+3. `fnb_item_modifier_groups`
+4. `fnb_dining_areas`
+5. `fnb_dining_tables`
+6. `fnb_kitchen_stations`
+7. `fnb_item_kitchen_routes`
+8. `fnb_checks`
+9. `fnb_check_lines`
+10. `fnb_kitchen_tickets`
+11. `fnb_reservation_requests`
+12. `fnb_reservation_tables`
+13. `fnb_restaurant_service_charge_snapshots`
+
+POS snapshot additions:
+
+1. `pos_transactions.fnb_check_id`
+2. `pos_transactions.fnb_table_id`
+3. `pos_transactions.fnb_table_label_snapshot`
+4. `pos_transactions.fnb_guest_count`
+5. `pos_transactions.fnb_server_id`
+6. `pos_transactions.restaurant_service_charge_amount`
+7. `pos_transactions.restaurant_service_charge_label_snapshot`
+8. `pos_transactions.restaurant_service_charge_rate_snapshot`
+9. `pos_transactions.restaurant_service_charge_taxable`
+10. `pos_transactions.fnb_metadata`
+11. `pos_transaction_lines.fnb_course_snapshot`
+12. `pos_transaction_lines.fnb_modifiers_snapshot`
+13. `pos_transaction_lines.fnb_special_instructions`
+14. `pos_transaction_lines.fnb_kitchen_station_snapshot`
+
+Restaurant service charge remains separate from the DGFY convenience fee. DGFY continues to use `pos_transactions.service_fee_amount`; restaurant service charge uses `restaurant_service_charge_*` columns and `fnb_restaurant_service_charge_snapshots`. When `restaurant_service_charge_taxable=true`, checkout includes the restaurant service charge in the VATable gross calculation at transaction time.
+
+F&B menu inventory reuses `product_composition` for recipes. POS checkout deducts ingredient rows for F&B menu items with `composition_type='ingredient'`; menu items without recipe rows continue to deduct the sold item directly.
+
+F&B reservation scheduling stores `duration_minutes` and `buffer_minutes` on `fnb_reservation_requests` with `requested_at` and optional primary `table_id`. Combined-table bookings use `fnb_reservation_tables` to store every assigned table. Confirmed/seated reservations use the combined duration plus reset-buffer window to prevent overlap on any assigned table and to reject party sizes above selected seat capacity.
 
 ---
 

@@ -7,7 +7,17 @@ const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 
 const checkoutLineSchema = Joi.object({
     item_id: Joi.number().integer().positive().required(),
-    quantity: Joi.number().positive().required()
+    quantity: Joi.number().positive().required(),
+    course: Joi.string().valid('appetizer', 'main', 'dessert', 'drink', 'other').allow('', null).optional(),
+    line_modifiers: Joi.array().items(Joi.object({
+        modifier_group_id: Joi.number().integer().positive().allow(null).optional(),
+        modifier_option_id: Joi.number().integer().positive().allow(null).optional(),
+        option_id: Joi.number().integer().positive().allow(null).optional(),
+        group_name: Joi.string().trim().max(120).allow('', null).optional(),
+        option_name: Joi.string().trim().max(120).allow('', null).optional(),
+        name: Joi.string().trim().max(120).allow('', null).optional()
+    }).unknown(false)).max(30).default([]),
+    modifiers: Joi.array().items(Joi.object().unknown(true)).max(30).optional()
 });
 
 const storeRegisterSchema = Joi.object({
@@ -89,6 +99,11 @@ const storeCatalogQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const storeQrQuerySchema = Joi.object({
+    code: Joi.string().trim().max(512).required(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
 const storefrontFollowBaseSchema = Joi.object({
     storefront_slug: Joi.string().trim().lowercase().max(120).pattern(/^[a-z0-9-]+$/).required(),
     visitor_id: Joi.string().trim().min(16).max(128).allow('', null).optional()
@@ -131,6 +146,7 @@ export const validateStoreCancelOrder = validateSchema(storeCancelOrderSchema, '
 export const validateStoreClaimOrder = validateSchema(storeClaimOrderSchema, 'body', 'validatedData');
 export const validateStoreOrderHistoryQuery = validateSchema(storeOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateStoreCatalogQuery = validateSchema(storeCatalogQuerySchema, 'query', 'validatedQuery');
+export const validateStoreQrQuery = validateSchema(storeQrQuerySchema, 'query', 'validatedQuery');
 
 const validateStorefrontFollowSource = (source, target) => (req, res, next) => {
     const { error, value } = storefrontFollowBaseSchema.validate(req[source], {

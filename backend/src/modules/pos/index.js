@@ -3,6 +3,7 @@ import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js
 import { createStockMovement } from '../../services/stockMovementService.js';
 import {
     buildListPosCatalogUseCase,
+    buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
     buildListPosTransactionsUseCase,
     buildGetPosTransactionByIdUseCase,
@@ -27,6 +28,7 @@ import {
 const stockMovementService = { createStockMovement };
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
+export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
 export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });

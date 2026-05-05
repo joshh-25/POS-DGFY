@@ -88,7 +88,8 @@ describe('onboardingHandlers transport contracts', () => {
     expect(mockSaveOnboardingStepUseCase).toHaveBeenCalledWith({
       stepKey: 'business_profile',
       payload: { pos_business_name: 'Tenant Beta Store' },
-      storeNameBaseline: 'Tenant Beta'
+      storeNameBaseline: 'Tenant Beta',
+      tenantId: null
     });
     expect(next).not.toHaveBeenCalled();
   });

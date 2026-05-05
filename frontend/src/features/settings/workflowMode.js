@@ -23,7 +23,7 @@ export const WORKFLOW_MODE_LABELS = Object.freeze({
   services: 'Services',
   manufacturing: 'Food Manufacturing',
   food_manufacturing: 'Food Manufacturing',
-  fnb: 'F&B',
+  fnb: 'Food & Beverage',
   hospitality: 'Hospitality',
   healthcare: 'Healthcare',
   ticketing_transport: 'Ticketing & Transport',
@@ -69,7 +69,7 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
   services: { icon: 'CalendarCheck', label: 'Services' },
   food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
   manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
-  fnb: { icon: 'Utensils', label: 'F&B' },
+  fnb: { icon: 'Utensils', label: 'Food & Beverage' },
   hospitality: { icon: 'Hotel', label: 'Hospitality' },
   healthcare: { icon: 'HeartPulse', label: 'Healthcare' },
   ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport' },
@@ -83,7 +83,17 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
   services: ['services', 'serviceBookings', 'serviceTickets', 'catalog', 'pos', 'storefront'],
   manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
   food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
-  fnb: ['catalog', 'inventory', 'pos', 'storefront'],
+  fnb: [
+    'fnbDining',
+    'menuModifiers',
+    'tableService',
+    'kitchenQueue',
+    'restaurantServiceCharge',
+    'catalog',
+    'inventory',
+    'pos',
+    'storefront'
+  ],
   hospitality: ['catalog', 'inventory', 'pos', 'storefront'],
   healthcare: ['catalog', 'inventory', 'pos', 'storefront'],
   ticketing_transport: ['catalog', 'inventory', 'pos', 'storefront'],
@@ -118,12 +128,30 @@ export const SERVICES_HIDDEN_ROUTE_PREFIXES = Object.freeze([
   '/stock-movements'
 ]);
 
+export const FNB_HIDDEN_NAV_PAGES = Object.freeze([
+  'JobOrders',
+  'DispatchOrders'
+]);
+
+export const FNB_HIDDEN_ROUTE_PREFIXES = Object.freeze([
+  '/job-orders',
+  '/dispatch-orders'
+]);
+
 export const SERVICES_ONLY_NAV_PAGES = Object.freeze([
   'Services'
 ]);
 
 export const SERVICES_ONLY_ROUTE_PREFIXES = Object.freeze([
   '/services'
+]);
+
+export const FNB_ONLY_NAV_PAGES = Object.freeze([
+  'Fnb'
+]);
+
+export const FNB_ONLY_ROUTE_PREFIXES = Object.freeze([
+  '/fnb'
 ]);
 
 export const normalizeWorkflowMode = (value) => {
@@ -148,6 +176,7 @@ export const getWorkflowModeLabel = (value) => (
 
 export const isMsmeWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'msme';
 export const isServicesWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'services';
+export const isFnbWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'fnb';
 
 export const getWorkflowModePinMeta = (value) => {
   const raw = String(value || '').trim().toLowerCase();
@@ -166,11 +195,17 @@ export const isWorkflowPageVisible = (pageName, workflowMode) => {
   if (SERVICES_ONLY_NAV_PAGES.includes(normalizedPage)) {
     return isServicesWorkflowMode(workflowMode);
   }
+  if (FNB_ONLY_NAV_PAGES.includes(normalizedPage)) {
+    return isFnbWorkflowMode(workflowMode);
+  }
   if (isMsmeWorkflowMode(workflowMode)) {
     return !MSME_HIDDEN_NAV_PAGES.includes(normalizedPage);
   }
   if (isServicesWorkflowMode(workflowMode)) {
     return !SERVICES_HIDDEN_NAV_PAGES.includes(normalizedPage);
+  }
+  if (isFnbWorkflowMode(workflowMode)) {
+    return !FNB_HIDDEN_NAV_PAGES.includes(normalizedPage);
   }
   return true;
 };
@@ -183,7 +218,11 @@ export const isWorkflowPathBlocked = (pathname, workflowMode) => {
   if (matchesPrefix(SERVICES_ONLY_ROUTE_PREFIXES)) {
     return !isServicesWorkflowMode(workflowMode);
   }
+  if (matchesPrefix(FNB_ONLY_ROUTE_PREFIXES)) {
+    return !isFnbWorkflowMode(workflowMode);
+  }
   if (isMsmeWorkflowMode(workflowMode)) return matchesPrefix(MSME_HIDDEN_ROUTE_PREFIXES);
   if (isServicesWorkflowMode(workflowMode)) return matchesPrefix(SERVICES_HIDDEN_ROUTE_PREFIXES);
+  if (isFnbWorkflowMode(workflowMode)) return matchesPrefix(FNB_HIDDEN_ROUTE_PREFIXES);
   return false;
 };

@@ -27,6 +27,7 @@ const getProductExportIncludes = () => {
     const ItemQualityControl = dbStore.get('ItemQualityControl');
     const ItemRegulatoryCompliance = dbStore.get('ItemRegulatoryCompliance');
     const ItemCostBreakdown = dbStore.get('ItemCostBreakdown');
+    const ItemBarcode = dbStore.get('ItemBarcode');
 
     return [
         { model: ItemNutrition, as: 'nutrition', required: false },
@@ -36,7 +37,46 @@ const getProductExportIncludes = () => {
         { model: ItemPackaging, as: 'packaging', required: false },
         { model: ItemQualityControl, as: 'qualityControl', required: false },
         { model: ItemRegulatoryCompliance, as: 'regulatoryCompliance', required: false },
-        { model: ItemCostBreakdown, as: 'costBreakdown', required: false }
+        { model: ItemCostBreakdown, as: 'costBreakdown', required: false },
+        {
+            model: ItemBarcode,
+            as: 'barcodes',
+            required: false,
+            where: { is_active: true },
+            separate: true,
+            order: [
+                ['is_primary', 'DESC'],
+                ['updated_at', 'DESC']
+            ]
+        }
+    ];
+};
+
+const getPrimaryBarcode = (item) => {
+    const aliases = Array.isArray(item?.barcodes) ? item.barcodes : [];
+    return aliases.find((alias) => alias?.is_primary === true) || aliases[0] || null;
+};
+
+const formatBarcodeExportCells = (item) => {
+    const barcode = getPrimaryBarcode(item);
+    const aliases = Array.isArray(item?.barcodes) ? item.barcodes : [];
+    const aliasCell = aliases
+        .filter((alias) => alias?.code && alias?.item_barcode_id !== barcode?.item_barcode_id)
+        .map((alias) => [
+            alias.code,
+            alias.source || '',
+            alias.scope || '',
+            alias.packaging_level || '',
+            alias.quantity_multiplier != null ? String(alias.quantity_multiplier) : ''
+        ].join('|'))
+        .join(';');
+    return [
+        barcode?.code || '',
+        barcode?.source || '',
+        barcode?.scope || '',
+        barcode?.packaging_level || '',
+        barcode?.quantity_multiplier != null ? String(barcode.quantity_multiplier) : '',
+        aliasCell
     ];
 };
 
@@ -69,7 +109,8 @@ const transformItemToItemsRow = (item) => {
         packagingSpecs.thickness || '',
         packagingSpecs.material || '',
         packagingSpecs.design || '',
-        packagingSpecs.contents || ''
+        packagingSpecs.contents || '',
+        ...formatBarcodeExportCells(item)
     ];
 };
 
@@ -169,7 +210,8 @@ const transformItemToProductsRow = (item) => {
         compliance.haccp_plan ? 'TRUE' : 'FALSE',
         compliance.organic_certified ? 'TRUE' : 'FALSE',
         compliance.kosher_certified ? 'TRUE' : 'FALSE',
-        compliance.halal_certified ? 'TRUE' : 'FALSE'
+        compliance.halal_certified ? 'TRUE' : 'FALSE',
+        ...formatBarcodeExportCells(item)
     ];
 };
 
@@ -209,7 +251,8 @@ const transformItemToMasterRow = (item) => {
         packagingSpecs.material || '',
         packagingSpecs.design || '',
         packagingSpecs.contents || '',
-        allergensStr
+        allergensStr,
+        ...formatBarcodeExportCells(item)
     ];
 };
 

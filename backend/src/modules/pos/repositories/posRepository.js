@@ -4,6 +4,11 @@ import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertPosRepositoryContract } from '../contracts/posRepository.contract.js';
 import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import {
+    detectBarcodeSymbology,
+    isBarcodeScopeAllowedForSurface,
+    normalizeBarcodeValue
+} from '../../shared/utils/barcodePolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
@@ -94,6 +99,14 @@ const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
     'pos_image_url'
 ];
 
+const safeGetModel = (name) => {
+    try {
+        return dbStore.get(name);
+    } catch {
+        return null;
+    }
+};
+
 const isMissingVatTypeColumnError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -147,7 +160,7 @@ const toPlain = (row) => (
 );
 
 const buildServiceDetailInclude = () => {
-    const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+    const ServiceItemDetail = safeGetModel('ServiceItemDetail');
     return ServiceItemDetail
         ? [{
             model: ServiceItemDetail,
@@ -156,6 +169,40 @@ const buildServiceDetailInclude = () => {
             required: false
         }]
         : [];
+};
+
+const buildFnbCatalogIncludes = () => {
+    const FnbModifierGroup = safeGetModel('FnbModifierGroup');
+    const FnbModifierOption = safeGetModel('FnbModifierOption');
+    const FnbItemKitchenRoute = safeGetModel('FnbItemKitchenRoute');
+    const FnbKitchenStation = safeGetModel('FnbKitchenStation');
+    const includes = [];
+    if (FnbModifierGroup && FnbModifierOption) {
+        includes.push({
+            model: FnbModifierGroup,
+            as: 'fnbModifierGroups',
+            required: false,
+            through: {
+                attributes: ['is_required_override', 'sort_order']
+            },
+            include: [{
+                model: FnbModifierOption,
+                as: 'options',
+                required: false
+            }]
+        });
+    }
+    if (FnbItemKitchenRoute) {
+        includes.push({
+            model: FnbItemKitchenRoute,
+            as: 'fnbKitchenRoutes',
+            required: false,
+            include: FnbKitchenStation
+                ? [{ model: FnbKitchenStation, as: 'station', required: false }]
+                : []
+        });
+    }
+    return includes;
 };
 
 const buildPosReadiness = ({ item, override }) => {
@@ -357,6 +404,29 @@ const buildTransactionInclude = () => ([
         attributes: ['customer_id', 'email', 'name', 'phone']
     },
     {
+        model: dbStore.get('FnbCheck'),
+        as: 'fnbCheck',
+        required: false,
+        attributes: ['check_id', 'table_id', 'server_id', 'guest_count', 'status', 'order_method']
+    },
+    {
+        model: dbStore.get('FnbDiningTable'),
+        as: 'fnbTable',
+        required: false,
+        attributes: ['table_id', 'table_number', 'label', 'seat_count', 'status']
+    },
+    {
+        model: dbStore.get('User'),
+        as: 'fnbServer',
+        required: false,
+        attributes: ['user_id', 'username', 'email']
+    },
+    {
+        model: dbStore.get('FnbRestaurantServiceChargeSnapshot'),
+        as: 'restaurantServiceChargeSnapshot',
+        required: false
+    },
+    {
         model: dbStore.get('User'),
         as: 'acceptedByUser',
         attributes: ['user_id', 'username', 'email']
@@ -428,7 +498,10 @@ export const posRepository = {
                 { statusField: 'status', excludeInactiveStatus: true }
             ),
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
-            include: buildServiceDetailInclude()
+            include: [
+                ...buildServiceDetailInclude(),
+                ...buildFnbCatalogIncludes()
+            ]
         };
 
         if (options.transaction) {
@@ -560,6 +633,71 @@ export const posRepository = {
         return created.pos_transaction_id;
     },
 
+    async listProductCompositionsForItems(itemIds = [], options = {}) {
+        const ProductComposition = safeGetModel('ProductComposition');
+        const Item = safeGetModel('Item');
+        const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        if (!ProductComposition || normalizedItemIds.length === 0) return [];
+        const rows = await ProductComposition.findAll({
+            where: {
+                product_id: { [Op.in]: normalizedItemIds },
+                composition_type: 'ingredient'
+            },
+            include: Item
+                ? [{
+                    model: Item,
+                    as: 'ingredient',
+                    required: false,
+                    attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock', 'category']
+                }]
+                : [],
+            order: [['product_id', 'ASC'], ['composition_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async getFnbTableById(tableId, options = {}) {
+        const FnbDiningTable = dbStore.get('FnbDiningTable');
+        if (!FnbDiningTable) return null;
+        const row = await FnbDiningTable.findByPk(tableId, {
+            include: [{ model: dbStore.get('FnbDiningArea'), as: 'area', required: false }],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async createFnbServiceChargeSnapshot(payload = {}, options = {}) {
+        const FnbRestaurantServiceChargeSnapshot = dbStore.get('FnbRestaurantServiceChargeSnapshot');
+        if (!FnbRestaurantServiceChargeSnapshot) return null;
+        const row = await FnbRestaurantServiceChargeSnapshot.create(payload, {
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
+    async settleFnbCheck({ checkId, posTransactionId }, options = {}) {
+        const FnbCheck = dbStore.get('FnbCheck');
+        if (!FnbCheck) return null;
+        const normalizedCheckId = toPositiveInt(checkId);
+        if (!normalizedCheckId) return null;
+        const row = await FnbCheck.findByPk(normalizedCheckId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update({
+            status: 'paid',
+            pos_transaction_id: toPositiveInt(posTransactionId),
+            closed_at: new Date()
+        }, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async getTransactionById(posTransactionId, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const queryOptions = {
@@ -667,6 +805,7 @@ export const posRepository = {
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('subtotal_amount')), 0), 'subtotal_amount'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('discount_amount')), 0), 'discount_amount'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('service_fee_amount')), 0), 'service_fee_total'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('restaurant_service_charge_amount')), 0), 'restaurant_service_charge_total'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('vatable_sales')), 0), 'vatable_sales'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('vat_amount')), 0), 'vat_amount'],
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('vat_exempt_sales')), 0), 'vat_exempt_sales'],
@@ -909,6 +1048,131 @@ export const posRepository = {
         }
     },
 
+    async resolveCatalogScan({ code, location_id = null } = {}) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const Item = dbStore.get('Item');
+        const normalizedCode = normalizeBarcodeValue(code);
+        if (!normalizedCode) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_NOT_FOUND',
+                normalized_code: null
+            };
+        }
+
+        const rows = await ItemBarcode.findAll({
+            where: {
+                normalized_code: normalizedCode,
+                is_active: true
+            },
+            include: [{
+                model: Item,
+                as: 'item',
+                attributes: POS_ITEM_ATTRIBUTES_WITH_VAT.includes('status')
+                    ? POS_ITEM_ATTRIBUTES_WITH_VAT
+                    : [...POS_ITEM_ATTRIBUTES_WITH_VAT, 'status'],
+                include: buildServiceDetailInclude(),
+                required: false
+            }],
+            order: [
+                ['is_primary', 'DESC'],
+                ['updated_at', 'DESC'],
+                ['item_barcode_id', 'DESC']
+            ],
+            limit: 5
+        });
+
+        if (rows.length === 0) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_NOT_FOUND',
+                normalized_code: normalizedCode,
+                symbology: detectBarcodeSymbology(code)
+            };
+        }
+
+        const surfaceRows = rows.filter((row) => (
+            isBarcodeScopeAllowedForSurface(row.scope, 'pos')
+        ));
+        if (surfaceRows.length === 0) {
+            return {
+                status: 'blocked',
+                reason_code: 'BARCODE_SCOPE_NOT_POS',
+                normalized_code: normalizedCode,
+                symbology: detectBarcodeSymbology(code),
+                blocked_scopes: rows.map((row) => row.scope).filter(Boolean)
+            };
+        }
+
+        const itemIds = Array.from(new Set(surfaceRows
+            .map((row) => Number(row.item_id))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0)));
+        if (itemIds.length > 1) {
+            return {
+                status: 'conflict',
+                reason_code: 'BARCODE_CONFLICT',
+                normalized_code: normalizedCode,
+                matches: surfaceRows.map((row) => {
+                    const payload = toPlain(row);
+                    return {
+                        item_barcode_id: payload.item_barcode_id,
+                        item_id: payload.item_id,
+                        code: payload.code,
+                        source: payload.source,
+                        scope: payload.scope,
+                        packaging_level: payload.packaging_level,
+                        quantity_multiplier: Number(payload.quantity_multiplier || 1),
+                        item: payload.item || null
+                    };
+                })
+            };
+        }
+
+        const barcode = toPlain(surfaceRows[0]);
+        const itemPayload = barcode?.item || null;
+        if (!itemPayload) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_ITEM_NOT_FOUND',
+                normalized_code: normalizedCode
+            };
+        }
+
+        const overrideMap = await loadCatalogOverridesMap([itemPayload.item_id]);
+        const override = overrideMap.get(itemPayload.item_id);
+        const stockMap = await loadLocationStockMap([itemPayload.item_id], location_id);
+        const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
+            ? applyLocationStockMap([itemPayload], stockMap.stockMap)
+            : [itemPayload];
+        const posVisible = resolveCatalogVisibility({ item: itemWithLocationStock, override, surface: 'pos' });
+        const readiness = buildPosReadiness({ item: itemWithLocationStock, override });
+
+        return {
+            status: 'resolved',
+            reason_code: null,
+            normalized_code: normalizedCode,
+            barcode: {
+                item_barcode_id: barcode.item_barcode_id,
+                item_id: barcode.item_id,
+                code: barcode.code,
+                normalized_code: barcode.normalized_code,
+                symbology: barcode.symbology,
+                source: barcode.source,
+                scope: barcode.scope,
+                packaging_level: barcode.packaging_level,
+                quantity_multiplier: Number(barcode.quantity_multiplier || 1),
+                is_primary: barcode.is_primary === true
+            },
+            item: {
+                ...itemWithLocationStock,
+                pos_visible: posVisible,
+                pos_image_path: override?.pos_image_path || null,
+                pos_image_url: override?.pos_image_url || null,
+                pos_readiness: readiness
+            }
+        };
+    },
+
     async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
@@ -930,7 +1194,10 @@ export const posRepository = {
         const queryOptions = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
-            include: buildServiceDetailInclude(),
+            include: [
+                ...buildServiceDetailInclude(),
+                ...buildFnbCatalogIncludes()
+            ],
             order: [['name', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500)
         };

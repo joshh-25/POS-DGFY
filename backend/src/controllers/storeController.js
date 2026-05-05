@@ -4,6 +4,7 @@
 
 export {
     listStoreCatalog,
+    resolveStoreQr,
     listStoreLocations,
     registerStoreCustomer,
     loginStoreCustomer,
@@ -26,6 +27,7 @@ export {
 
 import {
     listStoreCatalog,
+    resolveStoreQr,
     listStoreLocations,
     registerStoreCustomer,
     loginStoreCustomer,
@@ -48,6 +50,7 @@ import {
 
 export default {
     listStoreCatalog,
+    resolveStoreQr,
     listStoreLocations,
     registerStoreCustomer,
     loginStoreCustomer,

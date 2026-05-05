@@ -15,6 +15,7 @@
 - [Stock Movements Endpoints](#stock-movements-endpoints)
 - [Dispatch Orders Endpoints](#dispatch-orders-endpoints)
 - [POS Endpoints](#pos-endpoints)
+- [Food & Beverage Endpoints](#food--beverage-endpoints)
 - [Unified Sales Endpoints](#unified-sales-endpoints)
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
@@ -557,7 +558,7 @@ Get single item details
 
 **Notes:**
 - `current_stock` remains compatibility aggregate; authoritative per-location balances are in `item_location_stocks`.
-- FIFO batches include optional location metadata to support location-scoped FIFO consumption.
+- FIFO batches include location metadata to support location-scoped FIFO consumption. For stock-bearing items, frontend item detail views should read `item_location_stocks` and `fifo_batches.location_id` together: location stock shows where quantity exists, while batch rows show the cost, age, expiry, and remaining-quantity differences inside that location.
 - `cost_metrics.by_location` is included in detail responses for per-location weighted valuation visibility.
 
 ### POST /items
@@ -603,6 +604,7 @@ Create new item
 - `sku_code` is trimmed server-side before persistence.
 - Active SKU uniqueness is case/whitespace-insensitive. Conflicts return `409` with `Item with this SKU code already exists`.
 - When `current_stock` is provided with `location_id`, opening/adjustment stock is recorded for that location ledger.
+- Stock-bearing items should be created with location context whenever opening stock is provided so FIFO batches and location stock stay aligned from the first receipt/adjustment.
 
 ### PUT /items/:item_id
 Update item
@@ -667,6 +669,41 @@ Get available FIFO batches for an item.
 - Returns only batches with available quantity (`quantity > quantity_consumed`).
 - `location_id` is optional; when supplied, only batches for that location are returned.
 - Response rows include optional location metadata (`location.location_id`, `location.name`).
+- In multi-location mode, callers should pass the selected operating/fulfillment `location_id` when showing or consuming batches so the frontend batch view matches the stock ledger that checkout, production, transfer, or adjustment will affect.
+
+### Item Barcode Identity Endpoints
+Manage tenant-local barcode identities and label payloads. `sku_code` remains the human/business SKU; barcode rows are scan aliases.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/items/barcodes/resolve?code=...` | authenticated item read | Resolve a scan value to `resolved`, `not_found`, `inactive`, or `conflict` without authorizing stock/POS/Storefront action |
+| `POST` | `/items/barcodes/conflicts/resolve` | `items:edit` | Process controlled conflict actions: `keep_existing`, `move_code`, `add_package_alias`, `reject_import` |
+| `GET` | `/items/:item_id/barcodes` | authenticated item read | List active/inactive aliases for one item |
+| `POST` | `/items/:item_id/barcodes` | `items:edit` | Attach manufacturer, supplier, internal, or legacy barcode |
+| `POST` | `/items/:item_id/barcodes/generate` | `items:edit` | Generate tenant-local internal barcode; not an official UPC/EAN/GTIN |
+| `PATCH` | `/items/:item_id/barcodes/:barcode_id` | `items:edit` | Update source, scope, packaging level, multiplier, metadata, or active flag |
+| `DELETE` | `/items/:item_id/barcodes/:barcode_id` | `items:edit` | Deactivate an alias while retaining history |
+| `POST` | `/items/:item_id/barcodes/:barcode_id/primary` | `items:edit` | Mark one active alias as primary |
+| `GET` | `/items/:item_id/barcode-label` | authenticated item read | Render browser-printable label payload with layout metadata and audit print intent |
+
+**Barcode request fields**
+```json
+{
+  "code": "012345678905",
+  "source": "manufacturer",
+  "scope": "inventory",
+  "packaging_level": "case",
+  "quantity_multiplier": 24
+}
+```
+
+**Rules**
+- Active barcode uniqueness is tenant-local, not global. One tenant cannot silently assign the same active normalized code to unrelated active items.
+- Accepted sources: `manufacturer`, `supplier`, `tenant_generated`, `legacy_import`, `system_generated_reference`.
+- Accepted scopes: `inventory`, `pos`, `storefront_qr`, `batch`, `service`, `ticket`, `package`.
+- Duplicate active assignments fail closed with `BARCODE_CONFLICT` metadata for explicit operator resolution.
+- Label rendering and scan resolution identify context only; stock movement, POS eligibility, Storefront visibility, location grants, and compliance rules still run in their own use cases.
+- Label payloads include normalized label type, human-readable type, browser-print layout metadata, and a `barcode.label_print_intent` audit entry.
 
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
@@ -884,7 +921,7 @@ Complete production and update inventory
 {
   "actual_quantity_produced": 50,
   "notes": "Production went smoothly",
-  "expiry_date_override": "2026-06-01" 
+  "expiry_date_override": "2026-06-01"
 }
 ```
 
@@ -1863,7 +1900,7 @@ Gating notes:
 ### GET /pos/catalog
 List sellable POS catalog items.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -1884,10 +1921,84 @@ List sellable POS catalog items.
   - `category=service` + service metadata with `visible_in_pos !== false`: visible by default in POS
   - other categories/types: hidden until explicitly enabled (`pos_visible=true`)
 
+### POST /pos/scan
+Resolve a barcode scan for the current POS context before cart insertion.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "code": "CASE-6",
+  "location_id": 3,
+  "terminal_id": "FRONT-01",
+  "quantity": 1
+}
+```
+
+**Resolved Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "resolved",
+    "barcode": { "item_barcode_id": 44, "scope": "package", "quantity_multiplier": 6 },
+    "suggested_line": {
+      "item_id": 10,
+      "quantity": 6,
+      "unit_price": 35,
+      "source": "barcode_scan",
+      "scan_metadata": {
+        "barcode_id": 44,
+        "code": "CASE-6",
+        "normalized_code": "CASE-6",
+        "location_id": 3
+      }
+    }
+  }
+}
+```
+
+**Blocked Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "blocked",
+    "reason_code": "NOT_POS_VISIBLE",
+    "message": "Item is not visible in POS"
+  }
+}
+```
+
+**Routed Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "routed",
+    "reason_code": "SERVICE_BOOKING_SCAN_ROUTED",
+    "message": "Service booking scan routed to Services",
+    "route": {
+      "type": "service_booking",
+      "reference": "SB-2026-0001"
+    }
+  }
+}
+```
+
+**Rules**
+- Resolution runs through POS use cases, not direct Inventory lookup from the UI.
+- Successful scans may enter cart only after item status, POS visibility, sale price, shift/location scope, stock/service exemption, and compliance readiness pass.
+- Service booking/ticket QR scans return routed metadata and must not add cart lines. Ticket-scope barcodes that are not service booking routes return `TICKET_SCAN_NOT_CARTABLE`.
+- Blocked reason codes include `BARCODE_NOT_FOUND`, `BARCODE_CONFLICT`, `BARCODE_SCOPE_NOT_POS`, `TICKET_SCAN_NOT_CARTABLE`, `NOT_POS_VISIBLE`, `ITEM_INACTIVE`, `MISSING_PRICE`, `OUT_OF_STOCK`, `LOCATION_CONTEXT_REQUIRED`, `UNAUTHORIZED_LOCATION`, `COMPLIANCE_BLOCKED`, and `SERVICE_UNAVAILABLE`.
+- Offline checkout payloads may include `scan_metadata`; replay revalidates barcode mapping, item state, stock/location, and compliance before committing.
+
 ### GET /pos/catalog-overrides
 List POS catalog overrides for admin inventory/POS configuration screens.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -1906,7 +2017,7 @@ List POS catalog overrides for admin inventory/POS configuration screens.
 ### PATCH /pos/catalog-overrides/:item_id
 Create/update POS catalog override for an item.
 
-**Permission**: `items:edit`  
+**Permission**: `items:edit`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -1919,7 +2030,7 @@ Create/update POS catalog override for an item.
 ### POST /pos/catalog-overrides/:item_id/image
 Upload/replace POS catalog image override (multipart file upload).
 
-**Permission**: `items:edit`  
+**Permission**: `items:edit`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request**: `multipart/form-data` with `image` file field.
@@ -1943,7 +2054,7 @@ Upload/replace POS catalog image override (multipart file upload).
 ### DELETE /pos/catalog-overrides/:item_id/image
 Remove POS image override and revert to default item image behavior.
 
-**Permission**: `items:edit`  
+**Permission**: `items:edit`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Notes**
@@ -1964,6 +2075,7 @@ Route mapping note:
 Order-method fee policy (current contract):
 - Mandatory fixed policy: `service_fee_amount = round4(items_subtotal * 0.01)` (`DGFY convenience fee`).
 - `service_fee_amount` request field is accepted for backward payload compatibility but ignored at runtime.
+- Food & Beverage restaurant service charge is separate. F&B check/table/server/guest/course/modifier/kitchen metadata is additive and stored in `fnb_*` and `restaurant_service_charge_*` snapshot fields; do not reuse `service_fee_amount` for restaurant service charge.
 - `pos_order_method_fees` is deprecated and no longer used by checkout pricing logic.
 - Service fee is stored as immutable snapshots on transaction header:
   - `service_fee_amount`
@@ -1991,10 +2103,10 @@ Payment handoff policy (current contract):
   - non-cash (`gcash`, `maya`, `card`, `bank_transfer`) -> `external`
 - When BSP OPS controls are incomplete, internal non-cash flows are denied with reason-coded compliance errors; external handoff remains allowed.
 
-**Permission**: `pos:transact`  
+**Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
-**Compliance Gate (dual-mode, fail-closed for compliant mode)**  
+**Compliance Gate (dual-mode, fail-closed for compliant mode)**
 Checkout is evaluated by the compliance policy engine:
 1. `compliance_mode_choice_required=true` blocks checkout and terminal operations (`LEGACY_MODE_SELECTION_REQUIRED`).
 2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`).
@@ -2049,7 +2161,7 @@ Final Review documentary (tenant self-serve):
 ### GET /pos/transactions
 List POS transactions with cashier metadata and pagination.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -2069,13 +2181,13 @@ List POS transactions with cashier metadata and pagination.
 ### GET /pos/transactions/:id
 Get full POS transaction details (header + lines + item snapshots).
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 ### GET /pos/terminal/shifts/current
 Get the current open shift and cash summary for a terminal.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -2086,7 +2198,7 @@ Get the current open shift and cash summary for a terminal.
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
 
-**Permission**: `pos:transact`  
+**Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -2113,7 +2225,7 @@ Open a terminal shift for cashier operations.
 ### POST /pos/terminal/shifts/:id/cash-events
 Record a cash drawer adjustment event for an active shift.
 
-**Permission**: `pos:cash_drawer_adjust`  
+**Permission**: `pos:cash_drawer_adjust`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -2132,7 +2244,7 @@ Record a cash drawer adjustment event for an active shift.
 ### POST /pos/terminal/shifts/:id/close
 Close a terminal shift and lock in shift-level cash variance data.
 
-**Permission**: `pos:close_day`  
+**Permission**: `pos:close_day`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -2150,7 +2262,7 @@ Close a terminal shift and lock in shift-level cash variance data.
 ### GET /pos/terminal/dashboard/today
 Get today dashboard totals for terminal operations.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -2161,7 +2273,7 @@ Get today dashboard totals for terminal operations.
 ### GET /pos/incoming-orders
 List incoming online orders for POS fulfillment queue.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -2177,7 +2289,7 @@ List incoming online orders for POS fulfillment queue.
 ### PATCH /pos/orders/:id/status
 Update online order fulfillment status from POS terminal operations.
 
-**Permission**: `pos:transact`  
+**Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -2213,7 +2325,7 @@ Update online order fulfillment status from POS terminal operations.
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
 
-**Permission**: `pos:close_day`  
+**Permission**: `pos:close_day`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Extended Response Fields (non-breaking)**
@@ -2228,7 +2340,7 @@ Generate same-day Z-reading summary for completed POS transactions.
 ### GET /pos/z-reading/:date
 Retrieve Z-reading summary for a specific business date (`YYYY-MM-DD`).
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 When a persisted snapshot exists for the requested date, response uses the stored snapshot payload.
@@ -2245,7 +2357,7 @@ Z-reading summary includes:
 ### GET /pos/x-reading/current
 Retrieve an in-progress (on-demand) X-reading snapshot for a business date and optional terminal.
 
-**Permission**: `pos:view`  
+**Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Query Parameters**
@@ -2262,7 +2374,7 @@ Retrieve an in-progress (on-demand) X-reading snapshot for a business date and o
 ### POST /pos/z-reading/governed-reset
 Record a governed reset-counter increment event with immutable event metadata.
 
-**Permission**: `pos:close_day`  
+**Permission**: `pos:close_day`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -2286,7 +2398,7 @@ Return compliance books package with stable schema contracts for:
 3. `inventory_book`
 4. `special_discount_journal`
 
-**Permission**: `reports:view` (same report-surface policy as other report endpoints)  
+**Permission**: `reports:view` (same report-surface policy as other report endpoints)
 **Plan Gate**: Existing report gates
 
 **Response Fields**
@@ -2314,7 +2426,7 @@ Return compliance books package with stable schema contracts for:
 ### GET /reports/compliance-package/export
 Return submission-ready compliance export bundle metadata and CSV file payloads for filing workflows.
 
-**Permission**: `reports:view`  
+**Permission**: `reports:view`
 **Plan Gate**: Existing report gates
 
 **Query Parameters**
@@ -2339,8 +2451,8 @@ Return submission-ready compliance export bundle metadata and CSV file payloads 
 ### POST /settings/storefront-assets/:asset_type
 Upload or replace tenant storefront branding image from IMS Settings.
 
-**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)  
-**Request**: `multipart/form-data` with `image` file field  
+**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)
+**Request**: `multipart/form-data` with `image` file field
 **Params**:
 - `asset_type`: `cover` or `profile`
 **Accepted image MIME types**:
@@ -2361,7 +2473,7 @@ Upload or replace tenant storefront branding image from IMS Settings.
 ### DELETE /settings/storefront-assets/:asset_type
 Remove tenant storefront branding image from IMS Settings.
 
-**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)  
+**Auth**: Private (`master admin`, `admin` role, or `settings:storefront_branding_edit`)
 **Params**:
 - `asset_type`: `cover` or `profile`
 
@@ -2372,7 +2484,7 @@ Remove tenant storefront branding image from IMS Settings.
 ### GET /storefront/discovery
 List publicly discoverable stores for list/grid/map storefront views.
 
-**Auth**: Public  
+**Auth**: Public
 **Tenant Context**: Not required for this discovery endpoint
 **Caching Contract**: `Cache-Control: public, max-age=20, s-maxage=20, stale-while-revalidate=40, stale-if-error=90`
 
@@ -2422,7 +2534,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.
 
-**Auth**: Public  
+**Auth**: Public
 **Tenant Context**: Not required
 **Caching Contract**: `Cache-Control: public, max-age=30, s-maxage=30, stale-while-revalidate=60, stale-if-error=120`
 
@@ -2444,7 +2556,7 @@ Profile payload may also include additive Customer Access metadata:
 ### GET /store/catalog
 List tenant storefront catalog items (public read).
 
-**Auth**: Public  
+**Auth**: Public
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: public, max-age=45, s-maxage=45, stale-while-revalidate=90, stale-if-error=180`
 
@@ -2469,6 +2581,9 @@ Catalog rows include:
   - may be an absolute URL or backend-relative `/uploads/...` path
   - storefront/POS clients should gracefully show a placeholder when image load fails
 - `service_detail` for Services Mode service rows, including duration, payment policy, bookable/storefront visibility, and normalized `intake_form_schema` fields when configured
+- `allergens` for F&B menu rows, sourced from `item_allergens`
+- `nutrition` for F&B menu rows, sourced from `item_nutrition`
+- `fnb_modifier_groups` for F&B menu rows, with active modifier groups/options and server-owned `price_delta` values
 
 **Availability Contract**
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
@@ -2488,6 +2603,78 @@ Catalog rows include:
 - Compatibility fallback path (missing `item_location_stocks` table/columns) remains non-error and should still return `200`.
 - Storefront clients should map catalog error UX from `error_code` first (code-driven guidance), not message-substring heuristics.
 - Storefront catalog rendering should be deterministic by state (`loading`, `error`, `empty_setup`, `empty_search_on_zero`, `empty_no_match`, `ready`) to avoid blank states.
+
+### GET /store/qr/resolve
+Resolve a public Storefront QR/deep-link barcode value.
+
+**Auth**: Public
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: Same public read contract as catalog.
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `code` | string | Required barcode code, QR URL, or QR payload containing `bc`, `barcode`, `code`, or `/qr/:code` |
+| `location_id` | number | Optional active fulfillment location scope for availability calculation |
+
+**Response**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "resolved",
+    "reason_code": null,
+    "barcode": {
+      "item_barcode_id": 70,
+      "scope": "storefront_qr",
+      "quantity_multiplier": 1
+    },
+    "item": {
+      "item_id": 601,
+      "name": "QR Item",
+      "inventory_display": { "mode": "availability", "label": "Available" }
+    },
+    "cart_allowed": true,
+    "checkout_allowed": true,
+    "access_policy": { "effective_customer_access_mode": "transaction" }
+  }
+}
+```
+
+**Rules**
+- Storefront QR uses Storefront visibility only (`storefront_visible` and service storefront metadata), never POS visibility.
+- `ghost` mode blocks item detail exposure. `catalog` exposes item detail only. `inquiry` exposes item detail plus contact affordance. `transaction` allows cart/checkout handoff subject to stock, location, compliance, and payment gates.
+- Service booking QR payloads such as `SERVICE_BOOKING:<reference>` resolve to booking/ticket context and redact customer contact fields unless an authenticated/claim flow permits disclosure. They do not hand off to cart.
+- Public QR responses do not expose `cost_per_unit` or raw `current_stock`; they use the same `inventory_display` contract as `/store/catalog`.
+
+### Storefront Food & Beverage Endpoints
+
+Food & Beverage storefront routes are public or optional Store JWT tenant routes under `/api/v1/store`. They require an F&B-capable tenant and use the same public tenant resolution as catalog/checkout (`x-store-slug` header).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/store/fnb/reservations` | Optional Store JWT | Create a public reservation/waitlist request with `source=storefront` |
+
+Storefront quote and checkout line payloads may include additive F&B modifier metadata:
+
+```json
+{
+  "lines": [
+    {
+      "item_id": 20,
+      "quantity": 2,
+      "line_modifiers": [
+        {
+          "modifier_group_id": 5,
+          "modifier_option_id": 8
+        }
+      ]
+    }
+  ]
+}
+```
+
+The backend validates selected modifier options against the item's published F&B modifier groups and computes modifier price deltas from database state. Public clients must not treat client-sent modifier price values as authoritative.
 
 ### Storefront Services Endpoints
 
@@ -2539,7 +2726,7 @@ Services Mode IMS/POS operator routes live under `/api/v1/services`. They requir
 ### GET /store/locations
 List active tenant fulfillment locations for a specific storefront tenant page.
 
-**Auth**: Public  
+**Auth**: Public
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: public, max-age=30, s-maxage=30, stale-while-revalidate=60, stale-if-error=120`
 
@@ -2552,7 +2739,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 ### POST /store/cart/quote
 Compute quote totals for guest or store-customer checkout.
 
-**Auth**: Optional store customer (`Store JWT`)  
+**Auth**: Optional store customer (`Store JWT`)
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -2575,7 +2762,7 @@ Route mapping note:
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
 
-**Auth**: Optional store customer (`Store JWT`)  
+**Auth**: Optional store customer (`Store JWT`)
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -2597,9 +2784,9 @@ Route mapping note:
 ### GET /store/track/:tracking_pin
 Track online-store order status for public users.
 
-**Auth**: Public  
-**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)  
-**Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`  
+**Auth**: Public
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 
 ### VAT Data Placement (Current Contract)
@@ -2625,6 +2812,82 @@ Track online-store order status for public users.
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
 5. Compliance lifecycle/profile is tenant-level (`tenants` + compliance module tables), not controlled by a strict-toggle setting.
+
+---
+
+## Food & Beverage Endpoints
+
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/fnb/dashboard` | `reports:view` | Load F&B dashboard counts and active floor/kitchen/reservation summaries |
+| `GET` | `/fnb/modifier-groups` | `items:view` | List menu modifier groups and options |
+| `POST` | `/fnb/modifier-groups` | `items:edit` | Create a modifier group with options and selection rules |
+| `GET` | `/fnb/dining-areas` | `pos:view` | List dining areas and tables |
+| `POST` | `/fnb/dining-areas` | `pos:transact` | Create a dining area and optional initial tables |
+| `PATCH` | `/fnb/tables/:table_id/status` | `pos:transact` | Update table status (`available`, `seated`, `held`, `out_of_service`) |
+| `GET` | `/fnb/kitchen-stations` | `pos:view` | List kitchen routing stations |
+| `POST` | `/fnb/kitchen-stations` | `pos:transact` | Create a kitchen station |
+| `GET` | `/fnb/item-kitchen-routes` | `items:view` | List item-to-kitchen-station routing assignments |
+| `PUT` | `/fnb/item-kitchen-routes/:item_id` | `items:edit` | Upsert the primary kitchen route and default course for a menu item |
+| `GET` | `/fnb/item-modifier-groups` | `items:view` | List menu item modifier group assignments |
+| `PUT` | `/fnb/item-modifier-groups/:item_id` | `items:edit` | Replace modifier groups assigned to a menu item |
+| `GET` | `/fnb/checks` | `pos:view` | List active/open checks |
+| `POST` | `/fnb/checks` | `pos:transact` | Open a dine-in/takeout/pickup/delivery check |
+| `PATCH` | `/fnb/checks/:check_id/status` | `pos:transact` | Move a check through guarded lifecycle states |
+| `PATCH` | `/fnb/checks/:check_id/transfer` | `pos:transact` | Transfer an active check to another table/server snapshot |
+| `POST` | `/fnb/checks/:check_id/split` | `pos:transact` | Split selected line IDs from an active check into a new check |
+| `POST` | `/fnb/checks/:check_id/merge` | `pos:transact` | Merge a source active check into a target active check and close the source as transferred |
+| `POST` | `/fnb/checks/:check_id/lines` | `pos:transact` | Add a line with course, modifier, instruction, and kitchen-station metadata |
+| `POST` | `/fnb/checks/:check_id/kitchen-tickets` | `pos:transact` | Queue a kitchen ticket from check lines |
+| `PATCH` | `/fnb/kitchen-tickets/:ticket_id/status` | `pos:transact` | Move a kitchen ticket through guarded kitchen states |
+| `GET` | `/fnb/reservations` | `pos:view` | List reservation/waitlist requests; supports `status`, `table_id`, `from`, `to`, and `limit` filters |
+| `POST` | `/fnb/reservations` | `pos:transact` | Create an admin/POS reservation or waitlist request with optional `table_id`, `table_ids`, `duration_minutes`, and `buffer_minutes` |
+| `PATCH` | `/fnb/reservations/:reservation_id/status` | `pos:transact` | Move a reservation through guarded states; confirmed/seated assigned-table windows cannot overlap |
+| `GET` | `/fnb/service-charge-settings` | `settings:view` | Read restaurant service-charge settings |
+| `PUT` | `/fnb/service-charge-settings` | `settings:edit` | Update optional restaurant service-charge settings |
+
+POS checkout accepts these additive fields when F&B context is attached:
+
+```json
+{
+  "fnb_check_id": 12,
+  "fnb_table_id": 4,
+  "fnb_table_label_snapshot": "Main 4",
+  "fnb_guest_count": 3,
+  "fnb_server_id": 9,
+  "restaurant_service_charge": {
+    "enabled": true,
+    "label": "Restaurant service charge",
+    "rate": 10,
+    "taxable": false
+  },
+  "lines": [
+    {
+      "item_id": 101,
+      "quantity": 1,
+      "course": "main",
+      "line_modifiers": [
+        {
+          "modifier_group_id": 2,
+          "modifier_option_id": 8,
+          "group_name": "Doneness",
+          "option_name": "Medium",
+          "price_delta": 0
+        }
+      ],
+      "kitchen_station_id": 1
+    }
+  ]
+}
+```
+
+F&B checkout validation uses database modifier assignments and active modifier options for `line_modifiers`; submitted `price_delta`, `group_name`, and `option_name` are treated as display hints only and are re-snapshotted from server state. POS can send line-level `kitchen_station_id` overrides from active F&B kitchen stations; otherwise item kitchen routes provide the default station/course snapshot. If `restaurant_service_charge.taxable=true`, POS includes the restaurant service charge in VATable gross for `vatable_sales`/`vat_amount` while keeping `service_fee_amount` reserved for the DGFY convenience fee. For F&B menu items with `product_composition` ingredient rows, checkout deducts ingredient stock through POS `goods_issue` movements.
+
+Restaurant service charge snapshots are stored separately from the DGFY convenience fee. `service_fee_amount` remains DGFY-only.
+
+Reservation requests store optional `table_id` assignments only after the table exists in the F&B floor plan. For combined-table parties, `table_id` is the primary compatibility shortcut and `table_ids` stores every assigned table through the F&B reservation-table side table. IMS uses `/fnb/reservations` schedule filters for table/date views. Reservation windows default to `duration_minutes=90` and `buffer_minutes=15`; requested/waitlisted rows do not block capacity, while confirmed/seated rows block overlapping confirmed/seated bookings on any assigned table. Confirming or seating a booking also checks that selected table seats cover the party size.
 
 ---
 

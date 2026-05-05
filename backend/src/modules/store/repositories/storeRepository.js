@@ -4,6 +4,11 @@ import logger from '../../../config/logger.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertStoreRepositoryContract } from '../contracts/storeRepository.contract.js';
 import { isCatalogItemVisible, resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import {
+    detectBarcodeSymbology,
+    isBarcodeScopeAllowedForSurface,
+    normalizeBarcodeValue
+} from '../../shared/utils/barcodePolicy.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -71,6 +76,11 @@ const isMissingOptionalCatalogIncludeTableError = (error) => {
         message.includes('pos_catalog_overrides')
         || message.includes('storefront_catalog_overrides')
         || message.includes('service_item_details')
+        || message.includes('item_allergens')
+        || message.includes('item_nutrition')
+        || message.includes('fnb_modifier_groups')
+        || message.includes('fnb_modifier_options')
+        || message.includes('fnb_item_modifier_groups')
     );
 };
 
@@ -176,6 +186,57 @@ const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOve
             required: false
         });
     }
+    return includes;
+};
+
+const buildStorefrontCatalogDetailIncludes = () => {
+    const includes = [];
+    const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+    const ItemNutrition = dbStore.get('ItemNutrition');
+    const ItemAllergen = dbStore.get('ItemAllergen');
+    const FnbModifierGroup = dbStore.get('FnbModifierGroup');
+    const FnbModifierOption = dbStore.get('FnbModifierOption');
+
+    if (ServiceItemDetail) {
+        includes.push({
+            model: ServiceItemDetail,
+            as: 'serviceDetail',
+            required: false
+        });
+    }
+
+    if (ItemNutrition) {
+        includes.push({
+            model: ItemNutrition,
+            as: 'nutrition',
+            required: false
+        });
+    }
+
+    if (ItemAllergen) {
+        includes.push({
+            model: ItemAllergen,
+            as: 'allergens',
+            required: false
+        });
+    }
+
+    if (FnbModifierGroup) {
+        includes.push({
+            model: FnbModifierGroup,
+            as: 'fnbModifierGroups',
+            required: false,
+            through: { attributes: ['is_required_override', 'sort_order'] },
+            include: FnbModifierOption
+                ? [{
+                    model: FnbModifierOption,
+                    as: 'options',
+                    required: false
+                }]
+                : []
+        });
+    }
+
     return includes;
 };
 
@@ -331,12 +392,16 @@ export const storeRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         };
+        const catalogDetailIncludes = buildStorefrontCatalogDetailIncludes();
         const includeOverride = buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride);
 
         try {
             const rows = await Item.findAll({
                 ...baseQuery,
-                include: includeOverride
+                include: [
+                    ...includeOverride,
+                    ...catalogDetailIncludes
+                ]
             });
             const catalogRows = rows
                 .map(toPlain)
@@ -417,11 +482,7 @@ export const storeRepository = {
             transaction: options.transaction
         };
         const includeOverride = buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride);
-        const serviceDetailInclude = [{
-            model: dbStore.get('ServiceItemDetail'),
-            as: 'serviceDetail',
-            required: false
-        }];
+        const catalogDetailIncludes = buildStorefrontCatalogDetailIncludes();
 
         const mapCatalogRows = (rows, { allowLegacyPosFallback = false } = {}) => rows
             .map(toPlain)
@@ -436,7 +497,10 @@ export const storeRepository = {
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
                 image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
-                service_detail: row?.serviceDetail || null
+                service_detail: row?.serviceDetail || null,
+                nutrition: row?.nutrition || null,
+                allergens: Array.isArray(row?.allergens) ? row.allergens : [],
+                fnb_modifier_groups: Array.isArray(row?.fnbModifierGroups) ? row.fnbModifierGroups : []
             }));
 
         try {
@@ -444,7 +508,7 @@ export const storeRepository = {
                 ...baseQuery,
                 include: [
                     ...includeOverride,
-                    ...serviceDetailInclude
+                    ...catalogDetailIncludes
                 ]
             });
             const catalogRows = mapCatalogRows(rows);
@@ -470,6 +534,14 @@ export const storeRepository = {
             if (isMissingStorefrontCatalogOverrideTableError(error)) {
                 warnStorefrontOverrideFallback(error);
             }
+            const optionalDetailIncludes = (
+                isMissingServiceItemDetailTableError(error)
+                || String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '').includes('item_allergens')
+                || String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '').includes('item_nutrition')
+                || String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '').includes('fnb_')
+            )
+                ? []
+                : catalogDetailIncludes;
             const fallbackInclude = [
                 ...buildStorefrontOverrideInclude(
                     isMissingStorefrontCatalogOverrideTableError(error) ? null : StorefrontCatalogOverride,
@@ -479,7 +551,7 @@ export const storeRepository = {
                             && !isMissingPosCatalogOverrideTableError(error)
                     }
                 ),
-                ...(isMissingServiceItemDetailTableError(error) ? [] : serviceDetailInclude)
+                ...optionalDetailIncludes
             ];
             const rows = await Item.findAll({
                 ...baseQuery,
@@ -504,6 +576,227 @@ export const storeRepository = {
                     };
                 });
         }
+    },
+
+    async resolvePublicBarcode({ code, location_id = null } = {}, options = {}) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const Item = dbStore.get('Item');
+        const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
+        const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+        const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+        const normalizedCode = normalizeBarcodeValue(code);
+        if (!normalizedCode) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_NOT_FOUND',
+                normalized_code: null
+            };
+        }
+
+        const rows = await ItemBarcode.findAll({
+            where: {
+                normalized_code: normalizedCode,
+                is_active: true
+            },
+            include: [{
+                model: Item,
+                as: 'item',
+                where: buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: true }),
+                attributes: [
+                    'item_id',
+                    'name',
+                    'category',
+                    'product_type',
+                    'unit_of_measure',
+                    'current_stock',
+                    'default_sale_price',
+                    'vat_type'
+                ],
+                include: [
+                    ...buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride),
+                    ...(ServiceItemDetail ? [{
+                        model: dbStore.get('ServiceItemDetail'),
+                        as: 'serviceDetail',
+                        required: false
+                    }] : [])
+                ],
+                required: true
+            }],
+            order: [
+                ['is_primary', 'DESC'],
+                ['updated_at', 'DESC'],
+                ['item_barcode_id', 'DESC']
+            ],
+            limit: 5,
+            transaction: options.transaction
+        });
+
+        if (rows.length === 0) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_NOT_FOUND',
+                normalized_code: normalizedCode,
+                symbology: detectBarcodeSymbology(code)
+            };
+        }
+
+        const visibleMatches = rows
+            .map((row) => toPlain(row))
+            .filter((barcode) => isBarcodeScopeAllowedForSurface(barcode.scope, 'storefront'))
+            .map((barcode) => {
+                const item = barcode.item || {};
+                const storefrontVisible = mapStorefrontCatalogVisibility(item);
+                return {
+                    barcode,
+                    item: {
+                        item_id: item.item_id,
+                        name: item.name,
+                        category: item.category,
+                        product_type: item.product_type || null,
+                        unit_of_measure: item.unit_of_measure || null,
+                        current_stock: String(item.category || '').trim().toLowerCase() === 'service' ? 0 : item.current_stock,
+                        default_sale_price: item.default_sale_price,
+                        vat_type: item.vat_type,
+                        image_url: mapStorefrontCatalogImageUrl(item),
+                        service_detail: item.serviceDetail || null
+                    },
+                    storefront_visible: storefrontVisible
+                };
+            })
+            .filter((entry) => entry.storefront_visible);
+
+        if (visibleMatches.length === 0 && rows.length > 0) {
+            const disallowedScopes = rows
+                .map((row) => row.scope)
+                .filter((scope) => !isBarcodeScopeAllowedForSurface(scope, 'storefront'));
+            if (disallowedScopes.length > 0) {
+                return {
+                    status: 'blocked',
+                    reason_code: 'BARCODE_SCOPE_NOT_STOREFRONT',
+                    normalized_code: normalizedCode
+                };
+            }
+        }
+
+        const itemIds = Array.from(new Set(visibleMatches.map((entry) => Number(entry.item.item_id))));
+        if (itemIds.length > 1) {
+            return {
+                status: 'conflict',
+                reason_code: 'BARCODE_CONFLICT',
+                normalized_code: normalizedCode
+            };
+        }
+        if (visibleMatches.length === 0) {
+            return {
+                status: 'blocked',
+                reason_code: 'NOT_STOREFRONT_VISIBLE',
+                normalized_code: normalizedCode
+            };
+        }
+
+        const [match] = visibleMatches;
+        const normalizedLocationId = Number.parseInt(location_id, 10);
+        const locationStock = await loadLocationStockMap(
+            [Number(match.item.item_id)],
+            normalizedLocationId,
+            options
+        );
+        const [item] = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+            ? applyLocationStock([match.item], locationStock.stockMap)
+            : [match.item];
+
+        return {
+            status: 'resolved',
+            reason_code: null,
+            normalized_code: normalizedCode,
+            barcode: {
+                item_barcode_id: match.barcode.item_barcode_id,
+                code: match.barcode.code,
+                normalized_code: match.barcode.normalized_code,
+                symbology: match.barcode.symbology,
+                source: match.barcode.source,
+                scope: match.barcode.scope,
+                packaging_level: match.barcode.packaging_level,
+                quantity_multiplier: Number(match.barcode.quantity_multiplier || 1)
+            },
+            item
+        };
+    },
+
+    async resolvePublicServiceBookingReference(publicReference, options = {}) {
+        const ServiceBooking = dbStore.get('ServiceBooking');
+        const Item = dbStore.get('Item');
+        const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const reference = String(publicReference || '').trim();
+        if (!reference) {
+            return {
+                status: 'not_found',
+                reason_code: 'BOOKING_REFERENCE_REQUIRED'
+            };
+        }
+
+        const booking = await ServiceBooking.findOne({
+            where: { public_reference: reference },
+            include: [
+                {
+                    model: Item,
+                    as: 'serviceItem',
+                    attributes: ['item_id', 'name', 'category', 'default_sale_price', 'vat_type', 'unit_of_measure'],
+                    required: false,
+                    include: ServiceItemDetail ? [{
+                        model: ServiceItemDetail,
+                        as: 'serviceDetail',
+                        required: false
+                    }] : []
+                },
+                {
+                    model: TenantLocation,
+                    as: 'location',
+                    attributes: ['location_id', 'name'],
+                    required: false
+                }
+            ],
+            transaction: options.transaction
+        });
+
+        if (!booking) {
+            return {
+                status: 'not_found',
+                reason_code: 'BOOKING_NOT_FOUND'
+            };
+        }
+
+        const row = toPlain(booking);
+        const serviceItem = row.serviceItem || null;
+        const detail = row.serviceDetail || serviceItem?.serviceDetail || null;
+        return {
+            status: 'resolved',
+            reason_code: null,
+            booking: {
+                booking_id: row.booking_id,
+                public_reference: row.public_reference,
+                service_item_id: row.service_item_id,
+                service_name: serviceItem?.name || null,
+                service_category: detail?.service_category || null,
+                location_id: row.location_id || null,
+                location: row.location || null,
+                start_at: row.start_at,
+                end_at: row.end_at,
+                status: row.status,
+                payment_timing: row.payment_timing,
+                payment_status: row.payment_status,
+                total_amount: Number(serviceItem?.default_sale_price || 0),
+                ticket: {
+                    type: 'booking_ticket',
+                    reference: row.public_reference,
+                    tracking_pin: row.public_reference,
+                    fiscal_label: row.payment_status === 'paid'
+                        ? 'Payment receipt available separately'
+                        : 'Booking ticket - not a fiscal receipt'
+                }
+            }
+        };
     },
 
     async getLocationStocksByItemIds(itemIds = [], locationId = null, options = {}) {

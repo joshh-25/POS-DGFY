@@ -16,6 +16,16 @@ import {
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
+    buildBarcodeConflictPayload,
+    detectBarcodeSymbology,
+    generateInternalBarcodeValue,
+    normalizeBarcodeMultiplier,
+    normalizeBarcodePackagingLevel,
+    normalizeBarcodeScope,
+    normalizeBarcodeSource,
+    normalizeBarcodeValue
+} from '../../shared/utils/barcodePolicy.js';
+import {
     getItemCostMetrics,
     getItemsCostMetrics,
     invalidateItemCostMetricsCache
@@ -155,6 +165,166 @@ const normalizeSkuConflictError = (error) => {
     const conflictError = new Error('Item with this SKU code already exists');
     conflictError.statusCode = 409;
     return conflictError;
+};
+
+const isActiveBarcodeUniqueConstraintError = (error) => {
+    if (!error) return false;
+    if (error?.statusCode === 409) return true;
+    if (error?.name !== 'SequelizeUniqueConstraintError') return false;
+    const constraint = String(
+        error?.parent?.constraint
+        || error?.original?.constraint
+        || error?.constraint
+        || ''
+    );
+    if (constraint === 'uq_item_barcodes_active_normalized_code') return true;
+    const fields = Object.keys(error?.fields || {});
+    return fields.includes('active_normalized_code');
+};
+
+const barcodeConflictError = (existing) => {
+    const error = new Error('Barcode is already assigned to another active record');
+    error.statusCode = 409;
+    error.details = buildBarcodeConflictPayload(existing);
+    return error;
+};
+
+const serializeBarcodeRow = (row) => {
+    const payload = toPlain(row);
+    if (!payload) return null;
+    return {
+        ...payload,
+        quantity_multiplier: Number(payload.quantity_multiplier || 1),
+        item: payload.item
+            ? {
+                item_id: payload.item.item_id,
+                name: payload.item.name,
+                sku_code: payload.item.sku_code,
+                category: payload.item.category,
+                product_type: payload.item.product_type || null,
+                unit_of_measure: payload.item.unit_of_measure || null,
+                default_sale_price: payload.item.default_sale_price ?? null,
+                current_stock: payload.item.current_stock ?? null,
+                status: payload.item.status ?? null
+            }
+            : undefined
+    };
+};
+
+const BARCODE_LABEL_LAYOUTS = Object.freeze({
+    item: {
+        title: 'Item label',
+        purpose: 'item_identity',
+        size: 'standard',
+        width_mm: 62,
+        height_mm: 40,
+        primary_payload: 'barcode'
+    },
+    shelf: {
+        title: 'Shelf label',
+        purpose: 'shelf_lookup',
+        size: 'wide',
+        width_mm: 80,
+        height_mm: 38,
+        primary_payload: 'barcode'
+    },
+    package: {
+        title: 'Package label',
+        purpose: 'package_quantity',
+        size: 'standard',
+        width_mm: 62,
+        height_mm: 40,
+        primary_payload: 'barcode'
+    },
+    case: {
+        title: 'Case label',
+        purpose: 'case_quantity',
+        size: 'large',
+        width_mm: 90,
+        height_mm: 50,
+        primary_payload: 'barcode'
+    },
+    batch: {
+        title: 'Batch/Lot label',
+        purpose: 'batch_lookup',
+        size: 'wide',
+        width_mm: 80,
+        height_mm: 38,
+        primary_payload: 'barcode'
+    },
+    service: {
+        title: 'Service label',
+        purpose: 'service_sale',
+        size: 'standard',
+        width_mm: 62,
+        height_mm: 40,
+        primary_payload: 'barcode'
+    },
+    ticket: {
+        title: 'Ticket label',
+        purpose: 'ticket_reference',
+        size: 'large',
+        width_mm: 90,
+        height_mm: 50,
+        primary_payload: 'qr'
+    },
+    booking: {
+        title: 'Booking label',
+        purpose: 'booking_reference',
+        size: 'large',
+        width_mm: 90,
+        height_mm: 50,
+        primary_payload: 'qr'
+    }
+});
+
+const normalizeBarcodeLabelType = (value) => {
+    const normalized = String(value || 'item').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(BARCODE_LABEL_LAYOUTS, normalized)
+        ? normalized
+        : 'item';
+};
+
+const barcodeIncludeItem = () => ([{
+    model: dbStore.get('Item'),
+    as: 'item',
+    attributes: [
+        'item_id',
+        'name',
+        'sku_code',
+        'category',
+        'product_type',
+        'unit_of_measure',
+        'default_sale_price',
+        'current_stock',
+        'status'
+    ],
+    required: false
+}]);
+
+const auditBarcodeEvent = async ({
+    userId = null,
+    barcode = null,
+    itemId = null,
+    action = 'UPDATE',
+    eventType,
+    changes = null,
+    transaction = null
+} = {}) => {
+    const AuditLog = dbStore.get('AuditLog');
+    if (!AuditLog || !eventType) return;
+    await AuditLog.create({
+        user_id: userId || null,
+        entity_type: 'item_barcode',
+        entity_id: barcode?.item_barcode_id || itemId || null,
+        action,
+        changes: {
+            event_type: eventType,
+            item_barcode_id: barcode?.item_barcode_id || null,
+            item_id: barcode?.item_id || itemId || null,
+            ...changes
+        }
+    }, { transaction });
 };
 
 const getCurrentWorkflowMode = async () => {
@@ -1806,6 +1976,401 @@ export const itemRepository = {
             storefront_image_url: null
         }, { transaction: options.transaction });
         return existing;
+    },
+    async listItemBarcodes(itemId, { includeInactive = true } = {}) {
+        const Item = dbStore.get('Item');
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) {
+            const error = new Error('item_id must be a positive integer');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const item = await findVisibleItemById(Item, normalizedItemId, {
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'unit_of_measure']
+        });
+        if (!item) throw notFoundError('Item not found');
+
+        const where = { item_id: normalizedItemId };
+        if (!includeInactive) where.is_active = true;
+
+        const rows = await ItemBarcode.findAll({
+            where,
+            order: [
+                ['is_active', 'DESC'],
+                ['is_primary', 'DESC'],
+                ['updated_at', 'DESC'],
+                ['item_barcode_id', 'DESC']
+            ]
+        });
+
+        return {
+            item: toPlain(item),
+            barcodes: rows.map(serializeBarcodeRow)
+        };
+    },
+    async resolveItemBarcode(code, { includeInactive = false } = {}) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedCode = normalizeBarcodeValue(code);
+        if (!normalizedCode) {
+            const error = new Error('barcode code is required');
+            error.statusCode = 422;
+            throw error;
+        }
+
+        const where = { normalized_code: normalizedCode };
+        if (!includeInactive) where.is_active = true;
+
+        const rows = await ItemBarcode.findAll({
+            where,
+            include: barcodeIncludeItem(),
+            order: [
+                ['is_active', 'DESC'],
+                ['updated_at', 'DESC'],
+                ['item_barcode_id', 'DESC']
+            ],
+            limit: 5
+        });
+
+        const activeRows = rows.filter((row) => row.is_active !== false);
+        if (activeRows.length > 1) {
+            return {
+                status: 'conflict',
+                reason_code: 'BARCODE_CONFLICT',
+                normalized_code: normalizedCode,
+                matches: activeRows.map(serializeBarcodeRow)
+            };
+        }
+        if (rows.length === 0) {
+            return {
+                status: 'not_found',
+                reason_code: 'BARCODE_NOT_FOUND',
+                normalized_code: normalizedCode,
+                symbology: detectBarcodeSymbology(code)
+            };
+        }
+
+        return {
+            status: activeRows.length === 1 ? 'resolved' : 'inactive',
+            reason_code: activeRows.length === 1 ? null : 'BARCODE_INACTIVE',
+            normalized_code: normalizedCode,
+            barcode: serializeBarcodeRow(activeRows[0] || rows[0])
+        };
+    },
+    async auditBarcodeConflictResolution(payload = {}) {
+        await auditBarcodeEvent({
+            userId: payload.userId || null,
+            itemId: payload.target_item_id || payload.existing?.item_id || null,
+            action: 'UPDATE',
+            eventType: 'barcode.conflict_resolved',
+            changes: {
+                action: payload.action || null,
+                code: payload.code || null,
+                normalized_code: normalizeBarcodeValue(payload.code),
+                target_item_id: payload.target_item_id || null,
+                existing_item_id: payload.existing?.item_id || null,
+                existing_barcode_id: payload.existing?.item_barcode_id || null,
+                result: payload.result || null
+            }
+        });
+    },
+    async attachItemBarcode(itemId, payload = {}, userId = null) {
+        const Item = dbStore.get('Item');
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        const normalizedCode = normalizeBarcodeValue(payload.code);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) {
+            const error = new Error('item_id must be a positive integer');
+            error.statusCode = 400;
+            throw error;
+        }
+        if (!normalizedCode) {
+            const error = new Error('barcode code is required');
+            error.statusCode = 422;
+            throw error;
+        }
+
+        const transaction = await sequelize.transaction();
+        try {
+            const item = await findVisibleItemById(Item, normalizedItemId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!item) throw notFoundError('Item not found');
+
+            const existing = await ItemBarcode.findOne({
+                where: {
+                    normalized_code: normalizedCode,
+                    is_active: true
+                },
+                include: barcodeIncludeItem(),
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (existing && Number(existing.item_id) !== normalizedItemId) {
+                throw barcodeConflictError(serializeBarcodeRow(existing));
+            }
+            if (existing && Number(existing.item_id) === normalizedItemId) {
+                const error = new Error('Barcode is already assigned to this item');
+                error.statusCode = 409;
+                error.details = {
+                    reason_code: 'BARCODE_ALREADY_ASSIGNED',
+                    existing: serializeBarcodeRow(existing)
+                };
+                throw error;
+            }
+
+            const shouldBePrimary = payload.is_primary === true
+                || await ItemBarcode.count({
+                    where: { item_id: normalizedItemId, is_active: true },
+                    transaction
+                }) === 0;
+
+            if (shouldBePrimary) {
+                await ItemBarcode.update(
+                    { is_primary: false, updated_by: userId || null },
+                    {
+                        where: { item_id: normalizedItemId },
+                        transaction
+                    }
+                );
+            }
+
+            const row = await ItemBarcode.create({
+                item_id: normalizedItemId,
+                code: String(payload.code || '').trim(),
+                normalized_code: normalizedCode,
+                symbology: payload.symbology || detectBarcodeSymbology(payload.code),
+                source: normalizeBarcodeSource(payload.source),
+                scope: normalizeBarcodeScope(payload.scope),
+                packaging_level: normalizeBarcodePackagingLevel(payload.packaging_level),
+                quantity_multiplier: normalizeBarcodeMultiplier(payload.quantity_multiplier),
+                is_primary: shouldBePrimary,
+                is_active: true,
+                metadata: payload.metadata || null,
+                created_by: userId || null,
+                updated_by: userId || null
+            }, { transaction });
+
+            await auditBarcodeEvent({
+                userId,
+                barcode: row,
+                action: 'CREATE',
+                eventType: 'barcode.created',
+                changes: { source: row.source, scope: row.scope },
+                transaction
+            });
+
+            await transaction.commit();
+            const created = await ItemBarcode.findByPk(row.item_barcode_id, {
+                include: barcodeIncludeItem()
+            });
+            return serializeBarcodeRow(created);
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            if (isActiveBarcodeUniqueConstraintError(error)) {
+                const existing = await ItemBarcode.findOne({
+                    where: { normalized_code: normalizedCode },
+                    include: barcodeIncludeItem()
+                });
+                throw barcodeConflictError(serializeBarcodeRow(existing));
+            }
+            throw error;
+        }
+    },
+    async generateItemBarcode(itemId, payload = {}, userId = null) {
+        const store = dbStore.getStore?.() || {};
+        const generatedCode = generateInternalBarcodeValue({
+            tenantToken: store.tenantToken || store.tenantName || store.tenantId,
+            itemId,
+            scope: payload.scope || 'inventory'
+        });
+        return this.attachItemBarcode(itemId, {
+            ...payload,
+            code: generatedCode,
+            source: 'tenant_generated',
+            symbology: 'code128'
+        }, userId);
+    },
+    async updateItemBarcode(itemId, barcodeId, payload = {}, userId = null) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        const normalizedBarcodeId = Number.parseInt(barcodeId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0 || !Number.isInteger(normalizedBarcodeId) || normalizedBarcodeId <= 0) {
+            const error = new Error('item_id and barcode_id must be positive integers');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const row = await ItemBarcode.findOne({
+            where: {
+                item_barcode_id: normalizedBarcodeId,
+                item_id: normalizedItemId
+            }
+        });
+        if (!row) throw notFoundError('Barcode not found');
+        if (row.is_active === false) {
+            const error = new Error('Inactive barcode cannot be updated');
+            error.statusCode = 409;
+            error.details = { reason_code: 'BARCODE_INACTIVE' };
+            throw error;
+        }
+
+        const updates = {
+            updated_by: userId || null
+        };
+        if (hasOwn(payload, 'source')) updates.source = normalizeBarcodeSource(payload.source, row.source);
+        if (hasOwn(payload, 'scope')) updates.scope = normalizeBarcodeScope(payload.scope, row.scope);
+        if (hasOwn(payload, 'packaging_level')) updates.packaging_level = normalizeBarcodePackagingLevel(payload.packaging_level, row.packaging_level);
+        if (hasOwn(payload, 'quantity_multiplier')) updates.quantity_multiplier = normalizeBarcodeMultiplier(payload.quantity_multiplier, row.quantity_multiplier);
+        if (hasOwn(payload, 'metadata')) updates.metadata = payload.metadata || null;
+
+        await row.update(updates);
+        await auditBarcodeEvent({
+            userId,
+            barcode: row,
+            action: 'UPDATE',
+            eventType: 'barcode.updated',
+            changes: updates
+        });
+        const updated = await ItemBarcode.findByPk(normalizedBarcodeId, {
+            include: barcodeIncludeItem()
+        });
+        return serializeBarcodeRow(updated);
+    },
+    async deactivateItemBarcode(itemId, barcodeId, userId = null) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        const normalizedBarcodeId = Number.parseInt(barcodeId, 10);
+        const row = await ItemBarcode.findOne({
+            where: {
+                item_barcode_id: normalizedBarcodeId,
+                item_id: normalizedItemId
+            }
+        });
+        if (!row) throw notFoundError('Barcode not found');
+        await row.update({
+            is_active: false,
+            is_primary: false,
+            deactivated_at: new Date(),
+            deactivated_by: userId || null,
+            updated_by: userId || null
+        });
+        await auditBarcodeEvent({
+            userId,
+            barcode: row,
+            action: 'DELETE',
+            eventType: 'barcode.deactivated',
+            changes: { normalized_code: row.normalized_code }
+        });
+        return serializeBarcodeRow(row);
+    },
+    async setPrimaryItemBarcode(itemId, barcodeId, userId = null) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        const normalizedBarcodeId = Number.parseInt(barcodeId, 10);
+        const transaction = await sequelize.transaction();
+        try {
+            const row = await ItemBarcode.findOne({
+                where: {
+                    item_barcode_id: normalizedBarcodeId,
+                    item_id: normalizedItemId,
+                    is_active: true
+                },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!row) throw notFoundError('Active barcode not found');
+            await ItemBarcode.update(
+                { is_primary: false, updated_by: userId || null },
+                { where: { item_id: normalizedItemId }, transaction }
+            );
+            await row.update({ is_primary: true, updated_by: userId || null }, { transaction });
+            await auditBarcodeEvent({
+                userId,
+                barcode: row,
+                action: 'UPDATE',
+                eventType: 'barcode.primary_changed',
+                changes: { item_id: normalizedItemId },
+                transaction
+            });
+            await transaction.commit();
+            const updated = await ItemBarcode.findByPk(normalizedBarcodeId, {
+                include: barcodeIncludeItem()
+            });
+            return serializeBarcodeRow(updated);
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            throw error;
+        }
+    },
+    async buildItemBarcodeLabelPayload(itemId, { barcodeId = null, labelType = 'item' } = {}, userId = null) {
+        const Item = dbStore.get('Item');
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        const normalizedLabelType = normalizeBarcodeLabelType(labelType);
+        const layout = BARCODE_LABEL_LAYOUTS[normalizedLabelType];
+        const where = {
+            item_id: normalizedItemId,
+            is_active: true
+        };
+        if (barcodeId) where.item_barcode_id = Number.parseInt(barcodeId, 10);
+        const [item, barcode] = await Promise.all([
+            findVisibleItemById(Item, normalizedItemId, {
+                attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'default_sale_price']
+            }),
+            ItemBarcode.findOne({
+                where,
+                order: [
+                    ['is_primary', 'DESC'],
+                    ['updated_at', 'DESC']
+                ]
+            })
+        ]);
+        if (!item) throw notFoundError('Item not found');
+        if (!barcode) throw notFoundError('Active barcode not found');
+
+        await auditBarcodeEvent({
+            userId,
+            barcode,
+            action: 'VIEW',
+            eventType: 'barcode.label_print_intent',
+            changes: {
+                label_type: normalizedLabelType,
+                layout_purpose: layout.purpose
+            }
+        });
+
+        const itemPayload = toPlain(item);
+        const barcodePayload = serializeBarcodeRow(barcode);
+        return {
+            label_type: normalizedLabelType,
+            barcode: barcodePayload,
+            item: itemPayload,
+            display: {
+                label_title: layout.title,
+                title: itemPayload.name,
+                subtitle: itemPayload.sku_code || `Item ${itemPayload.item_id}`,
+                purpose: layout.purpose,
+                quantity_multiplier: barcodePayload.quantity_multiplier,
+                unit_of_measure: itemPayload.unit_of_measure || null,
+                generated_at: new Date().toISOString()
+            },
+            print_contract: {
+                format: 'browser_printable',
+                layout,
+                human_readable_type: layout.title,
+                qr_payload: barcodePayload.code,
+                barcode_payload: barcodePayload.code
+            }
+        };
     },
     async listFolders() {
         const ItemFolder = dbStore.get('ItemFolder');

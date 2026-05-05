@@ -267,8 +267,8 @@ export const updateItemSchema = Joi.object({
     'string.min': 'Name must be at least 1 character',
     'string.max': 'Name must not exceed 255 characters'
   }),
-  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies').messages({
-    'any.only': 'Category must be one of: raw_material, packaging, product, supplies'
+  category: Joi.string().valid('raw_material', 'packaging', 'product', 'supplies', 'service').messages({
+    'any.only': 'Category must be one of: raw_material, packaging, product, supplies, service'
   }),
   product_type: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, '').when('category', {
     is: 'product',
@@ -478,6 +478,90 @@ const replaceItemSuppliersSchema = Joi.object({
   })
 });
 
+const barcodeSourceSchema = Joi.string().valid(
+  'manufacturer',
+  'supplier',
+  'tenant_generated',
+  'legacy_import',
+  'system_generated_reference'
+);
+
+const barcodeScopeSchema = Joi.string().valid(
+  'inventory',
+  'pos',
+  'storefront_qr',
+  'batch',
+  'service',
+  'ticket',
+  'package'
+);
+
+const barcodePackagingLevelSchema = Joi.string().valid(
+  'unit',
+  'pack',
+  'case',
+  'carton',
+  'batch',
+  'service',
+  'ticket',
+  'shelf'
+);
+
+const barcodeIdParamSchema = itemIdParamSchema.keys({
+  barcode_id: Joi.number().integer().positive().required()
+});
+
+const barcodeResolveQuerySchema = Joi.object({
+  code: Joi.string().trim().max(512).required(),
+  location_id: Joi.number().integer().positive().optional(),
+  operation: Joi.string().valid('lookup', 'inventory_scan', 'stock_movement', 'receiving', 'transfer', 'count').default('lookup')
+});
+
+const barcodeAttachSchema = Joi.object({
+  code: Joi.string().trim().max(512).required(),
+  source: barcodeSourceSchema.default('manufacturer'),
+  scope: barcodeScopeSchema.default('inventory'),
+  packaging_level: barcodePackagingLevelSchema.default('unit'),
+  quantity_multiplier: Joi.number().positive().precision(4).default(1),
+  is_primary: Joi.boolean().default(false),
+  metadata: Joi.object().allow(null).optional()
+});
+
+const barcodeGenerateSchema = Joi.object({
+  scope: barcodeScopeSchema.default('inventory'),
+  packaging_level: barcodePackagingLevelSchema.default('unit'),
+  quantity_multiplier: Joi.number().positive().precision(4).default(1),
+  is_primary: Joi.boolean().default(false),
+  metadata: Joi.object().allow(null).optional()
+});
+
+const barcodeUpdateSchema = Joi.object({
+  source: barcodeSourceSchema.optional(),
+  scope: barcodeScopeSchema.optional(),
+  packaging_level: barcodePackagingLevelSchema.optional(),
+  quantity_multiplier: Joi.number().positive().precision(4).optional(),
+  metadata: Joi.object().allow(null).optional()
+}).min(1);
+
+const barcodeConflictResolutionSchema = Joi.object({
+  code: Joi.string().trim().max(512).required(),
+  action: Joi.string().valid('keep_existing', 'move_code', 'add_package_alias', 'reject_import').required(),
+  target_item_id: Joi.number().integer().positive().when('action', {
+    is: Joi.valid('move_code', 'add_package_alias'),
+    then: Joi.required(),
+    otherwise: Joi.optional()
+  }),
+  source: barcodeSourceSchema.optional(),
+  scope: barcodeScopeSchema.optional(),
+  packaging_level: barcodePackagingLevelSchema.optional(),
+  quantity_multiplier: Joi.number().positive().precision(4).optional()
+});
+
+const barcodeLabelQuerySchema = Joi.object({
+  barcode_id: Joi.number().integer().positive().optional(),
+  label_type: Joi.string().valid('item', 'shelf', 'package', 'case', 'batch', 'service', 'ticket', 'booking').default('item')
+});
+
 const validateSchema = (schema, source, target) => (req, res, next) => {
   const { error, value } = schema.validate(req[source], {
     abortEarly: false,
@@ -507,3 +591,10 @@ export const validateStorefrontCatalogOverridesQuery = validateSchema(storefront
 export const validateUpdateStorefrontCatalogOverride = validateSchema(updateStorefrontCatalogOverrideSchema, 'body', 'validatedData');
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
+export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
+export const validateAttachBarcode = validateSchema(barcodeAttachSchema, 'body', 'validatedData');
+export const validateGenerateBarcode = validateSchema(barcodeGenerateSchema, 'body', 'validatedData');
+export const validateBarcodeIdParam = validateSchema(barcodeIdParamSchema, 'params', 'validatedParams');
+export const validateUpdateBarcode = validateSchema(barcodeUpdateSchema, 'body', 'validatedData');
+export const validateBarcodeConflictResolution = validateSchema(barcodeConflictResolutionSchema, 'body', 'validatedData');
+export const validateBarcodeLabelQuery = validateSchema(barcodeLabelQuerySchema, 'query', 'validatedQuery');

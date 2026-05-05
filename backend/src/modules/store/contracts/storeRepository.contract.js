@@ -13,6 +13,8 @@ const REQUIRED_METHODS = Object.freeze([
     'findSellableItemsByIds',
     'getLocationStocksByItemIds',
     'listStoreCatalog',
+    'resolvePublicBarcode',
+    'resolvePublicServiceBookingReference',
     'listActiveLocations',
     'findLocationById',
     'getSettingsByKeys',

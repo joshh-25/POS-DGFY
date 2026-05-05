@@ -29,10 +29,11 @@ import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
+const POSBarcodeScanner = lazy(() => import('./POSBarcodeScanner.jsx'));
+const POSTransactionHistoryPanel = lazy(() => import('./POSTransactionHistoryPanel.jsx'));
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
-const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
 const toValidPercentage = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -46,10 +47,6 @@ const VAT_TYPE_LABEL = {
 };
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_CONVENIENCE_FEE_RATE = 0.01;
-const ORDER_SOURCE_LABELS = {
-    in_store: 'In-Store',
-    online_store: 'Online Store'
-};
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
     if (typeof profiles === 'string') {
@@ -128,6 +125,57 @@ const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, uni
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
 const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+const getLineKey = (line = {}) => line.line_key || line.item_id;
+const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const getFnbModifierGroups = (item = {}) => (
+    Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : []
+);
+const getActiveModifierOptions = (group = {}) => (
+    (Array.isArray(group.options) ? group.options : []).filter((option) => option?.is_active !== false)
+);
+const getModifierGroupMin = (group = {}) => {
+    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
+    const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
+    const min = Number.parseInt(group.min_select || 0, 10) || 0;
+    return required ? Math.max(1, min) : min;
+};
+const getModifierGroupMax = (group = {}) => Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
+const buildDefaultLineModifiers = (item = {}) => getFnbModifierGroups(item).flatMap((group) => {
+    const minSelect = getModifierGroupMin(group);
+    if (minSelect <= 0) return [];
+    const activeOptions = getActiveModifierOptions(group);
+    const defaultOptions = activeOptions.filter((option) => option?.is_default === true);
+    const selected = (defaultOptions.length > 0 ? defaultOptions : activeOptions).slice(0, minSelect);
+    return selected.map((option) => ({
+        modifier_group_id: Number(group.modifier_group_id),
+        modifier_option_id: Number(option.modifier_option_id)
+    }));
+});
+const resolveModifierSnapshot = (line = {}, modifiers = line.line_modifiers || []) => {
+    const groups = Array.isArray(line.modifier_groups) ? line.modifier_groups : [];
+    return (Array.isArray(modifiers) ? modifiers : []).map((modifier) => {
+        const group = groups.find((entry) => Number(entry.modifier_group_id) === Number(modifier.modifier_group_id));
+        const option = getActiveModifierOptions(group).find((entry) => Number(entry.modifier_option_id) === Number(modifier.modifier_option_id));
+        if (!group || !option) return null;
+        return {
+            modifier_group_id: Number(group.modifier_group_id),
+            modifier_option_id: Number(option.modifier_option_id),
+            group_name: group.display_name || group.name || null,
+            option_name: option.name || null,
+            price_delta: round4(option.price_delta || 0)
+        };
+    }).filter(Boolean);
+};
+const resolveModifierDelta = (line = {}, modifiers = line.line_modifiers || []) => (
+    resolveModifierSnapshot(line, modifiers).reduce((sum, modifier) => round4(sum + Number(modifier.price_delta || 0)), 0)
+);
+const buildKitchenStationSnapshot = (item = {}) => {
+    const route = Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes.find((entry) => entry?.is_primary !== false) : null;
+    return {
+        kitchen_station_id: route?.kitchen_station_id || null,
+        course: route?.default_course || null
+    };
+};
 
 const CHECKOUT_QUEUE_OPERATION = 'checkout';
 const CHECKOUT_QUEUE_MAX_RETRIES = 5;
@@ -215,7 +263,8 @@ export default function POSCheckoutTerminal({
     externalHistoryQuery = '',
     onExternalHistoryHydrated = null,
     externalCatalogSearch = '',
-    onExternalCatalogHydrated = null
+    onExternalCatalogHydrated = null,
+    fnbContext = null
 }) {
     const navigate = useNavigate();
     const { can } = usePermission();
@@ -236,6 +285,7 @@ export default function POSCheckoutTerminal({
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [cart, setCart] = useState([]);
+    const [fnbKitchenStations, setFnbKitchenStations] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
     const [replayingQueuedCheckouts, setReplayingQueuedCheckouts] = useState(false);
@@ -855,6 +905,57 @@ export default function POSCheckoutTerminal({
         [cartSubtotal, calculatedDiscountAmount]
     );
 
+    const normalizedFnbContext = useMemo(() => (
+        fnbContext && typeof fnbContext === 'object' ? fnbContext : null
+    ), [fnbContext]);
+
+    useEffect(() => {
+        let active = true;
+        if (!normalizedFnbContext) {
+            setFnbKitchenStations([]);
+            return undefined;
+        }
+        import('../../fnb/api/fnbApi.js')
+            .then((module) => module.listFnbKitchenStations())
+            .then((data) => {
+                if (!active) return;
+                setFnbKitchenStations(Array.isArray(data?.kitchen_stations) ? data.kitchen_stations : []);
+            })
+            .catch(() => {
+                if (active) setFnbKitchenStations([]);
+            });
+        return () => {
+            active = false;
+        };
+    }, [normalizedFnbContext]);
+
+    const fnbKitchenStationOptions = useMemo(() => {
+        const byId = new Map();
+        fnbKitchenStations.forEach((station) => {
+            if (station?.kitchen_station_id) byId.set(Number(station.kitchen_station_id), station);
+        });
+        cart.forEach((line) => {
+            (Array.isArray(line.fnbKitchenRoutes) ? line.fnbKitchenRoutes : []).forEach((route) => {
+                const station = route?.station;
+                if (station?.kitchen_station_id && !byId.has(Number(station.kitchen_station_id))) {
+                    byId.set(Number(station.kitchen_station_id), station);
+                }
+            });
+        });
+        return Array.from(byId.values());
+    }, [cart, fnbKitchenStations]);
+
+    const restaurantServiceChargeAmount = useMemo(() => {
+        const charge = normalizedFnbContext?.restaurant_service_charge;
+        if (!charge || charge.enabled !== true) return 0;
+        const explicitAmount = Number(charge.amount);
+        if (Number.isFinite(explicitAmount) && explicitAmount >= 0) {
+            return round4(explicitAmount);
+        }
+        const rate = Math.min(100, Math.max(0, Number(charge.rate || 0)));
+        return round4(netItemsTotal * (rate / 100));
+    }, [netItemsTotal, normalizedFnbContext]);
+
     const vatBreakdown = useMemo(() => {
         const factor = cartSubtotal > 0 ? netItemsTotal / cartSubtotal : 1;
         const adjustedLines = cart.map((line) => ({
@@ -880,6 +981,12 @@ export default function POSCheckoutTerminal({
                 zeroRatedSales = round4(zeroRatedSales + line.gross);
             }
         });
+        if (
+            restaurantServiceChargeAmount > 0
+            && normalizedFnbContext?.restaurant_service_charge?.taxable === true
+        ) {
+            vatableGross = round4(vatableGross + restaurantServiceChargeAmount);
+        }
 
         const vatableSales = round4(vatableGross / (1 + VAT_RATE));
         const vatAmount = round4(vatableGross - vatableSales);
@@ -889,11 +996,11 @@ export default function POSCheckoutTerminal({
             vatExemptSales,
             zeroRatedSales
         };
-    }, [cart, cartSubtotal, netItemsTotal]);
+    }, [cart, cartSubtotal, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount]);
 
     const cartTotal = useMemo(
-        () => round4(netItemsTotal + serviceFeeAmount),
-        [netItemsTotal, serviceFeeAmount]
+        () => round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount),
+        [netItemsTotal, restaurantServiceChargeAmount, serviceFeeAmount]
     );
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
@@ -909,7 +1016,8 @@ export default function POSCheckoutTerminal({
         [catalog]
     );
 
-    const addToCart = (item) => {
+    const addToCart = (item, options = {}) => {
+        const requestedAddQty = Math.max(0.0001, Number(options.quantity || 1));
         const stockFromCatalog = itemStockById.get(Number(item.item_id));
         const maxStock = Number.isFinite(stockFromCatalog)
             ? stockFromCatalog
@@ -917,7 +1025,7 @@ export default function POSCheckoutTerminal({
         if (Number.isFinite(maxStock) && maxStock <= 0) {
             toast.error(buildStockExceededMessage({
                 itemName: item.name,
-                requestedQty: 1,
+                requestedQty: requestedAddQty,
                 availableStock: maxStock,
                 unit: item.unit_of_measure || ''
             }));
@@ -925,14 +1033,22 @@ export default function POSCheckoutTerminal({
         }
 
         const defaultPrice = Number(item.default_sale_price ?? item.cost_per_unit ?? 0);
+        const modifierGroups = getFnbModifierGroups(item);
+        const defaultModifiers = buildDefaultLineModifiers(item);
+        const routed = buildKitchenStationSnapshot(item);
+        const modifierLineSeed = {
+            modifier_groups: modifierGroups,
+            line_modifiers: defaultModifiers
+        };
+        const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers));
         if (isServiceCatalogItem(item)) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';
         setCart((prev) => {
-            const existing = prev.find((line) => line.item_id === item.item_id);
+            const existing = modifierGroups.length > 0 ? null : prev.find((line) => line.item_id === item.item_id);
             if (existing) {
-                const requestedQty = Number(existing.quantity) + 1;
+                const requestedQty = Number(existing.quantity) + requestedAddQty;
                 const safeQty = Number.isFinite(maxStock) ? round4(Math.min(requestedQty, maxStock)) : round4(requestedQty);
                 if (Number.isFinite(maxStock) && requestedQty > maxStock) {
                     stockWarning = buildStockExceededMessage({
@@ -944,22 +1060,35 @@ export default function POSCheckoutTerminal({
                 }
                 return prev.map((line) => (
                     line.item_id === item.item_id
-                        ? { ...line, quantity: safeQty, vat_type: line.vat_type || item.vat_type || 'vatable' }
+                        ? {
+                            ...line,
+                            quantity: safeQty,
+                            vat_type: line.vat_type || item.vat_type || 'vatable',
+                            scan_metadata: options.scanMetadata || line.scan_metadata || null
+                        }
                         : line
                 ));
             }
             return [
                 ...prev,
                 {
+                    line_key: createCartLineKey(item.item_id),
                     item_id: item.item_id,
                     item_name: item.name,
-                    quantity: Number.isFinite(maxStock) ? round4(Math.min(1, maxStock)) : 1,
+                    quantity: Number.isFinite(maxStock) ? round4(Math.min(requestedAddQty, maxStock)) : round4(requestedAddQty),
                     base_sale_price: defaultPrice,
-                    sale_price: defaultPrice,
+                    sale_price: linePrice,
                     price_override_reason: '',
                     unit_of_measure: item.unit_of_measure,
                     category: item.category,
-                    vat_type: item.vat_type || 'vatable'
+                    vat_type: item.vat_type || 'vatable',
+                    course: routed.course || normalizedFnbContext?.default_course || 'main',
+                    kitchen_station_id: routed.kitchen_station_id || null,
+                    fnbKitchenRoutes: Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
+                    modifier_groups: modifierGroups,
+                    line_modifiers: defaultModifiers,
+                    special_instructions: '',
+                    scan_metadata: options.scanMetadata || null
                 }
             ];
         });
@@ -968,22 +1097,22 @@ export default function POSCheckoutTerminal({
         }
     };
 
-    const updateCartLine = (itemId, patch) => {
+    const updateCartLine = (lineKey, patch) => {
         setCart((prev) => prev.map((line) => (
-            line.item_id === itemId
+            getLineKey(line) === lineKey
                 ? { ...line, ...patch }
                 : line
         )));
     };
-    const updateCartQuantity = (itemId, requestedQuantity) => {
+    const updateCartQuantity = (lineKey, requestedQuantity) => {
         const parsedQty = Number(requestedQuantity);
         if (!Number.isFinite(parsedQty)) return;
 
         let stockWarning = '';
         setCart((prev) => prev
             .map((line) => {
-                if (line.item_id !== itemId) return line;
-                const maxStock = itemStockById.get(Number(itemId));
+                if (getLineKey(line) !== lineKey) return line;
+                const maxStock = itemStockById.get(Number(line.item_id));
                 const safeMax = Number.isFinite(maxStock) ? maxStock : Number.POSITIVE_INFINITY;
                 const safeQty = round4(Math.max(0, Math.min(parsedQty, safeMax)));
                 if (Number.isFinite(safeMax) && parsedQty > safeMax) {
@@ -1004,8 +1133,44 @@ export default function POSCheckoutTerminal({
         }
     };
 
-    const removeCartLine = (itemId) => {
-        setCart((prev) => prev.filter((line) => line.item_id !== itemId));
+    const updateCartLineModifiers = (lineKey, group, option, checked = true) => {
+        setCart((prev) => prev.map((line) => {
+            if (getLineKey(line) !== lineKey) return line;
+            const current = Array.isArray(line.line_modifiers) ? line.line_modifiers : [];
+            const groupId = Number(group.modifier_group_id);
+            const optionId = Number(option.modifier_option_id);
+            const maxSelect = getModifierGroupMax(group);
+            let nextModifiers = current.filter((modifier) => Number(modifier.modifier_group_id) !== groupId);
+            const currentGroupSelections = current.filter((modifier) => Number(modifier.modifier_group_id) === groupId);
+            if (maxSelect > 1) {
+                nextModifiers = current.filter((modifier) => !(
+                    Number(modifier.modifier_group_id) === groupId
+                    && Number(modifier.modifier_option_id) === optionId
+                ));
+                if (checked) {
+                    nextModifiers = [
+                        ...nextModifiers,
+                        ...currentGroupSelections
+                            .filter((modifier) => Number(modifier.modifier_option_id) !== optionId)
+                            .slice(0, Math.max(0, maxSelect - 1)),
+                        { modifier_group_id: groupId, modifier_option_id: optionId }
+                    ];
+                }
+            } else if (checked) {
+                nextModifiers.push({ modifier_group_id: groupId, modifier_option_id: optionId });
+            }
+            const nextSalePrice = round4(Number(line.base_sale_price || 0) + resolveModifierDelta(line, nextModifiers));
+            return {
+                ...line,
+                line_modifiers: nextModifiers,
+                sale_price: nextSalePrice,
+                price_override_reason: ''
+            };
+        }));
+    };
+
+    const removeCartLine = (lineKey) => {
+        setCart((prev) => prev.filter((line) => getLineKey(line) !== lineKey));
     };
 
     const toggleFolderFilter = (folderId) => {
@@ -1038,11 +1203,22 @@ export default function POSCheckoutTerminal({
             discount_profile_name: selectedDiscount?.name || null,
             discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : null,
             shift_id: activeShiftId || undefined,
+            fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
+            fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
+            fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || undefined,
+            fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
+            fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
+            restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
             lines: cart.map((line) => ({
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
-                price_override_reason: String(line.price_override_reason || '').trim() || undefined
+                price_override_reason: String(line.price_override_reason || '').trim() || undefined,
+                course: line.course || normalizedFnbContext?.default_course || undefined,
+                line_modifiers: line.line_modifiers || undefined,
+                special_instructions: line.special_instructions || undefined,
+                kitchen_station_id: line.kitchen_station_id || undefined,
+                scan_metadata: line.scan_metadata || undefined
             }))
         };
 
@@ -1198,215 +1374,46 @@ export default function POSCheckoutTerminal({
                 </div>
             )}
 
+            {currentViewMode === 'checkout' && (
+                <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-sm">Loading barcode scanner...</div>}>
+                    <POSBarcodeScanner
+                        sessionLocked={sessionLocked}
+                        selectedLocationId={selectedLocationId}
+                        terminalId={normalizedTerminalId}
+                        onAddToCart={addToCart}
+                    />
+                </Suspense>
+            )}
+
             {currentViewMode === 'history' && (
-                <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
-                    <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                        <div>
-                            <h2 className="text-xl font-bold text-slate-900">POS Sales History</h2>
-                            <p className="text-sm text-slate-600">Track invoice times, cashier accountability, and receipt totals.</p>
-                        </div>
-                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                            <Input
-                                value={historySearch}
-                                onChange={(event) => setHistorySearch(event.target.value)}
-                                placeholder="Search by invoice number..."
-                                className="sm:max-w-xs"
-                            />
-                            <Button
-                                type="button"
-                                variant="outline"
-                                data-testid="pos-history-open-sales-report"
-                                onClick={() => openInSalesReport()}
-                            >
-                                Open in Sales Report
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
-                        <select
-                            value={historyStatus}
-                            onChange={(event) => setHistoryStatus(event.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
-                        >
-                            <option value="all">All Status</option>
-                            <option value="completed">Completed</option>
-                            <option value="voided">Voided</option>
-                        </select>
-                        <select
-                            value={historyPaymentType}
-                            onChange={(event) => setHistoryPaymentType(event.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
-                        >
-                            <option value="all">All Payments</option>
-                            <option value="cash">Cash</option>
-                            <option value="gcash">GCash</option>
-                            <option value="maya">Maya</option>
-                            <option value="card">Card</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                        </select>
-                        <select
-                            value={historyOrderMethod}
-                            onChange={(event) => setHistoryOrderMethod(event.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
-                        >
-                            <option value="all">All Order Methods</option>
-                            <option value="dine_in">Dine In</option>
-                            <option value="takeout">Takeout</option>
-                            <option value="pickup">Pickup</option>
-                            <option value="delivery">Delivery</option>
-                            <option value="appointment">Appointment</option>
-                        </select>
-                        <select
-                            value={historyOrderSource}
-                            onChange={(event) => setHistoryOrderSource(event.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm"
-                        >
-                            <option value="all">All Sources</option>
-                            <option value="in_store">In-Store</option>
-                            <option value="online_store">Online Store</option>
-                        </select>
-                        <Input
-                            type="number"
-                            min="1"
-                            value={historyCashierId}
-                            onChange={(event) => setHistoryCashierId(event.target.value)}
-                            placeholder="Cashier ID"
-                        />
-                        <Input
-                            type="date"
-                            value={historyDateFrom}
-                            max={historyDateTo || undefined}
-                            onChange={(event) => setHistoryDateFrom(event.target.value)}
-                            placeholder="Date from"
-                        />
-                        <Input
-                            type="date"
-                            value={historyDateTo}
-                            min={historyDateFrom || undefined}
-                            max={toDateInput(new Date())}
-                            onChange={(event) => setHistoryDateTo(event.target.value)}
-                            placeholder="Date to"
-                        />
-                    </div>
-                    <div className="overflow-auto" aria-busy={historyLoading}>
-                        <table className="w-full min-w-[760px] text-sm" aria-label="POS transaction history table">
-                            <caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>
-                            <thead>
-                                <tr className="border-b border-slate-200 text-slate-500">
-                                    <th scope="col" className="text-left py-2">Invoice</th>
-                                    <th scope="col" className="text-left py-2">Datetime</th>
-                                    <th scope="col" className="text-left py-2">Source</th>
-                                    <th scope="col" className="text-left py-2">Cashier</th>
-                                    <th scope="col" className="text-left py-2">Payment</th>
-                                    <th scope="col" className="text-left py-2">Discount</th>
-                                    <th scope="col" className="text-right py-2">Fee</th>
-                                    <th scope="col" className="text-right py-2">Vatable</th>
-                                    <th scope="col" className="text-right py-2">VAT</th>
-                                    <th scope="col" className="text-right py-2">Total</th>
-                                    <th scope="col" className="text-right py-2">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {historyLoading ? (
-                                    <tr>
-                                        <td colSpan={11} className="py-4 text-center text-slate-500" aria-live="polite">
-                                            Loading transactions...
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    <>
-                                        {historyRows.map((row) => (
-                                            <tr
-                                                key={row.pos_transaction_id}
-                                                className="border-b border-slate-100 hover:bg-slate-50"
-                                            >
-                                                <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
-                                                <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
-                                                <td className="py-2 text-slate-600">
-                                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                                                        row.order_source === 'online_store'
-                                                            ? 'bg-sky-100 text-sky-700'
-                                                            : 'bg-slate-200 text-slate-700'
-                                                    }`}>
-                                                        {ORDER_SOURCE_LABELS[row.order_source] || ORDER_SOURCE_LABELS.in_store}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2 text-slate-600">
-                                                    {row.cashier?.username
-                                                        || row.acceptedByUser?.username
-                                                        || '-'}
-                                                </td>
-                                                <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
-                                                <td className="py-2 text-slate-600">
-                                                    {row.discount_label_snapshot
-                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                        : '-'}
-                                                </td>
-                                                <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
-                                                <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
-                                                <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
-                                                <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
-                                                <td className="py-2 text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                openHistoryDetail(row.pos_transaction_id);
-                                                            }}
-                                                            disabled={historyDetailLoading}
-                                                            aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}
-                                                        >
-                                                            View
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                openInSalesReport(row);
-                                                            }}
-                                                            aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}
-                                                        >
-                                                            Sales
-                                                        </Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {historyRows.length === 0 && (
-                                            <tr>
-                                                <td colSpan={11} className="py-6 text-center text-slate-500">No transactions found.</td>
-                                            </tr>
-                                        )}
-                                    </>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => loadHistory(Math.max(1, historyPage - 1))}
-                            disabled={historyLoading || historyPage <= 1}
-                        >
-                            Previous
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => loadHistory(historyPage + 1)}
-                            disabled={historyLoading || !historyPagination || historyPage >= (historyPagination.totalPages || 1)}
-                        >
-                            Next
-                        </Button>
-                    </div>
-                </section>
+                <Suspense fallback={<section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
+                    <POSTransactionHistoryPanel
+                        historySearch={historySearch}
+                        setHistorySearch={setHistorySearch}
+                        historyStatus={historyStatus}
+                        setHistoryStatus={setHistoryStatus}
+                        historyPaymentType={historyPaymentType}
+                        setHistoryPaymentType={setHistoryPaymentType}
+                        historyOrderMethod={historyOrderMethod}
+                        setHistoryOrderMethod={setHistoryOrderMethod}
+                        historyOrderSource={historyOrderSource}
+                        setHistoryOrderSource={setHistoryOrderSource}
+                        historyCashierId={historyCashierId}
+                        setHistoryCashierId={setHistoryCashierId}
+                        historyDateFrom={historyDateFrom}
+                        setHistoryDateFrom={setHistoryDateFrom}
+                        historyDateTo={historyDateTo}
+                        setHistoryDateTo={setHistoryDateTo}
+                        historyLoading={historyLoading}
+                        historyRows={historyRows}
+                        historyDetailLoading={historyDetailLoading}
+                        openHistoryDetail={openHistoryDetail}
+                        openInSalesReport={openInSalesReport}
+                        loadHistory={loadHistory}
+                        historyPage={historyPage}
+                        historyPagination={historyPagination}
+                    />
+                </Suspense>
             )}
 
             {currentViewMode === 'checkout' && (
@@ -1706,16 +1713,41 @@ export default function POSCheckoutTerminal({
                             Auto-calculated from gross item subtotal: PHP {money(serviceFeeAmount)}.
                         </p>
                     </div>
+                    {normalizedFnbContext && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                            <p className="font-semibold">
+                                F&B Check {normalizedFnbContext.fnb_check_id ? `#${normalizedFnbContext.fnb_check_id}` : ''}
+                            </p>
+                            <p className="mt-1">
+                                {normalizedFnbContext.fnb_table_label_snapshot || 'No table'} - {normalizedFnbContext.fnb_guest_count || 1} guests
+                            </p>
+                            {restaurantServiceChargeAmount > 0 && (
+                                <p className="mt-1">
+                                    Restaurant service charge: PHP {money(restaurantServiceChargeAmount)}.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-3 mb-4">
-                    {cart.map((line) => (
-                        <div key={line.item_id} className="border border-slate-200 rounded-lg p-3">
+                    {cart.map((line) => {
+                        const lineKey = getLineKey(line);
+                        const modifierSnapshots = resolveModifierSnapshot(line);
+                        return (
+                        <div key={lineKey} className="border border-slate-200 rounded-lg p-3">
                             <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm font-medium text-slate-900">{line.item_name}</p>
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                    {VAT_TYPE_LABEL[line.vat_type] || VAT_TYPE_LABEL.vatable}
-                                </span>
+                                <div className="flex flex-wrap items-center justify-end gap-1">
+                                    {line.scan_metadata && (
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                                            scanned
+                                        </span>
+                                    )}
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                        {VAT_TYPE_LABEL[line.vat_type] || VAT_TYPE_LABEL.vatable}
+                                    </span>
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 mt-2">
                                 <label className="text-xs text-slate-500">
@@ -1726,7 +1758,7 @@ export default function POSCheckoutTerminal({
                                             variant="outline"
                                             size="sm"
                                             className="h-11 px-3 text-base"
-                                            onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) - 1)}
+                                            onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
                                         >
                                             -
                                         </Button>
@@ -1735,7 +1767,7 @@ export default function POSCheckoutTerminal({
                                             min="0.0001"
                                             step="0.0001"
                                             value={line.quantity}
-                                            onChange={(event) => updateCartQuantity(line.item_id, event.target.value || 0)}
+                                            onChange={(event) => updateCartQuantity(lineKey, event.target.value || 0)}
                                             className="h-11 text-base"
                                         />
                                         <Button
@@ -1743,7 +1775,7 @@ export default function POSCheckoutTerminal({
                                             variant="outline"
                                             size="sm"
                                             className="h-11 px-3 text-base"
-                                            onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) + 1)}
+                                            onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
                                         >
                                             +
                                         </Button>
@@ -1756,7 +1788,7 @@ export default function POSCheckoutTerminal({
                                         min="0"
                                         step="0.0001"
                                         value={line.sale_price}
-                                        onChange={(event) => updateCartLine(line.item_id, {
+                                        onChange={(event) => updateCartLine(lineKey, {
                                             sale_price: Number(event.target.value || 0)
                                         })}
                                         className="h-11 text-base"
@@ -1764,12 +1796,92 @@ export default function POSCheckoutTerminal({
                                     />
                                 </label>
                             </div>
-                            {canOverridePrice && Math.abs(Number(line.sale_price || 0) - Number(line.base_sale_price || 0)) > 0.0001 && (
+                            {(Array.isArray(line.modifier_groups) && line.modifier_groups.length > 0) && (
+                                <div className="mt-3 space-y-2 rounded-lg border border-red-100 bg-red-50/60 p-2">
+                                    {line.modifier_groups.map((group) => {
+                                        const groupId = Number(group.modifier_group_id);
+                                        const selectedOptionIds = (Array.isArray(line.line_modifiers) ? line.line_modifiers : [])
+                                            .filter((modifier) => Number(modifier.modifier_group_id) === groupId)
+                                            .map((modifier) => Number(modifier.modifier_option_id));
+                                        const maxSelect = getModifierGroupMax(group);
+                                        return (
+                                            <div key={groupId}>
+                                                <p className="text-[11px] font-semibold uppercase text-red-900">
+                                                    {group.display_name || group.name} ({getModifierGroupMin(group)}-{maxSelect})
+                                                </p>
+                                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                                    {getActiveModifierOptions(group).map((option) => {
+                                                        const checked = selectedOptionIds.includes(Number(option.modifier_option_id));
+                                                        return (
+                                                            <label key={option.modifier_option_id} className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-white px-2 py-1 text-[11px] font-medium text-red-900">
+                                                                <input
+                                                                    type={maxSelect > 1 ? 'checkbox' : 'radio'}
+                                                                    name={`${lineKey}-${groupId}`}
+                                                                    checked={checked}
+                                                                    onChange={(event) => updateCartLineModifiers(lineKey, group, option, event.target.checked)}
+                                                                />
+                                                                <span>{option.name}{Number(option.price_delta || 0) !== 0 ? ` +${money(option.price_delta)}` : ''}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {modifierSnapshots.length > 0 && (
+                                        <p className="text-[11px] text-red-800">
+                                            Modifiers: {modifierSnapshots.map((modifier) => `${modifier.group_name}: ${modifier.option_name}`).join(', ')}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                            <div className={`mt-2 grid grid-cols-1 gap-2 ${normalizedFnbContext ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+                                <label className="text-xs text-slate-500">
+                                    Course
+                                    <select
+                                        value={line.course || 'main'}
+                                        onChange={(event) => updateCartLine(lineKey, { course: event.target.value })}
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                    >
+                                        <option value="appetizer">Appetizer</option>
+                                        <option value="main">Main</option>
+                                        <option value="dessert">Dessert</option>
+                                        <option value="drink">Drink</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </label>
+                                {normalizedFnbContext && (
+                                    <label className="text-xs text-slate-500">
+                                        Kitchen Station
+                                        <select
+                                            value={line.kitchen_station_id || ''}
+                                            onChange={(event) => updateCartLine(lineKey, { kitchen_station_id: event.target.value ? Number(event.target.value) : null })}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                        >
+                                            <option value="">Default station</option>
+                                            {fnbKitchenStationOptions.map((station) => (
+                                                <option key={station.kitchen_station_id} value={station.kitchen_station_id}>
+                                                    {station.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                )}
+                                <label className="text-xs text-slate-500">
+                                    Special Instructions
+                                    <Input
+                                        value={line.special_instructions || ''}
+                                        onChange={(event) => updateCartLine(lineKey, { special_instructions: event.target.value })}
+                                        placeholder="No onions, sauce side"
+                                    />
+                                </label>
+                            </div>
+                            {canOverridePrice && Math.abs(Number(line.sale_price || 0) - round4(Number(line.base_sale_price || 0) + resolveModifierDelta(line))) > 0.0001 && (
                                 <label className="text-xs text-slate-500 mt-2 block">
                                     Price Override Reason
                                     <Input
                                         value={line.price_override_reason || ''}
-                                        onChange={(event) => updateCartLine(line.item_id, { price_override_reason: event.target.value })}
+                                        onChange={(event) => updateCartLine(lineKey, { price_override_reason: event.target.value })}
                                         placeholder="Required when changing price"
                                     />
                                 </label>
@@ -1783,12 +1895,13 @@ export default function POSCheckoutTerminal({
                                 <span className="text-xs text-slate-500">
                                     Subtotal: PHP {money(Number(line.quantity) * Number(line.sale_price))}
                                 </span>
-                                <Button type="button" variant="outline" size="sm" onClick={() => removeCartLine(line.item_id)}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => removeCartLine(lineKey)}>
                                     Remove
                                 </Button>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                     {cart.length === 0 && (
                         <p className="text-sm text-slate-600 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
                             Cart is empty. Select any product from the catalog to start a transaction.
@@ -1887,6 +2000,14 @@ export default function POSCheckoutTerminal({
                         </span>
                         <span className="font-medium text-slate-900">+ PHP {money(serviceFeeAmount)}</span>
                     </div>
+                    {restaurantServiceChargeAmount > 0 && (
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">
+                                {normalizedFnbContext?.restaurant_service_charge?.label || 'Restaurant service charge'}
+                            </span>
+                            <span className="font-medium text-slate-900">+ PHP {money(restaurantServiceChargeAmount)}</span>
+                        </div>
+                    )}
                     <div className="border-t border-dashed border-slate-200 my-2" />
                     <div className="flex justify-between">
                         <span className="text-slate-600">Vatable Sales</span>

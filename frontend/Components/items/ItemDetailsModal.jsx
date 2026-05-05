@@ -52,6 +52,7 @@ import PackagingInfoSection from './details/PackagingInfoSection';
 import CostFinancialSection from './details/CostFinancialSection';
 import QualityControlSection from './details/QualityControlSection';
 import RegulatoryComplianceSection from './details/RegulatoryComplianceSection';
+import BarcodeManager from './BarcodeManager';
 
 // Import helper functions
 import {
@@ -214,6 +215,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
 
             {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
             {item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
+            <BarcodeManager item={item} onRefresh={onRefresh} />
             {/* Cost Info */}
             <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -446,6 +448,18 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </AccordionContent>
               </AccordionItem>
             )}
+
+            <AccordionItem value="barcodes">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <BoxIcon className="w-5 h-5 text-teal-600" />
+                  <span className="font-semibold">Barcodes & Labels</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <BarcodeManager item={item} onRefresh={onRefresh} />
+              </AccordionContent>
+            </AccordionItem>
 
           </Accordion>
         </div>

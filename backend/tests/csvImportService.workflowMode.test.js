@@ -68,7 +68,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
 
     expect(result.success).toBe(true);
     expect(result.templateWorkflowMode).toBe('manufacturing');
-    expect(result.tenantWorkflowMode).toBe('manufacturing');
+    expect(result.tenantWorkflowMode).toBe('food_manufacturing');
   });
 
   it('allows MSME template when tenant mode is msme', async () => {
@@ -105,7 +105,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
     expect(result.details).toMatchObject({
       code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
       template_workflow_mode: 'msme',
-      tenant_workflow_mode: 'manufacturing'
+      tenant_workflow_mode: 'food_manufacturing'
     });
   });
 
@@ -116,6 +116,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
     expect(template.filename).toBe('msme_items_import_template.csv');
     expect(template.headers).toEqual(expect.arrayContaining([
       'default_sale_price',
+      'barcode_aliases',
       'template_workflow_mode',
       'mode_compatibility_note',
       'template_schema_version',

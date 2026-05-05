@@ -85,6 +85,51 @@ export const replaceItemSuppliers = async (itemId, suppliers = []) => {
   return response.data.data;
 };
 
+export const listItemBarcodes = async (itemId, params = {}) => {
+  const response = await api.get(`/items/${itemId}/barcodes`, { params });
+  return response.data.data;
+};
+
+export const resolveItemBarcode = async (params = {}) => {
+  const response = await api.get('/items/barcodes/resolve', { params });
+  return response.data.data;
+};
+
+export const attachItemBarcode = async (itemId, payload) => {
+  const response = await api.post(`/items/${itemId}/barcodes`, payload);
+  return response.data.data;
+};
+
+export const generateItemBarcode = async (itemId, payload = {}) => {
+  const response = await api.post(`/items/${itemId}/barcodes/generate`, payload);
+  return response.data.data;
+};
+
+export const updateItemBarcode = async (itemId, barcodeId, payload) => {
+  const response = await api.patch(`/items/${itemId}/barcodes/${barcodeId}`, payload);
+  return response.data.data;
+};
+
+export const deactivateItemBarcode = async (itemId, barcodeId) => {
+  const response = await api.delete(`/items/${itemId}/barcodes/${barcodeId}`);
+  return response.data.data;
+};
+
+export const setPrimaryItemBarcode = async (itemId, barcodeId) => {
+  const response = await api.post(`/items/${itemId}/barcodes/${barcodeId}/primary`);
+  return response.data.data;
+};
+
+export const renderItemBarcodeLabel = async (itemId, params = {}) => {
+  const response = await api.get(`/items/${itemId}/barcode-label`, { params });
+  return response.data.data;
+};
+
+export const resolveItemBarcodeConflict = async (payload) => {
+  const response = await api.post('/items/barcodes/conflicts/resolve', payload);
+  return response.data.data;
+};
+
 export const getFolders = async () => {
   const response = await api.get('/items/folders');
   return response.data.data;

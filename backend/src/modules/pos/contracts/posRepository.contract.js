@@ -13,6 +13,7 @@ const REQUIRED_METHODS = [
     'getTerminalIdentityPolicySettings',
     'getShiftLocationBindingReadinessSummary',
     'listCatalog',
+    'resolveCatalogScan',
     'listCatalogOverrides',
     'findCatalogOverrideByItemId',
     'upsertCatalogOverride',

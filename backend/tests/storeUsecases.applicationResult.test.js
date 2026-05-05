@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     buildListStoreCatalogUseCase,
+    buildResolveStoreQrUseCase,
     buildListStoreLocationsUseCase,
     buildRegisterStoreCustomerUseCase,
     buildLoginStoreCustomerUseCase,
@@ -107,6 +108,168 @@ describe('store use-cases application result contract', () => {
         expect(result.data.items).toEqual([]);
         expect(result.data.access_policy.effective_customer_access_mode).toBe('ghost');
         expect(storeRepository.listStoreCatalog).not.toHaveBeenCalled();
+    });
+
+    it('resolveStoreQr blocks catalog exposure in ghost mode before resolving barcode data', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const resolvePublicBarcode = jest.fn();
+        const useCase = buildResolveStoreQrUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'ghost' },
+                    { setting_key: 'inventory_display_mode', setting_value: 'availability' }
+                ]),
+                resolvePublicBarcode
+            }
+        });
+
+        const result = await useCase({ query: { code: 'qr-demo' } });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'blocked',
+            reason_code: 'CUSTOMER_ACCESS_MODE_BLOCKED',
+            cart_allowed: false,
+            checkout_allowed: false
+        }));
+        expect(resolvePublicBarcode).not.toHaveBeenCalled();
+    });
+
+    it('resolveStoreQr returns Storefront-safe item payload and cart handoff only for transaction mode', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const useCase = buildResolveStoreQrUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'transaction' },
+                    { setting_key: 'inventory_display_mode', setting_value: 'exact_quantity' },
+                    {
+                        setting_key: 'tenant_onboarding_progress',
+                        setting_value: JSON.stringify({
+                            step_payloads: {
+                                business_classification: {
+                                    legitimacy: { registration_status: 'registered' }
+                                }
+                            }
+                        })
+                    }
+                ]),
+                resolvePublicBarcode: jest.fn().mockResolvedValue({
+                    status: 'resolved',
+                    barcode: {
+                        item_barcode_id: 70,
+                        code: 'ITEM-QR',
+                        scope: 'storefront_qr',
+                        quantity_multiplier: 1
+                    },
+                    item: {
+                        item_id: 601,
+                        name: 'QR Item',
+                        category: 'product',
+                        current_stock: 9,
+                        cost_per_unit: 4,
+                        default_sale_price: 20,
+                        availability_status: 'in_stock'
+                    }
+                })
+            }
+        });
+
+        const result = await useCase({ query: { code: 'ITEM-QR', location_id: 2 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.status).toBe('resolved');
+        expect(result.data.cart_allowed).toBe(true);
+        expect(result.data.checkout_allowed).toBe(true);
+        expect(result.data.item).toEqual(expect.objectContaining({
+            item_id: 601,
+            inventory_display: {
+                mode: 'exact_quantity',
+                label: '9 available',
+                display_quantity: 9
+            }
+        }));
+        expect(result.data.item).not.toHaveProperty('current_stock');
+        expect(result.data.item).not.toHaveProperty('cost_per_unit');
+    });
+
+    it('resolveStoreQr resolves service booking ticket QR without exposing customer contact data', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const resolvePublicBarcode = jest.fn();
+        const resolvePublicServiceBookingReference = jest.fn().mockResolvedValue({
+            status: 'resolved',
+            booking: {
+                booking_id: 20,
+                public_reference: 'SB-123',
+                service_name: 'Consultation',
+                status: 'confirmed',
+                payment_status: 'unpaid'
+            }
+        });
+        const useCase = buildResolveStoreQrUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'catalog' },
+                    { setting_key: 'inventory_display_mode', setting_value: 'availability' }
+                ]),
+                resolvePublicBarcode,
+                resolvePublicServiceBookingReference
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                code: JSON.stringify({ type: 'service_booking', reference: 'SB-123' })
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.status).toBe('resolved');
+        expect(result.data.kind).toBe('service_booking');
+        expect(result.data.booking).toEqual(expect.objectContaining({
+            public_reference: 'SB-123',
+            service_name: 'Consultation'
+        }));
+        expect(result.data.booking).not.toHaveProperty('customer_email');
+        expect(result.data.booking).not.toHaveProperty('customer_phone');
+        expect(result.data.cart_allowed).toBe(false);
+        expect(resolvePublicBarcode).not.toHaveBeenCalled();
+        expect(resolvePublicServiceBookingReference).toHaveBeenCalledWith('SB-123');
+    });
+
+    it('resolveStoreQr accepts direct SERVICE_BOOKING deep-link payloads', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const resolvePublicBarcode = jest.fn();
+        const resolvePublicServiceBookingReference = jest.fn().mockResolvedValue({
+            status: 'resolved',
+            booking: {
+                public_reference: 'SB-789',
+                service_name: 'Repair Appointment',
+                status: 'requested'
+            }
+        });
+        const useCase = buildResolveStoreQrUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'catalog' },
+                    { setting_key: 'inventory_display_mode', setting_value: 'availability' }
+                ]),
+                resolvePublicBarcode,
+                resolvePublicServiceBookingReference
+            }
+        });
+
+        const result = await useCase({ query: { code: 'SERVICE_BOOKING:SB-789' } });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'resolved',
+            kind: 'service_booking',
+            booking: expect.objectContaining({ public_reference: 'SB-789' }),
+            cart_allowed: false,
+            checkout_allowed: false
+        }));
+        expect(resolvePublicBarcode).not.toHaveBeenCalled();
+        expect(resolvePublicServiceBookingReference).toHaveBeenCalledWith('SB-789');
     });
 
     it('storeCartQuote fail-closes for non-transaction effective modes', async () => {

@@ -8,6 +8,15 @@ const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
+const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
+
+const restaurantServiceChargeSchema = Joi.object({
+    enabled: Joi.boolean().default(false),
+    label: Joi.string().trim().max(120).allow('', null).optional(),
+    rate: Joi.number().min(0).max(100).precision(4).allow(null).optional(),
+    amount: Joi.number().min(0).precision(4).allow(null).optional(),
+    taxable: Joi.boolean().default(false)
+});
 
 const checkoutLineSchema = Joi.object({
     item_id: Joi.number().integer().positive().required().messages({
@@ -21,7 +30,22 @@ const checkoutLineSchema = Joi.object({
     sale_price: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Sale price must be 0 or greater'
     }),
-    price_override_reason: Joi.string().trim().max(255).allow(null, '').optional()
+    price_override_reason: Joi.string().trim().max(255).allow(null, '').optional(),
+    course: Joi.string().valid(...FNB_COURSES).allow(null, '').optional(),
+    line_modifiers: Joi.array().items(Joi.object().unknown(true)).optional(),
+    modifiers: Joi.array().items(Joi.object().unknown(true)).optional(),
+    special_instructions: Joi.string().trim().max(1000).allow(null, '').optional(),
+    kitchen_station_id: Joi.number().integer().positive().allow(null).optional(),
+    scan_metadata: Joi.object({
+        barcode_id: Joi.number().integer().positive().optional(),
+        code: Joi.string().trim().max(512).optional(),
+        normalized_code: Joi.string().trim().max(512).optional(),
+        scope: Joi.string().trim().max(50).optional(),
+        packaging_level: Joi.string().trim().max(50).optional(),
+        quantity_multiplier: Joi.number().positive().precision(4).optional(),
+        location_id: Joi.number().integer().positive().optional(),
+        resolved_at: Joi.date().iso().optional()
+    }).unknown(true).optional()
 });
 
 const discountBeneficiarySchema = Joi.object({
@@ -44,6 +68,17 @@ const checkoutPosSchema = Joi.object({
     service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Service fee amount must be 0 or greater'
     }),
+    fnb_check_id: Joi.number().integer().positive().allow(null).optional(),
+    check_id: Joi.number().integer().positive().allow(null).optional(),
+    fnb_table_id: Joi.number().integer().positive().allow(null).optional(),
+    table_id: Joi.number().integer().positive().allow(null).optional(),
+    fnb_table_label_snapshot: Joi.string().trim().max(120).allow('', null).optional(),
+    table_label_snapshot: Joi.string().trim().max(120).allow('', null).optional(),
+    fnb_guest_count: Joi.number().integer().min(1).max(500).allow(null).optional(),
+    guest_count: Joi.number().integer().min(1).max(500).allow(null).optional(),
+    fnb_server_id: Joi.number().integer().positive().allow(null).optional(),
+    server_id: Joi.number().integer().positive().allow(null).optional(),
+    restaurant_service_charge: restaurantServiceChargeSchema.optional(),
     discount_amount: Joi.number().min(0).precision(4).default(0),
     discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
     discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
@@ -95,6 +130,13 @@ const posCatalogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(100),
     folder_id: Joi.number().integer().positive().optional(),
     location_id: Joi.number().integer().positive().optional()
+});
+
+const posScanSchema = Joi.object({
+    code: Joi.string().trim().max(512).required(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    quantity: Joi.number().positive().precision(4).default(1)
 });
 
 const posCatalogOverridesQuerySchema = Joi.object({
@@ -220,6 +262,7 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
+export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');

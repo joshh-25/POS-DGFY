@@ -502,7 +502,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       where: { setting_key: 'ops_workflow_mode' }
     }));
     expect(workflowSetting).not.toBeNull();
-    expect(workflowSetting.setting_value).toBe('manufacturing');
+    expect(workflowSetting.setting_value).toBe('food_manufacturing');
 
     const checkoutAfterRoundtrip = await runInTenantContext(() => checkoutPosUseCase({
       userId: cashier.user_id,

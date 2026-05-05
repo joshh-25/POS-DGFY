@@ -20,6 +20,17 @@ const parseTransactionMetadata = (value) => {
     return {};
 };
 
+const parseArrayMetadata = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
 const resolveDocumentType = ({ transaction, receiptContract }) => {
     const contractType = String(receiptContract?.document_type || '').toLowerCase();
     if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') {
@@ -68,6 +79,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const isFiscal = documentType === 'fiscal_invoice';
     const isTrainingContext = documentContext === 'training_test';
     const documentLabel = isFiscal ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP';
+    const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl p-4 print:border-none print:rounded-none print:p-0">
@@ -98,20 +110,37 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 )}
                 <p className="text-xs text-slate-500">{transaction.invoice_number}</p>
                 <p className="text-xs text-slate-500">{printedAt}</p>
+                {(transaction.fnb_check_id || transaction.fnb_table_label_snapshot || transaction.fnb_guest_count) && (
+                    <p className="text-xs text-slate-500">
+                         F&B Check{transaction.fnb_check_id ? ` #${transaction.fnb_check_id}` : ''}
+                        {transaction.fnb_table_label_snapshot ? ` Table ${transaction.fnb_table_label_snapshot}` : ''}
+                        {transaction.fnb_guest_count ? ` Guests ${transaction.fnb_guest_count}` : ''}
+                    </p>
+                )}
             </div>
 
             <div className="space-y-2 text-sm mb-4">
-                {lines.map((line) => (
-                    <div key={line.line_id} className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="font-medium text-slate-900">{line.item?.name || `Item #${line.item_id}`}</p>
-                            <p className="text-xs text-slate-500">
-                                {Number(line.quantity).toFixed(2)} {line.unit_of_measure || ''} x {money(line.sale_price)}
-                            </p>
+                {lines.map((line) => {
+                    const modifiers = parseArrayMetadata(line.fnb_modifiers_snapshot);
+                    return (
+                        <div key={line.line_id} className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="font-medium text-slate-900">{line.item?.name || `Item #${line.item_id}`}</p>
+                                <p className="text-xs text-slate-500">
+                                    {Number(line.quantity).toFixed(2)} {line.unit_of_measure || ''} x {money(line.sale_price)}
+                                </p>
+                                {(line.fnb_course_snapshot || modifiers.length || line.fnb_special_instructions) && (
+                                    <p className="text-xs text-slate-500">
+                                        {line.fnb_course_snapshot ? `Course: ${line.fnb_course_snapshot}` : ''}
+                                        {modifiers.length ? ` Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
+                                        {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
+                                    </p>
+                                )}
+                            </div>
+                            <p className="font-medium text-slate-900">{money(line.line_subtotal)}</p>
                         </div>
-                        <p className="font-medium text-slate-900">{money(line.line_subtotal)}</p>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <div className="border-t border-dashed border-slate-300 pt-3 text-sm space-y-1">
@@ -150,6 +179,15 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     </span>
                     <span>{money(transaction.service_fee_amount)}</span>
                 </div>
+                {restaurantServiceChargeAmount > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                        <span>
+                            {transaction.restaurant_service_charge_label_snapshot || 'Restaurant service charge'}
+                            {transaction.restaurant_service_charge_rate_snapshot != null ? ` @ ${Number(transaction.restaurant_service_charge_rate_snapshot).toFixed(2)}%` : ''}
+                        </span>
+                        <span>{money(restaurantServiceChargeAmount)}</span>
+                    </div>
+                )}
                 <div className="flex justify-between text-base font-semibold text-slate-900 pt-1">
                     <span>Total</span>
                     <span>{money(transaction.total_amount)}</span>

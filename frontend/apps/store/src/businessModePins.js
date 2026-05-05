@@ -3,7 +3,7 @@ export const BUSINESS_MODE_PIN_META = Object.freeze({
   services: { icon: 'CalendarCheck', label: 'Services', color: '#0f766e' },
   food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#b45309' },
   manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#b45309' },
-  fnb: { icon: 'Utensils', label: 'F&B', color: '#dc2626' },
+  fnb: { icon: 'Utensils', label: 'Food & Beverage', color: '#dc2626' },
   hospitality: { icon: 'Hotel', label: 'Hospitality', color: '#7c3aed' },
   healthcare: { icon: 'HeartPulse', label: 'Healthcare', color: '#be123c' },
   ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport', color: '#0891b2' },

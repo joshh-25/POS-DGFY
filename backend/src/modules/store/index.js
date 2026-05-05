@@ -1,6 +1,7 @@
 import { storeRepository } from './repositories/storeRepository.js';
 import {
     buildListStoreCatalogUseCase,
+    buildResolveStoreQrUseCase,
     buildListStoreLocationsUseCase,
     buildRegisterStoreCustomerUseCase,
     buildLoginStoreCustomerUseCase,
@@ -22,6 +23,7 @@ import {
 } from './usecases/storeUseCases.js';
 
 export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({ storeRepository });
+export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
 export const listStoreLocationsUseCase = buildListStoreLocationsUseCase({ storeRepository });
 export const registerStoreCustomerUseCase = buildRegisterStoreCustomerUseCase({ storeRepository });
 export const loginStoreCustomerUseCase = buildLoginStoreCustomerUseCase({ storeRepository });

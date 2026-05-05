@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWorkflowMode } from '../WorkflowModeContext.jsx';
-import { isMsmeWorkflowMode, isServicesWorkflowMode, modeHasCapability } from '../workflowMode.js';
+import { isFnbWorkflowMode, isMsmeWorkflowMode, isServicesWorkflowMode, modeHasCapability } from '../workflowMode.js';
 
 function WorkflowModeRedirect({ moduleLabel, fromPath }) {
   const navigate = useNavigate();
@@ -30,6 +30,7 @@ function WorkflowModeRedirect({ moduleLabel, fromPath }) {
 export default function WorkflowModeRouteGate({
   blockInMsme = false,
   blockInServices = false,
+  blockInFnb = false,
   requiredCapability = '',
   moduleLabel = 'This module',
   children
@@ -51,6 +52,11 @@ export default function WorkflowModeRouteGate({
   }
 
   if (blockInServices && isServicesWorkflowMode(workflowMode)) {
+    const fromPath = `${location.pathname}${location.search || ''}`;
+    return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
+  }
+
+  if (blockInFnb && isFnbWorkflowMode(workflowMode)) {
     const fromPath = `${location.pathname}${location.search || ''}`;
     return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
   }

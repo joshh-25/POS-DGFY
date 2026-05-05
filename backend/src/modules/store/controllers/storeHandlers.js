@@ -1,5 +1,6 @@
 import {
     listStoreCatalogUseCase,
+    resolveStoreQrUseCase,
     listStoreLocationsUseCase,
     registerStoreCustomerUseCase,
     loginStoreCustomerUseCase,
@@ -62,6 +63,26 @@ export const registerStoreCustomer = async (req, res, next) => {
 export const listStoreCatalog = async (req, res, next) => {
     try {
         const result = await listStoreCatalogUseCase({
+            query: req.validatedQuery || req.query
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const resolveStoreQr = async (req, res, next) => {
+    try {
+        const result = await resolveStoreQrUseCase({
             query: req.validatedQuery || req.query
         });
 
@@ -452,6 +473,7 @@ export const unfollowStorefront = async (req, res, next) => {
 
 export default {
     listStoreCatalog,
+    resolveStoreQr,
     listStoreLocations,
     registerStoreCustomer,
     loginStoreCustomer,
@@ -464,6 +486,7 @@ export default {
     cartQuote,
     checkout,
     trackOrder,
+    claimOrder,
     cancelOrder,
     listStoreCustomerOrders,
     getStorefrontFollowStatus,

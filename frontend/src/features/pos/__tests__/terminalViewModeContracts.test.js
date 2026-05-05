@@ -11,6 +11,8 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeScanner.jsx');
+const posHistoryPanelPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
 
@@ -20,6 +22,8 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
+  let posBarcodeScannerContent = '';
+  let posHistoryPanelContent = '';
   let terminalPageLayoutContent = '';
   let terminalLockDrawerContent = '';
 
@@ -29,6 +33,8 @@ describe('POS terminal view-mode contracts', () => {
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+    posBarcodeScannerContent = fs.readFileSync(posBarcodeScannerPath, 'utf8');
+    posHistoryPanelContent = fs.readFileSync(posHistoryPanelPath, 'utf8');
     terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
     terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
   });
@@ -98,14 +104,15 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('adds keyboard and semantic accessibility affordances in POS history table', () => {
-    expect(posCheckoutTerminalContent).toContain('aria-label="POS transaction history table"');
-    expect(posCheckoutTerminalContent).toContain('All Sources');
-    expect(posCheckoutTerminalContent).toContain('Online Store');
-    expect(posCheckoutTerminalContent).not.toContain('Online (Legacy)');
-    expect(posCheckoutTerminalContent).toContain('aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posCheckoutTerminalContent).toContain('aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}');
-    expect(posCheckoutTerminalContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>');
-    expect(posCheckoutTerminalContent).toContain('event.stopPropagation();');
+    expect(posCheckoutTerminalContent).toContain('POSTransactionHistoryPanel');
+    expect(posHistoryPanelContent).toContain('aria-label="POS transaction history table"');
+    expect(posHistoryPanelContent).toContain('All Sources');
+    expect(posHistoryPanelContent).toContain('Online Store');
+    expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
+    expect(posHistoryPanelContent).toContain('aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>');
+    expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
   it('keeps queue-to-receipt ownership in POSCheckoutTerminal and avoids prefetch in TerminalPage', () => {
@@ -146,6 +153,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('idempotency_key');
   });
 
+  it('keeps scanner wedge capture and routed ticket feedback out of cart mutation', () => {
+    expect(posCheckoutTerminalContent).toContain('POSBarcodeScanner');
+    expect(posBarcodeScannerContent).toContain('scannerBufferRef');
+    expect(posBarcodeScannerContent).toContain('submitScan(bufferedCode);');
+    expect(posBarcodeScannerContent).toContain("result?.status === 'routed'");
+    expect(posBarcodeScannerContent).toContain("tone: 'info'");
+    expect(posBarcodeScannerContent).toContain('toast.info(message);');
+  });
+
   it('surfaces compliance reason codes with per-blocker remediation links in terminal banner', () => {
     expect(terminalPageLayoutContent).toContain('Reason code: {complianceBlockerDetails.reasonCode}');
     expect(terminalPageLayoutContent).toContain('{blocker.label || blocker.code}');
@@ -184,8 +200,8 @@ describe('POS terminal view-mode contracts', () => {
 
   it('supports history/receipt handoff into unified sales report with preserved query params', () => {
     expect(posCheckoutTerminalContent).toContain('openInSalesReport');
-    expect(posCheckoutTerminalContent).toContain('data-testid="pos-history-open-sales-report"');
-    expect(posCheckoutTerminalContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('data-testid="pos-history-open-sales-report"');
+    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");

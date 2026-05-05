@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import QRCode from 'qrcode';
-import maplibregl from 'maplibre-gl';
 import { Toaster, toast } from 'sonner';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
@@ -23,24 +22,12 @@ import {
   getAccessCapabilities,
   getInventoryDisplayLabel
 } from './customerAccess.js';
-import { renderBusinessModePinSvg } from './businessModePins.js';
-import 'maplibre-gl/dist/maplibre-gl.css';
+
+const FnbReservationPanel = lazy(() => import('./FnbReservationPanel.jsx'));
+const StoresMap = lazy(() => import('./StoreMaps.jsx').then((module) => ({ default: module.StoresMap })));
+const DeliveryPinMap = lazy(() => import('./StoreMaps.jsx').then((module) => ({ default: module.DeliveryPinMap })));
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
-const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
-
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/liberty'
-  : `${TILE_BASE}/styles/liberty`;
-
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-      if (url.startsWith(TILE_BASE)) {
-        return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
-      }
-      return { url };
-    }
-  : undefined;
 
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
@@ -63,8 +50,39 @@ const DISCOVERY_BADGE_TONE_STYLES = {
 const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toSlug = (v) => String(v || '').trim().toLowerCase();
-const TENANT_STORE_BASE_PATH = '/tenant-store';
-const storePath = (slug) => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}`;
+const normalizePathBase = (value, fallback = '/tenant-store') => {
+  const raw = String(value || '').trim() || fallback;
+  const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`;
+  const normalized = withLeadingSlash.replace(/\/+$/, '');
+  return normalized || '/';
+};
+const TENANT_STORE_BASE_PATH = normalizePathBase(import.meta.env.VITE_TENANT_STORE_BASE_PATH || '/tenant-store');
+const ROOT_TENANT_SLUGS_ENABLED = ['1', 'true', 'yes', 'on'].includes(
+  String(import.meta.env.VITE_ROOT_TENANT_SLUGS || '').trim().toLowerCase()
+);
+const RESERVED_ROOT_PATHS = new Set([
+  'api',
+  'assets',
+  'favicon.ico',
+  'health',
+  'login',
+  'manifest.json',
+  'robots.txt',
+  'store',
+  'sw.js',
+  'tenant-store',
+  'uploads',
+  'version.json'
+]);
+const isReservedRootSegment = (segment) => {
+  const normalized = String(segment || '').trim().toLowerCase();
+  return !normalized || normalized.includes('.') || RESERVED_ROOT_PATHS.has(normalized);
+};
+const discoveryPath = () => (ROOT_TENANT_SLUGS_ENABLED ? '/' : TENANT_STORE_BASE_PATH);
+const storePath = (slug) => {
+  const encoded = encodeURIComponent(toSlug(slug));
+  return ROOT_TENANT_SLUGS_ENABLED ? `/${encoded}` : `${TENANT_STORE_BASE_PATH}/${encoded}`;
+};
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -84,21 +102,79 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
+  const basePattern = TENANT_STORE_BASE_PATH.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
-    /^\/tenant-store\/([^/]+)$/i,
-    /^\/store\/([^/]+)$/i
+    new RegExp(`^${basePattern}\\/([^/]+)(?:\\/qr\\/[^/]+)?\\/?$`, 'i'),
+    /^\/tenant-store\/([^/]+)(?:\/qr\/[^/]+)?\/?$/i,
+    /^\/store\/([^/]+)(?:\/qr\/[^/]+)?\/?$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
+  if (ROOT_TENANT_SLUGS_ENABLED) {
+    const rootMatch = path.match(/^\/([^/]+)(?:\/qr\/[^/]+)?\/?$/i);
+    const segment = rootMatch?.[1] ? decodeURIComponent(rootMatch[1]).toLowerCase() : '';
+    if (segment && !isReservedRootSegment(segment)) return segment;
+  }
   const hashPatterns = [
-    /^#\/tenant-store\/([^/]+)$/i,
-    /^#\/store\/([^/]+)$/i
+    /^#\/tenant-store\/([^/]+)(?:\/qr\/[^/]+)?\/?$/i,
+    /^#\/store\/([^/]+)(?:\/qr\/[^/]+)?\/?$/i
   ];
   for (const pattern of hashPatterns) {
     const match = (window.location.hash || '').match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  return null;
+};
+
+const readQrRoute = () => {
+  if (typeof window === 'undefined') return null;
+  const search = new URLSearchParams(window.location.search || '');
+  const queryCode = (
+    search.get('bc')
+    || search.get('barcode')
+    || search.get('code')
+    || search.get('qr')
+    || ''
+  ).trim();
+  if (queryCode) {
+    return { slug: readRouteSlug(), code: queryCode };
+  }
+
+  const path = window.location.pathname || '';
+  const basePattern = TENANT_STORE_BASE_PATH.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patterns = [
+    new RegExp(`^${basePattern}\\/([^/]+)\\/qr\\/([^/?#]+)\\/?$`, 'i'),
+    /^\/tenant-store\/([^/]+)\/qr\/([^/?#]+)\/?$/i,
+    /^\/store\/([^/]+)\/qr\/([^/?#]+)\/?$/i
+  ];
+  if (ROOT_TENANT_SLUGS_ENABLED) {
+    patterns.push(/^\/([^/]+)\/qr\/([^/?#]+)\/?$/i);
+  }
+  for (const pattern of patterns) {
+    const match = path.match(pattern);
+    if (match?.[1] && match?.[2]) {
+      return {
+        slug: decodeURIComponent(match[1]).toLowerCase(),
+        code: decodeURIComponent(match[2])
+      };
+    }
+  }
+
+  const hash = window.location.hash || '';
+  const hashPatterns = [
+    /^#\/tenant-store\/([^/]+)\/qr\/([^/?#]+)\/?$/i,
+    /^#\/store\/([^/]+)\/qr\/([^/?#]+)\/?$/i
+  ];
+  for (const pattern of hashPatterns) {
+    const match = hash.match(pattern);
+    if (match?.[1] && match?.[2]) {
+      return {
+        slug: decodeURIComponent(match[1]).toLowerCase(),
+        code: decodeURIComponent(match[2])
+      };
+    }
   }
   return null;
 };
@@ -273,44 +349,6 @@ const sanitizeExternalLink = (value) => {
   }
 };
 
-const createStorePopupNode = (store = {}) => {
-  const container = document.createElement('div');
-  container.style.display = 'grid';
-  container.style.gap = '4px';
-
-  const row = document.createElement('div');
-  row.style.display = 'flex';
-  row.style.alignItems = 'center';
-  row.style.gap = '8px';
-
-  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
-  if (profileImageUrl) {
-    const img = document.createElement('img');
-    img.setAttribute('src', profileImageUrl);
-    img.setAttribute('alt', '');
-    img.style.width = '28px';
-    img.style.height = '28px';
-    img.style.borderRadius = '999px';
-    img.style.objectFit = 'cover';
-    img.style.border = '1px solid #d1d5db';
-    img.onerror = () => {
-      img.remove();
-    };
-    row.appendChild(img);
-  }
-
-  const title = document.createElement('strong');
-  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
-  row.appendChild(title);
-  container.appendChild(row);
-
-  const address = document.createElement('div');
-  address.textContent = String(store?.address_line || '');
-  container.appendChild(address);
-
-  return container;
-};
-
 const normalizeProfileLocations = (profile = {}) => (
   (Array.isArray(profile?.active_location_snapshot) ? profile.active_location_snapshot : [])
     .map((location) => ({
@@ -414,6 +452,28 @@ const isItemAvailable = (item = {}) => {
 };
 
 const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+const isFnbStorefront = (store = {}) => String(store?.workflow_mode || store?.business_mode || '').trim().toLowerCase() === 'fnb';
+const nowLocalDateTimeInput = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+const getDefaultFnbLineModifiers = (item = {}) => (
+  (Array.isArray(item.fnb_modifier_groups) ? item.fnb_modifier_groups : []).flatMap((group) => {
+    const options = Array.isArray(group.options) ? group.options : [];
+    const selected = options.filter((option) => option.is_default === true);
+    return selected.map((option) => ({
+      modifier_group_id: group.modifier_group_id,
+      group_name: group.display_name || group.name,
+      modifier_option_id: option.modifier_option_id,
+      option_name: option.name,
+      price_delta: Number(option.price_delta || 0)
+    }));
+  })
+);
+const getFnbLineModifierDelta = (modifiers = []) => (
+  round4((Array.isArray(modifiers) ? modifiers : []).reduce((sum, modifier) => sum + Number(modifier.price_delta || 0), 0))
+);
 
 const downloadDataUrl = (dataUrl, filename) => {
   const link = document.createElement('a');
@@ -484,7 +544,13 @@ const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], t
   ctx.font = '400 20px Arial';
   ctx.fillStyle = '#64748b';
   ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
-  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
+  const qrCode = booking ? `SERVICE_BOOKING:${reference}` : reference;
+  let qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, code: qrCode, store: storeName || '' });
+  if (typeof window !== 'undefined' && booking) {
+    const currentUrl = new URL(window.location.href);
+    const basePath = currentUrl.pathname.replace(/\/qr\/[^/]+\/?$/i, '').replace(/\/$/, '');
+    qrPayload = `${currentUrl.origin}${basePath}/qr/${encodeURIComponent(qrCode)}`;
+  }
   const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
   const qrImage = await loadImage(qrDataUrl);
   ctx.drawImage(qrImage, 340, 900, 220, 220);
@@ -513,191 +579,6 @@ const getOrCreateStorefrontVisitorId = () => {
   window.localStorage.setItem(STOREFRONT_VISITOR_ID_STORAGE_KEY, generated);
   return generated;
 };
-
-const makePinElement = (mode, selected = false) => {
-  const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
-  el.innerHTML = renderBusinessModePinSvg(mode, selected);
-  return el;
-};
-
-const makeUserLocationElement = () => {
-  const el = document.createElement('div');
-  el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1d4ed8;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
-  return el;
-};
-
-function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) {
-  const ref = useRef(null);
-  const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const userMarkerRef = useRef(null);
-
-  useEffect(() => {
-    if (!ref.current || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container: ref.current,
-      style: TILING_SERVER,
-      transformRequest: tileTransformRequest,
-      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-      zoom: 11,
-      bearing: 60,
-      pitch: 60,
-    });
-    mapRef.current = map;
-
-    map.on('error', (e) => console.error('[MapLibre error]', e));
-    map.on('style.load', () => console.log('[MapLibre] style loaded'));
-    map.on('sourcedata', (e) => console.log('[MapLibre] sourcedata', e.sourceId, e.isSourceLoaded));
-    map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    const rows = Array.isArray(stores) ? stores : [];
-    const bounds = [];
-
-    rows.forEach((store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const markerKey = String(store.marker_key || store.slug || store.location_id || `${lat}:${lng}`);
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : store.is_primary_storefront === true;
-      const el = makePinElement(store.workflow_mode || store.business_mode, highlighted);
-      el.addEventListener('click', () => onSelectStore(store));
-      const popup = new maplibregl.Popup({ offset: 25 }).setDOMContent(createStorePopupNode(store));
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([lng, lat])
-        .setPopup(popup)
-        .addTo(map);
-      markersRef.current.push(marker);
-      bounds.push([lng, lat]);
-    });
-
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-      userMarkerRef.current = null;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      const uLat = Number(userLocation.latitude);
-      const uLng = Number(userLocation.longitude);
-      if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
-        const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
-          .setLngLat([uLng, uLat])
-          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
-          .addTo(map);
-        bounds.push([uLng, uLat]);
-      }
-    }
-
-    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: 15 });
-    if (bounds.length > 1) {
-      const lngs = bounds.map((b) => b[0]);
-      const lats = bounds.map((b) => b[1]);
-      map.fitBounds(
-        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-        { padding: 24, maxZoom: 14 }
-      );
-    }
-  }, [stores, selectedKey, onSelectStore, userLocation]);
-
-  return <div ref={ref} style={{ height: 360, border: '1px solid #d6e2e8', borderRadius: 14 }} />;
-}
-
-function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
-  const ref = useRef(null);
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
-
-  // useEffect(() => {
-  //   if (!ref.current || mapRef.current) return;
-  //   const map = new maplibregl.Map({
-  //     container: ref.current,
-  //     style: TILING_SERVER,
-  //     transformRequest: tileTransformRequest,
-  //     center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-  //     zoom: 13,
-  //     bearing: 60,
-  //     pitch: 60,
-  //   });
-  //   map.getCanvas().style.zIndex = '0';
-  //   mapRef.current = map;
-  //   return () => {
-  //     map.remove();
-  //     mapRef.current = null;
-  //   };
-  // }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (markerRef.current) {
-      markerRef.current.remove();
-      markerRef.current = null;
-    }
-
-    if (pin?.latitude != null && pin?.longitude != null) {
-      const lat = Number(pin.latitude);
-      const lng = Number(pin.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        const el = makeUserLocationElement();
-        markerRef.current = new maplibregl.Marker({ element: el })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
-      }
-    }
-  }, [pin]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (disabled) return undefined;
-
-    const handleClick = (event) => {
-      const lat = Number(event?.lngLat?.lat);
-      const lng = Number(event?.lngLat?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      onPinChange?.({
-        latitude: Number(lat.toFixed(6)),
-        longitude: Number(lng.toFixed(6))
-      });
-    };
-
-    map.on('click', handleClick);
-    return () => map.off('click', handleClick);
-  }, [disabled, onPinChange]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-    const timer = setTimeout(() => map.resize(), 120);
-    return () => clearTimeout(timer);
-  }, [disabled]);
-
-  return (
-    <div style={{ position: 'relative', marginBottom: 10, width: '100%', maxWidth: 420, aspectRatio: '1 / 1', overflow: 'hidden', border: '1px solid #cbd5e1', borderRadius: 10, isolation: 'isolate', zIndex: 0 }}>
-      <div ref={ref} style={{ height: '100%', width: '100%' }} />
-      {disabled && (
-        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)' }} />
-      )}
-    </div>
-  );
-}
 
 function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRefreshTenantPage }) {
   const normalizedMode = String(mode || 'setup_pending').trim().toLowerCase();
@@ -769,6 +650,9 @@ export function App() {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
+  const [pendingQrCode, setPendingQrCode] = useState(() => readQrRoute()?.code || '');
+  const [qrLanding, setQrLanding] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
@@ -783,6 +667,17 @@ export function App() {
   const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
   const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
   const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
+  const [fnbReservationForm, setFnbReservationForm] = useState({
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    party_size: 2,
+    requested_at: nowLocalDateTimeInput(),
+    notes: ''
+  });
+  const [fnbReservationLoading, setFnbReservationLoading] = useState(false);
+  const [fnbReservationError, setFnbReservationError] = useState('');
+  const [fnbReservationResult, setFnbReservationResult] = useState(null);
   const [pinLocationLoading, setPinLocationLoading] = useState(false);
   const [pinLocationError, setPinLocationError] = useState('');
   const [quoteResult, setQuoteResult] = useState(null);
@@ -1090,7 +985,10 @@ export function App() {
   }, [stores]);
 
   useEffect(() => {
-    const onPopState = () => setRouteSlug(readRouteSlug());
+    const onPopState = () => {
+      setRouteSlug(readRouteSlug());
+      setPendingQrCode(readQrRoute()?.code || '');
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -1157,7 +1055,8 @@ export function App() {
   };
 
   const goDiscovery = () => {
-    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
+    const target = discoveryPath();
+    if (window.location.pathname !== target) window.history.pushState({}, '', target);
     setRouteSlug(null);
     setSelectedStore(null);
     setStoreLocations([]);
@@ -1442,6 +1341,7 @@ export function App() {
   const productCartPermitted = canUseProductCart(selectedStore);
   const checkoutPermitted = canUseCheckout(selectedStore);
   const bookingPermitted = canUseBooking(selectedStore);
+  const fnbStorefront = isFnbStorefront(selectedStore);
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -1514,12 +1414,59 @@ export function App() {
     }
   }, [storeLocations, selectedLocationId, primaryLocationId]);
 
-  const addToCart = (item) => {
+  useEffect(() => {
+    if (!selectedStore?.slug || !pendingQrCode) {
+      setQrLanding(null);
+      setQrLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const resolveQr = async () => {
+      setQrLoading(true);
+      try {
+        const query = new URLSearchParams({ code: pendingQrCode });
+        if (selectedLocationId != null) {
+          query.set('location_id', String(selectedLocationId));
+        }
+        const data = await requestJson(`/api/v1/store/qr/resolve?${query.toString()}`, { storeSlug: selectedStore.slug });
+        if (cancelled) return;
+        setQrLanding(data);
+        const accessPatch = buildAccessPolicyStorePatch(data?.access_policy);
+        if (accessPatch) {
+          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+        }
+        if (data?.status === 'resolved' && data?.item?.item_id) {
+          setCatalog((prev) => {
+            if (prev.some((item) => Number(item.item_id) === Number(data.item.item_id))) return prev;
+            return [data.item, ...prev];
+          });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setQrLanding({
+          status: 'blocked',
+          reason_code: error?.errorCode || 'QR_RESOLVE_FAILED',
+          message: normalizeStorefrontErrorMessage(error, 'Unable to resolve this QR code right now.')
+        });
+      } finally {
+        if (!cancelled) setQrLoading(false);
+      }
+    };
+
+    resolveQr();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStore?.slug, selectedLocationId, pendingQrCode]);
+
+  const addToCart = (item, options = {}) => {
     if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
       toast.error('This storefront is not accepting online checkout right now.');
       return;
     }
     let stockWarning = '';
+    const requestedAddQty = Math.max(1, Number(options.quantity || options.quantity_multiplier || 1));
     const normalizedItemId = Number(item?.item_id);
     if (Number.isFinite(normalizedItemId)) {
       setCartImageErrors((prev) => {
@@ -1531,14 +1478,17 @@ export function App() {
     }
     setCart((prev) => {
       const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
-      const price = Number(item.default_sale_price ?? 0);
+      const lineModifiers = Array.isArray(options.line_modifiers)
+        ? options.line_modifiers
+        : getDefaultFnbLineModifiers(item);
+      const price = round4(Number(item.default_sale_price ?? 0) + getFnbLineModifierDelta(lineModifiers));
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       if (found) {
         if (isServiceCatalogItem(item)) {
           stockWarning = 'This service is already in your booking cart.';
           return prev;
         }
-        const requestedQty = Number(found.quantity) + 1;
+        const requestedQty = Number(found.quantity) + requestedAddQty;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
         if (requestedQty > maxStock) {
           stockWarning = buildStockExceededMessage({
@@ -1557,8 +1507,9 @@ export function App() {
         name: item.name,
         category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
         service_detail: item.service_detail || null,
-        quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? 1 : 0),
+        quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? Math.min(requestedAddQty, maxStock) : 0),
         price,
+        line_modifiers: lineModifiers,
         image_url: withAssetOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
         max_stock: maxStock
@@ -1567,6 +1518,17 @@ export function App() {
     if (stockWarning) {
       toast.error(stockWarning);
     }
+  };
+
+  const addQrItemToCart = () => {
+    if (qrLanding?.status !== 'resolved' || !qrLanding?.item) return;
+    if (qrLanding.cart_allowed !== true) {
+      toast.error('This QR code can show the catalog item, but checkout is not enabled for this storefront mode.');
+      return;
+    }
+    const quantityMultiplier = Number(qrLanding?.barcode?.quantity_multiplier || 1);
+    addToCart(qrLanding.item, { quantity: Number.isFinite(quantityMultiplier) && quantityMultiplier > 0 ? quantityMultiplier : 1 });
+    setIsCheckoutOpen(true);
   };
 
   const removeCartItem = (itemId) => {
@@ -1609,7 +1571,16 @@ export function App() {
     delivery_address: isDeliveryOrder ? customerAddress : '',
     delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
-    lines: cart.map((line) => ({ item_id: Number(line.item_id), quantity: Number(line.quantity) }))
+    lines: cart.map((line) => ({
+      item_id: Number(line.item_id),
+      quantity: Number(line.quantity),
+      line_modifiers: (Array.isArray(line.line_modifiers) ? line.line_modifiers : []).map((modifier) => ({
+        modifier_group_id: modifier.modifier_group_id,
+        modifier_option_id: modifier.modifier_option_id,
+        group_name: modifier.group_name,
+        option_name: modifier.option_name
+      }))
+    }))
   });
 
   const handlePinMyLocation = () => {
@@ -1867,6 +1838,39 @@ export function App() {
     }
   };
 
+  const handleFnbReservationRequest = async () => {
+    if (!selectedStore?.slug) return;
+    setFnbReservationError('');
+    setFnbReservationResult(null);
+    setFnbReservationLoading(true);
+    try {
+      const data = await requestJson('/api/v1/store/fnb/reservations', {
+        method: 'POST',
+        storeSlug: selectedStore.slug,
+        authToken: readStoreAuthToken(),
+        body: {
+          ...fnbReservationForm,
+          party_size: Number(fnbReservationForm.party_size || 2),
+          requested_at: new Date(fnbReservationForm.requested_at).toISOString()
+        }
+      });
+      setFnbReservationResult(data?.reservation || data);
+      setFnbReservationForm((prev) => ({
+        ...prev,
+        customer_name: '',
+        customer_phone: '',
+        customer_email: '',
+        notes: '',
+        requested_at: nowLocalDateTimeInput()
+      }));
+      toast.success('Reservation request sent.');
+    } catch (error) {
+      setFnbReservationError(normalizeStorefrontErrorMessage(error, 'Unable to send reservation request.'));
+    } finally {
+      setFnbReservationLoading(false);
+    }
+  };
+
   const handleDownloadCheckoutImage = async () => {
     if (!checkoutResult) return;
     try {
@@ -2036,16 +2040,19 @@ export function App() {
                   )}
 
                   {!loadingStores && !storesError && discoveryMapPins.length > 0 && viewMode === 'map' && (
-                    <StoresMap
-                      stores={discoveryMapPins}
-                      selectedKey={highlightedDiscoveryMarkerKey || null}
-                      userLocation={discoveryCoords}
-                      onSelectStore={(pin) => {
-                        setHighlightedStoreSlug(pin.slug);
-                        setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
-                        goStore(pin.slug, pin.location_id ?? null);
-                      }}
-                    />
+                    <Suspense fallback={<div style={{ border: '1px solid #d6e2e8', borderRadius: 14, height: 360, display: 'grid', placeItems: 'center', color: '#64748b' }}>Loading map...</div>}>
+                      <StoresMap
+                        stores={discoveryMapPins}
+                        selectedKey={highlightedDiscoveryMarkerKey || null}
+                        userLocation={discoveryCoords}
+                        resolveAssetUrl={withAssetOrigin}
+                        onSelectStore={(pin) => {
+                          setHighlightedStoreSlug(pin.slug);
+                          setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                          goStore(pin.slug, pin.location_id ?? null);
+                        }}
+                      />
+                    </Suspense>
                   )}
 
                   {!loadingStores && !storesError && storesWithNearestBranch.length > 0 && viewMode !== 'map' && (
@@ -2193,16 +2200,19 @@ export function App() {
                 <section style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#ffffff', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <strong style={{ fontSize: 15 }}>Live Storefront Map</strong>
                   {!loadingStores && !storesError && discoveryMapPins.length > 0 ? (
-                    <StoresMap
-                      stores={discoveryMapPins}
-                      selectedKey={highlightedDiscoveryMarkerKey || null}
-                      userLocation={discoveryCoords}
-                      onSelectStore={(pin) => {
-                        setHighlightedStoreSlug(pin.slug);
-                        setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
-                        goStore(pin.slug, pin.location_id ?? null);
-                      }}
-                    />
+                    <Suspense fallback={<div style={{ border: '1px solid #d6e2e8', borderRadius: 14, height: 360, display: 'grid', placeItems: 'center', color: '#64748b' }}>Loading map...</div>}>
+                      <StoresMap
+                        stores={discoveryMapPins}
+                        selectedKey={highlightedDiscoveryMarkerKey || null}
+                        userLocation={discoveryCoords}
+                        resolveAssetUrl={withAssetOrigin}
+                        onSelectStore={(pin) => {
+                          setHighlightedStoreSlug(pin.slug);
+                          setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                          goStore(pin.slug, pin.location_id ?? null);
+                        }}
+                      />
+                    </Suspense>
                   ) : (
                     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: 12, color: '#64748b' }}>Map will appear once storefront data is available.</div>
                   )}
@@ -2618,26 +2628,29 @@ export function App() {
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 16, padding: isMobileViewport ? 12 : 16, marginBottom: 14 }}>
               {selectedStore ? (
                 <>
-                  <StoresMap
-                    stores={
-                      storeLocations.length > 0
-                        ? storeLocations.map((location) => ({
-                          ...location,
-                          tenant_name: selectedStore.tenant_name,
-                          workflow_mode: selectedStore.workflow_mode,
-                          marker_key: `loc-${location.location_id}`,
-                          location_name: location.name,
-                          storefront_profile_image_url: selectedStore.storefront_profile_image_url || null
-                        }))
-                        : [selectedStore]
-                    }
-                    selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
-                    onSelectStore={(location) => {
-                      if (location?.location_id != null) {
-                        setSelectedLocationId(location.location_id);
+                  <Suspense fallback={<div style={{ border: '1px solid #d6e2e8', borderRadius: 14, height: 360, display: 'grid', placeItems: 'center', color: '#64748b' }}>Loading map...</div>}>
+                    <StoresMap
+                      stores={
+                        storeLocations.length > 0
+                          ? storeLocations.map((location) => ({
+                            ...location,
+                            tenant_name: selectedStore.tenant_name,
+                            workflow_mode: selectedStore.workflow_mode,
+                            marker_key: `loc-${location.location_id}`,
+                            location_name: location.name,
+                            storefront_profile_image_url: selectedStore.storefront_profile_image_url || null
+                          }))
+                          : [selectedStore]
                       }
-                    }}
-                  />
+                      selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
+                      resolveAssetUrl={withAssetOrigin}
+                      onSelectStore={(location) => {
+                        if (location?.location_id != null) {
+                          setSelectedLocationId(location.location_id);
+                        }
+                      }}
+                    />
+                  </Suspense>
                   <div style={{ marginTop: 10, fontSize: 13, color: '#475569' }}>
                     {storeLocations.length > 0
                       ? `Showing ${storeLocations.length} active fulfillment location pin(s). Discovery and Near Me rank by the nearest active branch pin.`
@@ -2670,6 +2683,54 @@ export function App() {
                 </div>
               </div>
 
+              {(pendingQrCode || qrLoading || qrLanding) && (
+                <div style={{ marginTop: 12, border: '1px solid #99f6e4', borderRadius: 12, background: '#ecfeff', padding: 12, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 220, flex: 1 }}>
+                    <div style={{ fontSize: 12, color: '#0f766e', fontWeight: 800, textTransform: 'uppercase' }}>QR landing</div>
+                    {qrLoading ? (
+                      <p style={{ margin: '4px 0 0 0', color: '#475569' }}>Resolving scanned storefront code...</p>
+                    ) : qrLanding?.status === 'resolved' ? (
+                      <>
+                        <p style={{ margin: '4px 0 0 0', color: '#0f172a', fontWeight: 800 }}>
+                          {qrLanding.item?.name || qrLanding.booking?.service_name || qrLanding.booking?.public_reference || 'Storefront reference'}
+                        </p>
+                        <p style={{ margin: '2px 0 0 0', color: '#475569', fontSize: 13 }}>
+                          {qrLanding.kind === 'service_booking'
+                            ? 'Booking ticket resolved. Customer contact details stay hidden unless the claim flow permits access.'
+                            : (qrLanding.cart_allowed ? 'Transaction mode allows cart handoff after checkout gates pass.' : 'This storefront mode allows catalog viewing only.')}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ margin: '4px 0 0 0', color: '#0f172a', fontWeight: 800 }}>QR code blocked</p>
+                        <p style={{ margin: '2px 0 0 0', color: '#475569', fontSize: 13 }}>
+                          {qrLanding?.message || qrLanding?.reason_code || 'This code is not available for public Storefront use.'}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  {qrLanding?.status === 'resolved' && qrLanding?.item && (
+                    <button
+                      type="button"
+                      onClick={addQrItemToCart}
+                      disabled={qrLanding.cart_allowed !== true || !isItemAvailable(qrLanding.item)}
+                      style={{
+                        borderRadius: 10,
+                        border: qrLanding.cart_allowed ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                        background: qrLanding.cart_allowed ? 'linear-gradient(135deg,#ea580c,#f97316)' : '#e2e8f0',
+                        color: qrLanding.cart_allowed ? '#fff' : '#64748b',
+                        padding: '9px 12px',
+                        minHeight: 42,
+                        fontWeight: 800,
+                        cursor: qrLanding.cart_allowed ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      Add scanned item
+                    </button>
+                  )}
+                </div>
+              )}
+
               {catalogState === 'loading' && <p style={{ color: '#475569' }}>Loading tenant catalog...</p>}
               {catalogState === 'error' && (
                 <div style={{ marginTop: 10 }}>
@@ -2694,6 +2755,8 @@ export function App() {
                     const serviceItem = isServiceCatalogItem(item);
                     const canAddItem = serviceItem ? bookingPermitted : productCartPermitted;
                     const inventoryDisplayLabel = getInventoryDisplayLabel(item);
+                    const fnbModifierGroups = Array.isArray(item.fnb_modifier_groups) ? item.fnb_modifier_groups : [];
+                    const allergens = Array.isArray(item.allergens) ? item.allergens : [];
                     return (
                       <div
                         key={item.item_id}
@@ -2758,7 +2821,26 @@ export function App() {
                           <div style={{ color: '#0f766e', fontWeight: 700 }}>{money(item.default_sale_price ?? 0)}</div>
                           {serviceItem && (
                             <div style={{ fontSize: 12, color: '#475569' }}>
-                              {item.service_detail?.duration_minutes ? `${item.service_detail.duration_minutes} min` : 'Bookable service'} · {item.service_detail?.payment_policy || 'customer_choice'}
+                              {item.service_detail?.duration_minutes ? `${item.service_detail.duration_minutes} min` : 'Bookable service'} - {item.service_detail?.payment_policy || 'customer_choice'}
+                            </div>
+                          )}
+                          {fnbModifierGroups.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {fnbModifierGroups.slice(0, 3).map((group) => (
+                                <span key={group.modifier_group_id} style={{ borderRadius: 999, border: '1px solid #fed7aa', background: '#fff7ed', color: '#9a3412', padding: '3px 7px', fontSize: 11, fontWeight: 700 }}>
+                                  {group.display_name || group.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {allergens.length > 0 && (
+                            <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>
+                              Allergens: {allergens.slice(0, 3).map((entry) => entry.allergen_name).filter(Boolean).join(', ')}
+                            </div>
+                          )}
+                          {item.nutrition?.calories != null && (
+                            <div style={{ fontSize: 11, color: '#64748b' }}>
+                              {item.nutrition.calories} cal{item.nutrition.serving_size ? ` / ${item.nutrition.serving_size}` : ''}
                             </div>
                           )}
                           {inventoryDisplayLabel && (
@@ -2786,7 +2868,7 @@ export function App() {
         )}
       </div>
 
-      {isStorePage && (checkoutPermitted || bookingPermitted) && (
+      {isStorePage && (checkoutPermitted || bookingPermitted || fnbStorefront) && (
         <>
           {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
             const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
@@ -2824,7 +2906,7 @@ export function App() {
             onClick={() => {
               setIsCheckoutOpen((prev) => {
                 const next = !prev;
-                if (next) setCheckoutTab('checkout');
+                if (next) setCheckoutTab((!checkoutPermitted && !bookingPermitted && fnbStorefront) ? 'reservation' : 'checkout');
                 return next;
               });
             }}
@@ -2901,7 +2983,12 @@ export function App() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-                {[{ id: 'checkout', label: 'Checkout' }, { id: 'track', label: 'Track' }, { id: 'account', label: 'Account' }].map((tab) => (
+                {[
+                  { id: 'checkout', label: 'Checkout' },
+                  ...(fnbStorefront ? [{ id: 'reservation', label: 'Reservation' }] : []),
+                  { id: 'track', label: 'Track' },
+                  { id: 'account', label: 'Account' }
+                ].map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
@@ -3078,11 +3165,13 @@ export function App() {
                             : 'Switch order method to Delivery if you want to save a location pin.'}
                         </div>
                         <div style={{ display: 'grid', gap: 10 }}>
-                          <DeliveryPinMap
-                            pin={customerPin}
-                            onPinChange={setCustomerPin}
-                            disabled={!isDeliveryOrder}
-                          />
+                          <Suspense fallback={<div style={{ width: '100%', maxWidth: 420, aspectRatio: '1 / 1', border: '1px solid #cbd5e1', borderRadius: 10, display: 'grid', placeItems: 'center', color: '#64748b' }}>Loading map...</div>}>
+                            <DeliveryPinMap
+                              pin={customerPin}
+                              onPinChange={setCustomerPin}
+                              disabled={!isDeliveryOrder}
+                            />
+                          </Suspense>
                           {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
                         </div>
                       </div>
@@ -3126,6 +3215,11 @@ export function App() {
                                 <div style={{ fontSize: 11, color: '#64748b' }}>
                                   Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
                                 </div>
+                                {Array.isArray(line.line_modifiers) && line.line_modifiers.length > 0 && (
+                                  <div style={{ marginTop: 3, fontSize: 11, color: '#92400e' }}>
+                                    {line.line_modifiers.map((modifier) => modifier.option_name).filter(Boolean).join(', ')}
+                                  </div>
+                                )}
                                 <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
                                   {line.category === 'service' ? 'Bookable appointment' : 'Availability checked on quote/checkout'}
                                 </div>
@@ -3254,6 +3348,21 @@ export function App() {
                   </div>
                 )}
 
+                {checkoutTab === 'reservation' && fnbStorefront && (
+                  <Suspense fallback={<div style={{ color: '#64748b', fontSize: 13 }}>Loading reservation form...</div>}>
+                    <FnbReservationPanel
+                      form={fnbReservationForm}
+                      setForm={setFnbReservationForm}
+                      loading={fnbReservationLoading}
+                      selectedStore={selectedStore}
+                      error={fnbReservationError}
+                      result={fnbReservationResult}
+                      isDesktopCheckout={isDesktopCheckout}
+                      onSubmit={handleFnbReservationRequest}
+                    />
+                  </Suspense>
+                )}
+
                 {checkoutTab === 'track' && (
                   <div style={{ maxWidth: 560, border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
                     <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Order</h3>
@@ -3293,8 +3402,8 @@ export function App() {
                         {accountPanel.bookings.map((booking) => (
                           <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
                             <strong>{booking.public_reference}</strong>
-                            <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} · {booking.status}</div>
-                            <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} · {booking.payment_status}</div>
+                            <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} - {booking.status}</div>
+                            <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} - {booking.payment_status}</div>
                           </div>
                         ))}
                       </section>
@@ -3304,7 +3413,7 @@ export function App() {
                         {accountPanel.orders.map((order) => (
                           <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
                             <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
-                            <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} · {money(order.total_amount)}</div>
+                            <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} - {money(order.total_amount)}</div>
                             <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
                           </div>
                         ))}

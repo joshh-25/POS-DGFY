@@ -8,6 +8,9 @@ import {
     claimPublicBooking as claimPublicServiceBooking,
     createPublicWaitlistEntry as createPublicServiceWaitlistEntry
 } from '../modules/services/controllers/serviceHandlers.js';
+import {
+    createPublicReservation as createPublicFnbReservation
+} from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
 import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter } from '../middleware/rateLimiter.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -26,6 +29,7 @@ import {
     validateStoreCancelOrder,
     validateStoreClaimOrder,
     validateStoreOrderHistoryQuery,
+    validateStoreQrQuery,
     validateStorefrontFollowBody,
     validateStorefrontFollowQuery
 } from '../validators/storeValidator.js';
@@ -37,6 +41,9 @@ import {
     validateClaimServiceBooking,
     validateCreateServiceWaitlistEntry
 } from '../validators/serviceValidator.js';
+import {
+    validateCreateFnbReservation
+} from '../validators/fnbValidator.js';
 
 const router = express.Router();
 router.use(requireTenantContext);
@@ -63,6 +70,7 @@ const trackingReadCacheControl = setReadCacheControl({
 });
 
 router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
@@ -82,6 +90,7 @@ router.post('/services/bookings', requireWorkflowCapability('services', 'Service
 router.get('/services/bookings/:public_reference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, validateServiceBookingReferenceParam, getPublicServiceBooking);
 router.post('/services/bookings/:public_reference/claim', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingReferenceParam, validateClaimServiceBooking, claimPublicServiceBooking);
 router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);
+router.post('/fnb/reservations', requireWorkflowCapability('fnbDining', 'Food & Beverage'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateFnbReservation, createPublicFnbReservation);
 
 router.get('/track/:tracking_pin', storeTrackingLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
 router.post('/orders/:tracking_pin/claim', setNoStoreCacheControl, storeTrackingLimiter, authenticateStoreCustomer, validateStoreTrackingPinParam, validateStoreClaimOrder, storeController.claimOrder);

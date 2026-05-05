@@ -1,5 +1,6 @@
 import {
     listPosCatalogUseCase,
+    scanPosBarcodeUseCase,
     checkoutPosUseCase,
     listPosTransactionsUseCase,
     getPosTransactionByIdUseCase,
@@ -40,6 +41,32 @@ export const listCatalog = async (req, res, next) => {
     try {
         const result = await listPosCatalogUseCase({
             query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const scanBarcode = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const terminalIdHeader = req.headers['x-pos-terminal-id'];
+        if (!payload.terminal_id && typeof terminalIdHeader === 'string' && terminalIdHeader.trim()) {
+            payload.terminal_id = terminalIdHeader.trim();
+        }
+
+        const result = await scanPosBarcodeUseCase({
+            payload,
             user: req.user
         });
         return sendUseCaseResult(res, result, {
@@ -576,6 +603,7 @@ export const deleteCatalogImage = async (req, res, next) => {
 
 export default {
     listCatalog,
+    scanBarcode,
     checkout,
     listTransactions,
     getTransactionById,

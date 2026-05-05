@@ -43,7 +43,8 @@ const routeBudgets = [
   // Keep strict limits with minimal headroom over observed production build output.
   { prefix: 'POSCheckoutTerminal-', limitKb: 52 },
   { prefix: 'POSPage-', limitKb: 10 },
-  { prefix: 'TerminalPage-', limitKb: 34 },
+  // Rebased 2026-05-05 after barcode scan metadata was added to terminal flows.
+  { prefix: 'TerminalPage-', limitKb: 35 },
   { prefix: 'SalesPage-', limitKb: 20 }
 ];
 

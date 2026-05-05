@@ -62,6 +62,19 @@ This addendum clarifies corrective rollout requirements for legacy shift records
 3. Strict binding enablement (`pos_terminal_location_binding_enforced=true`) is blocked when unresolved or low-confidence backfill states remain.
 4. POS terminal setup context exposes location-binding readiness summary for rollout/operator visibility.
 
+## Addendum (2026-05-06): FIFO And Location Stock Are Paired For Stock-Bearing Items
+
+FIFO batching and location stocking are one inventory contract for stock-bearing items. Workflow modes may change labels, navigation, checkout metadata, customer access, or booking behavior, but they must not opt out of FIFO/location accounting when a physical stocked item is received, adjusted, transferred, sold, consumed, dispatched, or fulfilled.
+
+Rules:
+
+1. Every stock-bearing item movement must update the selected location ledger and the matching FIFO batch state in the same use-case boundary.
+2. Frontend item detail views must treat `item_location_stocks` and `fifo_batches.location_id` as paired evidence: location rows show where stock exists, and batch rows show the age/cost/expiry differences inside each location.
+3. All modes with inventory capability inherit this contract, including retail, MSME, Food Manufacturing, Food & Beverage, hospitality, healthcare, education, logistics/distribution, ticketing/transport, and mixed Services Mode catalogs.
+4. Services Mode service lines remain stock-exempt only when the sold line is truly a service. Any physical add-on, retail product, consumable, kit, supply deduction, or bundled stocked component in Services Mode is stock-bearing and must use location-scoped FIFO.
+5. F&B recipe/menu depletion uses the same contract: ingredient composition rows deduct FIFO batches at the operating location; menu items without recipe rows deduct the sold item through FIFO when the sold item is stock-bearing.
+6. Customer Access Mode and Inventory Display never change FIFO/location accounting. They only affect customer-facing visibility and action eligibility.
+
 ## Safety and Rollout Policy
 1. Additive schema only during rollout (no destructive drops/renames in migration window).
 2. Backup + restore drill must pass before production cutover.

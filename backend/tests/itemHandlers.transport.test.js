@@ -12,6 +12,19 @@ const mockGetItemMovementsUseCase = jest.fn();
 const mockValidateCompositionUseCase = jest.fn();
 const mockGetItemSupplierCoverageUseCase = jest.fn();
 const mockReplaceItemSuppliersUseCase = jest.fn();
+const mockListStorefrontCatalogOverridesUseCase = jest.fn();
+const mockUpdateStorefrontCatalogOverrideUseCase = jest.fn();
+const mockUploadStorefrontCatalogImageUseCase = jest.fn();
+const mockDeleteStorefrontCatalogImageUseCase = jest.fn();
+const mockListItemBarcodesUseCase = jest.fn();
+const mockAttachItemBarcodeUseCase = jest.fn();
+const mockGenerateItemBarcodeUseCase = jest.fn();
+const mockUpdateItemBarcodeUseCase = jest.fn();
+const mockDeactivateItemBarcodeUseCase = jest.fn();
+const mockSetPrimaryItemBarcodeUseCase = jest.fn();
+const mockResolveItemBarcodeUseCase = jest.fn();
+const mockResolveItemBarcodeConflictUseCase = jest.fn();
+const mockRenderItemBarcodeLabelUseCase = jest.fn();
 const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
 const mockUpdateFolderUseCase = jest.fn();
@@ -31,6 +44,19 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   validateCompositionUseCase: mockValidateCompositionUseCase,
   getItemSupplierCoverageUseCase: mockGetItemSupplierCoverageUseCase,
   replaceItemSuppliersUseCase: mockReplaceItemSuppliersUseCase,
+  listStorefrontCatalogOverridesUseCase: mockListStorefrontCatalogOverridesUseCase,
+  updateStorefrontCatalogOverrideUseCase: mockUpdateStorefrontCatalogOverrideUseCase,
+  uploadStorefrontCatalogImageUseCase: mockUploadStorefrontCatalogImageUseCase,
+  deleteStorefrontCatalogImageUseCase: mockDeleteStorefrontCatalogImageUseCase,
+  listItemBarcodesUseCase: mockListItemBarcodesUseCase,
+  attachItemBarcodeUseCase: mockAttachItemBarcodeUseCase,
+  generateItemBarcodeUseCase: mockGenerateItemBarcodeUseCase,
+  updateItemBarcodeUseCase: mockUpdateItemBarcodeUseCase,
+  deactivateItemBarcodeUseCase: mockDeactivateItemBarcodeUseCase,
+  setPrimaryItemBarcodeUseCase: mockSetPrimaryItemBarcodeUseCase,
+  resolveItemBarcodeUseCase: mockResolveItemBarcodeUseCase,
+  resolveItemBarcodeConflictUseCase: mockResolveItemBarcodeConflictUseCase,
+  renderItemBarcodeLabelUseCase: mockRenderItemBarcodeLabelUseCase,
   getFoldersUseCase: mockGetFoldersUseCase,
   createFolderUseCase: mockCreateFolderUseCase,
   updateFolderUseCase: mockUpdateFolderUseCase,
@@ -47,6 +73,7 @@ let deleteItem;
 let validateComposition;
 let updateFolder;
 let replaceItemSuppliers;
+let resolveItemBarcode;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -56,6 +83,7 @@ beforeAll(async () => {
   validateComposition = mod.validateComposition;
   updateFolder = mod.updateFolder;
   replaceItemSuppliers = mod.replaceItemSuppliers;
+  resolveItemBarcode = mod.resolveItemBarcode;
 });
 
 const createRes = () => {
@@ -289,6 +317,44 @@ describe('itemHandlers transport contracts', () => {
       message: 'Item suppliers synced successfully',
       timestamp: expect.any(String)
     });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('resolveItemBarcode forwards scan operation and location context to the use case', async () => {
+    mockResolveItemBarcodeUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        status: 'resolved',
+        barcode: { code: 'CASE-24' },
+        item: { item_id: 44, name: 'Case Item' }
+      },
+      error: null,
+      message: null
+    });
+
+    const req = {
+      query: { code: 'case-24', operation: 'receiving', location_id: '7' },
+      validatedQuery: { code: 'case-24', operation: 'receiving', location_id: 7 },
+      user: { user_id: 99 },
+      requestId: 'req-barcode-resolve'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await resolveItemBarcode(req, res, next);
+
+    expect(mockResolveItemBarcodeUseCase).toHaveBeenCalledWith({
+      code: 'case-24',
+      query: { code: 'case-24', operation: 'receiving', location_id: 7 },
+      userId: 99
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        status: 'resolved'
+      })
+    }));
     expect(next).not.toHaveBeenCalled();
   });
 });

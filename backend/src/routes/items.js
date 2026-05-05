@@ -8,6 +8,13 @@ import {
   validateCreateItemDraft,
   validateFolderIdParam,
   validateItemIdParam,
+  validateBarcodeIdParam,
+  validateBarcodeResolveQuery,
+  validateAttachBarcode,
+  validateGenerateBarcode,
+  validateUpdateBarcode,
+  validateBarcodeConflictResolution,
+  validateBarcodeLabelQuery,
   validateStorefrontCatalogOverridesQuery,
   validateUpdateStorefrontCatalogOverride,
   validateUpdateFolder,
@@ -41,6 +48,17 @@ router.get('/storefront-overrides', checkPermission(PERMISSIONS.INVENTORY.action
 router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateUpdateStorefrontCatalogOverride, itemController.updateStorefrontCatalogOverride);
 router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogImageUpload.single('image'), itemController.uploadStorefrontCatalogImage);
 router.delete('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.deleteStorefrontCatalogImage);
+
+// Barcode identity and labels - must be before :item_id read routes
+router.get('/barcodes/resolve', validateBarcodeResolveQuery, itemController.resolveItemBarcode);
+router.post('/barcodes/conflicts/resolve', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateBarcodeConflictResolution, itemController.resolveItemBarcodeConflict);
+router.get('/:item_id/barcodes', validateItemIdParam, itemController.listItemBarcodes);
+router.post('/:item_id/barcodes', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateAttachBarcode, itemController.attachItemBarcode);
+router.post('/:item_id/barcodes/generate', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateGenerateBarcode, itemController.generateItemBarcode);
+router.get('/:item_id/barcode-label', validateItemIdParam, validateBarcodeLabelQuery, itemController.renderItemBarcodeLabel);
+router.patch('/:item_id/barcodes/:barcode_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateBarcodeIdParam, validateUpdateBarcode, itemController.updateItemBarcode);
+router.delete('/:item_id/barcodes/:barcode_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateBarcodeIdParam, itemController.deactivateItemBarcode);
+router.post('/:item_id/barcodes/:barcode_id/primary', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateBarcodeIdParam, itemController.setPrimaryItemBarcode);
 
 // Folder management - must be before :item_id
 router.get('/folders', itemController.getFolders);
@@ -79,4 +97,3 @@ router.patch('/:item_id/finalize', checkPermission(PERMISSIONS.INVENTORY.actions
 router.delete('/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), itemController.deleteItem);
 
 export default router;
-

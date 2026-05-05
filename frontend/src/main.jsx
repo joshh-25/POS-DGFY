@@ -48,6 +48,7 @@ const PurchaseOrders = lazy(() => import('../Pages/PurchaseOrders.jsx'))
 const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.jsx'))
 const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))
 const Services = lazy(() => import('./features/services/pages/ServicesPage.jsx'))
+const Fnb = lazy(() => import('./features/fnb/pages/FnbPage.jsx'))
 const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
@@ -152,7 +153,7 @@ function App() {
         } />
         <Route path="/job-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Job Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb moduleLabel="Job Orders">
               <Layout currentPageName={currentPageName}>
                 <JobOrders />
               </Layout>
@@ -170,7 +171,7 @@ function App() {
         } />
         <Route path="/dispatch-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Dispatch Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb moduleLabel="Dispatch Orders">
               <Layout currentPageName={currentPageName}>
                 <DispatchOrders />
               </Layout>
@@ -205,6 +206,15 @@ function App() {
             <WorkflowModeRouteGate requiredCapability="services" moduleLabel="Services">
               <Layout currentPageName={currentPageName}>
                 <Services />
+              </Layout>
+            </WorkflowModeRouteGate>
+          </ProtectedRoute>
+        } />
+        <Route path="/fnb" element={
+          <ProtectedRoute>
+            <WorkflowModeRouteGate requiredCapability="fnbDining" moduleLabel="Food & Beverage">
+              <Layout currentPageName={currentPageName}>
+                <Fnb />
               </Layout>
             </WorkflowModeRouteGate>
           </ProtectedRoute>
@@ -271,5 +281,4 @@ ReactDOM.createRoot(rootElement).render(
 )
 
 registerAdminServiceWorker()
-
 

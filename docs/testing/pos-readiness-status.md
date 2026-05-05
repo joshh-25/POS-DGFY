@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-05-04
+Last updated: 2026-05-06
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -107,8 +107,114 @@ Overall status: in_progress
 34. Inventory UI Storefront controls are permission-aware:
 - `Show in Storefront` and Storefront item image controls are shown only when the user can configure item Storefront catalog state
 - users without `items:edit` do not see disabled Storefront controls backed only by inferred default data
+35. Barcode scan routing is now POS-readiness gated:
+- `/pos/scan` resolves barcodes through the POS use case layer and returns deterministic `resolved`, `blocked`, or `routed` status.
+- Package/case aliases apply `quantity_multiplier` only as a suggested cart quantity.
+- Blocked scans return reason codes such as `BARCODE_NOT_FOUND`, `BARCODE_CONFLICT`, `BARCODE_SCOPE_NOT_POS`, `TICKET_SCAN_NOT_CARTABLE`, `NOT_POS_VISIBLE`, `ITEM_INACTIVE`, `MISSING_PRICE`, `OUT_OF_STOCK`, `LOCATION_CONTEXT_REQUIRED`, `UNAUTHORIZED_LOCATION`, `COMPLIANCE_BLOCKED`, and `SERVICE_UNAVAILABLE`.
+- Offline checkout replay revalidates stored `scan_metadata` against barcode mapping, item state, stock/location scope, and compliance before committing.
+- Services Mode barcode scans remain stock-exempt when the resolved row is `category=service`.
+- Service booking/ticket QR scans return `SERVICE_BOOKING_SCAN_ROUTED` and route to Services booking context instead of adding cart lines.
+- Label print payloads include normalized type, browser-print layout metadata, and audited `barcode.label_print_intent`.
+36. Food & Beverage POS metadata is additive:
+- `/api/v1/fnb/*` owns tables, checks, kitchen tickets, reservations/waitlist requests, reservation table assignments, modifiers, and restaurant service-charge settings.
+- POS checkout accepts F&B table/check/server/guest/course/modifier/kitchen-station metadata and stores immutable snapshots on `pos_transactions` and `pos_transaction_lines`.
+- Restaurant service charge is stored in `restaurant_service_charge_*` fields and `fnb_restaurant_service_charge_snapshots`; DGFY convenience fee remains `service_fee_amount`.
+- F&B hides job-order and dispatch-order UI, but keeps stock movements available for ingredient/menu inventory.
+37. Food & Beverage hardening is active:
+- F&B check lifecycle now exposes table transfer, line-level split, and check merge actions behind the existing `fnbDining` route guard.
+- F&B item modifier groups and item kitchen routes have authenticated assignment APIs and IMS controls; IMS assignment now uses menu-item selectors instead of raw item IDs.
+- POS checkout validates F&B line modifiers against assigned database groups/options, snapshots server-owned modifier names/deltas, includes taxable restaurant service charge in VATable gross, allows kitchen-station line overrides, and deducts recipe ingredients from `product_composition` when present.
+- POS cart lines now use modifier-aware line identity so the same menu item can appear with different options.
+- IMS reservations validate assigned tables, expose table/date/status schedule filters, and allow multi-table assignment during reservation status updates.
+- Reservation windows now carry duration and reset-buffer minutes. Confirmed/seated reservations block overlap on any assigned table; requested/waitlisted requests remain non-blocking capacity leads. Combined-table bookings reject party sizes above selected seat capacity.
+- Storefront splits the F&B reservation panel and map components out of the primary Storefront entry; the remaining large chunk is the isolated lazy MapLibre vendor chunk.
 
 ## 3) Automated Gate Status (Latest)
+
+### 3.18 Food & Beverage Restaurant Hardening Rerun (2026-05-05)
+
+1. `npm --prefix backend test -- fnbMode.usecases.test.js --runInBand` -> PASS (`12 tests`)
+2. `npm --prefix backend test -- posCheckoutFnbContracts.usecase.test.js --runInBand` -> PASS (`1 test`)
+3. `npm --prefix backend test -- posUsecases.applicationResult.test.js --runInBand` -> PASS (`21 tests`)
+4. `npm --prefix backend test -- posRepository.locationStockFallback.test.js --runInBand` -> PASS (`2 tests`)
+5. `npm --prefix frontend test -- fnbMode.contract.test.js` -> PASS (`4 tests`)
+6. `npm --prefix frontend run build:pos` -> PASS
+7. `npm --prefix frontend run build:store` -> PASS with residual Vite chunk warning for isolated `vendor-map-*` MapLibre chunk; primary Storefront entry reduced to about `119KB`.
+
+### 3.19 Food & Beverage Operator Workflow Follow-Up (2026-05-05)
+
+1. Root-cause closure:
+   - IMS F&B menu assignment controls previously accepted raw item IDs, which made item routing/modifier assignment error-prone for operators.
+   - IMS check splitting used comma-separated line IDs even though backend already had check-line data.
+   - POS carried kitchen-station snapshots but did not expose a station override control.
+   - Reservation requests stored `table_id` but the backend did not validate assigned table existence and IMS did not provide table/date schedule filters.
+   - Reservation requests did not model seating duration/reset buffer, so overlap enforcement could not be done safely.
+   - POS statically imported the F&B API helper for kitchen stations, reducing bundle headroom in the already near-budget POS terminal chunk.
+2. Implemented fixes:
+   - F&B console loads menu items and uses a menu-item selector for kitchen-route and modifier-group assignment.
+   - Open-check split now uses check-line checkboxes; transfer and merge selections are tracked per check.
+   - POS dynamically loads the F&B API only when a check context is active, then exposes a line-level kitchen-station selector.
+   - Reservation list supports `status`, `table_id`, `from`, and `to` filters; create/update validates table assignments through the F&B table repository.
+   - F&B reservations default to `90` minutes plus a `15` minute reset buffer; confirmed/seated updates reject same-table overlap, while requested/waitlisted rows remain non-blocking.
+3. Regression coverage and gates:
+   - `npm --prefix backend test -- fnbMode.usecases.test.js --runInBand` -> PASS (`15 tests`).
+   - `npm --prefix frontend test -- fnbMode.contract.test.js` -> PASS (`4 tests`).
+   - `npm --prefix frontend run build:pos` -> PASS.
+   - `npm --prefix frontend run build:skupervisor` -> PASS.
+   - `npm --prefix frontend run build:store` -> PASS with residual Vite chunk warning for isolated `vendor-map-*` MapLibre chunk; primary Storefront entry remains about `119KB`.
+   - `npm --prefix backend test -- posCheckoutFnbContracts.usecase.test.js --runInBand` -> PASS (`1 test`).
+   - `npm run check:architecture` -> PASS.
+   - `npm run lint:docs` -> PASS.
+   - `npm run check:frontend-budgets` -> PASS with existing MapLibre vendor warning.
+
+### 3.20 Food & Beverage Combined-Table Reservation Follow-Up (2026-05-06)
+
+1. Root-cause closure:
+   - Reservation requests had a single `table_id`, so large parties that require joined tables were either under-modeled or forced into notes.
+   - Same-table overlap protection did not cover joined-table bookings because there was no side-table assignment list to compare.
+   - IMS assignment UX allowed one reservation table, which was not sufficient for full-service floor planning.
+2. Implemented fixes:
+   - Added `fnb_reservation_tables` as the reservation table-assignment side table while keeping `fnb_reservation_requests.table_id` as the primary compatibility shortcut.
+   - Create/update reservation flows now accept `table_ids`, validate every assigned table, reject out-of-service tables, and reject party sizes above selected seat capacity.
+   - Confirmed/seated overlap checks now evaluate every assigned table, so a joined-table booking blocks conflicts on each table in the set.
+   - IMS reservation create/update surfaces now use multi-table checkboxes and preserve schedule filters.
+   - Storefront map components moved to lazy `StoreMaps.jsx`; the primary Storefront entry is smaller, and the large MapLibre vendor chunk is only needed when map surfaces render.
+3. Regression coverage and gates:
+   - `npm --prefix backend test -- fnbMode.usecases.test.js --runInBand` -> PASS (`18 tests`).
+   - `npm --prefix frontend test -- fnbMode.contract.test.js fnbStorefront.contract.test.js` -> PASS (`6 tests`).
+   - `npm --prefix frontend run build:store` -> PASS; primary Storefront entry reduced to about `112.66KB`, with MapLibre isolated behind lazy `StoreMaps`.
+   - `npm run check:frontend-budgets` -> PASS; Storefront MapLibre remains a warning-only lazy vendor chunk.
+4. Updated honest rating:
+   - Backend F&B contracts: `9.2/10`; remaining gaps are operational policies outside this patch, mainly deposits/no-show automation and advanced best-table assignment.
+   - IMS F&B UI: `8.8/10`; combined-table assignment is now usable, but it is still a checkbox scheduler rather than a drag-and-drop floor/timeline planner.
+   - POS UI: `8.2/10`; unchanged by this follow-up and still needs manual tableside/offline replay QA.
+   - Storefront: `7.8/10`; the map and reservation panel are lazy-loaded now, but the MapLibre vendor chunk still exceeds Vite's default warning threshold when map surfaces are included.
+   - Overall F&B readiness: `8.8/10`; suitable for structured restaurant pilot QA, not yet a no-supervision production rollout for high-volume restaurants.
+
+### 3.15 Barcode Identity, Labels, And Scan Routing Hardening Rerun (2026-05-05)
+
+1. `npm --prefix backend test -- --runTestsByPath tests/barcodePolicy.test.js tests/posUsecases.applicationResult.test.js tests/storeUsecases.applicationResult.test.js tests/itemHandlers.transport.test.js tests/csvImportService.workflowMode.test.js tests/itemBarcodeLabelContract.test.js` -> PASS (`74 tests`)
+2. `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js Components/items/__tests__/BarcodeManager.contract.test.js` -> PASS (`23 tests`)
+3. `npm --prefix backend test` -> PASS (`217 passed suites`, `4 skipped`; `1017 passed tests`, `10 skipped`)
+4. `npm --prefix frontend test -- --run` -> PASS (`61 files`, `246 tests`)
+5. `npm run check:architecture` -> PASS
+6. `npm run lint:docs` -> PASS
+7. `npm run check:compliance` -> PASS
+8. `npm run check:frontend-budgets` -> PASS with the existing Storefront chunk-size warning only
+9. `npm --prefix frontend run build:store` -> PASS
+10. `npm --prefix frontend run build:pos` -> PASS
+11. `npm --prefix frontend run build:skupervisor` -> PASS
+12. `git diff --check` -> PASS with line-ending warnings only
+
+Verified outcomes:
+- POS service booking/ticket QR scans are routed with `SERVICE_BOOKING_SCAN_ROUTED` and do not mutate cart state.
+- Ticket-scope scans that are not POS-cartable fail closed with `TICKET_SCAN_NOT_CARTABLE`.
+- Label payloads now carry backend-owned browser-print layout contracts and label print audit metadata consumed by the Inventory UI.
+- Storefront QR service booking resolution redacts customer contact data and does not expose raw inventory/cost fields.
+
+Remaining non-automated readiness checks:
+- Physical scanner and browser label print-margin validation still require manual QA against target hardware and label stock.
+- Service package redemption remains a separately audited package/redemption workflow, not an inventory movement shortcut.
 
 ### 3.1 Full rerun baseline (2026-04-03)
 

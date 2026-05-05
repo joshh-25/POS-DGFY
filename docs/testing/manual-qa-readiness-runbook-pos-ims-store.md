@@ -1,7 +1,7 @@
 # Manual QA Readiness Runbook (POS, IMS, Store)
 
-Date baseline: 2026-04-07  
-Status: active  
+Date baseline: 2026-05-05
+Status: active
 Scope: manual end-to-end validation before new feature development or bug-finding cycles
 
 ## 1) Runtime Prerequisites
@@ -110,6 +110,13 @@ Pass gate:
    - location settings (open/closed, delivery/pickup toggles)
 12. Verify persisted values after browser refresh.
 13. If testing compliance activation, complete Final Review documentary requirements in Settings > Compliance > Final review (upload or external URL) and save sign-off metadata.
+14. Assign barcode identities on one product:
+   - attach an existing manufacturer code
+   - generate an internal code
+   - add a package/case alias with `quantity_multiplier > 1`
+   - print/preview item and package labels
+15. Attempt to assign the same active code to another item and verify the conflict panel requires an explicit action (`keep_existing`, `move_code`, `add_package_alias`, or `reject_import`). For `add_package_alias`, verify the alias keeps one item owner and records the intended package multiplier.
+16. In PO receiving and Stock Movements, scan the product/package label only after selecting location context; verify the scan prefills item/quantity but final submit still uses the existing receipt/movement validation.
 
 Pass gate:
 1. CRUD and stock flows behave consistently.
@@ -129,6 +136,20 @@ Pass gate:
 8. Verify receipt preview readability and core fields.
 9. Execute one void/cancel/refund path (if enabled) and confirm audit/history reflects it.
 10. Run close-shift or end-of-day flow (if available in environment).
+11. Scan the unit barcode and confirm it adds one eligible item after POS checks pass.
+12. Scan the package/case barcode and confirm the suggested cart quantity equals its multiplier.
+13. Scan blocked cases and record reason codes:
+   - hidden from POS -> `NOT_POS_VISIBLE`
+   - inactive/draft/deleted -> `ITEM_INACTIVE`
+   - missing price -> `MISSING_PRICE`
+   - out of stock product -> `OUT_OF_STOCK`
+   - wrong barcode scope for POS -> `BARCODE_SCOPE_NOT_POS`
+   - ticket-scope code that is not cartable -> `TICKET_SCAN_NOT_CARTABLE`
+   - unauthorized or missing location -> `UNAUTHORIZED_LOCATION` or `LOCATION_CONTEXT_REQUIRED`
+   - compliance blocked -> `COMPLIANCE_BLOCKED`
+14. Scan through the always-ready keyboard-wedge listener while focus is outside the explicit scan input and verify the scan still submits without typing into an unrelated field.
+15. Scan a service booking/ticket QR such as `SERVICE_BOOKING:<reference>` and verify POS returns routed feedback (`SERVICE_BOOKING_SCAN_ROUTED`), does not add a cart line, and directs the operator to Services > Bookings.
+16. Queue an offline checkout with scan metadata, restore connectivity, and verify replay revalidates server state before commit.
 
 Compliance checks:
 1. In non-compliant tenant, verify non-fiscal behavior path.
@@ -149,6 +170,12 @@ Pass gate:
    - valid tracking ref
    - invalid tracking ref
 6. Confirm inactive/non-primary locations are not incorrectly exposed.
+7. Open a Storefront QR/deep-link route for a Storefront-visible item:
+   - `ghost` mode -> item detail blocked
+   - `catalog` mode -> item detail only
+   - `inquiry` mode -> item detail plus contact path
+   - `transaction` mode -> cart handoff allowed after normal checkout gates
+8. Confirm QR responses and UI do not expose `cost_per_unit` or raw `current_stock`; use only the public `inventory_display` label/quantity contract.
 
 Pass gate:
 1. Guest flow works end-to-end with expected visibility controls.
@@ -160,6 +187,8 @@ Pass gate:
 3. IMS storefront visibility toggle -> confirm Store updates accordingly.
 4. From POS History/Receipt, hand off to Sales (`Open in Sales Report`) and verify filters/transaction context are preserved.
 5. Change tenant compliance state in IMS/admin path -> confirm POS behavior changes accordingly.
+6. Barcode scan in IMS/POS/Storefront must not bypass POS visibility, Storefront visibility, location, stock, compliance, payment, or item status rules.
+7. Service booking QR/deep-link resolution must open booking/ticket context, redact customer email/phone in public views, and avoid cart/checkout handoff.
 
 Pass gate:
 1. No data-sync mismatch across IMS, POS, and Store for tested scenarios.
@@ -199,6 +228,9 @@ POS Services:
 4. Confirm the service appears in POS catalog with `Service sale` (not `Out of stock`) even when inventory stock is zero.
 5. Add the service to cart and confirm order method includes `Appointment`.
 6. Complete a non-fiscal cash checkout for the service and verify the transaction appears in POS history/Sales without stock deduction.
+7. Scan a service barcode in POS and confirm it resolves as a service-sale row even when `current_stock=0`.
+8. Scan/lookup a booking or ticket QR and verify public lookup redacts customer contact data unless authenticated/claim rules allow it.
+9. In POS, scan the same booking/ticket QR and verify it routes to the Services booking context with `SERVICE_BOOKING_SCAN_ROUTED` instead of creating a cart line.
 
 Pass gate:
 1. Services Mode works across IMS, Storefront, and POS without manufacturing copy or stock-only product assumptions.
@@ -211,6 +243,8 @@ Pass gate:
 3. Attempt checkout with out-of-stock item.
 4. Test multi-tab behavior for stale session/token.
 5. Reload during active operation (checkout/settings save) and verify safe recovery.
+6. Scan a deactivated barcode and verify it does not become sellable/public.
+7. Scan a manufacturer code that another tenant also uses and confirm it is tenant-local, not globally rejected.
 
 Pass gate:
 1. App fails closed on policy/security/compliance constraints.

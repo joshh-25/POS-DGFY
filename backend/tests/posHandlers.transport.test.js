@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 
 const mockListPosCatalogUseCase = jest.fn();
+const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
@@ -24,6 +25,7 @@ const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: mockListPosCatalogUseCase,
+    scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,

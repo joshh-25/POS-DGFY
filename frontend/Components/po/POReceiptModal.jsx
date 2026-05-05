@@ -18,11 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Star, CheckCircle, XCircle, Calendar } from 'lucide-react';
+import { Star, CheckCircle, XCircle, Calendar, Barcode } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { formatQty } from '../../src/lib/numberUtils.js';
 import { format, addDays } from 'date-fns';
 import { useLocations } from '../../src/hooks/useLocations.js';
+import { resolveItemBarcode } from '../../src/services/itemService.js';
+import { toast } from 'sonner';
 
 const getUnitPriceVarianceMeta = ({ unitPrice = 0, baselineCost = 0 }) => {
   if (!(baselineCost > 0)) return null;
@@ -70,6 +72,9 @@ export default function POReceiptModal({
   );
   const [manualLocationId, setManualLocationId] = useState('');
   const [itemDrafts, setItemDrafts] = useState({});
+  const [scanCode, setScanCode] = useState('');
+  const [scanFeedback, setScanFeedback] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
   const [deliveryRating, setDeliveryRating] = useState(5);
   const [notes, setNotes] = useState(po.notes || '');
   const items = useMemo(() => {
@@ -157,6 +162,58 @@ export default function POReceiptModal({
     });
   };
 
+  const handleResolveReceiptScan = async () => {
+    const code = String(scanCode || '').trim();
+    if (!code) {
+      toast.error('Scan or type a barcode first.');
+      return;
+    }
+    if (!selectedLocationId) {
+      toast.error('Select a receive location before scanning.');
+      return;
+    }
+
+    setScanLoading(true);
+    setScanFeedback(null);
+    try {
+      const result = await resolveItemBarcode({ code, location_id: selectedLocationId, operation: 'receiving' });
+      if (result?.status !== 'resolved') {
+        const reason = result?.reason_code || 'BARCODE_NOT_FOUND';
+        setScanFeedback({ type: 'blocked', message: reason });
+        toast.error(`Barcode not resolved: ${reason}`);
+        return;
+      }
+      const barcode = result.barcode || {};
+      const resolvedItemId = Number(barcode.item_id || barcode.item?.item_id);
+      const index = items.findIndex((item) => Number(item.item_id) === resolvedItemId);
+      if (index < 0) {
+        setScanFeedback({ type: 'blocked', message: 'Resolved item is not part of this purchase order.' });
+        toast.error('Resolved item is not part of this purchase order.');
+        return;
+      }
+      const target = items[index];
+      const multiplier = Number(barcode.quantity_multiplier || 1);
+      const orderedQty = Number(target.quantity || 0);
+      const currentQty = Number(target.quantity_received || 0);
+      const increment = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
+      const nextQty = orderedQty > 0
+        ? Math.min(orderedQty, currentQty + increment)
+        : currentQty + increment;
+      updateItem(index, 'quantity_received', nextQty);
+      setScanFeedback({
+        type: 'resolved',
+        message: `${target.item_name || target.name} matched. Received quantity set to ${formatQty(nextQty)}.`
+      });
+      toast.success('Barcode matched to purchase order line.');
+    } catch (error) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to resolve barcode.';
+      setScanFeedback({ type: 'blocked', message });
+      toast.error(message);
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -173,6 +230,38 @@ export default function POReceiptModal({
             <Button variant="outline" size="sm" onClick={markAllReceived}>
               Mark All Received
             </Button>
+          </div>
+
+          <div className="rounded-xl border border-teal-100 bg-teal-50 p-3 space-y-2">
+            <Label className="flex items-center gap-2 text-teal-900">
+              <Barcode className="h-4 w-4" />
+              Scan received item or package
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                value={scanCode}
+                onChange={(event) => setScanCode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleResolveReceiptScan();
+                  }
+                }}
+                placeholder="Scan manufacturer, internal, or package barcode"
+                className="min-w-[220px] flex-1 bg-white"
+              />
+              <Button type="button" variant="outline" onClick={handleResolveReceiptScan} disabled={scanLoading}>
+                {scanLoading ? 'Resolving...' : 'Resolve'}
+              </Button>
+            </div>
+            <p className="text-xs text-teal-900">
+              A scan only matches the PO line and suggested package quantity. Receive location and PO receipt rules still apply on confirmation.
+            </p>
+            {scanFeedback && (
+              <p className={cn('text-xs font-medium', scanFeedback.type === 'resolved' ? 'text-teal-700' : 'text-red-600')}>
+                {scanFeedback.message}
+              </p>
+            )}
           </div>
 
           {/* Items */}

@@ -19,7 +19,7 @@ export const WORKFLOW_MODE_LABELS = Object.freeze({
     services: 'Services',
     manufacturing: 'Food Manufacturing',
     food_manufacturing: 'Food Manufacturing',
-    fnb: 'F&B',
+    fnb: 'Food & Beverage',
     hospitality: 'Hospitality',
     healthcare: 'Healthcare',
     ticketing_transport: 'Ticketing & Transport',
@@ -65,7 +65,7 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
     services: { icon: 'CalendarCheck', label: 'Services' },
     food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
     manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
-    fnb: { icon: 'Utensils', label: 'F&B' },
+    fnb: { icon: 'Utensils', label: 'Food & Beverage' },
     hospitality: { icon: 'Hotel', label: 'Hospitality' },
     healthcare: { icon: 'HeartPulse', label: 'Healthcare' },
     ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport' },
@@ -79,7 +79,17 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     services: ['services', 'serviceBookings', 'serviceTickets', 'catalog', 'pos', 'storefront'],
     manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
     food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
-    fnb: ['catalog', 'inventory', 'pos', 'storefront'],
+    fnb: [
+        'fnbDining',
+        'menuModifiers',
+        'tableService',
+        'kitchenQueue',
+        'restaurantServiceCharge',
+        'catalog',
+        'inventory',
+        'pos',
+        'storefront'
+    ],
     hospitality: ['catalog', 'inventory', 'pos', 'storefront'],
     healthcare: ['catalog', 'inventory', 'pos', 'storefront'],
     ticketing_transport: ['catalog', 'inventory', 'pos', 'storefront'],
@@ -129,3 +139,4 @@ export const modeHasCapability = (value, capability) => {
 
 export const isMsmeWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'msme';
 export const isServicesWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'services';
+export const isFnbWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'fnb';

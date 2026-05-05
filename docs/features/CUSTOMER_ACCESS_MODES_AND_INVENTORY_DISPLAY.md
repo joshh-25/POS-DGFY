@@ -47,6 +47,8 @@ Inventory Display is independent:
 | `low_stock` | Show status plus low-stock copy such as `Only 3 left` under a tenant-configured threshold. |
 | `exact_quantity` | Show exact quantity only after explicit tenant selection. |
 
+Inventory Display is presentation-only. It never changes the backend inventory accounting path. For stock-bearing items, Storefront and POS checkout still use the paired location-stock and FIFO-batch contract: the selected fulfillment/operating location provides the stock ledger row, and FIFO batch rows at that location provide the cost, age, expiry, and depletion order. This applies across all workflow modes that expose stock-bearing items, including mixed Services Mode catalogs. Truly service-only rows remain stock-exempt because there is no physical batch to deplete.
+
 ## Implemented Integration
 1. Backend domain and settings
 - Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
@@ -110,6 +112,7 @@ Runtime behavior:
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
+- Stock-bearing mode regression tests: checkout/fulfillment in every mode with physical items preserves location-scoped FIFO depletion, while truly service-only rows remain stock-exempt.
 
 ## Latest Validation Snapshot
 Current implementation readiness is code/test/build ready for controlled rollout, not yet fully production-proven until tenant canary smoke evidence is captured after migrations.

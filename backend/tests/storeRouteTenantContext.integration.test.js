@@ -5,6 +5,7 @@ import dbStore from '../src/utils/dbStore.js';
 
 const mockHandlers = {
     listStoreCatalog: jest.fn((req, res) => res.status(200).json({ success: true })),
+    resolveStoreQr: jest.fn((req, res) => res.status(200).json({ success: true })),
     listStoreLocations: jest.fn((req, res) => res.status(200).json({ success: true })),
     registerStoreCustomer: jest.fn((req, res) => res.status(201).json({ success: true })),
     loginStoreCustomer: jest.fn((req, res) => res.status(200).json({ success: true })),
@@ -23,6 +24,7 @@ const mockHandlers = {
             status: 'placed'
         }
     })),
+    claimOrder: jest.fn((req, res) => res.status(200).json({ success: true })),
     cancelOrder: jest.fn((req, res) => res.status(200).json({ success: true })),
     listStoreCustomerOrders: jest.fn((req, res) => res.status(200).json({ success: true })),
     getStorefrontFollowStatus: jest.fn((req, res) => res.status(200).json({ success: true })),

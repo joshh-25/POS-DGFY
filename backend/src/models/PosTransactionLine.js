@@ -53,6 +53,22 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
         type: DataTypes.DECIMAL(5, 4),
         allowNull: false,
         defaultValue: 0.1200
+    },
+    fnb_course_snapshot: {
+        type: DataTypes.ENUM('appetizer', 'main', 'dessert', 'drink', 'other'),
+        allowNull: true
+    },
+    fnb_modifiers_snapshot: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    fnb_special_instructions: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fnb_kitchen_station_snapshot: {
+        type: DataTypes.JSON,
+        allowNull: true
     }
 }, {
     tableName: 'pos_transaction_lines',

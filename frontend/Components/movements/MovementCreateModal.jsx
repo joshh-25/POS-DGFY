@@ -33,7 +33,8 @@ import {
 import {
   ChevronsUpDown,
   Check,
-  Activity
+  Activity,
+  Barcode
 } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { cn } from "../../src/lib/utils.js";
@@ -103,6 +104,9 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
   const [searchQuery, setSearchQuery] = useState('');
   const [batches, setBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [scanCode, setScanCode] = useState('');
+  const [scanFeedback, setScanFeedback] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
 
   const selectedItem = useMemo(
     () => findItemByFormId(items, formData.item_id),
@@ -248,6 +252,65 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
     }));
   };
 
+  const handleResolveBarcodeScan = async () => {
+    const code = String(scanCode || '').trim();
+    if (!code) {
+      toast.error('Scan or type a barcode first.');
+      return;
+    }
+    const scanLocationId = showTransferLocations ? formData.source_location_id : formData.location_id;
+    if (activeLocations.length > 0 && !scanLocationId) {
+      toast.error(showTransferLocations ? 'Select a source location before scanning.' : 'Select a stock location before scanning.');
+      return;
+    }
+
+    setScanLoading(true);
+    setScanFeedback(null);
+    try {
+      const result = await itemService.resolveItemBarcode({
+        code,
+        location_id: scanLocationId || undefined,
+        operation: showTransferLocations ? 'transfer' : 'stock_movement'
+      });
+      if (result?.status !== 'resolved') {
+        const reason = result?.reason_code || 'BARCODE_NOT_FOUND';
+        setScanFeedback({ type: 'blocked', message: reason });
+        toast.error(`Barcode not resolved: ${reason}`);
+        return;
+      }
+      const barcode = result.barcode || {};
+      const resolvedItemId = Number(barcode.item_id || barcode.item?.item_id);
+      const matchedItem = items.find((candidate) => Number(candidate?.item_id || candidate?.id) === resolvedItemId);
+      if (!matchedItem) {
+        setScanFeedback({ type: 'blocked', message: 'Resolved item is not available in this movement form.' });
+        toast.error('Resolved item is not available in this movement form.');
+        return;
+      }
+      const multiplier = Number(barcode.quantity_multiplier || 1);
+      setFormData((previous) => ({
+        ...previous,
+        item_id: String(matchedItem.item_id || matchedItem.id || ''),
+        item_name: matchedItem.name || '',
+        quantity: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : previous.quantity,
+        batch_id: barcode.scope === 'batch' && barcode.metadata?.batch_id
+          ? String(barcode.metadata.batch_id)
+          : previous.batch_id
+      }));
+      setSearchQuery('');
+      setScanFeedback({
+        type: 'resolved',
+        message: `${matchedItem.name} selected${multiplier > 1 ? `, quantity x${multiplier}` : ''}.`
+      });
+      toast.success('Barcode resolved for stock movement.');
+    } catch (error) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to resolve barcode.';
+      setScanFeedback({ type: 'blocked', message });
+      toast.error(message);
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
   const handleSubmit = () => {
     const parsedItemId = Number.parseInt(formData.item_id, 10);
     if (!Number.isInteger(parsedItemId) || parsedItemId <= 0) {
@@ -339,6 +402,38 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             {!canTransferAcrossLocations && (
               <p className="text-xs text-slate-500">
                 Enable at least two active locations to use transfer movements.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 space-y-2">
+            <Label className="flex items-center gap-2 text-teal-900">
+              <Barcode className="h-4 w-4" />
+              Scan item, package, shelf, or batch label
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                value={scanCode}
+                onChange={(event) => setScanCode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleResolveBarcodeScan();
+                  }
+                }}
+                placeholder="Scan before recording stock movement"
+                className="min-w-[220px] flex-1 bg-white"
+              />
+              <Button type="button" variant="outline" onClick={handleResolveBarcodeScan} disabled={scanLoading}>
+                {scanLoading ? 'Resolving...' : 'Resolve'}
+              </Button>
+            </div>
+            <p className="text-xs text-teal-900">
+              Scans only prefill item, batch, and suggested quantity. The submitted stock movement still enforces location and stock rules.
+            </p>
+            {scanFeedback && (
+              <p className={cn('text-xs font-medium', scanFeedback.type === 'resolved' ? 'text-teal-700' : 'text-red-600')}>
+                {scanFeedback.message}
               </p>
             )}
           </div>

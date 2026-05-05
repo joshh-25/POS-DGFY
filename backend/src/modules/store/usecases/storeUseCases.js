@@ -26,10 +26,15 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
+import {
+    normalizeBarcodeValue,
+    parseBarcodeStructuredPayload
+} from '../../shared/utils/barcodePolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
     delivery: 'supports_delivery',
     pickup: 'supports_pickup',
@@ -64,6 +69,27 @@ const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
 const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
+
+const normalizeFnbCourse = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return FNB_COURSES.has(normalized) ? normalized : null;
+};
+
+const normalizeRequestedLineModifiers = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((entry) => {
+            if (!isPlainObject(entry)) return null;
+            return {
+                modifier_group_id: parsePositiveInt(entry.modifier_group_id),
+                modifier_option_id: parsePositiveInt(entry.modifier_option_id || entry.option_id),
+                group_name: String(entry.group_name || entry.group || '').trim(),
+                option_name: String(entry.option_name || entry.name || '').trim()
+            };
+        })
+        .filter((entry) => entry && (entry.modifier_option_id || entry.option_name))
+        .slice(0, 30);
+};
 
 const pruneTrackingFailureCounters = (now = Date.now()) => {
     for (const [key, value] of trackingFailureCounters.entries()) {
@@ -294,9 +320,14 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
     const lines = rawLines
         .map((line) => ({
             item_id: Number.parseInt(line.item_id, 10),
-            quantity: round4(line.quantity)
+            quantity: round4(line.quantity),
+            course: normalizeFnbCourse(line.course),
+            line_modifiers: normalizeRequestedLineModifiers(line.line_modifiers || line.modifiers)
         }))
-        .sort((a, b) => a.item_id - b.item_id);
+        .sort((a, b) => {
+            if (a.item_id !== b.item_id) return a.item_id - b.item_id;
+            return stableStringify(a.line_modifiers).localeCompare(stableStringify(b.line_modifiers));
+        });
 
     return {
         idempotency_key: String(payload.idempotency_key || '').trim(),
@@ -478,6 +509,88 @@ const ensureRequiredCheckoutContact = ({ customerName, customerPhone, customerEm
     }
 };
 
+const resolveStorefrontLineModifiers = ({ item, line }) => {
+    const requested = Array.isArray(line.line_modifiers) ? line.line_modifiers : [];
+    if (requested.length === 0) {
+        return { priceDelta: 0, snapshot: [] };
+    }
+
+    const groups = Array.isArray(item.fnb_modifier_groups)
+        ? item.fnb_modifier_groups
+        : (Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : []);
+    const groupEntries = groups
+        .filter((group) => group?.is_active !== false)
+        .map((group) => ({
+            ...group,
+            options: (Array.isArray(group.options) ? group.options : [])
+                .filter((option) => option?.is_active !== false)
+        }));
+    const groupById = new Map(groupEntries.map((group) => [Number(group.modifier_group_id), group]));
+    const groupByName = new Map(groupEntries.map((group) => [String(group.name || group.display_name || '').trim().toLowerCase(), group]));
+    const selectedCounts = new Map();
+    const snapshot = [];
+    let priceDelta = 0;
+
+    for (const modifier of requested) {
+        const group = modifier.modifier_group_id
+            ? groupById.get(Number(modifier.modifier_group_id))
+            : groupByName.get(String(modifier.group_name || '').trim().toLowerCase());
+        if (!group) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier group is not available for "${item.name}"`,
+                { statusCode: 422 }
+            );
+        }
+
+        const option = modifier.modifier_option_id
+            ? group.options.find((entry) => Number(entry.modifier_option_id) === Number(modifier.modifier_option_id))
+            : group.options.find((entry) => String(entry.name || '').trim().toLowerCase() === String(modifier.option_name || '').trim().toLowerCase());
+        if (!option) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier option is not available for "${item.name}"`,
+                { statusCode: 422 }
+            );
+        }
+
+        const count = Number(selectedCounts.get(group.modifier_group_id) || 0) + 1;
+        selectedCounts.set(group.modifier_group_id, count);
+        priceDelta = round4(priceDelta + round4(option.price_delta));
+        snapshot.push({
+            modifier_group_id: group.modifier_group_id,
+            group_name: group.display_name || group.name,
+            modifier_option_id: option.modifier_option_id,
+            option_name: option.name,
+            price_delta: round4(option.price_delta),
+            allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+        });
+    }
+
+    for (const [groupId, count] of selectedCounts.entries()) {
+        const group = groupById.get(Number(groupId));
+        if (!group) continue;
+        const minSelect = Number(group.min_select || 0);
+        const maxSelect = Number(group.max_select || 0);
+        if (minSelect > 0 && count < minSelect) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier group "${group.display_name || group.name}" requires at least ${minSelect} option(s)`,
+                { statusCode: 422 }
+            );
+        }
+        if (maxSelect > 0 && count > maxSelect) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier group "${group.display_name || group.name}" allows at most ${maxSelect} option(s)`,
+                { statusCode: 422 }
+            );
+        }
+    }
+
+    return { priceDelta, snapshot };
+};
+
 const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false }) => {
     if (!Array.isArray(rawLines) || rawLines.length === 0) {
         throw new DomainError(
@@ -543,7 +656,9 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             );
         }
 
-        const lineSubtotal = round4(quantity * resolvedPrice);
+        const modifierResolution = resolveStorefrontLineModifiers({ item, line });
+        const effectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);
+        const lineSubtotal = round4(quantity * effectiveUnitPrice);
         subtotalAmount = round4(subtotalAmount + lineSubtotal);
 
         preparedLines.push({
@@ -552,12 +667,14 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             quantity: round4(quantity),
             unit_of_measure: item.unit_of_measure || null,
             cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
-            sale_price: round4(resolvedPrice),
+            sale_price: effectiveUnitPrice,
             sale_price_overridden: false,
             price_override_reason: null,
             line_subtotal: lineSubtotal,
             vat_type_snapshot: item.vat_type || 'vatable',
-            vat_rate_snapshot: round4(VAT_RATE)
+            vat_rate_snapshot: round4(VAT_RATE),
+            fnb_course_snapshot: normalizeFnbCourse(line.course),
+            fnb_modifiers_snapshot: modifierResolution.snapshot.length > 0 ? modifierResolution.snapshot : null
         });
     }
 
@@ -611,6 +728,59 @@ const normalizeAvailabilityStatus = (item = {}) => {
     return 'out_of_stock';
 };
 
+const serializeStorefrontAllergens = (value) => (
+    Array.isArray(value)
+        ? value
+            .map((entry) => ({
+                allergen_name: String(entry?.allergen_name || '').trim(),
+                is_cross_contamination: entry?.is_cross_contamination === true
+            }))
+            .filter((entry) => entry.allergen_name)
+        : []
+);
+
+const serializeStorefrontNutrition = (value) => (
+    value
+        ? {
+            serving_size: value.serving_size || null,
+            calories: value.calories,
+            total_fat: value.total_fat,
+            saturated_fat: value.saturated_fat,
+            cholesterol: value.cholesterol,
+            sodium: value.sodium,
+            total_carbohydrates: value.total_carbohydrates,
+            dietary_fiber: value.dietary_fiber,
+            sugars: value.sugars,
+            protein: value.protein
+        }
+        : null
+);
+
+const serializeStorefrontModifierGroups = (value) => (
+    Array.isArray(value)
+        ? value
+            .filter((group) => group?.is_active !== false)
+            .map((group) => ({
+                modifier_group_id: group.modifier_group_id,
+                name: group.name,
+                display_name: group.display_name || group.name,
+                min_select: Number(group.min_select || 0),
+                max_select: Number(group.max_select || 1),
+                required: group.required === true || Number(group.min_select || 0) > 0,
+                options: (Array.isArray(group.options) ? group.options : [])
+                    .filter((option) => option?.is_active !== false)
+                    .map((option) => ({
+                        modifier_option_id: option.modifier_option_id,
+                        name: option.name,
+                        price_delta: round4(option.price_delta),
+                        is_default: option.is_default === true,
+                        allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+                    }))
+            }))
+            .filter((group) => group.options.length > 0)
+        : []
+);
+
 const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
@@ -630,6 +800,9 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         vat_type: item.vat_type || 'vatable',
         image_url: item.image_url || null,
         service_detail: serviceDetail,
+        allergens: serializeStorefrontAllergens(item.allergens),
+        nutrition: serializeStorefrontNutrition(item.nutrition),
+        fnb_modifier_groups: serializeStorefrontModifierGroups(item.fnb_modifier_groups),
         is_available: isAvailable,
         availability_status: availabilityStatus,
         inventory_display: applyInventoryDisplayPolicy(
@@ -1023,6 +1196,131 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                     }
                 }
             ));
+        }
+    };
+};
+
+export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
+    return async ({ query = {} } = {}) => {
+        if (!isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            const code = String(query.code || '').trim();
+            if (!code) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'code is required',
+                    { statusCode: 422 }
+                );
+            }
+            const requestedLocationId = query.location_id == null
+                ? null
+                : Number.parseInt(query.location_id, 10);
+            if (query.location_id != null && (!Number.isInteger(requestedLocationId) || requestedLocationId <= 0)) {
+                throw new DomainError(
+                    DomainErrorCode.STORE_CATALOG_LOCATION_INVALID,
+                    'location_id must be a positive integer when provided',
+                    { statusCode: 422 }
+                );
+            }
+
+            const accessPolicy = await resolveStorefrontAccessPolicy({ storeRepository });
+            if (isCustomerAccessEnabledForCurrentTenant() && accessPolicy.access_capabilities.catalog !== true) {
+                return ok({
+                    status: 'blocked',
+                    reason_code: 'CUSTOMER_ACCESS_MODE_BLOCKED',
+                    access_policy: accessPolicy,
+                    item: null,
+                    barcode: null,
+                    cart_allowed: false,
+                    checkout_allowed: false
+                });
+            }
+
+            const structuredPayload = parseBarcodeStructuredPayload(code);
+            const structuredType = String(structuredPayload?.type || '').trim().toLowerCase();
+            const structuredReference = String(structuredPayload?.reference || '').trim();
+            if (structuredType === 'service_booking' && structuredReference) {
+                const bookingResult = await storeRepository.resolvePublicServiceBookingReference(structuredReference);
+                if (bookingResult.status !== 'resolved') {
+                    return ok({
+                        status: bookingResult.status,
+                        kind: 'service_booking',
+                        reason_code: bookingResult.reason_code || 'BOOKING_NOT_RESOLVED',
+                        access_policy: accessPolicy,
+                        booking: null,
+                        item: null,
+                        barcode: {
+                            code,
+                            normalized_code: normalizeBarcodeValue(code),
+                            source: 'system_generated_reference',
+                            scope: 'ticket',
+                            symbology: 'qr',
+                            packaging_level: 'ticket',
+                            quantity_multiplier: 1
+                        },
+                        cart_allowed: false,
+                        checkout_allowed: false
+                    });
+                }
+                return ok({
+                    status: 'resolved',
+                    kind: 'service_booking',
+                    reason_code: null,
+                    access_policy: accessPolicy,
+                    booking: bookingResult.booking,
+                    item: null,
+                    barcode: {
+                        code,
+                        normalized_code: normalizeBarcodeValue(code),
+                        source: 'system_generated_reference',
+                        scope: 'ticket',
+                        symbology: 'qr',
+                        packaging_level: 'ticket',
+                        quantity_multiplier: 1
+                    },
+                    cart_allowed: false,
+                    checkout_allowed: false
+                });
+            }
+
+            const result = await storeRepository.resolvePublicBarcode({
+                code,
+                location_id: requestedLocationId
+            });
+            if (result.status !== 'resolved') {
+                return ok({
+                    status: result.status,
+                    reason_code: result.reason_code || 'BARCODE_NOT_RESOLVED',
+                    access_policy: accessPolicy,
+                    item: null,
+                    barcode: result.barcode || null,
+                    cart_allowed: false,
+                    checkout_allowed: false
+                });
+            }
+
+            const item = serializeStoreCatalogItem(result.item, accessPolicy);
+            return ok({
+                status: 'resolved',
+                reason_code: null,
+                barcode: result.barcode,
+                item,
+                access_policy: accessPolicy,
+                cart_allowed: accessPolicy?.access_capabilities?.cart === true,
+                checkout_allowed: accessPolicy?.access_capabilities?.checkout === true
+            });
+        } catch (error) {
+            if (error instanceof DomainError) {
+                return fail(error);
+            }
+            return fail(mapStoreUseCaseError(error, 'Failed to resolve storefront QR'));
         }
     };
 };
@@ -1430,7 +1728,9 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
                     quantity: line.quantity,
                     sale_price: line.sale_price,
                     line_subtotal: line.line_subtotal,
-                    vat_type: line.vat_type_snapshot
+                    vat_type: line.vat_type_snapshot,
+                    fnb_course_snapshot: line.fnb_course_snapshot || null,
+                    fnb_modifiers_snapshot: line.fnb_modifiers_snapshot || null
                 }))
             });
         } catch (error) {

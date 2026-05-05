@@ -63,16 +63,20 @@ const { generateToken } = await import('../src/services/authService.js');
 describe('AI Cost Control Integration Test', () => {
     let user;
     let token;
+    const uniqueSuffix = uuidv4().slice(0, 8);
+    const username = `ai_user_${uniqueSuffix}`;
+    const email = `ai-${uniqueSuffix}@test.com`;
 
     beforeAll(async () => {
         // Sync DB
         await sequelize.sync();
-        await User.destroy({ where: { email: 'ai@test.com' } }).catch(() => null);
+        await User.destroy({ where: { username: 'ai_user' } }).catch(() => null);
+        await User.destroy({ where: { email } }).catch(() => null);
 
         // Create User
         user = await User.create({
-            username: 'ai_user',
-            email: 'ai@test.com',
+            username,
+            email,
             password_hash: 'hash',
             role: 'manager',
             is_active: true,
@@ -83,6 +87,9 @@ describe('AI Cost Control Integration Test', () => {
     });
 
     afterAll(async () => {
+        if (user?.user_id) {
+            await User.destroy({ where: { user_id: user.user_id } }).catch(() => null);
+        }
         await sequelize.close();
     });
 

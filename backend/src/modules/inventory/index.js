@@ -21,7 +21,19 @@ import {
   buildUploadStorefrontCatalogImageUseCase,
   buildDeleteStorefrontCatalogImageUseCase
 } from './usecases/storefrontCatalogUseCases.js';
+import {
+  buildAttachItemBarcodeUseCase,
+  buildDeactivateItemBarcodeUseCase,
+  buildGenerateItemBarcodeUseCase,
+  buildListItemBarcodesUseCase,
+  buildRenderItemBarcodeLabelUseCase,
+  buildResolveItemBarcodeConflictUseCase,
+  buildResolveItemBarcodeUseCase,
+  buildSetPrimaryItemBarcodeUseCase,
+  buildUpdateItemBarcodeUseCase
+} from './usecases/barcodeUseCases.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
+import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
@@ -49,6 +61,18 @@ export const deleteStorefrontCatalogImageUseCase = buildDeleteStorefrontCatalogI
   itemRepository,
   imageStorage: storefrontCatalogImageStorage
 });
+export const listItemBarcodesUseCase = buildListItemBarcodesUseCase({ itemRepository });
+export const attachItemBarcodeUseCase = buildAttachItemBarcodeUseCase({ itemRepository });
+export const generateItemBarcodeUseCase = buildGenerateItemBarcodeUseCase({ itemRepository });
+export const updateItemBarcodeUseCase = buildUpdateItemBarcodeUseCase({ itemRepository });
+export const deactivateItemBarcodeUseCase = buildDeactivateItemBarcodeUseCase({ itemRepository });
+export const setPrimaryItemBarcodeUseCase = buildSetPrimaryItemBarcodeUseCase({ itemRepository });
+export const resolveItemBarcodeUseCase = buildResolveItemBarcodeUseCase({
+  itemRepository,
+  resolveLocationScope: resolveMovementLocation
+});
+export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
+export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });
 
 export * from './contracts/itemRepository.contract.js';
 export * from './repositories/itemRepository.js';

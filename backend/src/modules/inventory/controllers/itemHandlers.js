@@ -15,6 +15,15 @@ import {
   updateStorefrontCatalogOverrideUseCase,
   uploadStorefrontCatalogImageUseCase,
   deleteStorefrontCatalogImageUseCase,
+  listItemBarcodesUseCase,
+  attachItemBarcodeUseCase,
+  generateItemBarcodeUseCase,
+  updateItemBarcodeUseCase,
+  deactivateItemBarcodeUseCase,
+  setPrimaryItemBarcodeUseCase,
+  resolveItemBarcodeUseCase,
+  resolveItemBarcodeConflictUseCase,
+  renderItemBarcodeLabelUseCase,
   getFoldersUseCase,
   createFolderUseCase,
   updateFolderUseCase,
@@ -453,6 +462,147 @@ export const replaceItemSuppliers = async (req, res, next) => {
   }
 };
 
+const sendBarcodeResult = (req, res, result, { statusCode = 200, message = null } = {}) => sendUseCaseResult(res, result, {
+  successStatusCodeResolver: () => statusCode,
+  successPayloadResolver: () => ({
+    success: true,
+    data: result.data,
+    ...(message ? { message } : {}),
+    timestamp: timestamp()
+  }),
+  errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+});
+
+export const listItemBarcodes = async (req, res, next) => {
+  try {
+    const result = await listItemBarcodesUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      query: req.query || {}
+    });
+    return sendBarcodeResult(req, res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const attachItemBarcode = async (req, res, next) => {
+  try {
+    const result = await attachItemBarcodeUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      payload: req.validatedData || req.body || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      statusCode: 201,
+      message: 'Barcode attached successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const generateItemBarcode = async (req, res, next) => {
+  try {
+    const result = await generateItemBarcodeUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      payload: req.validatedData || req.body || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      statusCode: 201,
+      message: 'Internal barcode generated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateItemBarcode = async (req, res, next) => {
+  try {
+    const result = await updateItemBarcodeUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      barcodeId: req.validatedParams?.barcode_id || req.params.barcode_id,
+      payload: req.validatedData || req.body || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      message: 'Barcode updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deactivateItemBarcode = async (req, res, next) => {
+  try {
+    const result = await deactivateItemBarcodeUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      barcodeId: req.validatedParams?.barcode_id || req.params.barcode_id,
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      message: 'Barcode deactivated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setPrimaryItemBarcode = async (req, res, next) => {
+  try {
+    const result = await setPrimaryItemBarcodeUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      barcodeId: req.validatedParams?.barcode_id || req.params.barcode_id,
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      message: 'Primary barcode updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resolveItemBarcode = async (req, res, next) => {
+  try {
+    const result = await resolveItemBarcodeUseCase({
+      code: req.validatedQuery?.code || req.query.code,
+      query: req.validatedQuery || req.query || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resolveItemBarcodeConflict = async (req, res, next) => {
+  try {
+    const result = await resolveItemBarcodeConflictUseCase({
+      payload: req.validatedData || req.body || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result, {
+      message: 'Barcode conflict action processed'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const renderItemBarcodeLabel = async (req, res, next) => {
+  try {
+    const result = await renderItemBarcodeLabelUseCase({
+      itemId: req.validatedParams?.item_id || req.params.item_id,
+      query: req.validatedQuery || req.query || {},
+      userId: req.user?.user_id || null
+    });
+    return sendBarcodeResult(req, res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const listStorefrontCatalogOverrides = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -700,6 +850,15 @@ export default {
   validateComposition,
   getItemSupplierCoverage,
   replaceItemSuppliers,
+  listItemBarcodes,
+  attachItemBarcode,
+  generateItemBarcode,
+  updateItemBarcode,
+  deactivateItemBarcode,
+  setPrimaryItemBarcode,
+  resolveItemBarcode,
+  resolveItemBarcodeConflict,
+  renderItemBarcodeLabel,
   listStorefrontCatalogOverrides,
   updateStorefrontCatalogOverride,
   uploadStorefrontCatalogImage,

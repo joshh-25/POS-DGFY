@@ -31,7 +31,7 @@ export const getTenantModels = (sequelize) => {
         'ItemRegulatoryCompliance', 'ItemCostBreakdown', 'POLineItem',
         'JOIngredient', 'BatchTransaction', 'AuditLog', 'SystemSetting',
         'BatchLineage', 'ReceiveToken', 'ReportSnapshot', 'PendingAIAction',
-        'AIConversation', 'ItemEmbedding', 'ItemFolder',
+        'AIConversation', 'ItemEmbedding', 'ItemFolder', 'ItemBarcode',
         'DispatchOrder', 'DispatchOrderLine',
         'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
         'PosZReadingSnapshot', 'PosOperationReplay',
