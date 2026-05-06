@@ -165,6 +165,39 @@ Overall status: in_progress
    - Mode-development governance: `9.2/10`; the playbook now requires RBAC in every mode plan before production readiness, but future modes must still prove their own presets and route guards with tests.
    - FIFO location UX correctness: `8.8/10`; stale-filter and per-location comparison issues are covered, while manual operator QA is still needed on real multi-location datasets.
 
+### 3.22 Production PM2, Release Gate, And FIFO Runtime Confidence Pass (2026-05-06)
+
+1. Root-cause closure:
+   - Local PM2 production startup initially used production defaults without a dotenv-safe local `JWT_SECRET`, causing backend crash-loop risk under `NODE_ENV=production`.
+   - The canonical production ecosystem needed to carry non-secret VPS safety defaults so `pm2 startOrReload ecosystem.config.cjs --env production --update-env` starts with fail-closed/Redis-backed production behavior.
+   - QA rollback/restore drills needed to tolerate Windows OpenSSH versions that reject `WarnWeakCrypto=no`.
+2. Implemented fixes:
+   - `ecosystem.config.cjs` now defines the canonical four-process PM2 runtime and non-secret production defaults for VPS hosting, fail-closed blacklist behavior, Redis-backed discovery cache behavior, manual tenant approval, payments disabled, and `DB_AUTO_SYNC=false`.
+   - Local ignored `backend/.env` was hardened with generated dotenv-safe secrets and a dedicated local DB user for PM2 production preview.
+   - QA rollback/restore scripts now probe `WarnWeakCrypto=no` support before adding that SSH option.
+3. Regression coverage and gates:
+   - `npm run preflight:vps` -> PASS.
+   - `npm run doctor:runtime` -> PASS.
+   - `pm2 startOrReload ecosystem.config.cjs --env production --update-env` -> PASS locally; backend, IMS, POS, and Storefront processes remain online.
+   - `GET http://localhost:5000/health` -> PASS with production, DB connected, Redis connected/required, runtime schema healthy, schema indexes healthy, tenant pool healthy, and fail-closed token blacklist mode.
+   - `GET http://localhost:5173`, `GET http://localhost:5174`, and `GET http://localhost:5175` -> PASS.
+   - `npm run gate:release:local` -> PASS.
+   - `npm run gate:release:no-staging` with QA env overlay -> PASS; the current verdict reports QA deploy-summary SHA mismatch as non-blocking because strict SHA enforcement is not enabled.
+   - `npm run gate:release:prod-contracts` with exported production values -> PASS (`12/12` checks).
+   - `npm run audit:location-stock-parity` -> PASS.
+   - `npm run audit:fifo-drift` -> PASS.
+   - `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0` -> PASS.
+   - Backend FIFO/service/F&B targeted tests -> PASS (`27` tests).
+   - Frontend FIFO batch viewer targeted tests -> PASS (`6` tests).
+   - `npm --prefix frontend run build:all` -> PASS.
+   - `npm run check:frontend-budgets` -> PASS with the known large Storefront `vendor-map-*` warning.
+   - `git diff --check` -> PASS with line-ending warnings only.
+4. Updated honest rating:
+   - Local PM2 production runtime readiness: `9.4/10`; remaining risk is production host parity and post-deploy evidence, not local process stability.
+   - FIFO/location stock behavior confidence: `9.3/10`; tests and audits cover policy, F&B ingredient preflight, service add-on behavior, batch grouping, and stale location filters.
+   - Release gate confidence: `9.1/10`; gates pass, but exact QA deployed-head matching should be made strict for final production signoff.
+   - Full production deploy confidence: `8.7/10` until tracked runtime fixes are committed/pushed and a post-deploy summary confirms the exact deployed SHA.
+
 ### 3.18 Food & Beverage Restaurant Hardening Rerun (2026-05-05)
 
 1. `npm --prefix backend test -- fnbMode.usecases.test.js --runInBand` -> PASS (`12 tests`)

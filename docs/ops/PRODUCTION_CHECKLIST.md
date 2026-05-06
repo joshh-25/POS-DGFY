@@ -14,6 +14,14 @@ Use this checklist for every production rollout.
 - [ ] All intended code/docs changes are committed
 - [ ] Changes are pushed to the remote branch you will deploy
 - [ ] Optional: CI checks are green
+- [ ] Local production PM2 preview is healthy when using the VPS profile:
+  ```bash
+  npm run preflight:vps
+  npm run doctor:runtime
+  pm2 startOrReload ecosystem.config.cjs --env production --update-env
+  pm2 save
+  ```
+- [ ] Confirm PM2 is using `ecosystem.config.cjs` as the only production ecosystem file. The old two-process `ecosystem.prod.config.cjs` shape is obsolete and must not be used.
 - [ ] No-staging hard gate passes for the exact target SHA:
   ```bash
   # Required QA inputs:
@@ -110,7 +118,14 @@ bash scripts/deploy-remote.sh
 
 ## 5. Post-Deploy Verification
 - [ ] `pm2 list` shows services online
-- [ ] `GET /health` returns healthy status
+- [ ] `GET /health` returns healthy status with expected production capability values:
+  - [ ] `environment=production`
+  - [ ] `capabilities.hostingProfile=vps`
+  - [ ] `capabilities.redis.configured=true`
+  - [ ] `capabilities.redis.connected=true`
+  - [ ] `capabilities.tokenBlacklist.mode=fail_closed`
+  - [ ] `capabilities.rateLimitStore.mode=redis`
+  - [ ] `capabilities.schedulerLock.mode=distributed`
 - [ ] Login and critical flows work
 - [ ] Re-run production multi-location contract smoke gate:
   ```bash
@@ -137,6 +152,7 @@ bash scripts/deploy-remote.sh
   ```bash
   ls -1t logs/deploy/deploy_*.summary.txt | head -1 | xargs -I{} tail -n 30 {}
   ```
+- [ ] If `gate:release:no-staging` reports `qa.deploy.summary.sha_match` as `non_blocking_predeploy_check`, do not declare full production confidence until either the QA summary deployed head matches the target SHA or `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` has been intentionally evaluated.
 
 ## 6. If `npm ci` Fails with `EPERM`/File Lock
 - [ ] Treat as transient lock unless repeated after retries.

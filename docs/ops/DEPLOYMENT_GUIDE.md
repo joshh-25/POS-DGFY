@@ -30,7 +30,7 @@ No-staging release policy reference:
   - `DB_USER`
   - `DB_NAME`
   - `JWT_SECRET`
-  - `JWT_REFRESH_SECRET`
+  - `REFRESH_TOKEN_SECRET`
   - `CORS_ORIGIN`
   - `AUTH_BLACKLIST_FAILURE_MODE`
   - `TEMP_FILE_STORAGE`
@@ -338,6 +338,30 @@ tail -f "$LOG"
 ```
 
 ## PM2 Notes
+The canonical PM2 entrypoint is the root `ecosystem.config.cjs`. It defines all four production processes:
+
+1. `sku-backend` on port `5000`
+2. `sku-frontend` on port `5173`
+3. `sku-pos-frontend` on port `5174`
+4. `sku-store-frontend` on port `5175`
+
+`ecosystem.config.cjs` includes non-secret production defaults for the VPS profile:
+
+```env
+NODE_ENV=production
+HOSTING_PROFILE=vps
+HOSTING_INSTANCE_COUNT=1
+AUTH_BLACKLIST_FAILURE_MODE=fail_closed
+TEMP_FILE_STORAGE=auto
+STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true
+CUSTOMER_ACCESS_MODES_ENABLED=false
+TENANT_REGISTRATION_APPROVAL_MODE=manual
+PAYMENTS_ENABLED=false
+DB_AUTO_SYNC=false
+```
+
+Secrets and host-specific values still belong in `backend/.env`; do not put database passwords, JWT secrets, SMTP credentials, payment credentials, or Redis credentials in the ecosystem file. Generate dotenv-safe secrets without `#` or unquoted shell metacharacters, or quote them explicitly, because dotenv treats inline `#` as comment syntax.
+
 Use ecosystem reload flow (already handled by deploy script):
 
 ```bash
@@ -346,6 +370,17 @@ pm2 save
 ```
 
 Do not use `pm2 restart all` as primary deployment strategy.
+
+After manual PM2 changes, verify:
+
+```bash
+pm2 list
+pm2 describe sku-backend
+curl -fsS http://127.0.0.1:5000/health
+curl -fsS http://127.0.0.1:5173
+curl -fsS http://127.0.0.1:5174
+curl -fsS http://127.0.0.1:5175
+```
 
 ## Hosting Profile Verification
 After every deploy or rollback:

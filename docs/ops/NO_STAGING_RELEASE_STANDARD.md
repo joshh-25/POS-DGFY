@@ -16,6 +16,11 @@ The enforced command is:
 RELEASE_TARGET_SHA=<target_sha> npm run gate:release:no-staging
 ```
 
+Recommended local wrapper:
+```powershell
+powershell -ExecutionPolicy Bypass -Command ". .\scripts\load-qa-env.ps1 -EnvFile .env.qa.local -SecretsFile .env.qa.secrets.local; npm run gate:release:no-staging"
+```
+
 `scripts/deploy-remote.sh` runs this gate automatically after push and before production SSH deploy when:
 ```bash
 DEPLOY_ENFORCE_NO_STAGING_GATE=1
@@ -40,6 +45,11 @@ Required files:
 4. `restore_drill_result.json`
 5. `release_verdict.json` (final aggregated verdict)
 
+Current behavior note:
+1. `qa_deploy_summary.txt` preserves deploy evidence continuity.
+2. SHA mismatch is reported in the verdict as `non_blocking_predeploy_check` unless `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` is set.
+3. Production signoff should treat a non-blocking SHA mismatch as residual risk, even when the gate exits successfully.
+
 ## QA Configuration Inputs
 1. QA smoke:
    - `QA_BASE_URL` (required)
@@ -56,6 +66,9 @@ Required files:
 4. Drill mode:
    - `QA_ROLLBACK_DRILL_APPLY=0|1` (default simulation)
    - `QA_RESTORE_DRILL_APPLY=0|1` (default simulation)
+
+## Windows OpenSSH Compatibility
+The QA rollback and restore drill scripts suppress warning-only SSH stderr where supported. Some Windows OpenSSH versions reject `WarnWeakCrypto=no`; the scripts now probe support before adding that option, then always keep `LogLevel=ERROR`. If a drill still fails, inspect the generated JSON artifact before treating warning text as a real rollback/restore failure.
 
 Recommended local secret source:
 1. Keep non-secret defaults in `.env.qa.local`.
