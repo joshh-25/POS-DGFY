@@ -30,7 +30,17 @@ $qaSshHost = $env:QA_SSH_HOST
 $qaSshPort = if ([string]::IsNullOrWhiteSpace($env:QA_SSH_PORT)) { '22' } else { $env:QA_SSH_PORT }
 $qaSshUser = if ([string]::IsNullOrWhiteSpace($env:QA_SSH_USER)) { 'root' } else { $env:QA_SSH_USER }
 $qaAppDir = if ([string]::IsNullOrWhiteSpace($env:QA_APP_DIR)) { '/var/www/skupervisor' } else { $env:QA_APP_DIR }
-$sshOptions = @('-o', 'WarnWeakCrypto=no', '-o', 'LogLevel=ERROR')
+$sshOptions = @('-o', 'LogLevel=ERROR')
+$sshSupportsWarnWeakCrypto = $false
+try {
+  & ssh -G -o WarnWeakCrypto=no localhost 2>$null | Out-Null
+  $sshSupportsWarnWeakCrypto = ($LASTEXITCODE -eq 0)
+} catch {
+  $sshSupportsWarnWeakCrypto = $false
+}
+if ($sshSupportsWarnWeakCrypto) {
+  $sshOptions = @('-o', 'WarnWeakCrypto=no') + $sshOptions
+}
 
 $checks = New-Object System.Collections.Generic.List[Object]
 function Add-Check([string]$name, [bool]$ok, [string]$detail) {
