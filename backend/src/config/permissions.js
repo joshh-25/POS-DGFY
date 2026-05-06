@@ -70,6 +70,45 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- SERVICES MODE ---
+    SERVICES: {
+        label: "Services",
+        actions: {
+            VIEW_DASHBOARD: "services:dashboard:view",
+            VIEW_CATALOG: "services:catalog:view",
+            MANAGE_CATALOG: "services:catalog:manage",
+            VIEW_RESOURCES: "services:resources:view",
+            MANAGE_RESOURCES: "services:resources:manage",
+            VIEW_BOOKINGS: "services:bookings:view",
+            MANAGE_BOOKINGS: "services:bookings:manage",
+            VIEW_WAITLIST: "services:waitlist:view",
+            MANAGE_WAITLIST: "services:waitlist:manage",
+            VIEW_CLIENTS: "services:clients:view",
+            VIEW_REMINDERS: "services:reminders:view",
+            MANAGE_REMINDERS: "services:reminders:manage"
+        }
+    },
+
+    // --- FOOD & BEVERAGE MODE ---
+    FNB: {
+        label: "Food & Beverage",
+        actions: {
+            VIEW_DASHBOARD: "fnb:dashboard:view",
+            VIEW_MENU: "fnb:menu:view",
+            MANAGE_MENU: "fnb:menu:manage",
+            VIEW_DINING: "fnb:dining:view",
+            MANAGE_DINING: "fnb:dining:manage",
+            VIEW_KITCHEN: "fnb:kitchen:view",
+            MANAGE_KITCHEN: "fnb:kitchen:manage",
+            VIEW_CHECKS: "fnb:checks:view",
+            MANAGE_CHECKS: "fnb:checks:manage",
+            VIEW_RESERVATIONS: "fnb:reservations:view",
+            MANAGE_RESERVATIONS: "fnb:reservations:manage",
+            VIEW_SERVICE_CHARGE: "fnb:service_charge:view",
+            MANAGE_SERVICE_CHARGE: "fnb:service_charge:manage"
+        }
+    },
+
     // --- STOCK CONTROL ---
     STOCK: {
         label: "Stock Control",

@@ -3,6 +3,7 @@ import {
   updateProfileUseCase,
   changePasswordUseCase,
   getAllUsersUseCase,
+  getRoleCatalogUseCase,
   updateUserRoleUseCase,
   updateUserStatusUseCase,
   updateUserPermissionsUseCase,
@@ -147,6 +148,25 @@ export const getAllUsers = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'Users retrieved successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRoleCatalog = async (req, res, next) => {
+  try {
+    const result = await getRoleCatalogUseCase();
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Role catalog retrieved successfully',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -306,6 +326,7 @@ export const inviteUser = async (req, res, next) => {
     const {
       email,
       role,
+      role_preset_key: rolePresetKey = null,
       location_ids: locationIds = [],
       delivery_mode: deliveryMode = 'email'
     } = req.validatedData;
@@ -313,6 +334,7 @@ export const inviteUser = async (req, res, next) => {
       adminUserId: req.user.user_id,
       email,
       role,
+      rolePresetKey,
       locationIds,
       deliveryMode
     });
@@ -437,6 +459,7 @@ export default {
   updateProfile,
   changePassword,
   getAllUsers,
+  getRoleCatalog,
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,

@@ -5,6 +5,16 @@ import { hashPassword, comparePassword, generateToken, generateRefreshToken } fr
 import * as landlordService from './landlordService.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { ROLE_HIERARCHY, USER_ROLES, isAdminLikeRole } from '../config/userRoles.js';
+import {
+  describeUserRolePreset,
+  getModeRoleCatalog,
+  getModeRolePreset,
+  getRoleCatalogMode
+} from '../config/modeRolePresets.js';
+import {
+  DEFAULT_WORKFLOW_MODE,
+  normalizeWorkflowMode
+} from '../modules/shared/constants/workflowModes.js';
 import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
@@ -50,6 +60,73 @@ const hasPermission = (user, permission) => {
   return effectivePermissions.includes(permission);
 };
 
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+
+const parseWorkflowModeSetting = (setting) => {
+  if (!setting) return DEFAULT_WORKFLOW_MODE;
+  const raw = setting.setting_value;
+  if (setting.data_type === 'json' && typeof raw === 'string') {
+    try {
+      return normalizeWorkflowMode(JSON.parse(raw));
+    } catch {
+      return DEFAULT_WORKFLOW_MODE;
+    }
+  }
+  return normalizeWorkflowMode(raw);
+};
+
+const readCurrentWorkflowMode = async () => {
+  const SystemSetting = dbStore.get('SystemSetting');
+  if (!SystemSetting) return DEFAULT_WORKFLOW_MODE;
+  const setting = await SystemSetting.findOne({
+    where: { setting_key: WORKFLOW_MODE_SETTING_KEY },
+    attributes: ['setting_key', 'setting_value', 'data_type']
+  }).catch(() => null);
+  return parseWorkflowModeSetting(setting);
+};
+
+const serializeRolePresetMetadata = (user, workflowMode) => (
+  describeUserRolePreset(user, workflowMode)
+);
+
+const buildUserPayload = (user, workflowMode, extra = {}) => ({
+  user_id: user.user_id,
+  username: user.username,
+  email: user.email,
+  role: user.role,
+  role_preset_key: user.role_preset_key || null,
+  ...serializeRolePresetMetadata(user, workflowMode),
+  ...extra
+});
+
+const resolveRoleAssignment = (roleData = {}, workflowMode = DEFAULT_WORKFLOW_MODE) => {
+  const rolePresetKey = String(roleData.role_preset_key || '').trim();
+  if (rolePresetKey) {
+    const preset = getModeRolePreset(rolePresetKey, workflowMode);
+    if (!preset) {
+      throw createError(`Invalid role preset for ${getRoleCatalogMode(workflowMode)} mode: ${rolePresetKey}`, 422);
+    }
+    return {
+      role: preset.role,
+      rolePresetKey: preset.key,
+      permissions: preset.permissions,
+      preset
+    };
+  }
+
+  const normalizedRole = String(roleData.role || 'staff').trim().toLowerCase();
+  if (!USER_ROLES.includes(normalizedRole)) {
+    throw createError(`Invalid role: ${roleData.role}`, 422);
+  }
+
+  return {
+    role: normalizedRole,
+    rolePresetKey: null,
+    permissions: DEFAULT_ROLE_PERMISSIONS[normalizedRole] || [],
+    preset: null
+  };
+};
+
 const REUSABLE_INVITATION_STATUSES = new Set(['cancelled', 'expired']);
 const RECOVERABLE_INVITATION_STATUSES = new Set(['pending', 'cancelled', 'expired']);
 
@@ -92,7 +169,7 @@ const parsePositiveInt = (value) => {
 export const getCurrentUser = async (userId) => {
   const User = dbStore.get('User');
   const user = await findVisibleUserById(User, userId, {
-    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
+    attributes: ['user_id', 'username', 'email', 'role', 'role_preset_key', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
 
   if (!user) {
@@ -116,11 +193,8 @@ export const getCurrentUser = async (userId) => {
     }
   }
 
-  return {
-    user_id: user.user_id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
+  const workflowMode = await readCurrentWorkflowMode();
+  return buildUserPayload(user, workflowMode, {
     is_active: user.is_active,
     last_login: user.last_login,
     created_at: user.created_at,
@@ -133,7 +207,12 @@ export const getCurrentUser = async (userId) => {
       payment_method: tenantPaymentMethod || 'manual'
     },
     onboarding
-  };
+  });
+};
+
+export const getRoleCatalog = async () => {
+  const workflowMode = await readCurrentWorkflowMode();
+  return getModeRoleCatalog(workflowMode);
 };
 
 /**
@@ -266,6 +345,7 @@ export const getAllUsers = async (options = {}) => {
       'username',
       'email',
       'role',
+      'role_preset_key',
       'is_active',
       'last_login',
       'created_at',
@@ -287,11 +367,8 @@ export const getAllUsers = async (options = {}) => {
     order: [['created_at', 'DESC']]
   });
 
-  return users.map(user => ({
-    user_id: user.user_id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
+  const workflowMode = await readCurrentWorkflowMode();
+  return users.map(user => buildUserPayload(user, workflowMode, {
     is_active: user.is_active,
     last_login: user.last_login,
     created_at: user.created_at,
@@ -340,42 +417,60 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
 
   assertAcceptedUserEditable(targetUser, 'change role');
 
-  // Get default permissions for the new role
-  const normalizedRole = roleData.role?.toLowerCase();
-  if (!USER_ROLES.includes(normalizedRole)) {
-    const error = new Error(`Invalid role: ${roleData.role}`);
-    error.statusCode = 422;
-    throw error;
-  }
+  const workflowMode = await readCurrentWorkflowMode();
+  const assignment = resolveRoleAssignment(roleData, workflowMode);
+  const hasLocationIds = Array.isArray(roleData?.location_ids);
+  const normalizedLocationIds = hasLocationIds
+    ? await validateActiveLocationIds(roleData.location_ids)
+    : [];
 
-  validateAdminHierarchy(adminUser, targetUser, 'modify role for', normalizedRole);
-  const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[normalizedRole] || [];
+  validateAdminHierarchy(adminUser, targetUser, 'modify role for', assignment.role);
+  await validatePresetLocationScope({
+    userId: hasLocationIds ? null : targetUser.user_id,
+    preset: assignment.preset,
+    locationIds: normalizedLocationIds
+  });
 
   // Build update data
   const updateData = {
-    role: normalizedRole,
-    permissions: defaultPermissions
+    role: assignment.role,
+    role_preset_key: assignment.rolePresetKey,
+    permissions: assignment.permissions
   };
 
   // Reset master admin flag if demoting from admin
-  if (!isAdminLikeRole(normalizedRole)) {
+  if (!isAdminLikeRole(assignment.role)) {
     updateData.is_master_admin = false;
   }
 
-  await targetUser.update(updateData);
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  try {
+    await targetUser.update(updateData, { transaction });
+    if (hasLocationIds) {
+      await replaceUserLocationGrants(
+        targetUser.user_id,
+        normalizedLocationIds,
+        transaction,
+        adminUserId
+      );
+    }
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
 
   // Reload to get the updated values
   await targetUser.reload();
 
-  return {
-    user_id: targetUser.user_id,
-    username: targetUser.username,
-    email: targetUser.email,
-    role: targetUser.role,
+  return buildUserPayload(targetUser, workflowMode, {
     is_active: targetUser.is_active,
     permissions: targetUser.permissions,
     is_master_admin: targetUser.is_master_admin
-  };
+  });
 };
 
 /**
@@ -762,6 +857,18 @@ const normalizeLocationIds = (locationIds = []) => {
   return normalizedLocationIds;
 };
 
+const parseImportedLocationIds = (value) => {
+  if (Array.isArray(value)) return normalizeLocationIds(value);
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  return normalizeLocationIds(
+    raw
+      .split(/[;,|]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+};
+
 const validateActiveLocationIds = async (locationIds = []) => {
   const normalizedLocationIds = normalizeLocationIds(locationIds);
   if (normalizedLocationIds.length === 0) return normalizedLocationIds;
@@ -782,6 +889,33 @@ const validateActiveLocationIds = async (locationIds = []) => {
   }
 
   return normalizedLocationIds;
+};
+
+const getActiveLocationCount = async () => {
+  const TenantLocation = dbStore.get('TenantLocation');
+  if (!TenantLocation) return 0;
+  return TenantLocation.count({ where: { is_active: true } }).catch(() => 0);
+};
+
+const getUserLocationGrantCount = async (userId) => {
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
+  if (!UserLocationGrant || !userId) return 0;
+  return UserLocationGrant.count({ where: { user_id: userId } }).catch(() => 0);
+};
+
+const validatePresetLocationScope = async ({ userId = null, preset = null, locationIds = [] } = {}) => {
+  if (!preset || preset.location_scope !== 'assigned') return;
+
+  const activeLocationCount = await getActiveLocationCount();
+  if (activeLocationCount <= 1) return;
+
+  const explicitLocations = Array.isArray(locationIds) ? locationIds.length : 0;
+  if (explicitLocations > 0) return;
+
+  const existingGrantCount = await getUserLocationGrantCount(userId);
+  if (existingGrantCount > 0) return;
+
+  throw createError(`${preset.label} requires at least one active location assignment in multi-location tenants`, 422);
 };
 
 const replaceUserLocationGrants = async (userId, locationIds = [], transaction = null, createdBy = null) => {
@@ -899,15 +1033,15 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   const {
     email: rawEmail,
     role: rawRole,
+    role_preset_key: rolePresetKey,
     location_ids: locationIds = [],
     delivery_mode: deliveryMode = 'email'
   } = invitationData;
   const email = String(rawEmail || '').trim().toLowerCase();
-  const role = rawRole?.toLowerCase() || 'staff';
   const normalizedDeliveryMode = ['email', 'manual'].includes(deliveryMode) ? deliveryMode : 'email';
-  if (!USER_ROLES.includes(role)) {
-    throw createError(`Invalid role: ${rawRole}`, 422);
-  }
+  const workflowMode = await readCurrentWorkflowMode();
+  const assignment = resolveRoleAssignment({ role: rawRole, role_preset_key: rolePresetKey }, workflowMode);
+  const role = assignment.role;
 
   const User = dbStore.get('User');
 
@@ -940,8 +1074,10 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
   const invitationToken = generateInvitationToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-  // Get default permissions for role
-  const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[role] || [];
+  await validatePresetLocationScope({
+    preset: assignment.preset,
+    locationIds: normalizedLocationIds
+  });
 
   const tokenHash = hashInvitationToken(invitationToken);
   const inviteCore = {
@@ -949,7 +1085,8 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     email,
     password_hash: 'PENDING_INVITATION', // Placeholder, will be set on accept
     role,
-    permissions: defaultPermissions,
+    role_preset_key: assignment.rolePresetKey,
+    permissions: assignment.permissions,
     is_active: false,
     invitation_token: tokenHash,
     invitation_expires_at: expiresAt,
@@ -1054,6 +1191,8 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     user_id: newUser.user_id,
     email: newUser.email,
     role: newUser.role,
+    role_preset_key: newUser.role_preset_key || null,
+    ...serializeRolePresetMetadata(newUser, workflowMode),
     invitation_status: 'pending',
     expires_at: expiresAt,
     email_sent: delivery.emailSent,
@@ -1165,11 +1304,8 @@ export const acceptInvitation = async (token, userData) => {
   const authToken = generateToken(user, { tenantId: tokenTenantId });
   const refreshToken = generateRefreshToken(user, { tenantId: tokenTenantId });
 
-  return {
-    user_id: user.user_id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
+  const workflowMode = await readCurrentWorkflowMode();
+  return buildUserPayload(user, workflowMode, {
     permissions: user.permissions,
     is_master_admin: user.is_master_admin,
     token: authToken,
@@ -1180,7 +1316,7 @@ export const acceptInvitation = async (token, userData) => {
       name: dbStore.getStore()?.tenantName || null,
       token: dbStore.getStore()?.tenantToken || null
     }
-  };
+  });
 };
 
 /**
@@ -1200,7 +1336,7 @@ export const validateInvitationToken = async (token) => {
       ],
       invitation_status: 'pending'
     },
-    attributes: ['user_id', 'email', 'role', 'invitation_expires_at', 'invited_by']
+    attributes: ['user_id', 'email', 'role', 'role_preset_key', 'invitation_expires_at', 'invited_by']
   });
 
   if (!user) {
@@ -1230,6 +1366,8 @@ export const validateInvitationToken = async (token) => {
   return {
     email: user.email,
     role: user.role,
+    role_preset_key: user.role_preset_key || null,
+    ...serializeRolePresetMetadata(user, await readCurrentWorkflowMode()),
     expires_at: user.invitation_expires_at,
     tenantName: dbStore.getStore()?.tenantName || null,
     inviter_user_id: user.invited_by || null,
@@ -1517,7 +1655,7 @@ export const getUsersForExport = async () => {
   const User = dbStore.get('User');
 
   const users = await User.findAll({
-    attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
+    attributes: ['user_id', 'username', 'email', 'role', 'role_preset_key', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
     where: buildVisibleWhere({
       [Op.or]: [
         { invitation_status: null },
@@ -1532,6 +1670,7 @@ export const getUsersForExport = async () => {
     username: u.username,
     email: u.email,
     role: u.role,
+    role_preset_key: u.role_preset_key || '',
     is_active: u.is_active ? 'Yes' : 'No',
     permission_count: resolveEffectivePermissions(u).length,
     is_master_admin: u.is_master_admin ? 'Yes' : 'No',
@@ -1556,8 +1695,10 @@ export const importUsersFromCSV = async (userData, adminUserId) => {
   for (const row of userData) {
     try {
       // Normalize role
-      const role = (row.role || 'staff').toLowerCase().trim();
-      if (!USER_ROLES.includes(role)) {
+      const rolePresetKey = String(row.role_preset_key || row.rolePresetKey || '').trim();
+      const role = (row.role || (rolePresetKey ? '' : 'staff')).toLowerCase().trim();
+      const locationIds = parseImportedLocationIds(row.location_ids || row.locationIds || row.locations);
+      if (!rolePresetKey && !USER_ROLES.includes(role)) {
         results.errors.push({
           email: row.email,
           error: `Invalid role: ${row.role}. Must be one of: ${USER_ROLES.join(', ')}.`
@@ -1567,12 +1708,17 @@ export const importUsersFromCSV = async (userData, adminUserId) => {
 
       const result = await createUserInvitation(adminUserId, {
         email: row.email.trim(),
-        role
+        role,
+        role_preset_key: rolePresetKey || null,
+        location_ids: locationIds,
+        delivery_mode: row.delivery_mode || row.deliveryMode || undefined
       });
 
       results.invited.push({
         email: row.email,
-        role,
+        role: result.role || role,
+        role_preset_key: result.role_preset_key || rolePresetKey || null,
+        location_ids: locationIds,
         email_sent: result.email_sent,
         delivery_status: result.delivery_status,
         delivery_error: result.delivery_error || null,

@@ -285,6 +285,7 @@ export const authenticate = async (req, res, next) => {
       username: user.username,
       email: user.email,
       role: user.role,
+      role_preset_key: user.role_preset_key || null,
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
       tenant_id: contextTenantId
@@ -322,6 +323,36 @@ export const checkPermission = (requiredPermission) => {
       success: false,
       message: 'Access denied: Insufficient permissions',
       required: requiredPermission
+    });
+  };
+};
+
+export const checkAnyPermission = (requiredPermissions) => {
+  const permissions = Array.isArray(requiredPermissions)
+    ? requiredPermissions.filter(Boolean)
+    : [requiredPermissions].filter(Boolean);
+
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    if (req.user.is_master_admin) {
+      return next();
+    }
+
+    const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    if (permissions.some((permission) => userPermissions.includes(permission))) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Insufficient permissions',
+      required: permissions
     });
   };
 };

@@ -21,6 +21,7 @@ router.put('/me/password', authenticate, validateChangePassword, userController.
 
 // Admin-only user management endpoints
 router.get('/', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_USERS), userController.getAllUsers);
+router.get('/role-catalog', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_USERS), userController.getRoleCatalog);
 router.put('/:user_id/role', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserRole, userController.updateUserRole);
 router.put('/:user_id/status', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserStatus, userController.updateUserStatus);
 router.put('/:user_id/permissions', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserPermissions, userController.updateUserPermissions);

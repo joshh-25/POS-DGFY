@@ -292,7 +292,7 @@ const normalizeSkuLookupKey = (value) => {
 const loadActiveBarcodeMap = async (normalizedCodes = []) => {
     const codes = Array.from(new Set((normalizedCodes || []).filter(Boolean)));
     if (codes.length === 0) return new Map();
-    let ItemBarcode = null;
+    let ItemBarcode;
     try {
         ItemBarcode = dbStore.get('ItemBarcode');
     } catch {
@@ -318,7 +318,7 @@ const syncBarcodeAliasesForItem = async ({ itemId, aliases = [], userId = null }
     const normalizedItemId = Number.parseInt(itemId, 10);
     if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0 || aliases.length === 0) return;
 
-    let ItemBarcode = null;
+    let ItemBarcode;
     try {
         ItemBarcode = dbStore.get('ItemBarcode');
     } catch {

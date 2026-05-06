@@ -32,10 +32,18 @@ export const changePasswordSchema = Joi.object({
 
 // Schema for updating user role (admin only)
 export const updateUserRoleSchema = Joi.object({
-  role: Joi.string().valid(...USER_ROLES).required().messages({
+  role: Joi.string().valid(...USER_ROLES).optional().messages({
     'any.only': `Role must be one of: ${USER_ROLES.join(', ')}`,
     'any.required': 'Role is required'
+  }),
+  role_preset_key: Joi.string().trim().max(80).optional().messages({
+    'string.max': 'role_preset_key must not exceed 80 characters'
+  }),
+  location_ids: Joi.array().items(Joi.number().integer().positive()).optional().messages({
+    'array.base': 'location_ids must be an array'
   })
+}).or('role', 'role_preset_key').messages({
+  'object.missing': 'Either role or role_preset_key is required'
 });
 
 // Schema for updating user status (admin only)
@@ -189,9 +197,12 @@ export const inviteUserSchema = Joi.object({
     'string.email': 'Please provide a valid email address',
     'any.required': 'Email is required'
   }),
-  role: Joi.string().valid(...USER_ROLES).required().messages({
+  role: Joi.string().valid(...USER_ROLES).optional().messages({
     'any.only': `Role must be one of: ${USER_ROLES.join(', ')}`,
     'any.required': 'Role is required'
+  }),
+  role_preset_key: Joi.string().trim().max(80).optional().messages({
+    'string.max': 'role_preset_key must not exceed 80 characters'
   }),
   location_ids: Joi.array().items(Joi.number().integer().positive()).optional().default([]).messages({
     'array.base': 'location_ids must be an array'

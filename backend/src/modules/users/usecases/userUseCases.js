@@ -95,6 +95,17 @@ export const buildGetAllUsersUseCase = ({ userService }) => {
   };
 };
 
+export const buildGetRoleCatalogUseCase = ({ userService }) => {
+  return async () => {
+    try {
+      const data = await userService.getRoleCatalog();
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to retrieve role catalog'));
+    }
+  };
+};
+
 export const buildUpdateUserRoleUseCase = ({ userService }) => {
   return async ({ adminUserId, targetUserId, roleData }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);
@@ -239,12 +250,12 @@ export const buildUpdateUserLocationGrantsUseCase = ({ userService }) => {
 };
 
 export const buildInviteUserUseCase = ({ userService }) => {
-  return async ({ adminUserId, email, role, locationIds = [], deliveryMode = 'email' }) => {
+  return async ({ adminUserId, email, role, rolePresetKey = null, locationIds = [], deliveryMode = 'email' }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);
-    if (!normalizedAdminUserId || !email || !role) {
+    if (!normalizedAdminUserId || !email) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'adminUserId, email, and role are required',
+        'adminUserId and email are required',
         { statusCode: 400 }
       ));
     }
@@ -253,6 +264,7 @@ export const buildInviteUserUseCase = ({ userService }) => {
       const data = await userService.createUserInvitation(normalizedAdminUserId, {
         email,
         role,
+        role_preset_key: rolePresetKey,
         location_ids: locationIds,
         delivery_mode: deliveryMode
       });
