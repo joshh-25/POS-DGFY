@@ -9,7 +9,27 @@ import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
 import { listTenantLocations } from '../../src/services/tenantLocationService.js';
 
-export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
+const LEGACY_ROLE_DESCRIPTIONS = {
+    admin: 'Full tenant administration and user management access.',
+    manager: 'Broad operational access across inventory and order workflows.',
+    po: 'Purchase-order focused role (PO lifecycle and receiving operations).',
+    do: 'Dispatch-order focused role (dispatch execution and fulfillment).',
+    jo: 'Job-order focused role (production planning and completion).',
+    cashier: 'POS-focused role for checkout, receipts, and daily closeout tasks.',
+    staff: 'Limited operational access with minimal write permissions.'
+};
+
+const LEGACY_ROLE_OPTIONS = [
+    { key: 'staff', label: 'Staff', role: 'staff', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.staff },
+    { key: 'cashier', label: 'Cashier', role: 'cashier', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.cashier },
+    { key: 'po', label: 'PO Officer', role: 'po', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.po },
+    { key: 'do', label: 'DO Officer', role: 'do', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.do },
+    { key: 'jo', label: 'JO Officer', role: 'jo', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.jo },
+    { key: 'manager', label: 'Manager', role: 'manager', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.manager },
+    { key: 'admin', label: 'Admin', role: 'admin', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.admin }
+];
+
+export default function UserInvitationModal({ open, onOpenChange, onSuccess, roleCatalog = null }) {
     const [email, setEmail] = useState('');
     const [role, setRole] = useState('staff');
     const [loading, setLoading] = useState(false);
@@ -18,21 +38,29 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
     const [manualLink, setManualLink] = useState('');
     const [deliveryMode, setDeliveryMode] = useState('email');
 
-    const roleDescriptions = {
-        admin: 'Full tenant administration and user management access.',
-        manager: 'Broad operational access across inventory and order workflows.',
-        po: 'Purchase-order focused role (PO lifecycle and receiving operations).',
-        do: 'Dispatch-order focused role (dispatch execution and fulfillment).',
-        jo: 'Job-order focused role (production planning and completion).',
-        cashier: 'POS-focused role for checkout, receipts, and daily closeout tasks.',
-        staff: 'Limited operational access with minimal write permissions.'
-    };
-    const operationalRoles = new Set(['staff', 'cashier', 'po', 'do', 'jo']);
+    const roleOptions = useMemo(() => {
+        const presets = Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : [];
+        if (presets.length === 0) return LEGACY_ROLE_OPTIONS;
+        return presets.map((preset) => ({
+            key: preset.key,
+            label: preset.label,
+            role: preset.role,
+            location_scope: preset.location_scope,
+            description: `${preset.label} uses ${preset.role} compatibility and grants ${preset.permissions?.length || 0} default permissions.`,
+            rolePresetKey: preset.key
+        }));
+    }, [roleCatalog]);
+    const selectedRoleOption = roleOptions.find((option) => option.key === role) || roleOptions[0] || LEGACY_ROLE_OPTIONS[0];
+    const requiresAssignedLocation = selectedRoleOption?.location_scope === 'assigned';
     const activeLocations = useMemo(() => locations.filter((location) => location.is_active !== false), [locations]);
 
     useEffect(() => {
         if (!open) return;
         setManualLink('');
+        const firstAssignableRole = roleOptions.find((option) => option.role !== 'admin') || roleOptions[0];
+        if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
+            setRole(firstAssignableRole.key);
+        }
         listTenantLocations({ include_inactive: false })
             .then((rows) => {
                 const normalized = Array.isArray(rows) ? rows : [];
@@ -42,17 +70,17 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
                 }
             })
             .catch(() => setLocations([]));
-    }, [open]);
+    }, [open, roleOptions, role]);
 
     useEffect(() => {
         if (activeLocations.length === 1) {
             setSelectedLocationIds([Number(activeLocations[0].location_id)]);
-        } else if (['admin', 'manager'].includes(role)) {
+        } else if (selectedRoleOption?.location_scope === 'tenant') {
             setSelectedLocationIds(activeLocations.map((location) => Number(location.location_id)));
         } else {
             setSelectedLocationIds([]);
         }
-    }, [role, activeLocations]);
+    }, [selectedRoleOption, activeLocations]);
 
     const toggleLocation = (locationId) => {
         setSelectedLocationIds((previous) => (
@@ -82,14 +110,15 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
             return;
         }
 
-        if (operationalRoles.has(role) && activeLocations.length > 1 && selectedLocationIds.length === 0) {
+        if (requiresAssignedLocation && activeLocations.length > 1 && selectedLocationIds.length === 0) {
             toast.error('Select at least one location for this role');
             return;
         }
 
         setLoading(true);
         try {
-            const result = await userService.inviteUser(email, role, {
+            const result = await userService.inviteUser(email, selectedRoleOption.role, {
+                rolePresetKey: selectedRoleOption.rolePresetKey || null,
                 locationIds: selectedLocationIds,
                 deliveryMode
             });
@@ -107,7 +136,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
 
             // Reset form
             setEmail('');
-            setRole('staff');
+            setRole((roleOptions.find((option) => option.role !== 'admin') || roleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
             setSelectedLocationIds(activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : []);
 
             // Refresh parent list
@@ -172,17 +201,15 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess }) {
                                 <SelectValue placeholder="Select a role" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="staff">Staff</SelectItem>
-                                <SelectItem value="cashier">Cashier</SelectItem>
-                                <SelectItem value="po">PO Officer</SelectItem>
-                                <SelectItem value="do">DO Officer</SelectItem>
-                                <SelectItem value="jo">JO Officer</SelectItem>
-                                <SelectItem value="manager">Manager</SelectItem>
-                                <SelectItem value="admin">Admin</SelectItem>
+                                {roleOptions.map((option) => (
+                                    <SelectItem key={option.key} value={option.key}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-slate-500">
-                            {roleDescriptions[role]}
+                            {selectedRoleOption?.description}
                         </p>
                     </div>
 

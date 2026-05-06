@@ -12,7 +12,8 @@ export default function PermissionMatrix({
     permissions = [],
     isMasterAdmin = false,
     onChange,
-    onMasterAdminChange
+    onMasterAdminChange,
+    permissionGroups = PERMISSION_GROUPS
 }) {
     // Track which accordions are open (all collapsed by default)
     const [openCategories, setOpenCategories] = useState({});
@@ -25,6 +26,23 @@ export default function PermissionMatrix({
     };
 
     const hasPermission = (perm) => permissions.includes(perm);
+    const normalizedPermissionGroups = Array.isArray(permissionGroups)
+        ? permissionGroups.reduce((acc, group) => ({
+            ...acc,
+            [group.key]: {
+                label: group.label,
+                permissions: group.permissions || {}
+            }
+        }), {})
+        : permissionGroups;
+
+    const visiblePermissions = new Set(
+        Object.values(normalizedPermissionGroups).flatMap(group =>
+            Object.values(group.permissions || {})
+        )
+    );
+
+    const hiddenPermissionCount = permissions.filter((perm) => !visiblePermissions.has(perm)).length;
 
     const togglePermission = (perm) => {
         if (hasPermission(perm)) {
@@ -35,7 +53,7 @@ export default function PermissionMatrix({
     };
 
     const selectAllInCategory = (groupKey) => {
-        const group = PERMISSION_GROUPS[groupKey];
+        const group = normalizedPermissionGroups[groupKey];
         const groupPerms = Object.values(group.permissions);
         const allSelected = groupPerms.every(p => permissions.includes(p));
 
@@ -50,17 +68,17 @@ export default function PermissionMatrix({
     };
 
     const grantAllPermissions = () => {
-        const allPerms = Object.values(PERMISSION_GROUPS).flatMap(group =>
+        const allPerms = Object.values(normalizedPermissionGroups).flatMap(group =>
             Object.values(group.permissions)
         );
-        onChange(allPerms);
+        onChange([...new Set([...permissions.filter((perm) => !visiblePermissions.has(perm)), ...allPerms])]);
     };
 
     const revokeAllPermissions = () => {
-        onChange([]);
+        onChange(permissions.filter((perm) => !visiblePermissions.has(perm)));
     };
 
-    const groupKeys = Object.keys(PERMISSION_GROUPS);
+    const groupKeys = Object.keys(normalizedPermissionGroups);
     // Pair groups into rows of 2
     const rows = [];
     for (let i = 0; i < groupKeys.length; i += 2) {
@@ -107,13 +125,18 @@ export default function PermissionMatrix({
                     Revoke All
                 </Button>
             </div>
+            {hiddenPermissionCount > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    {hiddenPermissionCount} legacy or hidden permission{hiddenPermissionCount !== 1 ? 's are' : ' is'} preserved outside the active mode view.
+                </div>
+            )}
 
             {/* Accordion Grid */}
             <div className={`space-y-3 ${isMasterAdmin ? 'opacity-50 pointer-events-none' : ''}`}>
                 {rows.map((rowKeys, rowIndex) => (
                     <div key={rowIndex} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {rowKeys.map((groupKey) => {
-                            const group = PERMISSION_GROUPS[groupKey];
+                            const group = normalizedPermissionGroups[groupKey];
                             const groupPerms = Object.values(group.permissions);
                             const selectedCount = groupPerms.filter(p => permissions.includes(p)).length;
                             const isOpen = openCategories[groupKey];

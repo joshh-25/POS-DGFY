@@ -13,13 +13,24 @@ export default function PermissionPickerModal({
     onClose,
     onSelect,
     title = "Select Permissions",
-    mode = "grant" // "grant" or "revoke"
+    mode = "grant", // "grant" or "revoke"
+    permissionGroups = PERMISSION_GROUPS
 }) {
     const [search, setSearch] = useState('');
     const [selectedPermissions, setSelectedPermissions] = useState([]);
     const [openCategories, setOpenCategories] = useState({});
 
     if (!open) return null;
+
+    const normalizedPermissionGroups = Array.isArray(permissionGroups)
+        ? permissionGroups.reduce((acc, group) => ({
+            ...acc,
+            [group.key]: {
+                label: group.label,
+                permissions: group.permissions || {}
+            }
+        }), {})
+        : permissionGroups;
 
     const toggleCategory = (key) => {
         setOpenCategories(prev => ({
@@ -37,7 +48,7 @@ export default function PermissionPickerModal({
     };
 
     const selectAllInCategory = (groupKey) => {
-        const group = PERMISSION_GROUPS[groupKey];
+        const group = normalizedPermissionGroups[groupKey];
         const groupPerms = Object.values(group.permissions);
         const allSelected = groupPerms.every(p => selectedPermissions.includes(p));
 
@@ -77,7 +88,7 @@ export default function PermissionPickerModal({
     };
 
     // Group permissions in rows of 2
-    const groupKeys = Object.keys(PERMISSION_GROUPS);
+    const groupKeys = Object.keys(normalizedPermissionGroups);
     const rows = [];
     for (let i = 0; i < groupKeys.length; i += 2) {
         rows.push(groupKeys.slice(i, i + 2));
@@ -137,7 +148,7 @@ export default function PermissionPickerModal({
                         {rows.map((rowKeys, rowIndex) => (
                             <div key={rowIndex} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {rowKeys.map((groupKey) => {
-                                    const group = PERMISSION_GROUPS[groupKey];
+                                    const group = normalizedPermissionGroups[groupKey];
                                     const permissions = Object.entries(group.permissions);
                                     const filteredPerms = permissions.filter(([permKey, permValue]) =>
                                         matchesSearch(permKey, permValue, group.label)

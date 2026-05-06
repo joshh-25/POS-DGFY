@@ -46,13 +46,23 @@ export const getAllUsers = async (params = {}) => {
 };
 
 /**
+ * Get the active tenant role catalog for the current workflow mode.
+ * @returns {Promise<Object>} Role presets and visible permission groups
+ */
+export const getRoleCatalog = async () => {
+  const response = await api.get('/users/role-catalog');
+  return response.data.data;
+};
+
+/**
  * Update user role (admin only)
  * @param {number} userId - Target user ID
- * @param {string} role - New role ('admin', 'manager', 'staff')
+ * @param {string|Object} role - Legacy role string or role assignment payload
  * @returns {Promise<Object>} Updated user data
  */
 export const updateUserRole = async (userId, role) => {
-  const response = await api.put(`/users/${userId}/role`, { role });
+  const payload = role && typeof role === 'object' ? role : { role };
+  const response = await api.put(`/users/${userId}/role`, payload);
   return response.data.data;
 };
 
@@ -84,12 +94,14 @@ export const removeUserFromCompany = async (userId) => {
  * @returns {Promise<Object>} Invitation result
  */
 export const inviteUser = async (email, role, options = {}) => {
-  const response = await api.post('/users/invite', {
+  const payload = {
     email,
-    role,
+    role: role || undefined,
+    role_preset_key: options.rolePresetKey || undefined,
     location_ids: options.locationIds || [],
     delivery_mode: options.deliveryMode || 'email'
-  });
+  };
+  const response = await api.post('/users/invite', payload);
   return response.data.data;
 };
 

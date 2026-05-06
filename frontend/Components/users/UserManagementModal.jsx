@@ -9,6 +9,7 @@ import PermissionMatrix from './PermissionMatrix';
 import UserAvatar from './UserAvatar';
 import UserInvitationModal from './UserInvitationModal';
 import PermissionPickerModal from './PermissionPickerModal';
+import { listTenantLocations } from '../../src/services/tenantLocationService.js';
 import {
   Shield,
   Search,
@@ -23,7 +24,8 @@ import {
   MapPin,
   Send,
   Copy,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -55,6 +57,24 @@ const DELIVERY_STATUS_LABELS = {
 
 const isInvitationRow = (user) => INVITATION_STATUSES.has(String(user?.invitation_status || '').toLowerCase());
 const isPendingInvitation = (user) => String(user?.invitation_status || '').toLowerCase() === 'pending';
+const parsePermissions = (permissions) => {
+  if (Array.isArray(permissions)) return permissions;
+  if (typeof permissions === 'string') {
+    try {
+      const parsed = JSON.parse(permissions);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+const parseLocationIds = (locationIds) => (
+  Array.isArray(locationIds)
+    ? locationIds.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0)
+    : []
+);
+const getErrorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
 
 // Permission templates for bulk operations
 const PERMISSION_TEMPLATES = {
@@ -112,6 +132,15 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const [selectedLocationGrantIds, setSelectedLocationGrantIds] = useState([]);
   const [loadingLocationGrants, setLoadingLocationGrants] = useState(false);
   const [savingLocationGrants, setSavingLocationGrants] = useState(false);
+  const [roleCatalog, setRoleCatalog] = useState(null);
+  const [roleCatalogError, setRoleCatalogError] = useState('');
+  const [pendingRoleAssignment, setPendingRoleAssignment] = useState(null);
+  const [pendingBulkRoleAssignment, setPendingBulkRoleAssignment] = useState(null);
+  const [showBulkRoleScopeModal, setShowBulkRoleScopeModal] = useState(false);
+  const [bulkLocationRows, setBulkLocationRows] = useState([]);
+  const [selectedBulkLocationIds, setSelectedBulkLocationIds] = useState([]);
+  const [loadingBulkRoleScope, setLoadingBulkRoleScope] = useState(false);
+  const [savingBulkRoleScope, setSavingBulkRoleScope] = useState(false);
 
   // New features state
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,6 +156,50 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   // Get current user from store
   const currentUser = useStore((state) => state.currentUser);
+  const rolePresets = useMemo(() => (
+    Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : []
+  ), [roleCatalog]);
+  const visiblePermissionGroups = Array.isArray(roleCatalog?.permission_groups) && roleCatalog.permission_groups.length > 0
+    ? roleCatalog.permission_groups
+    : undefined;
+  const permissionTemplates = useMemo(() => {
+    if (rolePresets.length > 0) {
+      return rolePresets
+        .filter((preset) => preset.role !== 'admin')
+        .map((preset) => ({
+          key: preset.key,
+          label: preset.label,
+          rolePresetKey: preset.key,
+          role: preset.role,
+          locationScope: preset.location_scope,
+          permissions: preset.permissions || []
+        }));
+    }
+
+    return Object.entries(PERMISSION_TEMPLATES).map(([key, template]) => ({
+      key,
+      label: template.label,
+      permissions: template.permissions
+    }));
+  }, [rolePresets]);
+
+  const getRoleDisplay = (user) => user?.role_preset_label || ROLE_LABELS[user?.role] || user?.role || 'Role';
+  const getRoleSelectValue = (user) => (
+    user?.role_preset_key ? `preset:${user.role_preset_key}` : `legacy:${user?.role || 'staff'}`
+  );
+  const resetLocationGrantState = () => {
+    setShowLocationGrantsModal(false);
+    setLocationGrantUser(null);
+    setLocationGrantRows([]);
+    setSelectedLocationGrantIds([]);
+    setPendingRoleAssignment(null);
+  };
+  const resetBulkRoleScopeState = () => {
+    setShowBulkRoleScopeModal(false);
+    setPendingBulkRoleAssignment(null);
+    setBulkLocationRows([]);
+    setSelectedBulkLocationIds([]);
+  };
 
   // Check if current user can remove target user (hierarchical access control)
   const canRemoveUser = (targetUser) => {
@@ -172,8 +245,16 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const data = await userService.getAllUsers({ include_invitations: true });
+      const [data, catalog] = await Promise.all([
+        userService.getAllUsers({ include_invitations: true }),
+        userService.getRoleCatalog().catch((error) => {
+          setRoleCatalogError(getErrorMessage(error, 'Mode-aware role catalog unavailable; legacy roles are shown.'));
+          return null;
+        })
+      ]);
       setUsers(data);
+      setRoleCatalog(catalog);
+      if (catalog) setRoleCatalogError('');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load users');
     } finally {
@@ -201,13 +282,11 @@ export default function UserManagementModal({ open, onOpenChange }) {
         if (!user.is_active || isInvitationRow(user)) return false;
 
         // Apply role filter
-        if (filter === 'admin') matchesFilter = user.role === 'admin';
-        else if (filter === 'manager') matchesFilter = user.role === 'manager';
-        else if (filter === 'cashier') matchesFilter = user.role === 'cashier';
-        else if (filter === 'po') matchesFilter = user.role === 'po';
-        else if (filter === 'do') matchesFilter = user.role === 'do';
-        else if (filter === 'jo') matchesFilter = user.role === 'jo';
-        else if (filter === 'staff') matchesFilter = user.role === 'staff';
+        if (filter.startsWith('preset:')) {
+          matchesFilter = user.role_preset_key === filter.slice('preset:'.length);
+        } else if (filter.startsWith('legacy:')) {
+          matchesFilter = !user.role_preset_key && user.role === filter.slice('legacy:'.length);
+        }
         // 'all' filter shows all active users (no additional filter needed)
       }
 
@@ -215,26 +294,75 @@ export default function UserManagementModal({ open, onOpenChange }) {
     });
   }, [users, searchQuery, filter]);
 
-  const handleRoleChange = async (userId, newRole) => {
+  const handleRoleChange = async (userId, selectionValue) => {
     try {
-      const updatedUser = await userService.updateUserRole(userId, newRole);
+      const user = users.find((entry) => entry.user_id === userId);
+      const isPresetSelection = selectionValue.startsWith('preset:');
+      const presetKey = isPresetSelection ? selectionValue.slice('preset:'.length) : '';
+      const preset = isPresetSelection
+        ? rolePresets.find((entry) => entry.key === presetKey)
+        : null;
+      const payload = isPresetSelection
+        ? { role_preset_key: presetKey }
+        : { role: selectionValue.replace(/^legacy:/, '') };
+
+      if (preset?.location_scope === 'assigned') {
+        setLocationGrantUser(user || { user_id: userId, username: 'User' });
+        setPendingRoleAssignment({
+          label: preset.label,
+          payload
+        });
+        setShowLocationGrantsModal(true);
+        setLoadingLocationGrants(true);
+        try {
+          const data = await userService.getUserLocationGrants(userId);
+          const rows = Array.isArray(data?.locations) ? data.locations : [];
+          const grantedIds = parseLocationIds(data?.granted_location_ids);
+          setLocationGrantRows(rows);
+          setSelectedLocationGrantIds(grantedIds);
+          if (rows.length <= 1) {
+            const singleLocationIds = rows.map((row) => Number(row.location_id)).filter((id) => Number.isInteger(id) && id > 0);
+            const updatedUser = await userService.updateUserRole(userId, {
+              ...payload,
+              location_ids: singleLocationIds.length > 0 ? singleLocationIds : grantedIds
+            });
+            toast.success('User role updated successfully');
+            resetLocationGrantState();
+            if (selectedUser && selectedUser.user_id === userId) {
+              setSelectedUser(prev => ({
+                ...prev,
+                role: updatedUser.role,
+                role_preset_key: updatedUser.role_preset_key || null,
+                role_preset_label: updatedUser.role_preset_label,
+                role_preset_status: updatedUser.role_preset_status,
+                permissions: parsePermissions(updatedUser.permissions),
+                is_master_admin: updatedUser.is_master_admin
+              }));
+            }
+            fetchUsers();
+          }
+        } catch (error) {
+          toast.error(getErrorMessage(error, 'Failed to prepare role assignment scope'));
+          resetLocationGrantState();
+        } finally {
+          setLoadingLocationGrants(false);
+        }
+        return;
+      }
+
+      const updatedUser = await userService.updateUserRole(userId, payload);
       toast.success('User role updated successfully');
 
       // If the Permission Matrix is open for this user, update selectedUser with new permissions
       if (selectedUser && selectedUser.user_id === userId) {
-        // Parse permissions if it's a string (backend may return JSON string)
-        let permissions = updatedUser.permissions || [];
-        if (typeof permissions === 'string') {
-          try {
-            permissions = JSON.parse(permissions);
-          } catch (e) {
-            permissions = [];
-          }
-        }
+        const permissions = parsePermissions(updatedUser.permissions);
 
         setSelectedUser(prev => ({
           ...prev,
           role: updatedUser.role,
+          role_preset_key: updatedUser.role_preset_key || null,
+          role_preset_label: updatedUser.role_preset_label,
+          role_preset_status: updatedUser.role_preset_status,
           permissions: permissions,
           is_master_admin: updatedUser.is_master_admin
         }));
@@ -242,7 +370,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
       fetchUsers();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update role');
+      toast.error(getErrorMessage(error, 'Failed to update role'));
     }
   };
 
@@ -302,23 +430,9 @@ export default function UserManagementModal({ open, onOpenChange }) {
   };
 
   const openPermissionMatrix = (user) => {
-    // Ensure permissions is always an array when opening the matrix
-    // Handle case where permissions might be a JSON string from the backend
-    let permissions = user.permissions || [];
-    if (typeof permissions === 'string') {
-      try {
-        permissions = JSON.parse(permissions);
-      } catch (e) {
-        permissions = [];
-      }
-    }
-    if (!Array.isArray(permissions)) {
-      permissions = [];
-    }
-
     setSelectedUser({
       ...user,
-      permissions: permissions
+      permissions: parsePermissions(user.permissions)
     });
     setShowPermissionMatrix(true);
   };
@@ -346,22 +460,18 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   const openLocationGrantEditor = async (user) => {
     setLocationGrantUser(user);
+    setPendingRoleAssignment(null);
     setShowLocationGrantsModal(true);
     setLoadingLocationGrants(true);
     try {
       const data = await userService.getUserLocationGrants(user.user_id);
       const rows = Array.isArray(data?.locations) ? data.locations : [];
-      const grantedIds = Array.isArray(data?.granted_location_ids)
-        ? data.granted_location_ids.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0)
-        : [];
+      const grantedIds = parseLocationIds(data?.granted_location_ids);
       setLocationGrantRows(rows);
       setSelectedLocationGrantIds(grantedIds);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load location grants');
-      setShowLocationGrantsModal(false);
-      setLocationGrantUser(null);
-      setLocationGrantRows([]);
-      setSelectedLocationGrantIds([]);
+      resetLocationGrantState();
     } finally {
       setLoadingLocationGrants(false);
     }
@@ -384,17 +494,37 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   const handleSaveLocationGrants = async () => {
     if (!locationGrantUser) return;
+    if (pendingRoleAssignment && locationGrantRows.length > 1 && selectedLocationGrantIds.length === 0) {
+      toast.error('Select at least one location for this assigned-scope role.');
+      return;
+    }
     setSavingLocationGrants(true);
     try {
-      await userService.updateUserLocationGrants(locationGrantUser.user_id, selectedLocationGrantIds);
-      toast.success('Location grants updated successfully');
-      setShowLocationGrantsModal(false);
-      setLocationGrantUser(null);
-      setLocationGrantRows([]);
-      setSelectedLocationGrantIds([]);
+      if (pendingRoleAssignment) {
+        const updatedUser = await userService.updateUserRole(locationGrantUser.user_id, {
+          ...pendingRoleAssignment.payload,
+          location_ids: selectedLocationGrantIds
+        });
+        if (selectedUser && selectedUser.user_id === locationGrantUser.user_id) {
+          setSelectedUser(prev => ({
+            ...prev,
+            role: updatedUser.role,
+            role_preset_key: updatedUser.role_preset_key || null,
+            role_preset_label: updatedUser.role_preset_label,
+            role_preset_status: updatedUser.role_preset_status,
+            permissions: parsePermissions(updatedUser.permissions),
+            is_master_admin: updatedUser.is_master_admin
+          }));
+        }
+        toast.success('Role and location scope updated successfully');
+      } else {
+        await userService.updateUserLocationGrants(locationGrantUser.user_id, selectedLocationGrantIds);
+        toast.success('Location grants updated successfully');
+      }
+      resetLocationGrantState();
       fetchUsers();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update location grants');
+      toast.error(getErrorMessage(error, pendingRoleAssignment ? 'Failed to update role and location scope' : 'Failed to update location grants'));
     } finally {
       setSavingLocationGrants(false);
     }
@@ -432,24 +562,93 @@ export default function UserManagementModal({ open, onOpenChange }) {
 
   // Bulk actions
   const applyBulkTemplate = async (templateKey) => {
-    const template = PERMISSION_TEMPLATES[templateKey];
+    const template = permissionTemplates.find((entry) => entry.key === templateKey);
     if (!template) return;
+    if (template.rolePresetKey && template.locationScope === 'assigned') {
+      setPendingBulkRoleAssignment(template);
+      setShowBulkRoleScopeModal(true);
+      setShowBulkMenu(false);
+      setLoadingBulkRoleScope(true);
+      try {
+        const rows = await listTenantLocations({ include_inactive: false });
+        const activeRows = Array.isArray(rows) ? rows.filter((row) => row.is_active !== false) : [];
+        setBulkLocationRows(activeRows);
+        setSelectedBulkLocationIds(activeRows.length === 1 ? [Number(activeRows[0].location_id)] : []);
+      } catch (error) {
+        toast.error(getErrorMessage(error, 'Failed to load locations for bulk role assignment'));
+        resetBulkRoleScopeState();
+      } finally {
+        setLoadingBulkRoleScope(false);
+      }
+      return;
+    }
 
     try {
-      await Promise.all(
-        selectedUserIds.map(userId =>
-          api.put(`/users/${userId}/permissions`, {
-            permissions: template.permissions,
-            is_master_admin: false
-          })
-        )
-      );
+      if (template.rolePresetKey) {
+        await Promise.all(
+          selectedUserIds.map(userId =>
+            userService.updateUserRole(userId, { role_preset_key: template.rolePresetKey })
+          )
+        );
+      } else {
+        await Promise.all(
+          selectedUserIds.map(userId =>
+            api.put(`/users/${userId}/permissions`, {
+              permissions: template.permissions,
+              is_master_admin: false
+            })
+          )
+        );
+      }
       toast.success(`Applied "${template.label}" template to ${selectedUserIds.length} users`);
       setSelectedUserIds([]);
       setShowBulkMenu(false);
       fetchUsers();
     } catch (error) {
-      toast.error('Failed to apply template to some users');
+      toast.error(getErrorMessage(error, 'Failed to apply template to some users'));
+    }
+  };
+
+  const toggleBulkLocation = (locationId) => {
+    setSelectedBulkLocationIds((previous) => (
+      previous.includes(locationId)
+        ? previous.filter((id) => id !== locationId)
+        : [...previous, locationId]
+    ));
+  };
+
+  const toggleAllBulkLocations = () => {
+    const allLocationIds = bulkLocationRows.map((row) => Number(row.location_id)).filter((id) => Number.isInteger(id) && id > 0);
+    const allSelected = allLocationIds.length > 0
+      && allLocationIds.every((id) => selectedBulkLocationIds.includes(id));
+    setSelectedBulkLocationIds(allSelected ? [] : allLocationIds);
+  };
+
+  const handleSaveBulkRoleScope = async () => {
+    if (!pendingBulkRoleAssignment) return;
+    if (bulkLocationRows.length > 1 && selectedBulkLocationIds.length === 0) {
+      toast.error('Select at least one location for this assigned-scope role.');
+      return;
+    }
+
+    setSavingBulkRoleScope(true);
+    try {
+      await Promise.all(
+        selectedUserIds.map(userId =>
+          userService.updateUserRole(userId, {
+            role_preset_key: pendingBulkRoleAssignment.rolePresetKey,
+            location_ids: selectedBulkLocationIds
+          })
+        )
+      );
+      toast.success(`Applied "${pendingBulkRoleAssignment.label}" to ${selectedUserIds.length} users`);
+      setSelectedUserIds([]);
+      resetBulkRoleScopeState();
+      fetchUsers();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to apply role and location scope to selected users'));
+    } finally {
+      setSavingBulkRoleScope(false);
     }
   };
 
@@ -462,7 +661,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
           const user = users.find(u => u.user_id === userId);
           if (!user) return;
 
-          let newPermissions = [...(user.permissions || [])];
+          let newPermissions = parsePermissions(user.permissions);
           if (mode === 'grant') {
             // Add all selected permissions that aren't already present
             permissionsToChange.forEach(perm => {
@@ -513,18 +712,32 @@ export default function UserManagementModal({ open, onOpenChange }) {
     });
   };
 
-  const FILTER_OPTIONS = [
-    { key: 'all', label: 'All', icon: Users2 },
-    { key: 'invitations', label: 'Invitations', icon: UserPlus },
-    { key: 'admin', label: 'Admins', icon: Shield },
-    { key: 'manager', label: 'Managers', icon: UserCheck },
-    { key: 'cashier', label: 'Cashiers', icon: UserCheck },
-    { key: 'po', label: 'PO', icon: UserCheck },
-    { key: 'do', label: 'DO', icon: UserCheck },
-    { key: 'jo', label: 'JO', icon: UserCheck },
-    { key: 'staff', label: 'Staff', icon: UserCheck },
-    { key: 'inactive', label: 'Inactive', icon: UserX },
-  ];
+  const FILTER_OPTIONS = useMemo(() => {
+    const modeRoleFilters = rolePresets.map((preset) => ({
+      key: `preset:${preset.key}`,
+      label: preset.label,
+      icon: preset.role === 'admin' ? Shield : UserCheck
+    }));
+    const legacyRoleFilters = rolePresets.length === 0
+      ? [
+          { key: 'legacy:admin', label: 'Admins', icon: Shield },
+          { key: 'legacy:manager', label: 'Managers', icon: UserCheck },
+          { key: 'legacy:cashier', label: 'Cashiers', icon: UserCheck },
+          { key: 'legacy:po', label: 'PO', icon: UserCheck },
+          { key: 'legacy:do', label: 'DO', icon: UserCheck },
+          { key: 'legacy:jo', label: 'JO', icon: UserCheck },
+          { key: 'legacy:staff', label: 'Staff', icon: UserCheck }
+        ]
+      : [];
+
+    return [
+      { key: 'all', label: 'All', icon: Users2 },
+      { key: 'invitations', label: 'Invitations', icon: UserPlus },
+      ...modeRoleFilters,
+      ...legacyRoleFilters,
+      { key: 'inactive', label: 'Inactive', icon: UserX }
+    ];
+  }, [rolePresets]);
 
   return (
     <>
@@ -546,6 +759,12 @@ export default function UserManagementModal({ open, onOpenChange }) {
                 </Button>
               </div>
             </DialogHeader>
+            {roleCatalogError && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{roleCatalogError}</span>
+              </div>
+            )}
 
             {/* Search and Actions Row */}
             <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -578,10 +797,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
                       <p className="px-3 py-1 text-xs text-slate-500 uppercase font-semibold">
                         Apply Template
                       </p>
-                      {Object.entries(PERMISSION_TEMPLATES).map(([key, template]) => (
+                      {permissionTemplates.map((template) => (
                         <button
-                          key={key}
-                          onClick={() => applyBulkTemplate(key)}
+                          key={template.key}
+                          onClick={() => applyBulkTemplate(template.key)}
                           className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
                         >
                           {template.label}
@@ -663,7 +882,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                     className="w-4 h-4 rounded border-slate-300 text-teal-600"
                   />
                   <span className="flex-1">Select All ({filteredUsers.length})</span>
-                  <span className="w-24">Role</span>
+                  <span className="w-40">Role</span>
                   <span className="w-24">Access</span>
                   <span className="w-28">Locations</span>
                   <span className="w-20 text-center">Status</span>
@@ -714,11 +933,11 @@ export default function UserManagementModal({ open, onOpenChange }) {
                     </div>
 
                     {/* Role Dropdown */}
-                    <div className="w-24">
+                    <div className="w-40">
                       {isInvitationRow(user) ? (
                         <div className="space-y-1">
                           <span className="block truncate text-sm font-medium text-slate-700">
-                            {ROLE_LABELS[user.role] || user.role}
+                            {getRoleDisplay(user)}
                           </span>
                           <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                             {INVITATION_STATUS_LABELS[user.invitation_status] || user.invitation_status}
@@ -726,18 +945,33 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         </div>
                       ) : (
                       <select
-                        value={user.role}
+                        value={getRoleSelectValue(user)}
                         onChange={(e) => handleRoleChange(user.user_id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                         className="w-full px-2 py-1 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       >
-                        <option value="staff">Staff</option>
-                        <option value="cashier">Cashier</option>
-                        <option value="po">PO Officer</option>
-                        <option value="do">DO Officer</option>
-                        <option value="jo">JO Officer</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Admin</option>
+                        {user.role_preset_key && !rolePresets.some((preset) => preset.key === user.role_preset_key) && (
+                          <option value={`preset:${user.role_preset_key}`} disabled>
+                            {getRoleDisplay(user)}
+                          </option>
+                        )}
+                        {rolePresets.length > 0 ? (
+                          rolePresets.map((preset) => (
+                            <option key={preset.key} value={`preset:${preset.key}`}>
+                              {preset.label}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="legacy:staff">Staff</option>
+                            <option value="legacy:cashier">Cashier</option>
+                            <option value="legacy:po">PO Officer</option>
+                            <option value="legacy:do">DO Officer</option>
+                            <option value="legacy:jo">JO Officer</option>
+                            <option value="legacy:manager">Manager</option>
+                            <option value="legacy:admin">Admin</option>
+                          </>
+                        )}
                       </select>
                       )}
                     </div>
@@ -865,6 +1099,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
         open={showInviteModal}
         onOpenChange={setShowInviteModal}
         onSuccess={fetchUsers}
+        roleCatalog={roleCatalog}
       />
 
       {/* Permission Matrix Dialog */}
@@ -880,6 +1115,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
             <PermissionMatrix
               permissions={selectedUser.permissions || []}
               isMasterAdmin={selectedUser.is_master_admin}
+              permissionGroups={visiblePermissionGroups}
               onChange={(newPerms) => {
                 setSelectedUser(prev => ({ ...prev, permissions: newPerms }));
               }}
@@ -914,9 +1150,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
           if (savingLocationGrants) return;
           setShowLocationGrantsModal(isOpen);
           if (!isOpen) {
-            setLocationGrantUser(null);
-            setLocationGrantRows([]);
-            setSelectedLocationGrantIds([]);
+            resetLocationGrantState();
           }
         }}
       >
@@ -924,7 +1158,9 @@ export default function UserManagementModal({ open, onOpenChange }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MapPin className="w-5 h-5 text-teal-600" />
-              Location Scope: {locationGrantUser?.username || 'User'}
+              {pendingRoleAssignment
+                ? `Assign ${pendingRoleAssignment.label}: ${locationGrantUser?.username || 'User'}`
+                : `Location Scope: ${locationGrantUser?.username || 'User'}`}
             </DialogTitle>
           </DialogHeader>
 
@@ -934,7 +1170,9 @@ export default function UserManagementModal({ open, onOpenChange }) {
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs text-slate-600">
-                  Location grants define where this user can execute stock-affecting actions when multi-location inventory is enabled.
+                  {pendingRoleAssignment
+                    ? 'This role requires an assigned location scope. The role preset and location grants will be saved together.'
+                    : 'Location grants define where this user can execute stock-affecting actions when multi-location inventory is enabled.'}
                 </div>
                 <Button variant="outline" size="sm" onClick={toggleAllLocationGrants}>
                   {locationGrantRows.length > 0 && locationGrantRows.every((row) => selectedLocationGrantIds.includes(Number(row.location_id)))
@@ -981,10 +1219,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
             <Button
               variant="outline"
               onClick={() => {
-                setShowLocationGrantsModal(false);
-                setLocationGrantUser(null);
-                setLocationGrantRows([]);
-                setSelectedLocationGrantIds([]);
+                resetLocationGrantState();
               }}
               disabled={savingLocationGrants}
             >
@@ -995,7 +1230,98 @@ export default function UserManagementModal({ open, onOpenChange }) {
               disabled={savingLocationGrants || loadingLocationGrants}
               className="bg-teal-600 hover:bg-teal-700"
             >
-              {savingLocationGrants ? 'Saving...' : 'Save Location Scope'}
+              {savingLocationGrants
+                ? 'Saving...'
+                : pendingRoleAssignment
+                  ? 'Assign Role'
+                  : 'Save Location Scope'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assigned-Scope Role Dialog */}
+      <Dialog
+        open={showBulkRoleScopeModal}
+        onOpenChange={(isOpen) => {
+          if (savingBulkRoleScope) return;
+          setShowBulkRoleScopeModal(isOpen);
+          if (!isOpen) {
+            resetBulkRoleScopeState();
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-teal-600" />
+              Apply {pendingBulkRoleAssignment?.label || 'Role'} To {selectedUserIds.length} Users
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingBulkRoleScope ? (
+            <div className="py-10 text-center text-slate-500 text-sm">Loading locations...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs text-slate-600">
+                  This assigned-scope preset will be saved with the same location grants for every selected user.
+                </div>
+                <Button variant="outline" size="sm" onClick={toggleAllBulkLocations}>
+                  {bulkLocationRows.length > 0 && bulkLocationRows.every((row) => selectedBulkLocationIds.includes(Number(row.location_id)))
+                    ? 'Clear All'
+                    : 'Grant All'}
+                </Button>
+              </div>
+
+              {bulkLocationRows.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  No active locations available.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {bulkLocationRows.map((row) => {
+                    const locationId = Number(row.location_id);
+                    const checked = selectedBulkLocationIds.includes(locationId);
+                    return (
+                      <label
+                        key={`bulk-role-location-${locationId}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer hover:border-slate-300"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{row.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {row.is_primary_storefront ? 'Primary storefront' : 'Secondary location'} {row.is_open ? '• Open' : '• Closed'}
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBulkLocation(locationId)}
+                          className="w-4 h-4 rounded border-slate-300 text-teal-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={resetBulkRoleScopeState}
+              disabled={savingBulkRoleScope}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveBulkRoleScope}
+              disabled={savingBulkRoleScope || loadingBulkRoleScope}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {savingBulkRoleScope ? 'Saving...' : 'Apply Role'}
             </Button>
           </div>
         </DialogContent>
@@ -1008,6 +1334,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
         onSelect={handleBulkPermissionChange}
         title={permissionPickerMode === 'grant' ? 'Grant Permission to Selected Users' : 'Revoke Permission from Selected Users'}
         mode={permissionPickerMode}
+        permissionGroups={visiblePermissionGroups}
       />
 
       {/* Remove User Confirmation Dialog */}
