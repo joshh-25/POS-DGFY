@@ -1,5 +1,10 @@
 import crypto from 'crypto';
 
+const CONTROL_CHARACTER_PATTERN = new RegExp(
+    `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]`,
+    'g'
+);
+
 export const BARCODE_SOURCES = Object.freeze([
     'manufacturer',
     'supplier',
@@ -129,7 +134,7 @@ const extractEmbeddedBarcodeValue = (value) => {
 
 export const normalizeBarcodeValue = (value) => {
     const normalized = extractEmbeddedBarcodeValue(value)
-        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(CONTROL_CHARACTER_PATTERN, '')
         .trim()
         .toUpperCase();
     return normalized || null;

@@ -25,6 +25,10 @@ import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
 } from '../../shared/utils/barcodePolicy.js';
+import {
+    isStockBearingItem,
+    isStockExemptServiceItem
+} from '../../shared/utils/stockBearingPolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -836,7 +840,7 @@ const buildOnlineOrderStockMovements = (order = {}) => {
     }
 
     return lines
-        .filter((line) => String(line?.item?.category || line?.category || '').trim().toLowerCase() !== 'service')
+        .filter((line) => isStockBearingItem(buildLineStockPolicySubject(line)))
         .map((line, index) => {
         const itemId = parsePositiveInt(line?.item_id);
         const quantity = Number(line?.quantity);
@@ -860,6 +864,12 @@ const buildOnlineOrderStockMovements = (order = {}) => {
         };
     });
 };
+
+const buildLineStockPolicySubject = (line = {}) => ({
+    ...(line || {}),
+    ...(line?.item || {}),
+    category: line?.item?.category ?? line?.category
+});
 
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
     await getAllSettingsUseCase(),
@@ -1517,10 +1527,17 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 locationId: enforcedCheckoutLocationId
             });
             const itemMap = new Map(items.map((item) => [item.item_id, item]));
-            const productCompositions = hasFnbCheckoutContext && typeof posRepository.listProductCompositionsForItems === 'function'
-                ? await posRepository.listProductCompositionsForItems(itemIds, {
+            const compositionItemIds = items
+                .filter((item) => isStockBearingItem(item))
+                .map((item) => Number.parseInt(item.item_id, 10))
+                .filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+            const productCompositions = hasFnbCheckoutContext
+                && compositionItemIds.length > 0
+                && typeof posRepository.listProductCompositionsForItems === 'function'
+                ? await posRepository.listProductCompositionsForItems(compositionItemIds, {
                     transaction,
-                    lock: true
+                    lock: true,
+                    locationId: enforcedCheckoutLocationId
                 })
                 : [];
             const compositionMap = new Map();
@@ -1649,9 +1666,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     );
                 }
 
-                const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
+                const isServiceItem = isStockExemptServiceItem(item);
                 const currentStock = Number(item.current_stock) || 0;
-                const recipeCompositions = compositionMap.get(itemId) || [];
+                const recipeCompositions = isServiceItem ? [] : (compositionMap.get(itemId) || []);
                 const lineRecipeMovements = [];
                 if (!isServiceItem && recipeCompositions.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
@@ -1927,7 +1944,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
                 const item = itemMap.get(Number(line.item_id));
-                if (String(item?.category || '').trim().toLowerCase() === 'service') {
+                if (isStockExemptServiceItem(item)) {
                     continue;
                 }
                 const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
@@ -2066,7 +2083,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     const missing = Array.isArray(readiness.missing_requirements) ? readiness.missing_requirements : [];
     const hasMissing = (code) => missing.some((entry) => entry?.code === code);
     const status = String(item.status || '').trim().toLowerCase();
-    const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
+    const isServiceItem = isStockExemptServiceItem(item);
     const stock = Number(item.current_stock || 0);
 
     if (status !== 'active') {

@@ -16,8 +16,6 @@ const PAYMENT_POLICIES = Object.freeze(['customer_choice', 'prepaid_required', '
 const PAYMENT_TIMINGS = Object.freeze(['prepaid', 'postpaid', 'deposit']);
 const WAITLIST_STATUSES = Object.freeze(['waiting', 'notified', 'booked', 'expired', 'cancelled']);
 const REMINDER_STATUSES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
-const REMINDER_CHANNELS = Object.freeze(['email', 'sms']);
-const REMINDER_TYPES = Object.freeze(['confirmation', 'appointment_reminder', 'waitlist_alert', 'follow_up']);
 const CLAIM_TOKEN_TTL_MS = 30 * 60 * 1000;
 const MAX_REFERENCE_ATTEMPTS = 20;
 const BOOKING_STATUS_TRANSITIONS = Object.freeze({
@@ -1257,7 +1255,7 @@ export const buildUpdateServiceBookingStatusUseCase = ({ serviceRepository }) =>
         if (posTransactionId) {
             updatePayload.pos_transaction_id = posTransactionId;
         }
-        const updated = await serviceRepository.updateBookingById(normalizedBookingId, {
+        await serviceRepository.updateBookingById(normalizedBookingId, {
             ...updatePayload
         }, { transaction, lock: true });
         const booking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });

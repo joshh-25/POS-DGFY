@@ -9,7 +9,7 @@ rollback_note: Disable barcode UI/API routes and keep item_barcodes rows inactiv
 preflight_result: no_breach
 preflight_reason_code: BARCODE_SCAN_ROUTING_GATED
 preflight_run_at: 2026-05-05T00:00:00Z
-preflight_request_ref: codex-2026-05-05-barcode-program
+preflight_request_ref: CODEX-2026-05-05-BARCODE-PROGRAM
 ---
 
 # Barcode Identity And Scan Routing Compliance Impact

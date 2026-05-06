@@ -65,13 +65,6 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
 };
 
-const isMissingPosCatalogOverrideTableError = (error) => {
-    if (!error) return false;
-    const code = error.original?.code || error.parent?.code || error.code;
-    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    return code === 'ER_NO_SUCH_TABLE' && message.includes('pos_catalog_overrides');
-};
-
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()

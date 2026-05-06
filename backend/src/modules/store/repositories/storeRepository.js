@@ -9,6 +9,7 @@ import {
     isBarcodeScopeAllowedForSurface,
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
+import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -156,7 +157,7 @@ const loadLocationStockMap = async (itemIds = [], locationId = null, options = {
 const applyLocationStock = (rows = [], stockMap = new Map()) => (
     (Array.isArray(rows) ? rows : []).map((row) => {
         const payload = toPlain(row);
-        const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
+        const isServiceItem = isStockExemptServiceItem(payload);
         const stock = stockMap.get(Number(payload.item_id));
         const currentStock = Number.isFinite(stock) ? Math.max(0, stock) : 0;
         return {
@@ -492,7 +493,7 @@ export const storeRepository = {
                 name: row.name,
                 category: row.category,
                 unit_of_measure: row.unit_of_measure,
-                current_stock: String(row.category || '').trim().toLowerCase() === 'service' ? 0 : row.current_stock,
+                current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
@@ -520,7 +521,7 @@ export const storeRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows.map((row) => {
-                    const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
+                    const isServiceItem = isStockExemptServiceItem(row);
                     return {
                         ...row,
                         is_available: isServiceItem || Number(row.current_stock || 0) > 0,
@@ -568,7 +569,7 @@ export const storeRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(catalogRows, locationStock.stockMap)
                 : catalogRows.map((row) => {
-                    const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
+                    const isServiceItem = isStockExemptServiceItem(row);
                     return {
                         ...row,
                         is_available: isServiceItem || Number(row.current_stock || 0) > 0,
@@ -654,7 +655,7 @@ export const storeRepository = {
                         category: item.category,
                         product_type: item.product_type || null,
                         unit_of_measure: item.unit_of_measure || null,
-                        current_stock: String(item.category || '').trim().toLowerCase() === 'service' ? 0 : item.current_stock,
+                        current_stock: isStockExemptServiceItem(item) ? 0 : item.current_stock,
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         image_url: mapStorefrontCatalogImageUrl(item),

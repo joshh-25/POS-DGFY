@@ -79,7 +79,7 @@ export default function FnbDiningPanel({ onSelectCheckoutContext }) {
         }
     };
 
-    const useCheckForCheckout = (check) => {
+    const handleCheckForCheckout = (check) => {
         onSelectCheckoutContext?.({
             fnb_check_id: check.check_id,
             fnb_table_id: check.table_id || null,
@@ -200,7 +200,7 @@ export default function FnbDiningPanel({ onSelectCheckoutContext }) {
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{check.status}</span>
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => useCheckForCheckout(check)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                                <button type="button" onClick={() => handleCheckForCheckout(check)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                                     Use for checkout
                                 </button>
                                 <button type="button" onClick={() => fireTicket(check)} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50">

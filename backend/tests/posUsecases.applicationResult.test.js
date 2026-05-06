@@ -593,8 +593,21 @@ describe('pos use-cases application result contract', () => {
             order_source: 'online_store',
             order_method: 'pickup',
             fulfillment_status: 'ready_for_pickup',
+            location_id: 3,
             lines: [
-                { line_id: 9, item_id: 101, quantity: 2 }
+                {
+                    line_id: 8,
+                    item_id: 100,
+                    category: 'service',
+                    quantity: 1,
+                    item: { item_id: 100, name: 'Installation' }
+                },
+                {
+                    line_id: 9,
+                    item_id: 101,
+                    quantity: 2,
+                    item: { item_id: 101, category: 'product', name: 'Starter Kit' }
+                }
             ]
         };
         const updatedOrder = {
@@ -625,11 +638,13 @@ describe('pos use-cases application result contract', () => {
         }));
 
         expect(result.success).toBe(true);
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledTimes(1);
         expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(
             expect.objectContaining({
                 item_id: 101,
                 quantity: 2,
                 movement_type: 'goods_issue',
+                location_id: 3,
                 reference_type: 'POS',
                 reference_id: 'ONLINE:55:9'
             }),

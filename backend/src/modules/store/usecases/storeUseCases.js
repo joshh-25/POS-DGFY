@@ -30,6 +30,9 @@ import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
 } from '../../shared/utils/barcodePolicy.js';
+import {
+    isStockExemptServiceItem
+} from '../../shared/utils/stockBearingPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -622,7 +625,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             );
         }
 
-        const isServiceItem = String(item.category || '').trim().toLowerCase() === 'service';
+        const isServiceItem = isStockExemptServiceItem(item);
         const currentStock = Number(item.current_stock || 0);
         if (!isServiceItem && !allowOutOfStockSales && currentStock + 0.000001 < quantity) {
             const stockViolation = {
@@ -715,7 +718,7 @@ const buildOrderHistoryResponse = (result = {}) => ({
 });
 
 const normalizeAvailabilityStatus = (item = {}) => {
-    if (String(item?.category || '').trim().toLowerCase() === 'service') {
+    if (isStockExemptServiceItem(item)) {
         return 'bookable';
     }
     const rawStatus = String(item?.availability_status || '').trim().toLowerCase();
@@ -2188,7 +2191,7 @@ export const buildListStoreCustomerOrdersUseCase = ({ storeRepository }) => {
 
 const FOLLOW_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
-const resolveStorefrontSlugGuard = async ({ storeRepository, tenantId }) => {
+const resolveStorefrontSlugGuard = async ({ storeRepository }) => {
     const settingsRows = await storeRepository.getSettingsByKeys(['store_tenant_slug']);
     const configured = String(settingsRows?.store_tenant_slug?.value || '').trim().toLowerCase();
     if (!configured) {
@@ -2223,12 +2226,8 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
     }
 
     const customerId = parsePositiveInt(storeCustomer?.customer_id);
-    let identitySeed = '';
-    let identityType = 'guest';
-    if (customerId) {
-        identitySeed = `customer:${customerId}`;
-        identityType = 'customer';
-    } else {
+    const identityType = customerId ? 'customer' : 'guest';
+    if (!customerId) {
         if (!FOLLOW_VISITOR_ID_PATTERN.test(visitorId)) {
             throw new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2236,8 +2235,8 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
                 { statusCode: 422 }
             );
         }
-        identitySeed = `guest:${visitorId}`;
     }
+    const identitySeed = customerId ? `customer:${customerId}` : `guest:${visitorId}`;
 
     return {
         tenantId: normalizedTenantId,

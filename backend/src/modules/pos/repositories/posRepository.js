@@ -9,6 +9,7 @@ import {
     isBarcodeScopeAllowedForSurface,
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
+import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
@@ -207,7 +208,7 @@ const buildFnbCatalogIncludes = () => {
 
 const buildPosReadiness = ({ item, override }) => {
     const payload = toPlain(item) || {};
-    const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
+    const isServiceItem = isStockExemptServiceItem(payload);
     const currentStock = toNumber(payload.current_stock, 0);
     const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
     const status = String(payload.status || '').trim().toLowerCase();
@@ -364,7 +365,7 @@ const loadLocationStockMap = async (itemIds = [], locationId = null, options = {
 const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
     (Array.isArray(items) ? items : []).map((item) => {
         const payload = toPlain(item);
-        const isServiceItem = String(payload.category || '').trim().toLowerCase() === 'service';
+        const isServiceItem = isStockExemptServiceItem(payload);
         const mappedStock = locationStockMap.get(Number(payload.item_id));
         const stockValue = Number.isFinite(mappedStock) ? Math.max(0, mappedStock) : 0;
         return {
@@ -636,6 +637,7 @@ export const posRepository = {
     async listProductCompositionsForItems(itemIds = [], options = {}) {
         const ProductComposition = safeGetModel('ProductComposition');
         const Item = safeGetModel('Item');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
         const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
             .map((itemId) => Number.parseInt(itemId, 10))
             .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
@@ -657,7 +659,32 @@ export const posRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
-        return rows.map(toPlain);
+        const payload = rows.map(toPlain);
+        const ingredientIds = [...new Set(payload
+            .map((row) => Number.parseInt(row?.ingredient_id, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        const locationStock = await loadLocationStockMap(ingredientIds, normalizedLocationId, options);
+        if (!(
+            Number.isInteger(normalizedLocationId)
+            && normalizedLocationId > 0
+            && locationStock.locationScopeResolved
+        )) {
+            return payload;
+        }
+        return payload.map((row) => {
+            const ingredient = row.ingredient ? { ...row.ingredient } : row.ingredient;
+            const ingredientId = Number.parseInt(row?.ingredient_id, 10);
+            const scopedStock = locationStock.stockMap.get(ingredientId);
+            return {
+                ...row,
+                ingredient: ingredient
+                    ? {
+                        ...ingredient,
+                        current_stock: Number.isFinite(scopedStock) ? Math.max(0, scopedStock) : 0
+                    }
+                    : ingredient
+            };
+        });
     },
 
     async getFnbTableById(tableId, options = {}) {
