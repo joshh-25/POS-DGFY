@@ -227,6 +227,9 @@ x-company-token: <company-token>
     "username": "admin",
     "email": "admin@example.com",
     "role": "admin",
+    "role_preset_key": "food_manufacturing_admin",
+    "role_preset_label": "Food Manufacturing Admin",
+    "role_preset_status": "current",
     "is_active": true,
     "permissions": ["items:view", "items:create"],
     "is_master_admin": true,
@@ -257,6 +260,9 @@ x-company-token: <company-token>
       "username": "admin",
       "email": "admin@example.com",
       "role": "admin",
+      "role_preset_key": "food_manufacturing_admin",
+      "role_preset_label": "Food Manufacturing Admin",
+      "role_preset_status": "current",
       "is_active": true,
       "permissions": [],
       "is_master_admin": true,
@@ -276,6 +282,47 @@ x-company-token: <company-token>
 - `do`
 - `jo`
 
+Mode-aware role presets are additive. `role` remains the compatibility and hierarchy field, while `role_preset_key` records the active mode's preset when assigned. Users with no preset are returned with `role_preset_status="legacy"` and display as `Legacy <role>` in User Management. Users whose preset belongs to a different active tenant mode are returned with `role_preset_status="mode_mismatch"` for admin review.
+
+### GET /users/role-catalog
+Get the role presets and visible permission groups for the tenant's active workflow mode. Requires `users:view`.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "version": "2026-05-06.mode-aware-rbac-v1",
+    "workflow_mode": "services",
+    "presets": [
+      {
+        "key": "services_scheduler",
+        "label": "Scheduler",
+        "mode": "services",
+        "role": "staff",
+        "rank": 4,
+        "location_scope": "assigned",
+        "permissions": [
+          "services:bookings:view",
+          "services:bookings:manage",
+          "services:waitlist:manage"
+        ]
+      }
+    ],
+    "permission_groups": [
+      {
+        "key": "SERVICES",
+        "label": "Services",
+        "permissions": {
+          "VIEW_BOOKINGS": "services:bookings:view",
+          "MANAGE_BOOKINGS": "services:bookings:manage"
+        }
+      }
+    ]
+  }
+}
+```
+
 ### POST /users/invite
 Create a tenant user invitation.
 
@@ -283,11 +330,13 @@ Create a tenant user invitation.
 ```json
 {
   "email": "teammate@example.com",
-  "role": "staff",
+  "role_preset_key": "services_scheduler",
   "location_ids": [1],
   "delivery_mode": "email"
 }
 ```
+
+Legacy `role` is still accepted for compatibility. When `role_preset_key` is provided, the backend resolves the compatibility `role` and default permissions from the active tenant mode catalog. Location-scoped presets require at least one `location_ids` entry when the tenant has multiple active locations.
 
 If email delivery is unavailable or fails, the response includes `invitation_url` for explicit manual sharing. New links use only the invitation token; legacy links with `company` remain accepted until expiry. Role, status, permission, and location-scope edits are rejected until the invited user accepts the invitation.
 
@@ -306,9 +355,20 @@ Update user role (Admin only)
 **Request Body**
 ```json
 {
+  "role_preset_key": "fnb_server",
+  "location_ids": [1, 2]
+}
+```
+
+Legacy role updates are still accepted:
+
+```json
+{
   "role": "manager"
 }
 ```
+
+`location_ids` is optional for tenant-wide presets. Assigned-scope presets require at least one active location when the tenant has multiple active locations; the role preset and location grants are saved in the same backend transaction. CSV user import accepts `role_preset_key` plus `location_ids`, `locationIds`, or `locations` as a semicolon-, comma-, or pipe-separated list and passes those locations through the same invitation validation.
 
 **Response (200)**
 ```json
@@ -317,7 +377,10 @@ Update user role (Admin only)
   "data": {
     "user_id": 2,
     "username": "staff1",
-    "role": "manager",
+    "role": "cashier",
+    "role_preset_key": "fnb_server",
+    "role_preset_label": "Server",
+    "role_preset_status": "current",
     "permissions": ["items:view", "items:create", "..."]
   }
 }
@@ -560,6 +623,7 @@ Get single item details
 - `current_stock` remains compatibility aggregate; authoritative per-location balances are in `item_location_stocks`.
 - FIFO batches include location metadata to support location-scoped FIFO consumption. For stock-bearing items, frontend item detail views should read `item_location_stocks` and `fifo_batches.location_id` together: location stock shows where quantity exists, while batch rows show the cost, age, expiry, and remaining-quantity differences inside that location.
 - `cost_metrics.by_location` is included in detail responses for per-location weighted valuation visibility.
+- No API shape change is required for the location-aware FIFO viewer. Clients should group `fifo_batches` by `location_id`, join summaries from `item_location_stocks` and `cost_metrics.by_location`, calculate "next to use" within each location, and avoid labeling one batch as globally next when multiple locations exist.
 
 ### POST /items
 Create new item
@@ -2701,21 +2765,21 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 
 ## Services Admin Endpoints
 
-Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard.
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
-| `GET` | `/services/dashboard` | `reports:view` | Service desk metrics, future bookings, expected revenue, postpaid aging, reminders due, waitlist counts |
-| `GET` | `/services/catalog` | `items:view` | List service catalog entries with service metadata |
-| `POST` | `/services/catalog` | `items:create` | Create item-backed service catalog entry and service detail metadata |
-| `PUT` | `/services/catalog/:item_id` | `items:edit` | Update service catalog metadata |
-| `GET`/`POST` | `/services/resources` | `items:view` / `items:edit` | List/create service resources such as providers, rooms, equipment, vehicles, or stations |
-| `GET`/`POST`/`PATCH` | `/services/assignments` | `items:view` / `items:edit` | Link services to resources/providers/locations and deactivate assignments |
-| `GET`/`POST` | `/services/bookings` | `pos:view` / `pos:transact` | List/create operator bookings |
-| `PATCH` | `/services/bookings/:booking_id/status` | `pos:transact` | Move bookings through allowed lifecycle transitions |
-| `GET`/`POST`/`PATCH` | `/services/waitlist` | `pos:view` / `pos:transact` | Manage waitlist entries |
-| `GET` | `/services/clients` | `reports:view` | Client history, repeat-client, no-show, and spend signals |
-| `GET`/`POST` | `/services/reminders` | `pos:view` / `pos:transact` | List reminder outbox rows and queue/process due reminders |
+| `GET` | `/services/dashboard` | `services:dashboard:view` | Service desk metrics, future bookings, expected revenue, postpaid aging, reminders due, waitlist counts |
+| `GET` | `/services/catalog` | `services:catalog:view` | List service catalog entries with service metadata |
+| `POST` | `/services/catalog` | `services:catalog:manage` | Create item-backed service catalog entry and service detail metadata |
+| `PUT` | `/services/catalog/:item_id` | `services:catalog:manage` | Update service catalog metadata |
+| `GET`/`POST` | `/services/resources` | `services:resources:view` / `services:resources:manage` | List/create service resources such as providers, rooms, equipment, vehicles, or stations |
+| `GET`/`POST`/`PATCH` | `/services/assignments` | `services:resources:view` / `services:resources:manage` | Link services to resources/providers/locations and deactivate assignments |
+| `GET`/`POST` | `/services/bookings` | `services:bookings:view` / `services:bookings:manage` | List/create operator bookings |
+| `PATCH` | `/services/bookings/:booking_id/status` | `services:bookings:manage` | Move bookings through allowed lifecycle transitions |
+| `GET`/`POST`/`PATCH` | `/services/waitlist` | `services:waitlist:view` / `services:waitlist:manage` | Manage waitlist entries |
+| `GET` | `/services/clients` | `services:clients:view` | Client history, repeat-client, no-show, and spend signals |
+| `GET`/`POST` | `/services/reminders` | `services:reminders:view` / `services:reminders:manage` | List reminder outbox rows and queue/process due reminders |
 
 **Lifecycle Contract**
 - Booking statuses are `requested`, `confirmed`, `checked_in`, `in_service`, `completed`, `cancelled`, and `no_show`.
@@ -2817,36 +2881,36 @@ Track online-store order status for public users.
 
 ## Food & Beverage Endpoints
 
-Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts.
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/fnb/dashboard` | `reports:view` | Load F&B dashboard counts and active floor/kitchen/reservation summaries |
-| `GET` | `/fnb/modifier-groups` | `items:view` | List menu modifier groups and options |
-| `POST` | `/fnb/modifier-groups` | `items:edit` | Create a modifier group with options and selection rules |
-| `GET` | `/fnb/dining-areas` | `pos:view` | List dining areas and tables |
-| `POST` | `/fnb/dining-areas` | `pos:transact` | Create a dining area and optional initial tables |
-| `PATCH` | `/fnb/tables/:table_id/status` | `pos:transact` | Update table status (`available`, `seated`, `held`, `out_of_service`) |
-| `GET` | `/fnb/kitchen-stations` | `pos:view` | List kitchen routing stations |
-| `POST` | `/fnb/kitchen-stations` | `pos:transact` | Create a kitchen station |
-| `GET` | `/fnb/item-kitchen-routes` | `items:view` | List item-to-kitchen-station routing assignments |
-| `PUT` | `/fnb/item-kitchen-routes/:item_id` | `items:edit` | Upsert the primary kitchen route and default course for a menu item |
-| `GET` | `/fnb/item-modifier-groups` | `items:view` | List menu item modifier group assignments |
-| `PUT` | `/fnb/item-modifier-groups/:item_id` | `items:edit` | Replace modifier groups assigned to a menu item |
-| `GET` | `/fnb/checks` | `pos:view` | List active/open checks |
-| `POST` | `/fnb/checks` | `pos:transact` | Open a dine-in/takeout/pickup/delivery check |
-| `PATCH` | `/fnb/checks/:check_id/status` | `pos:transact` | Move a check through guarded lifecycle states |
-| `PATCH` | `/fnb/checks/:check_id/transfer` | `pos:transact` | Transfer an active check to another table/server snapshot |
-| `POST` | `/fnb/checks/:check_id/split` | `pos:transact` | Split selected line IDs from an active check into a new check |
-| `POST` | `/fnb/checks/:check_id/merge` | `pos:transact` | Merge a source active check into a target active check and close the source as transferred |
-| `POST` | `/fnb/checks/:check_id/lines` | `pos:transact` | Add a line with course, modifier, instruction, and kitchen-station metadata |
-| `POST` | `/fnb/checks/:check_id/kitchen-tickets` | `pos:transact` | Queue a kitchen ticket from check lines |
-| `PATCH` | `/fnb/kitchen-tickets/:ticket_id/status` | `pos:transact` | Move a kitchen ticket through guarded kitchen states |
-| `GET` | `/fnb/reservations` | `pos:view` | List reservation/waitlist requests; supports `status`, `table_id`, `from`, `to`, and `limit` filters |
-| `POST` | `/fnb/reservations` | `pos:transact` | Create an admin/POS reservation or waitlist request with optional `table_id`, `table_ids`, `duration_minutes`, and `buffer_minutes` |
-| `PATCH` | `/fnb/reservations/:reservation_id/status` | `pos:transact` | Move a reservation through guarded states; confirmed/seated assigned-table windows cannot overlap |
-| `GET` | `/fnb/service-charge-settings` | `settings:view` | Read restaurant service-charge settings |
-| `PUT` | `/fnb/service-charge-settings` | `settings:edit` | Update optional restaurant service-charge settings |
+| `GET` | `/fnb/dashboard` | `fnb:dashboard:view` | Load F&B dashboard counts and active floor/kitchen/reservation summaries |
+| `GET` | `/fnb/modifier-groups` | `fnb:menu:view` | List menu modifier groups and options |
+| `POST` | `/fnb/modifier-groups` | `fnb:menu:manage` | Create a modifier group with options and selection rules |
+| `GET` | `/fnb/dining-areas` | `fnb:dining:view` | List dining areas and tables |
+| `POST` | `/fnb/dining-areas` | `fnb:dining:manage` | Create a dining area and optional initial tables |
+| `PATCH` | `/fnb/tables/:table_id/status` | `fnb:dining:manage` | Update table status (`available`, `seated`, `held`, `out_of_service`) |
+| `GET` | `/fnb/kitchen-stations` | `fnb:kitchen:view` | List kitchen routing stations |
+| `POST` | `/fnb/kitchen-stations` | `fnb:kitchen:manage` | Create a kitchen station |
+| `GET` | `/fnb/item-kitchen-routes` | `fnb:menu:view` | List item-to-kitchen-station routing assignments |
+| `PUT` | `/fnb/item-kitchen-routes/:item_id` | `fnb:menu:manage` | Upsert the primary kitchen route and default course for a menu item |
+| `GET` | `/fnb/item-modifier-groups` | `fnb:menu:view` | List menu item modifier group assignments |
+| `PUT` | `/fnb/item-modifier-groups/:item_id` | `fnb:menu:manage` | Replace modifier groups assigned to a menu item |
+| `GET` | `/fnb/checks` | `fnb:checks:view` | List active/open checks |
+| `POST` | `/fnb/checks` | `fnb:checks:manage` | Open a dine-in/takeout/pickup/delivery check |
+| `PATCH` | `/fnb/checks/:check_id/status` | `fnb:checks:manage` | Move a check through guarded lifecycle states |
+| `PATCH` | `/fnb/checks/:check_id/transfer` | `fnb:checks:manage` | Transfer an active check to another table/server snapshot |
+| `POST` | `/fnb/checks/:check_id/split` | `fnb:checks:manage` | Split selected line IDs from an active check into a new check |
+| `POST` | `/fnb/checks/:check_id/merge` | `fnb:checks:manage` | Merge a source active check into a target active check and close the source as transferred |
+| `POST` | `/fnb/checks/:check_id/lines` | `fnb:checks:manage` | Add a line with course, modifier, instruction, and kitchen-station metadata |
+| `POST` | `/fnb/checks/:check_id/kitchen-tickets` | `fnb:kitchen:manage` | Queue a kitchen ticket from check lines |
+| `PATCH` | `/fnb/kitchen-tickets/:ticket_id/status` | `fnb:kitchen:manage` | Move a kitchen ticket through guarded kitchen states |
+| `GET` | `/fnb/reservations` | `fnb:reservations:view` | List reservation/waitlist requests; supports `status`, `table_id`, `from`, `to`, and `limit` filters |
+| `POST` | `/fnb/reservations` | `fnb:reservations:manage` | Create an admin/POS reservation or waitlist request with optional `table_id`, `table_ids`, `duration_minutes`, and `buffer_minutes` |
+| `PATCH` | `/fnb/reservations/:reservation_id/status` | `fnb:reservations:manage` | Move a reservation through guarded states; confirmed/seated assigned-table windows cannot overlap |
+| `GET` | `/fnb/service-charge-settings` | `fnb:service_charge:view` | Read restaurant service-charge settings |
+| `PUT` | `/fnb/service-charge-settings` | `fnb:service_charge:manage` | Update optional restaurant service-charge settings |
 
 POS checkout accepts these additive fields when F&B context is attached:
 

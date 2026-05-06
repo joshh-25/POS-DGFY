@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -89,6 +89,12 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
 
+6. Inventory item detail UI
+- Stock-bearing item detail views group active FIFO batches by `location_id` and show location stock, batch quantity, weighted cost, and inventory value together.
+- The location filter is item-aware and resets/coerces to `All locations` when the selected location does not exist for the next item being viewed.
+- "Next to use" is calculated within each location. The all-location view keeps global totals visible but does not present a single cross-location FIFO batch as the global next batch.
+- Service-only rows stay stock-exempt and do not show misleading FIFO controls. Mixed Services Mode transactions must represent physical add-ons, retail products, consumables, kits, or supplies as separate stock-bearing lines so those lines still use location-scoped FIFO.
+
 ## Registration And Compliance Rules
 Use declared onboarding registration status as the v1 merchant-stage signal, with compliance/payment state as stronger runtime evidence when available.
 
@@ -111,6 +117,7 @@ Runtime behavior:
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
+- Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
 - Stock-bearing mode regression tests: checkout/fulfillment in every mode with physical items preserves location-scoped FIFO depletion, while truly service-only rows remain stock-exempt.
 
@@ -121,6 +128,12 @@ Validated on 2026-05-04:
 - Backend targeted suites: onboarding schema compatibility, catalog visibility, store use cases, services use cases, customer access policy, settings validator, settings handlers, storefront discovery repository, runtime schema audit.
 - Frontend targeted suites: Storefront checkout rules, customer access helpers, Settings deep-link contract, onboarding modal behavior.
 - Governance/build gates: `npm run lint:docs`, `npm run check:architecture`, `npm run build:store`, `npm --prefix frontend run build:skupervisor`, and `git diff --check`.
+
+Validated on 2026-05-06 for FIFO/location stock hardening:
+- Backend targeted suites: `tests/posCheckoutFnbContracts.usecase.test.js`, `tests/posUsecases.applicationResult.test.js`, and `tests/stockBearingPolicy.test.js`.
+- Frontend targeted suites: `Components/items/__tests__/FIFOBatchViewer.behavior.test.jsx` and `Components/items/__tests__/FIFOBatchViewer.locationContract.test.js`.
+- Frontend build gate: `npm --prefix frontend run build`.
+- Governance gates: `npm run lint:docs`, `npm run check:architecture`, and `git diff --check`.
 
 Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
 

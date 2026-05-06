@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: setup
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 applies_to: admin_bootstrap_and_local_setup
 topic: admin_account_setup
 ---
@@ -72,10 +72,12 @@ Current rules:
 1. Login as an admin.
 2. Go to `Settings`.
 3. Open User Management.
-4. Change the user's role to `manager` or `admin`.
+4. Change the user's role preset to the correct mode-native role, or use a legacy role only for compatibility.
 5. Toggle active/inactive status when needed.
 
 ## Role Permissions
+
+Current tenant RBAC is mode-aware and additive. The legacy `users.role` enum remains the hierarchy compatibility field, granular `users.permissions` remains the authorization source, `role_preset_key` records the mode-native role template when assigned, and `is_master_admin` bypasses tenant-local permission checks.
 
 | Permission | Staff | Manager | Admin |
 |---|---:|---:|---:|
@@ -84,6 +86,36 @@ Current rules:
 | Delete operational records | No | No | Yes |
 | User management | No | No | Yes |
 | System/storefront/POS settings | No | Limited by permission | Yes |
+
+Legacy compatibility roles still exist and remain accepted by the API:
+
+| Role | Current intent |
+|---|---|
+| `cashier` | POS checkout, receipts, cash drawer, day close, movement/report visibility. |
+| `po` | Purchase order lifecycle and receiving. |
+| `do` | Dispatch order creation, dispatch execution, and fulfillment visibility. |
+| `jo` | Job order planning, approval, production completion, and stock visibility. |
+
+Mode-aware role presets are now served by `GET /api/v1/users/role-catalog` and consumed by User Management. Existing users with no `role_preset_key` remain operational and display as `Legacy <role>` until an admin remaps them. When an assigned-scope preset is selected in a multi-location tenant, User Management requires location selection and saves the role plus location grants together. Bulk assignment is allowed for assigned-scope presets only after the admin selects the shared location scope that will be applied to every selected user.
+
+Current role preset families:
+
+| Mode | Presets |
+|---|---|
+| MSME | `msme_admin`, `msme_manager`, `msme_cashier`, `msme_inventory_clerk`, `msme_viewer` |
+| Food Manufacturing | `food_manufacturing_admin`, `food_manufacturing_manager`, `food_manufacturing_purchase_officer`, `food_manufacturing_production_lead`, `food_manufacturing_dispatch_officer`, `food_manufacturing_cashier`, `food_manufacturing_inventory_controller`, `food_manufacturing_viewer` |
+| Services | `services_admin`, `services_manager`, `services_provider`, `services_scheduler`, `services_front_desk_cashier`, `services_inventory_clerk`, `services_viewer` |
+| Food & Beverage | `fnb_admin`, `fnb_restaurant_manager`, `fnb_server`, `fnb_cashier`, `fnb_kitchen_staff`, `fnb_host_reservations`, `fnb_inventory_controller`, `fnb_viewer` |
+
+Services routes prefer `services:*` permissions and F&B routes prefer `fnb:*` permissions. Temporary fallback to current generic permissions remains enabled by default so existing users do not lose access during remapping. Set `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` only after tenant users have been remapped to mode-native presets and targeted route tests confirm access.
+
+Every future mode must answer these access questions before it is called production-ready:
+
+1. Which roles are shown for this tenant mode.
+2. Which granular permissions each role grants by default.
+3. Which sensitive actions require explicit permissions beyond normal role labels.
+4. Whether each role is tenant-wide or limited by location assignments.
+5. What happens to existing users when the tenant switches modes.
 
 ## Tenant Administration
 
@@ -128,6 +160,8 @@ Before enabling a tenant:
 3. Refresh or verify storefront discovery indexing for that tenant.
 4. Confirm Storefront hides quote/checkout/booking for non-transaction effective modes.
 5. Confirm stock-bearing items show both location stock and FIFO batch data on item detail views. These two surfaces are paired: location stock shows where quantity exists, and FIFO batches show the per-location batch differences operators use for depletion, age, cost, and expiry decisions.
+6. Confirm the FIFO item-detail panel groups active batches by location, supports an accessible location filter, recalculates "next to use" inside the selected location, and does not label one cross-location batch as globally next to use.
+7. Confirm service-only items do not show misleading stock/FIFO controls. If a Services Mode sale includes physical add-ons, retail products, consumables, kits, or supplies as separate lines, those stock-bearing lines must still show and deduct through location-scoped FIFO.
 
 ## Hosting Profile Notes
 
@@ -206,7 +240,7 @@ Before going live:
 5. Set `TENANT_REGISTRATION_APPROVAL_MODE` intentionally.
 6. Keep `CUSTOMER_ACCESS_MODES_ENABLED=false` until controlled rollout smoke evidence is complete.
 7. Choose the correct hosting profile env example.
-8. Run docs, architecture, migration, runtime doctor, and targeted smoke checks.
+8. Run docs, architecture, migration, runtime doctor, targeted smoke checks, and the item-detail FIFO behavior tests when inventory UI changed.
 
 ## Developer Feedback Dashboard
 

@@ -128,8 +128,42 @@ Overall status: in_progress
 - IMS reservations validate assigned tables, expose table/date/status schedule filters, and allow multi-table assignment during reservation status updates.
 - Reservation windows now carry duration and reset-buffer minutes. Confirmed/seated reservations block overlap on any assigned table; requested/waitlisted requests remain non-blocking capacity leads. Combined-table bookings reject party sizes above selected seat capacity.
 - Storefront splits the F&B reservation panel and map components out of the primary Storefront entry; the remaining large chunk is the isolated lazy MapLibre vendor chunk.
+38. Mode-aware RBAC is active:
+- `users.role_preset_key` stores the mode-native preset while preserving legacy `users.role`, `users.permissions`, and `is_master_admin`.
+- `GET /api/v1/users/role-catalog` returns the active tenant mode's role presets and visible permission groups for User Management.
+- Services and F&B route guards prefer mode-native `services:*` and `fnb:*` permissions, with generic fallback controlled by `MODE_RBAC_GENERIC_FALLBACK_ENABLED` only for legacy remapping.
+- Assigned-scope presets require location grants when the tenant has multiple active locations; single role updates and bulk role assignment save preset and location grants as one operator intent.
+- Legacy users without a preset remain operational and display as `Legacy <role>` until remapped; presets from a previous tenant mode are surfaced as mode mismatch for admin review.
 
 ## 3) Automated Gate Status (Latest)
+
+### 3.21 Mode-Aware RBAC And FIFO Location Follow-Up (2026-05-06)
+
+1. Root-cause closure:
+   - User Management previously exposed global role lists even though Services, Food Manufacturing, MSME, and F&B require different daily operator responsibilities.
+   - Services and F&B route authorization could rely on generic permissions, which made delegated access hard to audit and easy to over-grant.
+   - Assigned-location operational roles could be selected without an atomic preset-plus-location save path, leaving room for scope drift.
+   - FIFO batch visibility could become misleading when item or location filters changed independently of the selected item.
+2. Implemented fixes:
+   - Added the additive mode role catalog, `role_preset_key`, mode-native Services/F&B permission strings, role catalog API, and backend validation for invite, role update, CSV import, legacy fallback, and mode mismatch behavior.
+   - User Invitation, User Management, Permission Matrix, permission picker, and bulk role assignment now consume the backend role catalog and preserve hidden legacy permissions.
+   - Services and F&B route guards now prefer native permissions and test generic fallback both enabled and disabled.
+   - FIFO batch viewing now follows the selected item and location scope so operators can compare the same item's per-location batch differences without stale filters hiding valid batches.
+3. Regression coverage and gates:
+   - `npm --prefix backend run lint` -> PASS.
+   - `npm --prefix backend test -- --runTestsByPath tests/userService.modeRbac.test.js tests/modeRbacRouteContracts.test.js tests/modeRbacFallback.test.js tests/modeRolePresets.test.js tests/checkAnyPermission.middleware.test.js tests/stockBearingPolicy.test.js tests/authModuleExports.contract.test.js` -> PASS.
+   - `npm --prefix frontend test -- --run Components/users/__tests__/UserManagementModal.rbacContract.test.js Components/items/__tests__/FIFOBatchViewer.behavior.test.jsx Components/items/__tests__/FIFOBatchViewer.locationContract.test.js` -> PASS.
+   - `npm --prefix frontend run lint` -> PASS.
+   - `npm --prefix frontend run build` -> PASS.
+   - `npm run lint:docs` -> PASS.
+   - `npm run check:architecture` -> PASS.
+   - `git diff --check` -> PASS with line-ending warnings only.
+4. Updated honest rating:
+   - Backend RBAC architecture: `9.0/10`; additive mode catalog preserves compatibility and keeps authorization granular, with the remaining risk being the temporary generic fallback window.
+   - Backend RBAC completeness: `8.7/10`; invite, role update, current-user/user-list payloads, CSV import, route guards, and location scope are covered, but a full legacy remapping workflow and fallback-removal runbook remain future work.
+   - Frontend User Management readiness: `8.5/10`; role catalogs, legacy display, assigned-location bulk assignment, and permission grouping are implemented, but large-tenant role review still needs richer audit/history UX.
+   - Mode-development governance: `9.2/10`; the playbook now requires RBAC in every mode plan before production readiness, but future modes must still prove their own presets and route guards with tests.
+   - FIFO location UX correctness: `8.8/10`; stale-filter and per-location comparison issues are covered, while manual operator QA is still needed on real multi-location datasets.
 
 ### 3.18 Food & Beverage Restaurant Hardening Rerun (2026-05-05)
 
