@@ -135,6 +135,11 @@ Overall status: in_progress
 - Services and F&B route guards prefer mode-native `services:*` and `fnb:*` permissions, with generic fallback controlled by `MODE_RBAC_GENERIC_FALLBACK_ENABLED` only for legacy remapping.
 - Assigned-scope presets require location grants when the tenant has multiple active locations; single role updates and bulk role assignment save preset and location grants as one operator intent.
 - Legacy users without a preset remain operational and display as `Legacy <role>` until remapped; presets from a previous tenant mode are surfaced as mode mismatch for admin review.
+39. Tenant provisioning/model-clone hardening is active:
+- fresh tenant databases clone tenant-local models from the canonical backend model registry while excluding landlord-only models
+- tenant-local foreign-key references are covered by tenant model factory tests so mode-specific tables such as Services and F&B cannot be omitted from new tenant schemas
+- approval/auto-approval provisioning failures restore a valid retryable landlord status and drop zombie tenant databases before the admin retries approval
+- future workflow modes must include provisioning graph and disposable schema sync proof before readiness is claimed
 
 ## 3) Automated Gate Status (Latest)
 
@@ -558,6 +563,24 @@ Remaining non-automated readiness checks:
    - `npm run build:pos` -> PASS
    - `npm run build:store` -> PASS
    - `git diff --check` -> PASS with line-ending warnings only
+
+### 3.23 Tenant Provisioning And Future Mode Schema-Clone Guard (2026-05-07)
+
+1. Root-cause closure:
+   - F&B tenant approval failed during `pos_transactions` creation because the tenant model clone list omitted F&B referenced tables.
+   - The cleanup path attempted to store a non-enum `failed` tenant status, which could leave approval retries blocked by an invalid landlord lifecycle value.
+2. Implemented fixes:
+   - `backend/src/utils/tenantModelFactory.js` now derives tenant-local model clones from the canonical backend model registry and excludes landlord-only models.
+   - `backend/src/services/tenantProvisioningService.js` restores failed approval paths to retryable `pending` and drops zombie tenant databases.
+   - Future-mode docs now require provisioning graph, tenant-local foreign-key coverage, disposable schema sync, and retry-safe cleanup as part of the implementation plan.
+3. Regression coverage and gates:
+   - `npm --prefix backend test -- --runTestsByPath tests/tenantModelFactory.contract.test.js tests/tenantProvisioning.test.js` -> PASS.
+   - Disposable MySQL tenant schema sync against the complete model graph -> PASS (`WORKFLOW_MODE_VALUES=11`, tenant model count `69`).
+   - `npm run lint:docs` -> PASS.
+   - `npm run check:architecture` -> PASS.
+4. Updated honest rating:
+   - Tenant provisioning graph coverage: `9.1/10`; automated model-clone and schema-sync evidence now covers the current mode set, while each future mode still needs its own data-contract and seed-data proof.
+   - Approval retry safety: `9.0/10`; cleanup now preserves the manual approval path after pre-activation failures, but operator-facing recovery UX remains the standard Tenant Manager retry flow rather than a dedicated repair console.
 
 ## 4) Canonical UAT Assets
 

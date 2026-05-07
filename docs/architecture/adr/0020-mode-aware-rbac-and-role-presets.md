@@ -42,7 +42,7 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 - Bulk role templates may assign tenant-scoped presets directly. Assigned-scope presets require explicit location confirmation; User Management may apply one shared location scope to all selected users only after the admin confirms the selected locations.
 - Hidden or legacy permissions must be preserved when admins edit only the active mode's visible permission groups.
 - Temporary generic permission fallback must have a removal plan. Operators should disable `MODE_RBAC_GENERIC_FALLBACK_ENABLED` only after users are remapped and Services/F&B access tests pass with mode-native permissions.
-- Future workflow modes cannot be called production-ready until their role presets, permission groups, sensitive actions, route guards, and location-scope rules are added to the catalog and documented.
+- Future workflow modes cannot be called production-ready until their role presets, permission groups, sensitive actions, route guards, location-scope rules, tenant provisioning graph, and schema-clone validation are added to the catalog/docs and tested.
 - No architecture allowlist exception is introduced.
 
 ## Validation
@@ -55,3 +55,4 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 - Run frontend User Management RBAC contract tests for catalog failure warnings, assigned-scope role updates, and bulk assigned-scope assignment.
 - Run targeted User Management frontend tests when role UI behavior changes.
 - Confirm Services and F&B routes still deny unavailable workflow capabilities before RBAC permission fallback is considered.
+- Confirm a freshly approved tenant in the mode receives the mode's role-preset-compatible user schema and that provisioning failure cleanup leaves the registration retryable.

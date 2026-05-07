@@ -35,6 +35,7 @@ This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDA
 ## Validation
 - Run architecture guardrails and controller-boundary checks for cross-boundary compliance.
 - Add unit coverage for workflow mode aliasing/capabilities, service booking conflict checks, service POS checkout stock bypass, Storefront claim prompt rules, and mode pin rendering.
+- Include tenant provisioning coverage whenever Services Mode adds tenant-local models or foreign keys. The tenant model factory must clone service tables into fresh tenant databases, disposable schema sync must pass, and failed approval/auto-approval provisioning must remain retryable instead of leaving an invalid landlord status.
 
 ## Hardening Addendum (2026-05-02)
 - Public service booking lookup must not expose customer contact data. Authenticated account history and successful claim flows may return customer-owned booking details.
@@ -49,6 +50,7 @@ This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDA
 - Staff/resource assignment, resource capacity, waitlist, client history, and service payment policy are core Services Mode contracts, not optional UI-only concepts.
 - Storefront booking controls must honor each service's payment policy and prevent ambiguous multi-quantity service bookings unless a package/class model is explicitly introduced.
 - Future modes should follow the same implementation pattern: define mode-specific source-of-truth capability registry, route guards, mode-native data contracts, mode-native IMS/POS/Storefront surfaces, tests, and documentation before claiming readiness.
+- Future modes that add tenant-local tables must also define their tenant provisioning graph before implementation starts. A mode is not ready if a fresh tenant approval cannot create its schema cleanly.
 
 ## Production Readiness Addendum (2026-05-02)
 - Services Mode includes an auditable reminder outbox. Due appointment reminders are queued against bookings and processed through the existing SMTP email service when configured. If SMTP is not configured, reminders are marked skipped rather than treated as sent.

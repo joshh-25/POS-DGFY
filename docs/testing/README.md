@@ -181,6 +181,16 @@ Targeted backend suites:
 npm --prefix backend test -- --runTestsByPath tests/registerCompanyRequestUseCase.autoApproval.test.js tests/rateLimiter.behavior.test.js tests/adminTenantHandlers.transport.test.js tests/adminTenantLifecycle.integration.test.js
 ```
 
+Tenant provisioning/model graph suites:
+```bash
+npm --prefix backend test -- --runTestsByPath tests/tenantModelFactory.contract.test.js tests/tenantProvisioning.test.js
+```
+
+Fresh-schema proof:
+1. Run a disposable MySQL tenant schema sync against the complete model graph when a mode adds tenant-local models or foreign keys.
+2. Confirm the mode matrix covers every value in `WORKFLOW_MODE_VALUES`, including placeholder modes using conservative defaults.
+3. Confirm failed approval/auto-approval provisioning restores a retryable `pending` landlord status and drops zombie tenant databases.
+
 Targeted frontend suite:
 ```bash
 npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx

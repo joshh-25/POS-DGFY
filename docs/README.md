@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -46,6 +46,7 @@ Start here for all planning and implementation work:
 - Barcode Identity, Labels, and Scan Routing is governed by `docs/architecture/adr/0018-barcode-identity-labels-and-scan-routing.md` and described in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md`. It keeps barcode identities separate from `sku_code`, supports manufacturer/imported and tenant-generated internal codes, emits browser-print label contracts, and routes scans through existing IMS/POS/Storefront/Services rules instead of bypassing them.
 - Food & Beverage Mode is governed by `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md` and described in `docs/features/FOOD_AND_BEVERAGE_MODE.md`. It keeps `fnb` as the stable internal workflow code, labels it `Food & Beverage`, and adds restaurant-native tables/checks/modifiers/kitchen/reservation/service-charge contracts without reusing manufacturing job-order workflows.
 - Mode-Aware RBAC and Role Presets is governed by `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`. It keeps legacy `users.role`, `users.permissions`, and `is_master_admin` operational while adding `users.role_preset_key`, a backend mode role catalog, mode-native Services/F&B permissions, assigned-location role scope, and backend-driven User Management role catalogs.
+- Tenant provisioning/model-clone hardening is part of the workflow-mode readiness contract. Future mode plans must include tenant-local table and foreign-key mapping, `tenantModelFactory` clone coverage, disposable schema sync evidence across `WORKFLOW_MODE_VALUES`, and retryable approval/auto-approval cleanup behavior.
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
@@ -91,6 +92,7 @@ Start here for all planning and implementation work:
 25. Mode-aware RBAC is additive. User Management loads `GET /api/v1/users/role-catalog` for the tenant's active workflow mode, invitations and role updates may submit `role_preset_key`, and users without a preset remain visible as `Legacy <role>`. Assigned-scope presets require explicit location grants when the tenant has multiple active locations; bulk assigned-scope role assignment requires a shared location selection. Services and F&B route guards prefer `services:*` / `fnb:*` permissions and only accept generic fallback permissions while `MODE_RBAC_GENERIC_FALLBACK_ENABLED` remains enabled during legacy remapping.
 26. FIFO and location stock are paired for every stock-bearing item across modes. Pure service rows remain stock-exempt, but Services Mode physical add-ons, retail products, consumables, kits, and supplies must be modeled as separate stock-bearing lines and continue through location-scoped FIFO.
 27. Item cost and customer selling price are separate contracts across corrected modes. `cost_per_unit`, FIFO cost, weighted average cost, stock movements, valuation, and COGS are internal accounting data; POS, Storefront, Dispatch Orders, and future customer sale surfaces require an explicit positive `default_sale_price` and must not sell at cost by fallback. Placeholder modes must define this financial/readiness contract before they move into corrected item taxonomy.
+28. Tenant provisioning is mode-wide, not F&B-only. Fresh tenant schema creation now clones tenant-local models from the canonical model registry while excluding landlord-only models, and provisioning cleanup restores approval paths to retryable valid statuses instead of introducing invalid transient tenant states. Future modes that add tables or foreign keys must prove this with tenant model factory tests and disposable MySQL schema sync.
 
 ## Rules
 1. Use authoritative docs first.

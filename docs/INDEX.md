@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -45,6 +45,7 @@ Canonical planning entry:
 - Barcode Identity, Labels, and Scan Routing is tracked in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md` and governed by ADR 0018. It covers tenant-local manufacturer/internal barcodes, printable labels, IMS scan prefill, POS scan eligibility, Storefront QR, Services/tickets, offline replay revalidation, and conflict handling.
 - Food & Beverage Mode is tracked in `docs/features/FOOD_AND_BEVERAGE_MODE.md` and governed by ADR 0019. It covers restaurant menu modifiers, dining areas/tables, open checks, kitchen tickets, multi-table reservations/waitlist requests, restaurant service-charge snapshots, POS additive metadata, and lazy Storefront restaurant/map surfaces.
 - Mode-Aware RBAC and Role Presets is tracked in `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`, `docs/architecture/RBAC_DESIGN_PROPOSAL.md`, `docs/setup/ADMIN_SETUP.md`, `docs/api/specification.md`, and `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`. New mode work must declare role presets, permission groups, sensitive actions, route guards, location scope, tests, and docs before implementation is considered complete.
+- Tenant provisioning/model-clone readiness for future modes is tracked in `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md` and ADR 0014/0016/0019/0020. New mode work that adds tenant-local tables or foreign keys must prove `tenantModelFactory` clone coverage, disposable schema sync, and retryable approval cleanup before readiness is claimed.
 - Settings tab/section ownership and deep-link anchors are tracked in `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`.
 - PWA installability and service-worker surface ownership are tracked in `docs/deployment/PWA_SURFACE_CONTRACT.md`.
 - Shared-hosting degraded mode and Redis-capable VPS mode are tracked in `docs/ops/HOSTING_PROFILES.md`, with profile validation through `scripts/check-hosting-profile.js`.

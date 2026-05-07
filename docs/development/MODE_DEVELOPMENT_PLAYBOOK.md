@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 applies_to: workflow_modes
 topic: mode_development
 ---
@@ -25,7 +25,7 @@ Each mode must feel native to its business type across IMS, POS, and Storefront.
 
 ## Required Mode Build Order
 
-Every mode implementation plan must include an explicit RBAC section. That section must list the mode's role presets, permission groups, sensitive actions, route guards, location scope rules, legacy/mismatch behavior, tests, and documentation updates. A mode plan that omits RBAC is incomplete and must not proceed to implementation.
+Every mode implementation plan must include explicit RBAC and tenant-provisioning sections. The RBAC section must list the mode's role presets, permission groups, sensitive actions, route guards, location scope rules, legacy/mismatch behavior, tests, and documentation updates. The provisioning section must list every new tenant-local model/table, foreign-key dependency, seed/default data requirement, and approval/auto-approval retry behavior. A mode plan that omits either section is incomplete and must not proceed to implementation.
 
 1. Research the target business type.
    - Identify the daily operator workflow.
@@ -60,6 +60,8 @@ Every mode implementation plan must include an explicit RBAC section. That secti
    - Keep shared primitives where they are correct, such as `item_id` for sellable lines.
    - Add side tables or mode-specific metadata where the shared model does not express the mode.
    - Avoid destructive migration of data hidden by a mode.
+   - Treat tenant provisioning as part of the data contract. Every new tenant-local model must be cloned by `backend/src/utils/tenantModelFactory.js`, and every tenant-local foreign key must reference a table present in the cloned tenant schema. Do not rely on a table existing in the default model registry unless the tenant clone contract and tests prove it is included.
+   - Approval and auto-approval provisioning failures must leave the landlord tenant row in a valid retryable lifecycle state. Do not introduce temporary statuses outside the landlord `Tenant.status` enum unless the enum, API contract, UI filters, and recovery paths are updated together.
    - Declare stock behavior for every sellable line type as `stock_bearing` or `stock_exempt`. Stock-bearing lines in every mode must use location-scoped FIFO; stock-exempt lines must state why no inventory batch can be affected.
    - Define item creation presets before UI/backend work begins. Each preset must declare its user-facing label, canonical `items.category`, `product_type`, default UOM, allowed UOM groups/units, stock behavior, FIFO default, POS eligibility, Storefront eligibility, and legacy-row behavior. When explicit allowed units are present, both frontend selectors and backend validators must enforce those units instead of expanding to every unit in the allowed group.
    - If two presets share the same canonical category/product type, persist the preset key (for example `items.mode_item_preset`) instead of relying on UOM inference to recover user intent.
@@ -83,6 +85,9 @@ Every mode implementation plan must include an explicit RBAC section. That secti
 
 10. Add tests at every contract boundary.
    - Registry parity.
+   - Tenant model factory coverage for every new tenant-local model and foreign-key reference.
+   - Disposable tenant schema sync/provisioning coverage across all supported `WORKFLOW_MODE_VALUES`, including placeholder modes that reuse conservative defaults.
+   - Failed provisioning cleanup coverage that proves approval retries remain possible after schema, seed, email, or storefront-bootstrap failures.
    - Route guards.
    - Core use cases.
    - Storefront/POS/IMS API contract keys.
@@ -124,6 +129,8 @@ A mode cannot be called production-ready while any of these are true:
 - It allows impossible lifecycle transitions.
 - It shows payment/fulfillment choices disallowed by the mode policy.
 - It has no tests for the mode's core contract.
+- It cannot provision a fresh tenant database through the shared approval/auto-approval path, or it can leave a failed approval in a non-retryable or invalid landlord status.
+- It adds tenant-local tables or foreign keys without tenant model factory coverage and a disposable tenant schema sync proof.
 - It introduces architecture allowlist entries without an ADR and removal plan.
 - It treats communications as sent without an auditable outbox, delivery status, or provider configuration state.
 - It stores mode-specific setup data but does not render or enforce it in the customer/operator workflow.
@@ -168,3 +175,15 @@ Before changing any placeholder mode item UI, complete this checklist:
 8. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
 
 Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
+
+## Future Mode Provisioning Checklist
+
+Before implementing or promoting any future mode, complete this checklist:
+
+1. List every tenant-local model/table the mode adds or extends, including shared tables receiving new foreign keys.
+2. Confirm `backend/src/utils/tenantModelFactory.js` clones those models into new tenant databases and excludes only landlord-owned models.
+3. Add or update tenant model factory tests so every tenant-local foreign key points to a cloned tenant table.
+4. Run a disposable MySQL tenant schema sync against the complete model graph, not only mocked provisioning tests.
+5. Run the mode matrix against every value in `WORKFLOW_MODE_VALUES`, including placeholder modes that inherit conservative defaults.
+6. Confirm approval and auto-approval failures restore a valid retryable landlord status (`pending` for approval paths) and drop any zombie tenant database safely.
+7. Document seed/default data requirements for first-login onboarding, customer access settings, role presets, locations, Storefront discovery, and mode-native setup tables.

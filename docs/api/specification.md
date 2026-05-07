@@ -3837,6 +3837,8 @@ No body required.
 - Creates isolated tenant database with all required tables
 - Seeds default admin user with provided credentials
 - **Sends approval email** with login credentials and company token (if SMTP configured)
+- Uses the shared tenant model clone graph for all workflow modes. Tenant-local models are cloned from the canonical backend model registry; landlord-only models remain outside tenant databases.
+- If provisioning fails before activation, drops the partially created tenant database and restores approval-flow tenants to a retryable `pending` status.
 
 **Response Fields**:
 - `email_sent`: Boolean indicating whether approval notification email was sent successfully

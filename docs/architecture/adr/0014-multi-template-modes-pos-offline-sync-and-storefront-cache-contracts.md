@@ -48,6 +48,8 @@ Adopt a cross-layer hardening contract in three parts:
 2. Payment portal implementation remains out of scope; only non-payment order lifecycle hardening is included.
 3. Checkout/mutation endpoints must remain non-cacheable (`no-store`).
 4. Idempotency conflict and blocked replay behavior must remain deterministic across POS mutation endpoints.
+5. New or promoted workflow modes must prove tenant provisioning before readiness. Every tenant-local model/table and tenant-local foreign key introduced by a mode must be included in the tenant model clone graph, covered by tenant model factory tests, and verified with a disposable tenant schema sync across all `WORKFLOW_MODE_VALUES`.
+6. Approval and auto-approval provisioning failures must restore a valid retryable landlord lifecycle state. Mode work must not introduce invalid transient tenant statuses or leave failed approvals stuck outside the documented approval/rejection flow.
 
 ## Rollback Notes
 1. UI rollback can hide Sync Queue surfaces while preserving queued records.
@@ -77,3 +79,14 @@ Future placeholder modes must not be promoted into corrected item taxonomy by on
 - Public Storefront catalog and checkout behavior must remain customer-safe: selling price may be exposed, price-less sellable rows must be suppressed or rejected, and internal cost fields must not be exposed publicly.
 - Stock movements, FIFO depletion, valuation, COGS, and profitability reports must continue to use cost snapshots/internal cost data only for internal accounting, not as a customer price fallback.
 - Placeholder modes remain conservative until their governed mode pass updates the ADR, mode development playbook, shared taxonomy, backend validators, frontend display policy, POS/Storefront readiness paths, reports, imports, and tests together.
+
+## Future Mode Provisioning Addendum (2026-05-07)
+
+Future placeholder modes must not be promoted by only adding mode-specific tables, labels, or UI routes. The implementation plan must include tenant provisioning as an immediate workstream:
+
+- list each tenant-local table/model the mode adds or extends;
+- map every new foreign key to the referenced cloned tenant model;
+- keep landlord-only models excluded from tenant database cloning;
+- run tenant model factory tests for missing references;
+- run a disposable tenant schema sync against the complete graph;
+- verify approval/auto-approval cleanup keeps the registration retryable after schema, seed, email, or storefront-bootstrap failure.

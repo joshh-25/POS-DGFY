@@ -57,6 +57,7 @@ The F&B API namespace owns:
 
 - Run `npm run check:architecture`.
 - Run `npm run lint:docs`.
+- Run tenant provisioning/model-factory coverage for all tenant-local F&B tables and shared tables that now reference F&B. Fresh tenant approval must create the complete schema, including POS transaction references to F&B checks/tables, and failed provisioning must restore a retryable landlord status.
 - Add backend tests for F&B workflow capabilities, guarded use-case transitions, service-charge settings, modifier validation, and POS F&B metadata snapshotting.
 - Add frontend tests for F&B mode registry parity, route visibility, navigation visibility, POS context payloads, and Storefront pin labels.
 - Keep regression coverage for `food_manufacturing`, `services`, `msme`, POS/Storefront source separation, Customer Access Mode, Inventory Display, and DGFY convenience fee behavior.

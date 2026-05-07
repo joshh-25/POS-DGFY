@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-30
+last_reviewed: 2026-05-07
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -32,9 +32,12 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
     4.  Seeds the default Admin User.
     5.  Updates status to **Active**.
     6.  Sends specific email with login credentials.
+    7.  Keeps approval retryable if provisioning fails before activation.
 - Approval email delivery is non-blocking after successful provisioning. If SMTP fails, the active registration response still succeeds with `email_sent=false`, and the founder can continue through in-app auto-login or manual login fallback.
 - Auto-login is implemented as a frontend follow-up call to the normal `/auth/login` API using the just-submitted registration password in component state. The registration response does not return auth tokens and the password is not stored for handoff.
 - If the follow-up auto-login call fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with email and company token prefilled.
+- Tenant schema provisioning is mode-wide. The backend clones tenant-local models from the canonical model registry into each new tenant database while excluding landlord-only models, so Services, F&B, and future modes must add tenant-local tables through the same model graph.
+- Provisioning failure cleanup is retry-safe for approval paths. If schema sync, seed data, storefront bootstrap, or email-adjacent setup fails before activation, the isolated database is dropped and the landlord tenant row is restored to a valid `pending` status instead of an out-of-enum temporary state. Future mode work must preserve this behavior.
 
 ### 3. Rejection
 - Admin rejects a pending registration.
