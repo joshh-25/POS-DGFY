@@ -95,9 +95,9 @@ describe('Provisioning — atomic cleanup on failure (2.3)', () => {
         expect(thrownError).toBeDefined();
         expect(thrownError.message).toBe('Simulated sync failure');
 
-        // 2. Tenant record must be marked as failed
+        // 2. Approval-flow failure must remain retryable from the admin portal
         expect(tenantUpdateMock).toHaveBeenCalledWith(
-            { status: 'failed' },
+            { status: 'pending' },
             expect.objectContaining({ where: { id: 'test-uuid-provisioning-2-3' } })
         );
 
@@ -160,9 +160,9 @@ describe('Provisioning — atomic cleanup on failure (2.3)', () => {
         expect(thrownError).toBeDefined();
         expect(thrownError.message).toBe('Simulated sync failure — double fault path');
 
-        // 2. Status-update was attempted even though it threw
+        // 2. Status reset was attempted even though it threw
         expect(tenantUpdateMock).toHaveBeenCalledWith(
-            { status: 'failed' },
+            { status: 'pending' },
             expect.objectContaining({ where: { id: 'test-uuid-provisioning-doublefault-2-3' } })
         );
 

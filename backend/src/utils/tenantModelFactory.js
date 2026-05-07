@@ -1,6 +1,38 @@
 import defaultDb from '../models/index.js';
 import logger from '../config/logger.js';
 
+const NON_TENANT_MODEL_EXPORTS = new Set([
+    'sequelize',
+    'Sequelize',
+    'Tenant',
+    'UserTenantMapping',
+    'UserInvitation',
+    'Payment',
+    'WebhookLog',
+    'EngagementEvent',
+    'AiUsageLog',
+    'StorefrontDiscoveryIndex',
+    'TenantComplianceArtifact',
+    'TenantCompliancePeripheral',
+    'TenantComplianceAuditLog',
+    'TenantComplianceAuditFailure',
+    'TenantComplianceFinalReviewDocument',
+    'TenantComplianceFinalReviewSignoff'
+]);
+
+const isSequelizeModel = (candidate) => (
+    candidate
+    && typeof candidate === 'function'
+    && candidate.rawAttributes
+    && candidate.options
+);
+
+const getTenantModelNames = (defaultModels) => (
+    Object.entries(defaultModels)
+        .filter(([name, model]) => !NON_TENANT_MODEL_EXPORTS.has(name) && isSequelizeModel(model))
+        .map(([name]) => name)
+);
+
 /**
  * Dynamically re-binds models to a specific tenant's Sequelize instance.
  * This is crucial for multi-tenancy to ensure queries run against the correct database.
@@ -22,25 +54,7 @@ export const getTenantModels = (sequelize) => {
     const models = {};
     const defaultModels = defaultDb;
 
-    // List of models to re-bind
-    const modelNames = [
-        'User', 'Item', 'Supplier', 'PurchaseOrder', 'JobOrder', 'StockMovement',
-        'FIFOBatch', 'ItemNutrition', 'ItemAllergen', 'ProductComposition',
-        'SupplierItem', 'BulkDiscount', 'ItemPhysicalProperties',
-        'ItemShelfLife', 'ItemPackaging', 'ItemQualityControl',
-        'ItemRegulatoryCompliance', 'ItemCostBreakdown', 'POLineItem',
-        'JOIngredient', 'BatchTransaction', 'AuditLog', 'SystemSetting',
-        'BatchLineage', 'ReceiveToken', 'ReportSnapshot', 'PendingAIAction',
-        'AIConversation', 'ItemEmbedding', 'ItemFolder', 'ItemBarcode',
-        'DispatchOrder', 'DispatchOrderLine',
-        'PosTransaction', 'PosTransactionLine', 'PosInvoiceCounter',
-        'PosZReadingSnapshot', 'PosOperationReplay',
-        'PosCatalogOverride', 'StorefrontCatalogOverride', 'PosTerminalShift', 'PosCashDrawerEvent',
-        'TenantLocation', 'StoreCustomer', 'StoreCustomerAddress',
-        'ItemLocationStock', 'UserLocationGrant',
-        'ServiceItemDetail', 'ServiceResource', 'ServiceProviderAssignment',
-        'ServiceBooking', 'ServiceWaitlistEntry', 'ServiceReminderOutbox'
-    ];
+    const modelNames = getTenantModelNames(defaultModels);
 
     // Re-define each model on the new connection
     modelNames.forEach(name => {

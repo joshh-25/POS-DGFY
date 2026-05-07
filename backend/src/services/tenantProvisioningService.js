@@ -452,12 +452,17 @@ export const provisionTenant = async (options) => {
     } catch (error) {
         logger.error(`[Provisioning] Error: ${error.message}`);
 
-        // 1. Mark tenant record as failed
+        // 1. Restore tenant record to a valid lifecycle state.
+        // Approval failures must remain retryable from the admin portal; direct
+        // provisioning failures are archived because no tenant DB is usable.
         try {
             const Tenant = dbStore.get('Tenant');
-            await Tenant.update({ status: 'failed' }, { where: { id: uuid } });
+            await Tenant.update(
+                { status: isApproval ? 'pending' : 'archived' },
+                { where: { id: uuid } }
+            );
         } catch (cleanupError) {
-            logger.warn(`[Provisioning] Failed to mark tenant as failed: ${cleanupError.message}`);
+            logger.warn(`[Provisioning] Failed to restore tenant lifecycle state: ${cleanupError.message}`);
         }
 
         // 2. Drop the zombie database (compensating transaction)
