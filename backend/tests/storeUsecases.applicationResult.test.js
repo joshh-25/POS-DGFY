@@ -84,6 +84,39 @@ describe('store use-cases application result contract', () => {
         expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
     });
 
+    it('listStoreCatalog suppresses customer-visible rows without explicit sale price', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                listStoreCatalog: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 520,
+                        name: 'Cost-only public item',
+                        availability_status: 'in_stock',
+                        default_sale_price: 0,
+                        cost_per_unit: 45
+                    },
+                    {
+                        item_id: 521,
+                        name: 'Priced public item',
+                        availability_status: 'in_stock',
+                        default_sale_price: 75,
+                        cost_per_unit: 45
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0]).toEqual(expect.objectContaining({
+            item_id: 521,
+            default_sale_price: 75
+        }));
+        expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
+    });
+
     it('listStoreCatalog suppresses rows for ghost mode when enforcement is enabled', async () => {
         process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
         const storeRepository = {
@@ -190,6 +223,57 @@ describe('store use-cases application result contract', () => {
         }));
         expect(result.data.item).not.toHaveProperty('current_stock');
         expect(result.data.item).not.toHaveProperty('cost_per_unit');
+    });
+
+    it('resolveStoreQr blocks price-less catalog rows before cart handoff', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const useCase = buildResolveStoreQrUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'transaction' },
+                    { setting_key: 'inventory_display_mode', setting_value: 'availability' },
+                    {
+                        setting_key: 'tenant_onboarding_progress',
+                        setting_value: JSON.stringify({
+                            step_payloads: {
+                                business_classification: {
+                                    legitimacy: { registration_status: 'registered' }
+                                }
+                            }
+                        })
+                    }
+                ]),
+                resolvePublicBarcode: jest.fn().mockResolvedValue({
+                    status: 'resolved',
+                    barcode: {
+                        item_barcode_id: 71,
+                        code: 'ITEM-PRICELESS',
+                        scope: 'storefront_qr',
+                        quantity_multiplier: 1
+                    },
+                    item: {
+                        item_id: 602,
+                        name: 'Price-less QR Item',
+                        category: 'product',
+                        current_stock: 9,
+                        cost_per_unit: 40,
+                        default_sale_price: 0,
+                        availability_status: 'in_stock'
+                    }
+                })
+            }
+        });
+
+        const result = await useCase({ query: { code: 'ITEM-PRICELESS', location_id: 2 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'blocked',
+            reason_code: 'STORE_CATALOG_PRICE_REQUIRED',
+            item: null,
+            cart_allowed: false,
+            checkout_allowed: false
+        }));
     });
 
     it('resolveStoreQr resolves service booking ticket QR without exposing customer contact data', async () => {

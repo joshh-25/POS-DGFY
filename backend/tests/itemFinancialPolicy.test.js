@@ -3,7 +3,8 @@ import {
     getExplicitSalePrice,
     hasExplicitSalePrice,
     isPureServiceItem,
-    requireExplicitSalePrice
+    requireExplicitSalePrice,
+    resolveItemFinancialPolicy
 } from '../src/modules/shared/utils/itemFinancialPolicy.js';
 
 describe('item financial policy', () => {
@@ -38,5 +39,45 @@ describe('item financial policy', () => {
                 context: 'POS checkout'
             }));
         }
+    });
+
+    it('mirrors mode-aware financial display/readiness rules used by IMS', () => {
+        expect(resolveItemFinancialPolicy({
+            workflowMode: 'services',
+            item: { category: 'service', mode_item_preset: 'service', cost_per_unit: 0 }
+        })).toEqual(expect.objectContaining({
+            is_pure_service: true,
+            show_sale_price: true,
+            show_cost: false,
+            requires_sale_price: false
+        }));
+
+        expect(resolveItemFinancialPolicy({
+            workflowMode: 'services',
+            item: {
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'physical_add_on',
+                unit_of_measure: 'pcs'
+            },
+            storefrontVisible: true
+        })).toEqual(expect.objectContaining({
+            show_cost: true,
+            show_sale_price: true,
+            requires_sale_price: true
+        }));
+
+        expect(resolveItemFinancialPolicy({
+            workflowMode: 'fnb',
+            item: {
+                category: 'raw_material',
+                mode_item_preset: 'ingredient',
+                unit_of_measure: 'kg'
+            }
+        })).toEqual(expect.objectContaining({
+            show_cost: true,
+            show_sale_price: false,
+            requires_sale_price: false
+        }));
     });
 });

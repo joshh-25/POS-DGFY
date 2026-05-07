@@ -153,6 +153,64 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogImage blocks visible default items without a sale price', async () => {
+        const tempPath = path.join(os.tmpdir(), `storefront-image-price-${Date.now()}.png`);
+        await fs.writeFile(tempPath, Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]));
+
+        const updateStorefrontCatalogImage = jest.fn();
+        const store = jest.fn().mockResolvedValue({ path: 'uploads/storefront.png', url: '/uploads/storefront.png' });
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 188,
+                    name: 'Default visible missing price',
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    default_sale_price: 0,
+                    cost_per_unit: 90
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue(null),
+                getStorefrontCatalogReadinessByItemId: jest.fn().mockResolvedValue({
+                    item_id: 188,
+                    storefront_visible: true
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: {
+                store,
+                remove: jest.fn()
+            }
+        });
+
+        await expect(useCase({
+            itemId: 188,
+            file: {
+                path: tempPath,
+                mimetype: 'image/png',
+                originalname: 'storefront.png',
+                size: 12
+            },
+            user: editableUser
+        })).rejects.toMatchObject({
+            code: 'VALIDATION_FAILED',
+            statusCode: 422,
+            details: expect.objectContaining({
+                reason_code: 'STOREFRONT_READINESS_INCOMPLETE',
+                missing_requirements: expect.arrayContaining([
+                    expect.objectContaining({ code: 'SALE_PRICE_MISSING' })
+                ])
+            })
+        });
+
+        expect(store).not.toHaveBeenCalled();
+        expect(updateStorefrontCatalogImage).not.toHaveBeenCalled();
+
+        await fs.rm(tempPath, { force: true });
+    });
+
     it('uploadStorefrontCatalogImage removes a newly stored file when the catalog update fails', async () => {
         const tempPath = path.join(os.tmpdir(), `storefront-image-fail-${Date.now()}.png`);
         await fs.writeFile(tempPath, Buffer.from([
@@ -163,7 +221,11 @@ describe('storefront catalog use cases', () => {
         const remove = jest.fn().mockResolvedValue(undefined);
         const useCase = buildUploadStorefrontCatalogImageUseCase({
             itemRepository: {
-                getItemById: jest.fn().mockResolvedValue({ item_id: 89 }),
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 89,
+                    name: 'Visible item with price',
+                    default_sale_price: 125
+                }),
                 findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
                     item_id: 89,
                     storefront_visible: true,

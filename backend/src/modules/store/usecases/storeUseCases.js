@@ -33,7 +33,10 @@ import {
 import {
     isStockExemptServiceItem
 } from '../../shared/utils/stockBearingPolicy.js';
-import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
+import {
+    hasExplicitSalePrice,
+    requireExplicitSalePrice
+} from '../../shared/utils/itemFinancialPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -807,6 +810,16 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
     };
 };
 
+const buildStorefrontMissingPriceResult = ({ accessPolicy, barcode = null } = {}) => ({
+    status: 'blocked',
+    reason_code: 'STORE_CATALOG_PRICE_REQUIRED',
+    access_policy: accessPolicy,
+    item: null,
+    barcode,
+    cart_allowed: false,
+    checkout_allowed: false
+});
+
 const currentTenantAccessContext = () => {
     const store = dbStore.getStore?.() || {};
     return {
@@ -1163,9 +1176,11 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                 limit: query.limit,
                 location_id: requestedLocationId
             });
-            const serializedItems = (Array.isArray(items) ? items : []).map((item) => (
-                serializeStoreCatalogItem(item, accessPolicy)
-            ));
+            const serializedItems = (Array.isArray(items) ? items : [])
+                .filter((item) => hasExplicitSalePrice(item))
+                .map((item) => (
+                    serializeStoreCatalogItem(item, accessPolicy)
+                ));
 
             return ok({
                 items: serializedItems,
@@ -1299,6 +1314,13 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                     cart_allowed: false,
                     checkout_allowed: false
                 });
+            }
+
+            if (!hasExplicitSalePrice(result.item)) {
+                return ok(buildStorefrontMissingPriceResult({
+                    accessPolicy,
+                    barcode: result.barcode || null
+                }));
             }
 
             const item = serializeStoreCatalogItem(result.item, accessPolicy);

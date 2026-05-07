@@ -27,6 +27,41 @@ const toSerializable = (value) => (
     : value
 );
 
+const storefrontReadinessError = ({ item, itemId, cause = null }) => new DomainError(
+  DomainErrorCode.VALIDATION_FAILED,
+  'Cannot enable Storefront visibility until readiness requirements are completed.',
+  {
+    statusCode: 422,
+    details: {
+      reason_code: 'STOREFRONT_READINESS_INCOMPLETE',
+      missing_requirements: [{
+        code: 'SALE_PRICE_MISSING',
+        label: 'Set a sale price'
+      }],
+      readiness_snapshot: {
+        ready: false,
+        checks: {
+          has_sale_price: false
+        },
+        item_id: itemId,
+        default_sale_price: item?.default_sale_price ?? null
+      },
+      price_error: cause?.details || null
+    }
+  }
+);
+
+const assertStorefrontPriceReady = (item, itemId, context) => {
+  try {
+    requireExplicitSalePrice(item, context);
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw storefrontReadinessError({ item, itemId, cause: error });
+    }
+    throw error;
+  }
+};
+
 const assertCanEditItems = (user, action) => {
   if (!hasPermission(user, PERMISSION_EDIT_ITEMS)) {
     throw new DomainError(
@@ -55,36 +90,7 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
     }
 
     if (payload.storefront_visible === true) {
-      try {
-        requireExplicitSalePrice(item, 'Storefront visibility');
-      } catch (error) {
-        if (error instanceof DomainError) {
-          throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'Cannot enable Storefront visibility until readiness requirements are completed.',
-            {
-              statusCode: 422,
-              details: {
-                reason_code: 'STOREFRONT_READINESS_INCOMPLETE',
-                missing_requirements: [{
-                  code: 'SALE_PRICE_MISSING',
-                  label: 'Set a sale price'
-                }],
-                readiness_snapshot: {
-                  ready: false,
-                  checks: {
-                    has_sale_price: false
-                  },
-                  item_id: normalizedItemId,
-                  default_sale_price: item?.default_sale_price ?? null
-                },
-                price_error: error.details || null
-              }
-            }
-          );
-        }
-        throw error;
-      }
+      assertStorefrontPriceReady(item, normalizedItemId, 'Storefront visibility');
     }
 
     const data = await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
@@ -138,6 +144,10 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
       const effective = existing
         ? { storefront_visible: existing.storefront_visible !== false }
         : await itemRepository.getStorefrontCatalogReadinessByItemId(normalizedItemId);
+
+      if (effective?.storefront_visible !== false) {
+        assertStorefrontPriceReady(item, normalizedItemId, 'Storefront image visibility');
+      }
 
       stored = await imageStorage.store({
         itemId: normalizedItemId,

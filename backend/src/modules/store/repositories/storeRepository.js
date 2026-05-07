@@ -4,6 +4,7 @@ import logger from '../../../config/logger.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertStoreRepositoryContract } from '../contracts/storeRepository.contract.js';
 import { isCatalogItemVisible, resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import { hasExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import {
     detectBarcodeSymbology,
     isBarcodeScopeAllowedForSurface,
@@ -249,6 +250,10 @@ const mapStorefrontCatalogVisibility = (row = {}, { allowLegacyPosFallback = fal
     })
 );
 
+const isStorefrontPublicCatalogReady = (row = {}, options = {}) => (
+    mapStorefrontCatalogVisibility(row, options) && hasExplicitSalePrice(row)
+);
+
 const mapStorefrontCatalogImageUrl = (row = {}, { allowLegacyPosFallback = false } = {}) => (
     row?.storefrontCatalogOverride?.storefront_image_url
     || (allowLegacyPosFallback ? row?.posCatalogOverride?.pos_image_url : null)
@@ -431,7 +436,7 @@ export const storeRepository = {
             });
             const catalogRows = rows
                 .map(toPlain)
-                .filter((row) => isCatalogItemVisible(row));
+                .filter((row) => isCatalogItemVisible(row) && hasExplicitSalePrice(row));
             const locationStock = await loadLocationStockMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
@@ -487,7 +492,7 @@ export const storeRepository = {
 
         const mapCatalogRows = (rows, { allowLegacyPosFallback = false } = {}) => rows
             .map(toPlain)
-            .filter((row) => mapStorefrontCatalogVisibility(row, { allowLegacyPosFallback }))
+            .filter((row) => isStorefrontPublicCatalogReady(row, { allowLegacyPosFallback }))
             .map((row) => ({
                 item_id: row.item_id,
                 name: row.name,
@@ -664,7 +669,7 @@ export const storeRepository = {
                     storefront_visible: storefrontVisible
                 };
             })
-            .filter((entry) => entry.storefront_visible);
+            .filter((entry) => entry.storefront_visible && hasExplicitSalePrice(entry.item));
 
         if (visibleMatches.length === 0 && rows.length > 0) {
             const disallowedScopes = rows
