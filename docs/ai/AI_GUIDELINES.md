@@ -173,6 +173,7 @@ archived  ← (completed or cancelled only)
 2. **FIFO/FEFO auto-selection**: The system picks the correct batch automatically. FEFO (earliest expiry first) is used for items with `shelf_life_days` set. Users can override with a specific `batch_id`.
 3. **Sale price propagation**: After dispatching (or after `update_dispatch_line_sale_price`), the item's `default_sale_price` is updated to reflect the new price for future DOs.
 4. **Draft-only edits**: `update_dispatch_order` only works on `draft` status. For `confirmed`+ DOs, cancel and recreate, or use `update_dispatch_line_sale_price` for price-only changes.
+5. **Price/cost boundary**: `default_sale_price` is the customer price. `cost_per_unit` is internal COGS/valuation. Do not use cost as a fallback sale price for POS, Storefront, or Dispatch Orders; ask the operator to set a sale price instead.
 
 ### Example Prompts
 

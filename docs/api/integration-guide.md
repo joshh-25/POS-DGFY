@@ -1107,7 +1107,7 @@ describe('Items Integration', () => {
           item_id: 1,
           sku_code: 'ING-001',
           name: 'Flour',
-          category: 'ingredient',
+          category: 'raw_material',
         },
       ],
     });

@@ -1,3 +1,10 @@
+---
+status: accepted
+date: 2026-04-20
+last_reviewed: 2026-05-07
+classification: authoritative
+---
+
 # ADR 0010: On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting
 
 ## Status
@@ -65,3 +72,22 @@ Adopt on-hand weighted average cost as the shared valuation metric while preserv
 3. PO detail endpoint supports optional `valuation_location_id` so receipt/review UX can render live location-aware weighted baseline values.
 4. PO receipt UX must recompute variance badges when receive location changes and protect against stale async responses.
 5. CSV exports for PO analysis and executive summary include additive weighted-cost/variance rows to align downloaded reports with API/UI metrics.
+
+## Price Boundary Addendum (2026-05-07)
+Inventory cost and customer selling price are separate contracts:
+
+1. `items.cost_per_unit`, weighted-average cost, FIFO batch cost, and cost snapshots are internal valuation/COGS fields.
+2. `items.default_sale_price` is the explicit operator-owned customer selling price for item-backed sales, POS cart defaults, Storefront catalog prices, Storefront checkout, and Dispatch Order revenue lines.
+3. Customer-facing sale flows must not fall back from missing `default_sale_price` to `cost_per_unit`.
+4. When an item is configured as POS-visible or Storefront-visible, sale readiness requires `default_sale_price > 0`. Internal inventory rows may remain cost-only.
+5. Pure service rows may keep optional internal service cost for profitability, but Services Mode must not show FIFO, average-cost, or on-hand inventory value controls for service-only rows.
+
+## Mode-Aware Tracking Addendum (2026-05-07)
+
+Reports, dashboard metrics, stock movements, and valuation services must apply the same stock-bearing policy used by POS and Storefront:
+
+1. Pure service rows are stock-exempt when `items.category = service` or `items.mode_item_preset = service`.
+2. Pure service rows may contribute to revenue, booking, POS, Storefront, and sales reports, but must not contribute to stock aging, low-stock, surplus/shortage, inventory value, weighted-average inventory valuation, FIFO batch, or stock-movement metrics.
+3. Physical Services Mode rows, F&B ingredients, F&B packaged goods, Food Manufacturing materials/products, and MSME stock items remain stock-bearing and continue to appear in inventory reports and movement tracking.
+4. Manual stock movement and transfer creation must fail closed for pure service rows even if stale stock/FIFO fields exist from legacy imports.
+5. Data-quality counts for missing cost or zero stock are inventory-readiness metrics and must exclude pure service rows so service businesses are not reported as inventory-defective for valid service catalog entries.

@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-03
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-07
 classification: authoritative
 ---
 
@@ -80,3 +80,12 @@ Public discovery index rows materialize Customer Access metadata (`customer_acce
 Settings updates, onboarding business-classification saves, tenant location changes, and storefront asset changes refresh storefront discovery after successful use-case results. Runtime schema readiness treats the discovery-index Customer Access migration and columns as required for environments that claim this rollout.
 
 Validation evidence must include targeted policy/settings/onboarding/store/service/discovery tests, Storefront helper tests, docs lint, architecture checks, Storefront build, SKUpervisor build, and whitespace diff checks before enabling the rollout broadly.
+
+## Addendum: Storefront Price And Cost Boundary (2026-05-07)
+
+Storefront visibility does not make item cost public:
+
+- Public Storefront catalog and QR payloads expose `default_sale_price` and never expose `cost_per_unit`, FIFO batch cost, weighted average cost, or raw inventory value.
+- Storefront checkout requires an explicit positive `default_sale_price` for every cartable item. Missing or zero sale price is a setup error, not permission to sell at cost.
+- `storefront_catalog_overrides.storefront_visible=true` is a sale-readiness configuration. Enabling it on an item without a positive `default_sale_price` must surface a readiness blocker in IMS and must fail closed in Storefront checkout.
+- Inventory Display remains quantity/availability presentation only. It does not alter cost visibility and does not authorize public cost exposure.

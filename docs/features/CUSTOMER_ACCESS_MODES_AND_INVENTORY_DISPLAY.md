@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -74,7 +74,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items when the rollout flag is enabled.
 - For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed when the rollout flag is enabled.
 - For `transaction`, quote/checkout/booking remain available subject to existing location, stock, compliance, and payment gates.
-- Public product catalog payloads continue to omit `current_stock` and `cost_per_unit`; `inventory_display.display_quantity` is the only public quantity field.
+- Public product catalog payloads continue to omit `current_stock` and `cost_per_unit`; `default_sale_price` is the customer price and `inventory_display.display_quantity` is the only public quantity field.
 - `/store/catalog` item membership and checkout item eligibility use `storefront_catalog_overrides.storefront_visible`. `pos_catalog_overrides.pos_visible` remains POS-only after backfill, with a temporary missing-table fallback for additive rollout safety.
 - Storefront catalog images use `storefront_catalog_overrides.storefront_image_url`. POS menu images remain independent and are used only when the Storefront override table itself is unavailable during rollout compatibility fallback.
 - When the Storefront override table exists but an individual item has no Storefront override row, public Storefront reads use the Storefront default policy rather than inheriting POS state. For products, finished goods default visible and non-finished goods default hidden; services follow service storefront metadata.
@@ -93,7 +93,8 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Stock-bearing item detail views group active FIFO batches by `location_id` and show location stock, batch quantity, weighted cost, and inventory value together.
 - The location filter is item-aware and resets/coerces to `All locations` when the selected location does not exist for the next item being viewed.
 - "Next to use" is calculated within each location. The all-location view keeps global totals visible but does not present a single cross-location FIFO batch as the global next batch.
-- Service-only rows stay stock-exempt and do not show misleading FIFO controls. Mixed Services Mode transactions must represent physical add-ons, retail products, consumables, kits, or supplies as separate stock-bearing lines so those lines still use location-scoped FIFO.
+- Service-only rows stay stock-exempt and do not show misleading FIFO, average-cost, location-cost, on-hand value, or stock-movement controls. Mixed Services Mode transactions must represent physical add-ons, retail products, consumables, kits, or supplies as separate stock-bearing lines so those lines still use location-scoped FIFO.
+- IMS item financial fields follow the mode preset: sellable services, F&B menu items, packaged beverages, food-manufacturing finished products, and MSME sellable rows show Selling Price; stock-bearing inventory rows show Cost; POS/Storefront-enabled rows require a positive Selling Price.
 
 ## Registration And Compliance Rules
 Use declared onboarding registration status as the v1 merchant-stage signal, with compliance/payment state as stronger runtime evidence when available.
@@ -115,7 +116,7 @@ Runtime behavior:
 ## Test Plan
 - Backend unit tests: mode normalization, rank comparison, stage-derived max mode, inventory display serialization, Settings validator coverage, legacy `visibility_mode` compatibility.
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
-- Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
+- Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.

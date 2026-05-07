@@ -76,7 +76,7 @@ Pass gate:
    - POS visibility
    - POS image
    - folder assignment + POS filter visibility
-   - sale price
+   - explicit sale price (`default_sale_price > 0`; cost must not be used as a fallback)
    - stock sanity
 4. Verify POS image upload validation:
    - upload a valid image file (`.png`/`.jpg`) -> expect success
@@ -95,6 +95,7 @@ Pass gate:
    - stock-in adjustment
    - stock-out adjustment
    - void movement
+   - attempt the same movement against a pure Services row and verify it fails as stock-exempt
 8. Create purchase order and receive it; confirm stock increase.
 9. Validate PO create quantity UX:
    - UOM badge is abbreviation-only
@@ -121,6 +122,7 @@ Pass gate:
 Pass gate:
 1. CRUD and stock flows behave consistently.
 2. No contradictory totals between inventory and movement history.
+3. Pure service rows are absent from stock aging, low-stock, surplus/shortage, inventory valuation, FIFO, and stock-movement reports, while physical add-ons/products remain present.
 
 ## 6) Phase C - POS Manual Flow
 
@@ -175,7 +177,7 @@ Pass gate:
    - `catalog` mode -> item detail only
    - `inquiry` mode -> item detail plus contact path
    - `transaction` mode -> cart handoff allowed after normal checkout gates
-8. Confirm QR responses and UI do not expose `cost_per_unit` or raw `current_stock`; use only the public `inventory_display` label/quantity contract.
+8. Confirm QR responses and UI expose `default_sale_price` as the customer price and do not expose `cost_per_unit`, weighted cost, FIFO cost, inventory value, or raw `current_stock`; use only the public `inventory_display` label/quantity contract.
 
 Pass gate:
 1. Guest flow works end-to-end with expected visibility controls.
@@ -203,7 +205,8 @@ IMS Services:
 3. Confirm dashboard cards show future bookings, expected revenue, postpaid aging, and no-show signals without API errors.
 4. Create or verify one service catalog row:
    - `category=service`
-   - duration and sale price configured
+   - duration and explicit sale price configured
+   - optional internal service cost is hidden unless enabled/stored
    - `visible_in_pos=true`
    - `visible_in_storefront=true`
    - `bookable=true`

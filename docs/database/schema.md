@@ -260,6 +260,7 @@ F&B reservation scheduling stores `duration_minutes` and `buffer_minutes` on `fn
 │ purchase_allowance       │
 │ unit_of_measure          │
 │ cost_per_unit            │
+│ default_sale_price       │
 │ fifo_enabled             │
 │ created_at               │
 │ updated_at               │
@@ -546,8 +547,9 @@ CREATE TABLE items (
         END
       ) STORED,
     name VARCHAR(255) NOT NULL,
-    category ENUM('raw_material', 'packaging', 'product', 'supplies') NOT NULL,
+    category ENUM('raw_material', 'packaging', 'product', 'supplies', 'service') NOT NULL,
     product_type ENUM('work_in_progress', 'finished_goods') NULL,
+    mode_item_preset VARCHAR(64) NULL,
     product_folder VARCHAR(100),
     folder_id INT NULL,
     description TEXT,
@@ -557,6 +559,7 @@ CREATE TABLE items (
     purchase_allowance DECIMAL(12, 2),
     unit_of_measure VARCHAR(50) NULL,  -- See UOM Standards below
     cost_per_unit DECIMAL(10, 4),
+    default_sale_price DECIMAL(10, 4) NULL,
     fifo_enabled BOOLEAN DEFAULT TRUE,
     shelf_life_days INT NULL,
     opened_shelf_life_days INT NULL,
@@ -582,9 +585,11 @@ CREATE TABLE items (
 );
 ```
 
-**Current Implementation Note (2026-04):**
+**Current Implementation Note (2026-05):**
 - `items.vat_type` is implemented as `ENUM('vatable','vat_exempt','zero_rated')` with default `vatable`.
 - POS uses this as the default tax classification source, then snapshots it at transaction-line level.
+- `items.category` includes `service` for Services Mode item-backed catalog rows. Service-only rows are stock-exempt; physical products, add-ons, consumables, and supplies remain stock-bearing.
+- `items.mode_item_preset` stores the corrected workflow-mode preset key when a row was created or intentionally recategorized through a governed mode taxonomy. It is nullable for legacy rows. F&B uses it to distinguish `menu_item` from `packaged_beverage` when both share `category='product'` and `product_type='finished_goods'`.
 
 **SKU Uniqueness Contract (2026-04-18):**
 - Runtime and DB both enforce case/whitespace-normalized uniqueness for active SKUs.
@@ -599,11 +604,12 @@ CREATE TABLE items (
 **Folder Filtering Canonical Path (2026-03-03 update):**
 - Query filtering must use `items.folder_id` (indexed) instead of the legacy `items.product_folder` string.
 - `product_folder` remains for compatibility/export metadata only and is not the performance path.
+- `mode_item_preset` is indexed by `idx_items_mode_item_preset` for mode-native preset filtering and import/reporting checks.
 - CSV export filtering was updated to resolve folder name via `item_folders.name` (indexed) then filter by `items.folder_id`.
 
 #### UOM (Unit of Measure) Standards
 
-The `unit_of_measure` field uses standardized abbreviations organized into three groups. Units within the same group are **automatically convertible** for job order calculations.
+The `unit_of_measure` field uses standardized abbreviations organized into convertible inventory groups and non-convertible business groups. Only weight, volume, and count units are **automatically convertible** for job order, recipe, and inventory calculations.
 
 | Group | UOM Code | Display Name | Conversion Factor |
 |-------|----------|--------------|-------------------|
@@ -621,12 +627,42 @@ The `unit_of_measure` field uses standardized abbreviations organized into three
 | **Count** | pcs | Pieces | 1 (base) |
 | | units | Units | 1 (equivalent to pcs) |
 | | dozen | Dozen | 12 pcs |
+| **Packaging** | pack | Pack | valid, not auto-convertible |
+| | case | Case | valid, not auto-convertible |
+| | carton | Carton | valid, not auto-convertible |
+| | box | Box | valid, not auto-convertible |
+| | tray | Tray | valid, not auto-convertible |
+| | sack | Sack | valid, not auto-convertible |
+| | bottle | Bottle | valid, not auto-convertible |
+| | can | Can | valid, not auto-convertible |
+| | pouch | Pouch | valid, not auto-convertible |
+| | bag | Bag | valid, not auto-convertible |
+| **Presentation** | serving | Serving | valid, not auto-convertible |
+| | portion | Portion | valid, not auto-convertible |
+| | service | Service | valid, not auto-convertible |
+| | session | Session | valid, not auto-convertible |
+| | booking | Booking | valid, not auto-convertible |
+| | ticket | Ticket | valid, not auto-convertible |
+| | room_night | Room night | valid, not auto-convertible |
+| **Time** | minute | Minute | valid, not auto-convertible |
+| | hour | Hour | valid, not auto-convertible |
+| | day | Day | valid, not auto-convertible |
 
 **Conversion Rules:**
+- Only weight, volume, and count are convertible groups.
 - Units within the same group convert automatically (e.g., kg ↔ g, L ↔ mL)
 - Units in different groups are **incompatible** (e.g., kg ↔ L = error)
 - `pcs` and `units` are treated as equivalent (1:1)
+- Packaging, presentation, and time units are valid for item display, menu/service sales, ticketing, and supplier packaging, but they do not convert automatically. For example, `serving` cannot become `kg`, and `case` cannot become `pcs`, unless a future item/vendor conversion table explicitly defines that relationship.
 - Legacy values (e.g., "Kilogram", "liters") are normalized via migration script
+
+**Mode-Aware Item Taxonomy (2026-05-06):**
+- Food Manufacturing uses Raw Material/Ingredient (`raw_material`), Packaging (`packaging`), Supplies (`supplies`), and Finished Product (`product` + `finished_goods`).
+- MSME uses Products (`product` + `finished_goods`) and Supplies (`supplies`), preserving legacy raw/packaging records without destructive recategorization.
+- Services uses Service (`service`, stock-exempt), Physical Add-on/Product (`product` + `finished_goods`), and Supplies (`supplies`).
+- Food & Beverage uses Menu Item (`product` + `finished_goods`, default `serving`), Ingredient (`raw_material`, default `kg`), Packaged Beverage/Retail Item (`product` + `finished_goods`, default `bottle`), and Packaging/To-go Supply (`packaging`, default `pcs`).
+- New corrected-mode rows persist `mode_item_preset`; legacy rows without it remain readable through category/product/UOM inference until the operator selects a corrected preset.
+- Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their own governed mode pass defines item presets and UOM rules.
 
 ### 4. FIFO Batches Table
 
@@ -1003,11 +1039,12 @@ CREATE TABLE stock_movements (
 );
 ```
 
-**Current Implementation Note (2026-04-18):**
+**Current Implementation Note (2026-05-07):**
 - Runtime movement usage includes `goods_issue` for outbound sales/dispatch.
 - `reference_type` includes `POS` and `DO` in addition to legacy reference types.
 - Transfer movements require `source_location_id` and `destination_location_id` with different values.
 - Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
+- Pure service rows (`items.category = service` or `items.mode_item_preset = service`) are stock-exempt and must not create manual stock movement, transfer, FIFO, weighted-cost, or inventory-valuation rows. Physical service add-ons/products and supplies remain normal stock-bearing inventory rows.
 
 ### 15. Batch Transactions Table
 

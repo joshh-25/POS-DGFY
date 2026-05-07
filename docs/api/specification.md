@@ -454,7 +454,7 @@ Get all items with pagination and filtering
 ```
 ?page=1
 &limit=20
-&category=ingredient
+&category=raw_material
 &search=flour
 &sortBy=name
 &sortOrder=asc
@@ -473,13 +473,14 @@ Get all items with pagination and filtering
         "item_id": 1,
         "sku_code": "ING-001",
         "name": "All-Purpose Flour",
-        "category": "ingredient",
+        "category": "raw_material",
         "current_stock": 150.50,
         "max_capacity": 500,
         "min_threshold": 200,
         "purchase_allowance": 100,
         "unit_of_measure": "kg",
         "cost_per_unit": 25.50,
+        "default_sale_price": null,
         "cost_metrics": {
           "global": {
             "available_qty": 150.5,
@@ -515,6 +516,7 @@ Get all items with pagination and filtering
 - Inactive items are excluded by default unless explicitly queried by status where permitted.
 - `cost_metrics.global` is always returned. `cost_metrics.scoped` is returned only when `valuation_location_id` is provided.
 - `cost_metrics.*.source` indicates valuation origin (`fifo_batches` or `item_cost_fallback`).
+- `cost_per_unit` is internal inventory/COGS data. `default_sale_price` is the explicit customer price used only when the row is sellable through POS, Storefront, or Dispatch Orders.
 
 > **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint still uses a lightweight row projection (no join-heavy composition/folder payload), but now includes additive `cost_metrics` valuation data for procurement and planning surfaces. Prefer this mode for dropdowns and quick selectors; avoid it when you need full `ProductComposition`, `ItemFolder`, or deep detail payloads.
 
@@ -534,7 +536,7 @@ Get single item details
     "item_id": 1,
     "sku_code": "ING-001",
     "name": "All-Purpose Flour",
-    "category": "ingredient",
+    "category": "raw_material",
     "description": "High-quality all-purpose flour",
     "current_stock": 150.50,
     "max_capacity": 500,
@@ -542,6 +544,7 @@ Get single item details
     "purchase_allowance": 100,
     "unit_of_measure": "kg",
     "cost_per_unit": 25.50,
+    "default_sale_price": null,
     "cost_metrics": {
       "global": {
         "available_qty": 150.5,
@@ -624,6 +627,7 @@ Get single item details
 - FIFO batches include location metadata to support location-scoped FIFO consumption. For stock-bearing items, frontend item detail views should read `item_location_stocks` and `fifo_batches.location_id` together: location stock shows where quantity exists, while batch rows show the cost, age, expiry, and remaining-quantity differences inside that location.
 - `cost_metrics.by_location` is included in detail responses for per-location weighted valuation visibility.
 - No API shape change is required for the location-aware FIFO viewer. Clients should group `fifo_batches` by `location_id`, join summaries from `item_location_stocks` and `cost_metrics.by_location`, calculate "next to use" within each location, and avoid labeling one batch as globally next when multiple locations exist.
+- IMS clients must hide stock/FIFO/weighted-cost presentation for pure service rows. They should show `default_sale_price` as the primary service financial field and show `cost_per_unit` only as optional internal service-cost tracking.
 
 ### POST /items
 Create new item
@@ -633,7 +637,8 @@ Create new item
 {
   "sku_code": "ING-001",
   "name": "All-Purpose Flour",
-  "category": "ingredient",
+  "category": "raw_material",
+  "mode_item_preset": "raw_material",
   "description": "High-quality all-purpose flour",
   "current_stock": 100,
   "location_id": 3,
@@ -642,6 +647,7 @@ Create new item
   "purchase_allowance": 100,
   "unit_of_measure": "kg",
   "cost_per_unit": 25.50,
+  "default_sale_price": null,
   "fifo_enabled": true,
   "batch_size": 50,
   "yield_percentage": 98.5,
@@ -657,7 +663,8 @@ Create new item
     "item_id": 1,
     "sku_code": "ING-001",
     "name": "All-Purpose Flour",
-    "category": "ingredient"
+    "category": "raw_material",
+    "mode_item_preset": "raw_material"
   },
   "message": "Item created successfully"
 }
@@ -669,6 +676,15 @@ Create new item
 - Active SKU uniqueness is case/whitespace-insensitive. Conflicts return `409` with `Item with this SKU code already exists`.
 - When `current_stock` is provided with `location_id`, opening/adjustment stock is recorded for that location ledger.
 - Stock-bearing items should be created with location context whenever opening stock is provided so FIFO batches and location stock stay aligned from the first receipt/adjustment.
+- Corrected workflow modes enforce mode-aware item taxonomy for new non-draft rows and draft finalization:
+  - Food Manufacturing: raw materials/ingredients, packaging, supplies, and finished products.
+  - MSME: products and supplies, with legacy raw/packaging rows preserved when not recategorized.
+  - Services: service rows (`category=service`, stock-exempt), physical add-on products, and supplies.
+  - Food & Beverage: menu items (`serving`), ingredients (`kg`/weight-volume-count), packaged beverage/retail items (`bottle`/packaging), and to-go packaging/supplies.
+- Valid UOMs include convertible inventory units (`kg`, `g`, `mL`, `L`, `pcs`, etc.) plus non-convertible business units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `pack`, `case`, `carton`, `bottle`, and `can`. Automatic conversion is limited to weight, volume, and count groups.
+- Corrected-mode clients may send `mode_item_preset` to persist the selected mode-native item type. F&B uses this to distinguish `menu_item` from `packaged_beverage` even though both are stored as `category=product` and `product_type=finished_goods`.
+- `default_sale_price > 0` is required before an item can be sold through POS, Storefront checkout, or Dispatch Orders. Cost-only internal inventory rows may keep `default_sale_price=null`.
+- Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative defaults until their governed mode-specific item taxonomy is added.
 
 ### PUT /items/:item_id
 Update item
@@ -1623,6 +1639,7 @@ Record manual stock movement
 - For `movement_type=transfer`, both `source_location_id` and `destination_location_id` are required and must be different.
 - For `movement_type=calculated_loss`, `loss_reason` is required.
 - Optional batch targeting uses `batch_id`; if omitted on deduction flows, FIFO oldest batch is used.
+- Pure service rows (`category=service` or `mode_item_preset=service`) are stock-exempt and cannot receive manual stock movements or transfers. Physical service add-ons/products remain stock-bearing and use the normal movement contract.
 
 ### POST /stock-movements/:id/void
 Void a specific stock movement
@@ -2652,6 +2669,7 @@ Catalog rows include:
 **Availability Contract**
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
 - `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
+- `default_sale_price` is the only item-level public customer price. Storefront quote/checkout rejects cartable rows with missing or zero `default_sale_price`; it does not fall back to item cost.
 - Exact raw stock remains server-side and is enforced during quote/checkout validation. When Inventory Display is `exact_quantity`, the public response may include normalized `inventory_display.display_quantity`; this is not the raw item record.
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
@@ -3161,6 +3179,11 @@ Get surplus and shortage report
 }
 ```
 
+**Mode-Aware Inventory Reporting Notes**
+- Stock aging, surplus/shortage, inventory valuation, weighted-cost, FIFO, and stock-movement reports include stock-bearing rows only.
+- Pure service rows (`category=service` or `mode_item_preset=service`) are excluded from inventory-readiness and valuation totals so service businesses are not flagged for valid stock-exempt catalog entries.
+- Physical Services Mode add-ons/products, F&B ingredients, F&B packaged goods, Food Manufacturing materials/products, and MSME stock items remain inventory rows and continue to appear in stock and cost reports.
+
 ### GET /reports/financial-summary
 Get financial tracking report
 
@@ -3178,7 +3201,7 @@ Get financial tracking report
   "data": {
     "report": [
       {
-        "category": "ingredient",
+        "category": "raw_material",
         "total_inventory_value": 45000,
         "total_cogs": 12000,
         "total_movements": 150,

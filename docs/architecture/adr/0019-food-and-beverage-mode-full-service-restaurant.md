@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-05
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-07
 classification: authoritative
 ---
 
@@ -60,3 +60,23 @@ The F&B API namespace owns:
 - Add backend tests for F&B workflow capabilities, guarded use-case transitions, service-charge settings, modifier validation, and POS F&B metadata snapshotting.
 - Add frontend tests for F&B mode registry parity, route visibility, navigation visibility, POS context payloads, and Storefront pin labels.
 - Keep regression coverage for `food_manufacturing`, `services`, `msme`, POS/Storefront source separation, Customer Access Mode, Inventory Display, and DGFY convenience fee behavior.
+
+## Item Taxonomy And UOM Addendum (2026-05-06)
+
+F&B item creation uses restaurant-native presets while preserving shared item primitives:
+
+- `Menu Item` maps to `items.category = product`, `product_type = finished_goods`, defaults to `serving`, and is recipe/menu oriented. It is not automatically converted to ingredient weight or volume.
+- `Ingredient` maps to `category = raw_material`, defaults to `kg`, and uses convertible weight/volume/count UOMs for recipe and FIFO deduction.
+- `Packaged Beverage / Retail Item` maps to `category = product`, `product_type = finished_goods`, defaults to `bottle`, and uses packaging/count/volume UOMs.
+- `Packaging / To-go Supply` maps to `category = packaging`, defaults to `pcs`, and uses count/packaging UOMs.
+- New F&B item rows persist `items.mode_item_preset` (`menu_item`, `ingredient`, `packaged_beverage`, or `packaging_supply`) so menu-vs-packaged-product subtype semantics do not depend on UOM inference alone. Existing rows without this value remain editable through inferred display until the operator selects a corrected preset.
+- New non-draft rows and draft finalization must match one of the F&B presets. Legacy rows remain editable without destructive recategorization until the operator changes category, product type, or UOM.
+
+## Price And Cost Addendum (2026-05-07)
+
+F&B item financial behavior follows restaurant-native presets:
+
+- `Menu Item` rows show both recipe/menu cost and `default_sale_price` in IMS create, edit, summary, and detail views. Menu POS and Storefront sale flows require a positive `default_sale_price`.
+- `Packaged Beverage / Retail Item` rows show cost and selling price because they are direct sellable stock-bearing items.
+- `Ingredient` and `Packaging / To-go Supply` rows show cost for inventory valuation. They show and require selling price only if explicitly enabled for POS or Storefront.
+- Modifier deltas may add to the menu item sale price, but the base menu item must still have an explicit `default_sale_price`; Storefront and POS must not use item cost as the base customer price.

@@ -62,6 +62,8 @@ Uses a simplified schema and includes MSME-critical pricing fields:
 
 This supports MSME non-draft pricing requirements while keeping the template smaller than the manufacturing variant.
 
+For corrected modes, `cost_per_unit` and `default_sale_price` are separate fields. `cost_per_unit` is inventory/COGS data; `default_sale_price` is the POS/Storefront/Dispatch customer price. Active MSME rows still require both. Other modes require `default_sale_price > 0` only when an item is made sellable through POS or Storefront; cost-only internal inventory rows may omit it.
+
 ## Import Flow
 
 1. Download the template matching the tenant workflow mode.
@@ -116,6 +118,7 @@ Mismatch response includes:
 | `Category 'product' is not valid for Items template` | Category does not match detected template columns | Use the correct row/category schema |
 | `product_type is required when category is "product"` | Product row missing `product_type` | Set `work_in_progress` or `finished_goods` |
 | `default_sale_price is required for MSME items` | MSME non-draft row missing sale price | Provide `default_sale_price` |
+| `Item is missing a sale price` or `default_sale_price is required for sellable items` | Row is configured for POS/Storefront without a positive sale price | Provide `default_sale_price` or disable customer-facing visibility |
 
 ## Notes
 

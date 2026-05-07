@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -17,7 +17,7 @@ Overall status: in_progress
 1. IMS to POS handoff now includes guided POS readiness behavior:
 - item-level POS visibility and media controls are explicit
 - readiness blockers are surfaced before cashier flow handoff
- - readiness blockers for enabling POS visibility are: `pos_visible`, valid `default_sale_price > 0`, non-negative stock, and active item status
+ - readiness blockers for enabling POS visibility are: `pos_visible`, explicit `default_sale_price > 0`, non-negative stock, active item status, and available stock unless the row is a stock-exempt service
  - POS menu image and folder assignment/`show_in_pos_filter` are optional UX enhancements (non-blocking)
 2. POS catalog eligibility is item-level with explicit defaults:
 - override row present => use `pos_visible`
@@ -96,7 +96,7 @@ Overall status: in_progress
 - POS visibility uses `pos_catalog_overrides.pos_visible`; POS image upload/removal preserves the existing visibility state.
 - Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; Storefront image upload/removal preserves the existing visibility state.
 - Storefront catalog images are independent from POS menu images.
-- Public Storefront catalog payloads remain availability-only and must not expose `current_stock` or `cost_per_unit`.
+- Public Storefront catalog payloads expose customer price through `default_sale_price` and must not expose `current_stock`, `cost_per_unit`, FIFO cost, weighted cost, or raw inventory value.
 32. Storefront catalog fallback boundaries are now explicit:
 - When `storefront_catalog_overrides` exists, a missing per-item Storefront override row uses Storefront default policy and must not inherit POS visibility or POS image state.
 - POS-derived Storefront membership/media is allowed only as table-missing rollout compatibility fallback, with warning logging.
@@ -278,6 +278,8 @@ Verified outcomes:
 - Ticket-scope scans that are not POS-cartable fail closed with `TICKET_SCAN_NOT_CARTABLE`.
 - Label payloads now carry backend-owned browser-print layout contracts and label print audit metadata consumed by the Inventory UI.
 - Storefront QR service booking resolution redacts customer contact data and does not expose raw inventory/cost fields.
+- POS, Storefront checkout, and barcode cart handoff must not fall back from missing `default_sale_price` to `cost_per_unit`; missing or zero sale price returns `MISSING_PRICE`/validation failure instead.
+- Pure Services rows (`category=service` or `mode_item_preset=service`) remain revenue/bookable rows but are excluded from stock movement, FIFO, inventory valuation, low-stock, surplus/shortage, and stock-aging tracking. Services physical add-ons/products continue using normal stock tracking.
 
 Remaining non-automated readiness checks:
 - Physical scanner and browser label print-margin validation still require manual QA against target hardware and label stock.

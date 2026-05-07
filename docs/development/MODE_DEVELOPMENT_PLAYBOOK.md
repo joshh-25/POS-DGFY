@@ -61,6 +61,9 @@ Every mode implementation plan must include an explicit RBAC section. That secti
    - Add side tables or mode-specific metadata where the shared model does not express the mode.
    - Avoid destructive migration of data hidden by a mode.
    - Declare stock behavior for every sellable line type as `stock_bearing` or `stock_exempt`. Stock-bearing lines in every mode must use location-scoped FIFO; stock-exempt lines must state why no inventory batch can be affected.
+   - Define item creation presets before UI/backend work begins. Each preset must declare its user-facing label, canonical `items.category`, `product_type`, default UOM, allowed UOM groups/units, stock behavior, FIFO default, POS eligibility, Storefront eligibility, and legacy-row behavior. When explicit allowed units are present, both frontend selectors and backend validators must enforce those units instead of expanding to every unit in the allowed group.
+   - If two presets share the same canonical category/product type, persist the preset key (for example `items.mode_item_preset`) instead of relying on UOM inference to recover user intent.
+   - Separate convertible UOMs from valid business presentation units. Automatic conversion is allowed only for weight, volume, and count groups. Presentation and packaging units such as `serving`, `service`, `ticket`, `pack`, `case`, and `bottle` require explicit item-specific conversion before stock math can convert them.
 
 7. Build IMS as the admin/operator console for that mode.
    - Start with the daily workflow.
@@ -150,3 +153,15 @@ Implementation checklist:
 4. Guard mode routes with mode-native permissions plus any intentionally temporary compatibility fallback. Temporary fallback must be feature-flagged, documented, tested both enabled and disabled, and paired with a remapping/removal plan.
 5. Add catalog and route-guard tests.
 6. Update operator and API docs with the new role preset family.
+
+## Future Mode Item-Correction Checklist
+
+Before changing any placeholder mode item UI, complete this checklist:
+
+1. Add or update the mode ADR with the business purpose, daily workflow, item presets, UOM contract, stock-bearing rules, POS/Storefront eligibility, and legacy-row behavior.
+2. Add the mode to the shared corrected-mode item taxonomy only after the ADR is accepted.
+3. Add backend validation for new non-draft rows and draft finalization.
+4. Add frontend item-form preset/UOM tests and backend taxonomy parity tests.
+5. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
+
+Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.

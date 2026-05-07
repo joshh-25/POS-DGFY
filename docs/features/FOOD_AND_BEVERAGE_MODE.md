@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -54,6 +54,26 @@ Recipe availability preflight is location-scoped. The composition lookup receive
 Recipe composition validation applies only to stock-bearing sold items. Pure service rows are stock-exempt and do not validate or deduct accidental recipe-composition rows; physical add-ons, retail products, consumables, kits, or supplies sold alongside a service must be represented as separate stock-bearing lines so they still use location-scoped FIFO.
 
 Restaurant-only workflow records do not affect FIFO by themselves. Reservations, table status, open checks, kitchen tickets, modifiers, discounts, fees, and restaurant service-charge snapshots are stock-neutral unless a checked-out line maps to stock-bearing ingredients or items.
+
+## Item Creation Taxonomy
+
+F&B create-item UI and backend validation use restaurant-native presets:
+
+- `Menu Item`: `category=product`, `product_type=finished_goods`, default UOM `serving`, stock-exempt by default unless represented as a stock-bearing sold item. Recipe depletion uses `product_composition` ingredient rows.
+- `Ingredient`: `category=raw_material`, default UOM `kg`, stock-bearing, FIFO/location-scoped.
+- `Packaged Beverage / Retail Item`: `category=product`, `product_type=finished_goods`, default UOM `bottle`, stock-bearing when sold directly.
+- `Packaging / To-go Supply`: `category=packaging`, default UOM `pcs`, stock-bearing.
+
+New F&B rows persist `items.mode_item_preset` with the selected preset key. This is required because `Menu Item` and `Packaged Beverage / Retail Item` can both be `category=product` and `product_type=finished_goods`; the persisted preset preserves restaurant-native intent instead of relying on UOM inference during later edits.
+
+F&B accepts valid presentation and packaging UOMs such as `serving`, `portion`, `bottle`, `can`, `pack`, and `case`, but automatic conversion remains limited to weight, volume, and count units. Legacy rows outside the F&B presets remain editable until the operator changes category, product type, mode preset, UOM, or finalizes a draft.
+
+## Price And Cost Behavior
+
+- Menu Item and Packaged Beverage / Retail Item rows show both Cost and Selling Price in IMS create, edit, wizard summary, item cards, and detail views.
+- Ingredients and Packaging / To-go Supply rows show inventory cost. Selling price is shown and required only when the item is explicitly enabled for POS or Storefront.
+- Storefront and POS use `default_sale_price` as the base customer price. F&B modifier deltas can add to that base, but missing or zero base price blocks sale readiness.
+- F&B recipe, FIFO, weighted-average, and stock-movement costs remain internal valuation/COGS data and are never exposed in public Storefront payloads.
 
 ## Mode Guards
 

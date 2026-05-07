@@ -55,3 +55,15 @@ Adopt a cross-layer hardening contract in three parts:
 3. Discovery/profile Redis cache-aside can be disabled by Redis unavailability without API contract break.
 4. Template registry rollback can fall back to family defaults (`manufacturing`/`msme`) without data loss.
 
+## Mode-Aware Item Taxonomy And UOM Addendum (2026-05-06)
+
+Item and UOM defaults are now governed by a corrected-mode taxonomy instead of a binary MSME/non-MSME branch.
+
+- Corrected item-taxonomy modes are `food_manufacturing` (including legacy `manufacturing` alias), `msme`, `services`, and `fnb`.
+- Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative template defaults until each mode receives its own governed purpose, item taxonomy, UOM contract, RBAC, and POS/Storefront behavior.
+- The shared canonical `items.category` values remain `raw_material`, `packaging`, `product`, `supplies`, and `service`. Mode-specific UI labels such as `Menu Item`, `Ingredient`, or `Service` map to those canonical categories instead of expanding the enum.
+- UOMs are split into convertible groups (`weight`, `volume`, `count`) and valid non-convertible business groups (`packaging`, `presentation`, `time`). Automatic conversion is allowed only inside convertible groups. Units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `pack`, `case`, `carton`, `bottle`, and `can` are valid but must not be converted into weight/volume/count without an explicit item-specific conversion contract.
+- Mode presets must enforce their explicit allowed UOM list. UOM groups describe classification and fallback metadata; they must not open every unit in the group unless the preset intentionally omits an explicit allowed-unit list.
+- Corrected-mode rows may persist `items.mode_item_preset` as the mode-native preset key. This is additive and nullable: new corrected-mode creates should persist it, while existing rows without the field remain readable through category/product/UOM inference.
+- New non-draft item creation and draft finalization are strict for corrected modes. Existing legacy rows remain editable unless the operator changes category, product type, UOM, or publishes the row into an invalid corrected-mode combination.
+- CSV templates are mode-aware for corrected modes and signed/marked templates must match the tenant workflow mode. Legacy manufacturing markers normalize to `food_manufacturing`. Preview and confirm paths must validate each row against the same corrected-mode taxonomy used by item create/update/finalize, including optimized bulk-import rows.

@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-02
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-07
 classification: authoritative
 ---
 
@@ -68,3 +68,22 @@ Implications:
 - `items.category = service` rows remain stock-exempt unless a future package/component model explicitly attaches stock-bearing components.
 - Physical catalog rows shown in Services Mode POS or Storefront must show location availability and deduct from FIFO batches at the operating/fulfillment location.
 - Frontend item detail views should continue showing location stock and batch differences for stock-bearing Services Mode inventory so operators can see which location and batch will be affected.
+
+## Item Taxonomy And UOM Addendum (2026-05-06)
+
+Services Mode item creation uses the corrected mode-aware taxonomy from ADR 0014:
+
+- `Service` maps to `items.category = service`, uses presentation/time units such as `service`, `session`, `booking`, or `hour`, and is stock-exempt.
+- `Physical Add-on / Product` maps to `category = product`, `product_type = finished_goods`, uses count/packaging units, and remains stock-bearing.
+- `Supplies` maps to `category = supplies`, uses count/packaging units, and remains stock-bearing.
+- Services Mode must not show manufacturing raw-material/job-order language in the create-item path. Legacy rows can remain intact, but new non-draft rows and draft finalization must pass the Services taxonomy.
+
+## Price And Cost Addendum (2026-05-07)
+
+Services Mode separates service pricing from physical inventory costing:
+
+- Pure service rows (`category=service` or `mode_item_preset=service`) show `default_sale_price` as the primary IMS financial field because that is the POS/Storefront customer price.
+- Pure service rows do not show stock, FIFO, average-cost, location-cost, on-hand value, or stock-movement controls.
+- `cost_per_unit` on a pure service row is optional internal service-cost tracking. IMS hides it by default and shows it only when the operator opts into internal service cost or the row already has a stored service cost.
+- Physical add-ons/products and supplies in Services Mode are stock-bearing inventory rows. They show cost in IMS, and they require `default_sale_price > 0` only when enabled for POS or Storefront.
+- POS and Storefront service sales must use explicit `default_sale_price`; they must not treat `cost_per_unit` as a fallback customer price.
