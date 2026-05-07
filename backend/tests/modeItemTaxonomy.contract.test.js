@@ -1,7 +1,9 @@
 import {
+    CORRECTED_ITEM_TAXONOMY_MODES,
     ITEM_FINANCIAL_REQUIREMENT,
     ITEM_FINANCIAL_VISIBILITY,
     MODE_ITEM_TAXONOMY as backendTaxonomy,
+    PLACEHOLDER_ITEM_TAXONOMY_MODES,
     validateItemAgainstModeTaxonomy
 } from '../src/modules/shared/constants/modeItemTaxonomy.js';
 import {
@@ -25,6 +27,24 @@ describe('mode-aware item taxonomy contract', () => {
             'msme',
             'services'
         ]);
+    });
+
+    it('keeps future placeholder modes outside corrected taxonomy until their financial contracts are governed', () => {
+        expect([...CORRECTED_ITEM_TAXONOMY_MODES].sort()).toEqual([
+            'fnb',
+            'food_manufacturing',
+            'msme',
+            'services'
+        ]);
+        expect([...PLACEHOLDER_ITEM_TAXONOMY_MODES].sort()).toEqual([
+            'education_institutions',
+            'healthcare',
+            'hospitality',
+            'logistics_distribution',
+            'retail',
+            'ticketing_transport'
+        ]);
+        expect(CORRECTED_ITEM_TAXONOMY_MODES.filter((mode) => PLACEHOLDER_ITEM_TAXONOMY_MODES.includes(mode))).toEqual([]);
     });
 
     it('recognizes business presentation units without auto-converting them', () => {

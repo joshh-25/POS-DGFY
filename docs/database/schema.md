@@ -15,6 +15,7 @@
 ### Recent Addenda
 - [POS Shift-Location Safety Addendum (2026-04-21)](#pos-shift-location-safety-addendum-2026-04-21)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
+- [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 
 ### Table Definitions
 - [1. Users Table](#1-users-table)
@@ -38,6 +39,7 @@
 - [19. POS Terminal Shifts Table](#19-pos-terminal-shifts-table)
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
+- [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 
 ### Database Administration
 - [Key Indexes & Performance Optimization](#key-indexes--performance-optimization)
@@ -211,6 +213,18 @@ Restaurant service charge remains separate from the DGFY convenience fee. DGFY c
 F&B menu inventory reuses `product_composition` for recipes. POS checkout deducts ingredient rows for F&B menu items with `composition_type='ingredient'`; menu items without recipe rows continue to deduct the sold item directly.
 
 F&B reservation scheduling stores `duration_minutes` and `buffer_minutes` on `fnb_reservation_requests` with `requested_at` and optional primary `table_id`. Combined-table bookings use `fnb_reservation_tables` to store every assigned table. Confirmed/seated reservations use the combined duration plus reset-buffer window to prevent overlap on any assigned table and to reject party sizes above selected seat capacity.
+
+---
+
+## Item Financial Readiness Addendum (2026-05-07)
+
+The shared `items` table stores both internal cost and customer selling price, but they are separate contracts:
+
+1. `items.cost_per_unit`, FIFO batch cost, weighted-average cost, stock-movement snapshots, valuation, COGS, and profitability reports are internal accounting fields.
+2. `items.default_sale_price` is the explicit customer price for POS cart defaults, public Storefront catalog/checkout/QR, Dispatch Orders, and future customer sale surfaces.
+3. Customer-facing sale flows must reject or suppress rows with missing or zero `default_sale_price`; they must not substitute `cost_per_unit` as the sale amount.
+4. Storefront public payloads must not expose `cost_per_unit`, FIFO cost, weighted cost, raw stock, or inventory value.
+5. Corrected mode presets define when cost and selling price appear in IMS. Pure service rows are stock-exempt and hide cost unless internal service-cost tracking is enabled; stock-bearing items keep inventory cost visible and require selling price only when made sellable.
 
 ---
 

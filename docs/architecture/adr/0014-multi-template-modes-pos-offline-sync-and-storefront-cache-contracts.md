@@ -67,3 +67,13 @@ Item and UOM defaults are now governed by a corrected-mode taxonomy instead of a
 - Corrected-mode rows may persist `items.mode_item_preset` as the mode-native preset key. This is additive and nullable: new corrected-mode creates should persist it, while existing rows without the field remain readable through category/product/UOM inference.
 - New non-draft item creation and draft finalization are strict for corrected modes. Existing legacy rows remain editable unless the operator changes category, product type, UOM, or publishes the row into an invalid corrected-mode combination.
 - CSV templates are mode-aware for corrected modes and signed/marked templates must match the tenant workflow mode. Legacy manufacturing markers normalize to `food_manufacturing`. Preview and confirm paths must validate each row against the same corrected-mode taxonomy used by item create/update/finalize, including optimized bulk-import rows.
+
+## Future Mode Financial Readiness Addendum (2026-05-07)
+
+Future placeholder modes must not be promoted into corrected item taxonomy by only adding labels or UOM defaults. Each mode promotion must define the item financial policy used by IMS, POS, Storefront, sales/dispatch, stock movements, and reports.
+
+- Every new corrected-mode preset must declare cost visibility, selling-price visibility, cost requirement, selling-price requirement, stock-bearing status, FIFO behavior, and reporting treatment.
+- Customer-facing sale amount must come from an explicit positive selling price. POS, Storefront, Dispatch Order, and future sale surfaces must not substitute `cost_per_unit` as the customer price.
+- Public Storefront catalog and checkout behavior must remain customer-safe: selling price may be exposed, price-less sellable rows must be suppressed or rejected, and internal cost fields must not be exposed publicly.
+- Stock movements, FIFO depletion, valuation, COGS, and profitability reports must continue to use cost snapshots/internal cost data only for internal accounting, not as a customer price fallback.
+- Placeholder modes remain conservative until their governed mode pass updates the ADR, mode development playbook, shared taxonomy, backend validators, frontend display policy, POS/Storefront readiness paths, reports, imports, and tests together.

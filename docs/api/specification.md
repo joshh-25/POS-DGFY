@@ -2670,6 +2670,8 @@ Catalog rows include:
 - `current_stock` is intentionally not exposed in public storefront catalog payloads.
 - `cost_per_unit` is intentionally not exposed in public storefront catalog payloads.
 - `default_sale_price` is the only item-level public customer price. Storefront quote/checkout rejects cartable rows with missing or zero `default_sale_price`; it does not fall back to item cost.
+- Public catalog listing suppresses otherwise visible rows that do not have `default_sale_price > 0`. Storefront QR item resolution blocks those rows with `STORE_CATALOG_PRICE_REQUIRED` so a price-less item is not customer-visible or cartable through direct links.
+- Storefront catalog image upload preserves hidden visibility, but it must not create or preserve a visible Storefront override until the item has `default_sale_price > 0`.
 - Exact raw stock remains server-side and is enforced during quote/checkout validation. When Inventory Display is `exact_quantity`, the public response may include normalized `inventory_display.display_quantity`; this is not the raw item record.
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).

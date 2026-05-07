@@ -86,6 +86,8 @@ Validation evidence must include targeted policy/settings/onboarding/store/servi
 Storefront visibility does not make item cost public:
 
 - Public Storefront catalog and QR payloads expose `default_sale_price` and never expose `cost_per_unit`, FIFO batch cost, weighted average cost, or raw inventory value.
+- Public Storefront catalog and QR item resolution must suppress or block otherwise visible item rows when `default_sale_price` is missing or zero; a price-less row is not customer-ready catalog content.
 - Storefront checkout requires an explicit positive `default_sale_price` for every cartable item. Missing or zero sale price is a setup error, not permission to sell at cost.
 - `storefront_catalog_overrides.storefront_visible=true` is a sale-readiness configuration. Enabling it on an item without a positive `default_sale_price` must surface a readiness blocker in IMS and must fail closed in Storefront checkout.
+- Storefront image upload must not create or preserve a visible Storefront override for a price-less row. Hidden rows may still store images for later setup, but visible rows must pass sale-price readiness first.
 - Inventory Display remains quantity/availability presentation only. It does not alter cost visibility and does not authorize public cost exposure.

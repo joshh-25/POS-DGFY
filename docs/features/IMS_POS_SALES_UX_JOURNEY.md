@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-04-28
+last_reviewed: 2026-05-07
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -22,9 +22,10 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 1. Create or edit finished-goods item in `Items`.
 2. Configure POS requirements from item/product wizard sections (wizard-first flow) and resolve blockers:
    - POS visibility enabled
-   - Sale price configured
+   - explicit positive sale price configured (`default_sale_price > 0`; cost is not a customer-price fallback)
    - Stock is non-negative
    - Item status is active
+   - Stock-bearing items have available stock for the selected operating location; stock-exempt service rows are allowed without inventory deduction.
 3. Optional POS enhancements (recommended but non-blocking for POS visibility enable):
    - POS menu image uploaded
    - Folder assigned and folder `show_in_pos_filter` enabled for faster category navigation

@@ -97,6 +97,7 @@ Overall status: in_progress
 - Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; Storefront image upload/removal preserves the existing visibility state.
 - Storefront catalog images are independent from POS menu images.
 - Public Storefront catalog payloads expose customer price through `default_sale_price` and must not expose `current_stock`, `cost_per_unit`, FIFO cost, weighted cost, or raw inventory value.
+- Public Storefront catalog listing and QR item resolution suppress/block otherwise visible rows when `default_sale_price` is missing or zero. Image upload may preserve hidden setup rows, but cannot publish a visible price-less row.
 32. Storefront catalog fallback boundaries are now explicit:
 - When `storefront_catalog_overrides` exists, a missing per-item Storefront override row uses Storefront default policy and must not inherit POS visibility or POS image state.
 - POS-derived Storefront membership/media is allowed only as table-missing rollout compatibility fallback, with warning logging.

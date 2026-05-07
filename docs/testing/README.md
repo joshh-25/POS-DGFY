@@ -39,6 +39,11 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+Current price/cost readiness checks:
+- POS, Storefront, Dispatch Orders, and barcode cart handoff require `default_sale_price > 0` for customer-facing sale lines.
+- Missing or zero selling price must fail closed with setup/readiness feedback; customer sale flows must not use `cost_per_unit` as a fallback price.
+- Cost fields remain internal evidence for stock movements, valuation, COGS, and profitability reporting.
+
 Targeted UX regression tests for PO/JO quantity controls and numeric step policy:
 1. `npm --prefix frontend test -- --run src/components/common/__tests__/NumberStepper.behavior.test.jsx`
 2. `npm --prefix frontend test -- --run src/features/__tests__/poJoQuantityUx.contract.test.js`

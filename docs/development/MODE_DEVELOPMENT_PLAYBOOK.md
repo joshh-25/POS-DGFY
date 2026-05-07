@@ -158,10 +158,13 @@ Implementation checklist:
 
 Before changing any placeholder mode item UI, complete this checklist:
 
-1. Add or update the mode ADR with the business purpose, daily workflow, item presets, UOM contract, stock-bearing rules, POS/Storefront eligibility, and legacy-row behavior.
+1. Add or update the mode ADR with the business purpose, daily workflow, item presets, UOM contract, stock-bearing rules, POS/Storefront eligibility, financial display/readiness rules, and legacy-row behavior.
 2. Add the mode to the shared corrected-mode item taxonomy only after the ADR is accepted.
-3. Add backend validation for new non-draft rows and draft finalization.
-4. Add frontend item-form preset/UOM tests and backend taxonomy parity tests.
-5. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
+3. Define each preset's cost visibility, selling-price visibility, cost requirement, selling-price requirement, stock-bearing status, FIFO behavior, and reporting treatment before adding UI fields.
+4. Ensure POS, Storefront, Dispatch Order, stock movement, COGS, valuation, and profitability/reporting paths use the same preset policy instead of falling back from selling price to item cost.
+5. Keep public Storefront behavior customer-safe: public catalog/readiness/checkouts must expose selling price only, must suppress or reject price-less sellable rows, and must never expose `cost_per_unit`.
+6. Add backend validation for new non-draft rows and draft finalization.
+7. Add frontend item-form preset/UOM/financial-display tests and backend taxonomy/readiness/reporting parity tests.
+8. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
 
 Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
