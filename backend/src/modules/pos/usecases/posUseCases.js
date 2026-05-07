@@ -29,6 +29,7 @@ import {
     isStockBearingItem,
     isStockExemptServiceItem
 } from '../../shared/utils/stockBearingPolicy.js';
+import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -1706,15 +1707,13 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }
 
                 const modifierResolution = resolveFnbLineModifiers({ item, line, hasFnbCheckoutContext });
-                const baseSalePrice = item.default_sale_price != null
-                    ? Number(item.default_sale_price)
-                    : Number(item.cost_per_unit || 0);
+                const baseSalePrice = requireExplicitSalePrice(item, 'POS checkout');
                 const defaultSalePrice = round4(baseSalePrice + modifierResolution.modifierPriceDelta);
                 const resolvedPrice = line.sale_price == null
                     ? defaultSalePrice
                     : Number(line.sale_price);
 
-                if (!Number.isFinite(resolvedPrice) || resolvedPrice < 0) {
+                if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Invalid sale price for item ${item.item_id}`,

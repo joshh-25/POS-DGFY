@@ -38,6 +38,68 @@ describe('storefront catalog use cases', () => {
         });
     });
 
+    it('allows enabling storefront visibility when the item has an explicit sale price', async () => {
+        const upsertStorefrontCatalogOverride = jest.fn().mockResolvedValue({
+            item_id: 78,
+            storefront_visible: true
+        });
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 78,
+                    name: 'Storefront-ready item',
+                    default_sale_price: 125
+                }),
+                upsertStorefrontCatalogOverride
+            }
+        });
+
+        const result = await useCase({
+            itemId: 78,
+            payload: { storefront_visible: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            item_id: 78,
+            storefront_visible: true
+        }));
+        expect(upsertStorefrontCatalogOverride).toHaveBeenCalledWith(78, {
+            storefront_visible: true
+        });
+    });
+
+    it('blocks enabling storefront visibility when sale price is missing or zero', async () => {
+        const upsertStorefrontCatalogOverride = jest.fn();
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 79,
+                    name: 'Cost-only storefront item',
+                    default_sale_price: 0,
+                    cost_per_unit: 90
+                }),
+                upsertStorefrontCatalogOverride
+            }
+        });
+
+        await expect(useCase({
+            itemId: 79,
+            payload: { storefront_visible: true },
+            user: editableUser
+        })).rejects.toMatchObject({
+            code: 'VALIDATION_FAILED',
+            statusCode: 422,
+            details: expect.objectContaining({
+                reason_code: 'STOREFRONT_READINESS_INCOMPLETE',
+                missing_requirements: expect.arrayContaining([
+                    expect.objectContaining({ code: 'SALE_PRICE_MISSING' })
+                ])
+            })
+        });
+        expect(upsertStorefrontCatalogOverride).not.toHaveBeenCalled();
+    });
+
     it('uploadStorefrontCatalogImage preserves an existing hidden storefront visibility flag', async () => {
         const tempPath = path.join(os.tmpdir(), `storefront-image-${Date.now()}.png`);
         await fs.writeFile(tempPath, Buffer.from([

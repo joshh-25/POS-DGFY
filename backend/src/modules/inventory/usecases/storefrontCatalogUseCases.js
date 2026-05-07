@@ -4,6 +4,7 @@ import {
   SAFE_IMAGE_MIME_TYPES,
   validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
+import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import logger from '../../../config/logger.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
@@ -51,6 +52,39 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
     const item = await itemRepository.getItemById(normalizedItemId);
     if (!item) {
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
+    }
+
+    if (payload.storefront_visible === true) {
+      try {
+        requireExplicitSalePrice(item, 'Storefront visibility');
+      } catch (error) {
+        if (error instanceof DomainError) {
+          throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Cannot enable Storefront visibility until readiness requirements are completed.',
+            {
+              statusCode: 422,
+              details: {
+                reason_code: 'STOREFRONT_READINESS_INCOMPLETE',
+                missing_requirements: [{
+                  code: 'SALE_PRICE_MISSING',
+                  label: 'Set a sale price'
+                }],
+                readiness_snapshot: {
+                  ready: false,
+                  checks: {
+                    has_sale_price: false
+                  },
+                  item_id: normalizedItemId,
+                  default_sale_price: item?.default_sale_price ?? null
+                },
+                price_error: error.details || null
+              }
+            }
+          );
+        }
+        throw error;
+      }
     }
 
     const data = await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {

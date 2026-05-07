@@ -578,7 +578,7 @@ describe('store use-cases application result contract', () => {
         expect(Number(result.data.total_amount)).toBeCloseTo(121, 4);
     });
 
-    it('storeCartQuote keeps deterministic DGFY fee label even when subtotal is zero', async () => {
+    it('storeCartQuote rejects missing or zero sale price instead of selling at cost', async () => {
         const useCase = buildStoreCartQuoteUseCase({
             storeRepository: {
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
@@ -587,7 +587,7 @@ describe('store use-cases application result contract', () => {
                         name: 'Free Sample',
                         current_stock: 10,
                         default_sale_price: 0,
-                        cost_per_unit: 0,
+                        cost_per_unit: 25,
                         unit_of_measure: 'pc',
                         vat_type: 'vatable'
                     }
@@ -625,11 +625,9 @@ describe('store use-cases application result contract', () => {
             }
         });
 
-        expect(result.success).toBe(true);
-        expect(Number(result.data.subtotal_amount)).toBeCloseTo(0, 4);
-        expect(Number(result.data.service_fee_amount)).toBeCloseTo(0, 4);
-        expect(result.data.service_fee_label).toBe('DGFY convenience fee');
-        expect(Number(result.data.total_amount)).toBeCloseTo(0, 4);
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.details.reason_code).toBe('MISSING_PRICE');
     });
 
     it('storeCartQuote blocks checkout when storefront is closed by POS open status', async () => {

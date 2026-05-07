@@ -3,6 +3,7 @@ import dbStore from '../utils/dbStore.js';
 import { createStockMovement } from './stockMovementService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { resolveMovementLocation } from './locationInventoryService.js';
+import { requireExplicitSalePrice } from '../modules/shared/utils/itemFinancialPolicy.js';
 
 // CSV formula injection prevention (matches csvExportService.js pattern)
 const escapeCSVCell = (value) => {
@@ -34,6 +35,22 @@ const findVisibleItemById = async (Item, itemId) => {
             { statusField: 'status', excludeInactiveStatus: true }
         )
     });
+};
+
+const resolveDispatchSalePrice = (line, item) => {
+    const rawSalePrice = line.sale_price_per_unit != null
+        ? line.sale_price_per_unit
+        : requireExplicitSalePrice(item, 'Dispatch Order');
+    const salePrice = Number(rawSalePrice);
+
+    if (!Number.isFinite(salePrice) || salePrice <= 0) {
+        const error = new Error(`Item "${item.name}" requires a positive selling price before it can be dispatched.`);
+        error.statusCode = 400;
+        error.reason_code = 'MISSING_PRICE';
+        throw error;
+    }
+
+    return salePrice;
 };
 
 /**
@@ -279,11 +296,7 @@ export const createDispatchOrder = async (data, userId) => {
 
         for (const line of lines) {
             const item = await findVisibleItemById(Item, line.item_id);
-            // Sale price: use provided value, else fall back to item's last-known sale price,
-            // else fall back to cost_per_unit (so earnings can still be computed on first use)
-            const salePrice = line.sale_price_per_unit != null
-                ? line.sale_price_per_unit
-                : (item.default_sale_price != null ? item.default_sale_price : (item.cost_per_unit || null));
+            const salePrice = resolveDispatchSalePrice(line, item);
             await DispatchOrderLine.create({
                 do_id: dispatchOrder.do_id,
                 item_id: line.item_id,
@@ -355,9 +368,7 @@ export const updateDispatchOrder = async (doId, data) => {
             await DispatchOrderLine.destroy({ where: { do_id: doId }, transaction });
             for (const line of lines) {
                 const item = await findVisibleItemById(Item, line.item_id);
-                const salePrice = line.sale_price_per_unit != null
-                    ? line.sale_price_per_unit
-                    : (item.default_sale_price != null ? item.default_sale_price : (item.cost_per_unit || null));
+                const salePrice = resolveDispatchSalePrice(line, item);
                 await DispatchOrderLine.create({
                     do_id: doId,
                     item_id: line.item_id,
@@ -963,18 +974,23 @@ export const updateLineSalePrice = async (doId, lineId, salePrice) => {
         error.statusCode = 404;
         throw error;
     }
+    const normalizedSalePrice = Number(salePrice);
+    if (!Number.isFinite(normalizedSalePrice) || normalizedSalePrice <= 0) {
+        const error = new Error('Dispatch Order line sale price must be a positive amount.');
+        error.statusCode = 400;
+        error.reason_code = 'MISSING_PRICE';
+        throw error;
+    }
 
     const transaction = await sequelize.transaction();
     try {
-        await line.update({ sale_price_per_unit: salePrice }, { transaction });
+        await line.update({ sale_price_per_unit: normalizedSalePrice }, { transaction });
 
         // Propagate to item's default_sale_price so future DOs are pre-filled
-        if (salePrice != null) {
-            await Item.update(
-                { default_sale_price: parseFloat(salePrice) },
-                { where: { item_id: line.item_id }, transaction }
-            );
-        }
+        await Item.update(
+            { default_sale_price: normalizedSalePrice },
+            { where: { item_id: line.item_id }, transaction }
+        );
 
         await transaction.commit();
         return getDispatchOrderById(doId);

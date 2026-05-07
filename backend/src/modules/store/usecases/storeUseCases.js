@@ -33,6 +33,7 @@ import {
 import {
     isStockExemptServiceItem
 } from '../../shared/utils/stockBearingPolicy.js';
+import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -648,16 +649,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             );
         }
 
-        const resolvedPrice = item.default_sale_price != null
-            ? Number(item.default_sale_price)
-            : Number(item.cost_per_unit || 0);
-        if (!Number.isFinite(resolvedPrice) || resolvedPrice < 0) {
-            throw new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                `Invalid sale price for item ${line.item_id}`,
-                { statusCode: 422 }
-            );
-        }
+        const resolvedPrice = requireExplicitSalePrice(item, 'Storefront checkout');
 
         const modifierResolution = resolveStorefrontLineModifiers({ item, line });
         const effectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);

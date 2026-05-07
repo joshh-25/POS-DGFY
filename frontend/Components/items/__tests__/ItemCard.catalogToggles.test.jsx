@@ -104,4 +104,42 @@ describe('ItemCard catalog toggles', () => {
     expect(screen.queryByRole('switch', { name: /toggle pos visibility for milk tea/i })).toBeNull();
     expect(screen.queryByRole('switch', { name: /toggle storefront visibility for milk tea/i })).toBeNull();
   });
+
+  it('uses workflow mode to keep Services physical add-ons cost-only until made sellable', () => {
+    renderCard({
+      workflowMode: 'services',
+      posVisible: false,
+      storefrontVisible: false,
+      item: {
+        ...item,
+        name: 'Salon Scissors',
+        sku_code: 'SC-001',
+        mode_item_preset: 'physical_add_on',
+        default_sale_price: 250,
+        cost_per_unit: 120
+      }
+    });
+
+    expect(screen.getByText('Unit Cost')).toBeTruthy();
+    expect(screen.queryByText('Selling Price')).toBeNull();
+  });
+
+  it('shows Services physical add-on selling price once configured for a sales surface', () => {
+    renderCard({
+      workflowMode: 'services',
+      posVisible: false,
+      storefrontVisible: true,
+      item: {
+        ...item,
+        name: 'Salon Scissors',
+        sku_code: 'SC-001',
+        mode_item_preset: 'physical_add_on',
+        default_sale_price: 250,
+        cost_per_unit: 120
+      }
+    });
+
+    expect(screen.getByText('Selling Price')).toBeTruthy();
+    expect(screen.getByText('₱250.00')).toBeTruthy();
+  });
 });

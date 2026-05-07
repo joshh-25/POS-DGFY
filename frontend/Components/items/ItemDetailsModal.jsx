@@ -32,6 +32,7 @@ import FIFOBatchViewer from './FIFOBatchViewer';
 import { formatNumber, formatPeso, formatQty } from '../../src/lib/numberUtils.js';
 import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
 import { calculateTotalProductCost } from './details/helpers';
+import { resolveItemFinancialPolicy } from '../../src/features/inventory/itemFinancialPolicy.js';
 
 // Import accordion components
 import {
@@ -60,6 +61,13 @@ import {
   hasYieldManagement,
 } from './details/helpers';
 
+const safeStockPercentage = (item) => {
+  const currentStock = Number(item?.current_stock ?? 0);
+  const maxCapacity = Number(item?.max_capacity ?? 0);
+  if (!Number.isFinite(currentStock) || !Number.isFinite(maxCapacity) || maxCapacity <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((currentStock / maxCapacity) * 100)));
+};
+
 const statusConfig = {
   critical: { label: "Critical", color: "bg-red-100 text-red-700" },
   warning: { label: "Low Stock", color: "bg-amber-100 text-amber-700" },
@@ -67,12 +75,17 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700" }
 };
 
-export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
+export default function ItemDetailsModal({ item, open, onClose, onRefresh, workflowMode }) {
   const [defaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
 
   if (!item) return null;
 
   const isProduct = isManufactured(item);
+  const financialPolicy = resolveItemFinancialPolicy({
+    workflowMode,
+    item,
+    serviceCostTrackingEnabled: Number(item?.cost_per_unit || 0) > 0
+  });
 
   // Parse packaging_specs if it's a string
   let packagingSpecs = item.packaging_specs;
@@ -89,8 +102,8 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
   const status = getStockStatus(item);
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
-  const percentage = Math.round((item.current_stock / item.max_capacity) * 100);
-  const totalValue = item.current_stock * calculateTotalProductCost(item);
+  const percentage = financialPolicy.is_pure_service ? 0 : safeStockPercentage(item);
+  const totalValue = financialPolicy.is_pure_service ? 0 : item.current_stock * calculateTotalProductCost(item);
   const weightedGlobal = item?.cost_metrics?.global || null;
   const weightedAvgCost = Number(weightedGlobal?.weighted_avg_cost || 0);
   const weightedInventoryValue = Number(weightedGlobal?.inventory_value || 0);
@@ -130,7 +143,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
               <p className="text-slate-600">{item.description}</p>
             )}
 
-            {/* Stock Level */}
+            {!financialPolicy.is_pure_service && (
             <div className="bg-slate-50 rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700">Stock Level</span>
@@ -154,6 +167,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Packaging Specs (for packaging) */}
             {item.category === 'packaging' && packagingSpecs && (
@@ -190,7 +204,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             )}
 
             {/* Shelf Life Info - only show if shelf_life_days is configured */}
-            {item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
+            {!financialPolicy.is_pure_service && item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
               <div className="bg-purple-50 rounded-lg p-4 space-y-3">
                 <h4 className="font-medium text-purple-900 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -214,34 +228,49 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             )}
 
             {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
-            {item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
+            {!financialPolicy.is_pure_service && item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
             <BarcodeManager item={item} onRefresh={onRefresh} />
             {/* Cost Info */}
+            {(financialPolicy.show_cost || financialPolicy.show_sale_price) && (
             <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-slate-500">Cost per Unit</p>
-                  <p className="text-xl font-bold text-slate-900">{formatPeso(item.cost_per_unit)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-500">Avg Cost (On-hand)</p>
-                  <p className="text-xl font-bold text-teal-700">{formatPeso(weightedAvgCost || item.cost_per_unit)}</p>
-                  {weightedSource && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      {weightedSource === 'item_cost_fallback' ? 'Fallback source' : 'FIFO on-hand source'}
+                {financialPolicy.show_sale_price && (
+                  <div>
+                    <p className="text-sm text-slate-500">Selling Price</p>
+                    <p className="text-xl font-bold text-teal-700">
+                      {Number(item.default_sale_price || 0) > 0 ? formatPeso(item.default_sale_price) : 'Not set'}
                     </p>
-                  )}
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-sm text-slate-500">On-hand Value</p>
-                  <p className="text-xl font-bold text-slate-900">
-                    {formatPeso(weightedInventoryValue || totalValue)}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">{item.last_updated ? `Updated ${item.last_updated}` : 'No update timestamp'}</p>
-                </div>
+                  </div>
+                )}
+                {financialPolicy.show_cost && (
+                  <div>
+                    <p className="text-sm text-slate-500">{financialPolicy.is_pure_service ? 'Internal Cost' : 'Cost per Unit'}</p>
+                    <p className="text-xl font-bold text-slate-900">{formatPeso(item.cost_per_unit)}</p>
+                  </div>
+                )}
+                {financialPolicy.show_cost && !financialPolicy.is_pure_service && (
+                  <>
+                    <div>
+                      <p className="text-sm text-slate-500">Avg Cost (On-hand)</p>
+                      <p className="text-xl font-bold text-teal-700">{formatPeso(weightedAvgCost || item.cost_per_unit)}</p>
+                      {weightedSource && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          {weightedSource === 'item_cost_fallback' ? 'Fallback source' : 'FIFO on-hand source'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <p className="text-sm text-slate-500">On-hand Value</p>
+                      <p className="text-xl font-bold text-slate-900">
+                        {formatPeso(weightedInventoryValue || totalValue)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">{item.last_updated ? `Updated ${item.last_updated}` : 'No update timestamp'}</p>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {weightedByLocation.length > 0 && (
+              {financialPolicy.show_cost && !financialPolicy.is_pure_service && weightedByLocation.length > 0 && (
                 <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
                   <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
                     <p className="text-xs font-semibold text-slate-700">Location Breakdown</p>
@@ -259,7 +288,9 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </div>
               )}
             </div>
+            )}
             {/* Actions */}
+            {!financialPolicy.is_pure_service && (
             <div className="flex gap-6 pt-6 pb-4 border-t border-slate-200 mt-4">
               <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
                 <Button variant="outline" className="w-full">
@@ -274,6 +305,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </Button>
               </Link>
             </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -314,17 +346,19 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             </AccordionItem>
 
             {/* Stock & Inventory */}
-            <AccordionItem value="stock-inventory">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <Warehouse className="w-5 h-5 text-teal-600" />
-                  <span className="font-semibold">Stock & Inventory</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <StockInventorySection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {!financialPolicy.is_pure_service && (
+              <AccordionItem value="stock-inventory">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <Warehouse className="w-5 h-5 text-teal-600" />
+                    <span className="font-semibold">Stock & Inventory</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <StockInventorySection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Yield Management */}
             {hasYieldManagement(item) && (
@@ -370,17 +404,19 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             </AccordionItem>
 
             {/* Shelf Life */}
-            <AccordionItem value="shelf-life">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-purple-600" />
-                  <span className="font-semibold">Shelf Life & Storage</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <ShelfLifeSection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {!financialPolicy.is_pure_service && (
+              <AccordionItem value="shelf-life">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-purple-600" />
+                    <span className="font-semibold">Shelf Life & Storage</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <ShelfLifeSection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Packaging Information */}
             <AccordionItem value="packaging">
@@ -404,7 +440,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <CostFinancialSection item={item} />
+                <CostFinancialSection item={item} workflowMode={workflowMode} />
               </AccordionContent>
             </AccordionItem>
 
@@ -435,7 +471,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             </AccordionItem>
 
             {/* FIFO Batches */}
-            {item.fifo_enabled && (
+            {!financialPolicy.is_pure_service && item.fifo_enabled && (
               <AccordionItem value="fifo">
                 <AccordionTrigger>
                   <div className="flex items-center gap-2">
@@ -465,6 +501,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
         </div>
 
         {/* Actions Footer */}
+        {!financialPolicy.is_pure_service && (
         <div className="flex gap-4 pt-4 pb-2 border-t border-slate-200 flex-shrink-0">
           <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
             <Button variant="outline" className="w-full">
@@ -479,6 +516,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh }) {
             </Button>
           </Link>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

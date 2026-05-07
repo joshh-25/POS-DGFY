@@ -1032,7 +1032,11 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        const defaultPrice = Number(item.default_sale_price ?? item.cost_per_unit ?? 0);
+        const defaultPrice = Number(item.default_sale_price ?? 0);
+        if (!Number.isFinite(defaultPrice) || defaultPrice <= 0) {
+            toast.error(`${item.name || 'Item'} needs a selling price before it can be sold in POS.`);
+            return;
+        }
         const modifierGroups = getFnbModifierGroups(item);
         const defaultModifiers = buildDefaultLineModifiers(item);
         const routed = buildKitchenStationSnapshot(item);
@@ -1619,7 +1623,11 @@ export default function POSCheckoutTerminal({
                                     <span className="font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
                                         {isServiceItem ? 'Service sale' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`}
                                     </span>
-                                    <span className="font-semibold text-slate-700">Default: PHP {money(item.default_sale_price ?? item.cost_per_unit)}</span>
+                                    <span className="font-semibold text-slate-700">
+                                        {Number(item.default_sale_price || 0) > 0
+                                            ? `Price: PHP ${money(item.default_sale_price)}`
+                                            : 'Price not set'}
+                                    </span>
                                 </div>
                                 <p className="mt-1 text-[11px] font-semibold bg-gradient-to-r from-indigo-700 via-sky-700 to-cyan-700 bg-clip-text text-transparent">
                                     VAT: {VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}

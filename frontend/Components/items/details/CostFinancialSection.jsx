@@ -2,9 +2,19 @@ import React from 'react';
 import { DollarSign, TrendingUp } from 'lucide-react';
 import { formatNumber, formatPeso } from '../../../src/lib/numberUtils';
 import { calculateTotalProductCost } from './helpers';
+import {
+  hasExplicitSalePrice,
+  resolveItemFinancialPolicy
+} from '../../../src/features/inventory/itemFinancialPolicy.js';
 
-export default function CostFinancialSection({ item }) {
+export default function CostFinancialSection({ item, workflowMode }) {
   const totalCost = calculateTotalProductCost(item);
+  const financialPolicy = resolveItemFinancialPolicy({
+    workflowMode,
+    item,
+    serviceCostTrackingEnabled: Number(item?.cost_per_unit || 0) > 0
+  });
+  const hasSalePrice = hasExplicitSalePrice(item);
   const weightedGlobal = item?.cost_metrics?.global || null;
   const weightedAvgCost = Number(weightedGlobal?.weighted_avg_cost || 0);
   const weightedInventoryValue = Number(weightedGlobal?.inventory_value || 0);
@@ -25,19 +35,22 @@ export default function CostFinancialSection({ item }) {
 
   return (
     <div className="space-y-6">
-      {/* Total Cost Card */}
+      {financialPolicy.show_cost && (
       <div className="bg-teal-50 rounded-lg p-6 border-2 border-teal-200">
         <div className="flex items-center gap-2 mb-2">
           <DollarSign className="w-6 h-6 text-teal-600" />
-          <h3 className="text-lg font-semibold text-teal-900">Total Product Cost</h3>
+          <h3 className="text-lg font-semibold text-teal-900">
+            {financialPolicy.is_pure_service ? 'Internal Service Cost' : 'Total Product Cost'}
+          </h3>
         </div>
         <p className="text-4xl font-bold text-teal-900">
           {formatPeso(totalCost)}
         </p>
         <p className="text-sm text-teal-700 mt-1">per {item.unit_of_measure}</p>
       </div>
+      )}
 
-      {hasWeightedMetrics && (
+      {financialPolicy.show_cost && hasWeightedMetrics && (
         <div className="bg-cyan-50 rounded-lg p-4 border border-cyan-200">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -56,7 +69,7 @@ export default function CostFinancialSection({ item }) {
       )}
 
       {/* Cost Breakdown */}
-      {hasCostBreakdown && (
+      {financialPolicy.show_cost && hasCostBreakdown && (
         <div>
           <h4 className="font-semibold text-slate-900 mb-3">Cost Breakdown</h4>
           <div className="space-y-3">
@@ -92,7 +105,7 @@ export default function CostFinancialSection({ item }) {
       )}
 
       {/* Current Inventory Value */}
-      {Number(item.current_stock) > 0 && (
+      {financialPolicy.show_cost && Number(item.current_stock) > 0 && (
         <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="w-5 h-5 text-slate-600" />
@@ -109,7 +122,7 @@ export default function CostFinancialSection({ item }) {
         </div>
       )}
 
-      {byLocation.length > 0 && (
+      {financialPolicy.show_cost && byLocation.length > 0 && (
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
             <p className="text-sm font-semibold text-slate-800">Location Cost Breakdown</p>
@@ -140,28 +153,32 @@ export default function CostFinancialSection({ item }) {
       )}
 
       {/* Default Sale Price */}
-      {item.category === 'product' && item.product_type === 'finished_goods' && (
+      {financialPolicy.show_sale_price && (
         <div className="bg-teal-50 rounded-lg p-4 border border-teal-200">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-teal-600" />
             <label className="text-sm font-medium text-teal-700">Default Sale Price</label>
           </div>
-          {item.default_sale_price != null ? (
+          {hasSalePrice ? (
             <>
               <p className="text-2xl font-bold text-teal-900">
                 {formatPeso(item.default_sale_price)}
               </p>
-              <p className="text-xs text-teal-600 mt-1">per {item.unit_of_measure} - pre-fills Dispatch Order sale price</p>
+              <p className="text-xs text-teal-600 mt-1">per {item.unit_of_measure} - used by POS, Storefront, and Dispatch Orders</p>
             </>
           ) : (
             <p className="text-sm text-teal-700">
-              Not set - will default to cost per unit ({formatPeso(totalCost)}) on first dispatch
+              Not set - required before POS, Storefront, or Dispatch Order sale
             </p>
           )}
         </div>
       )}
 
-      {!item.cost_per_unit && !hasCostBreakdown && !hasWeightedMetrics && (
+      {!financialPolicy.show_cost && !financialPolicy.show_sale_price && (
+        <p className="text-slate-500 text-center py-4">No financial fields are shown for this item mode.</p>
+      )}
+
+      {financialPolicy.show_cost && !item.cost_per_unit && !hasCostBreakdown && !hasWeightedMetrics && (
         <p className="text-slate-500 text-center py-4">No cost information available</p>
       )}
     </div>

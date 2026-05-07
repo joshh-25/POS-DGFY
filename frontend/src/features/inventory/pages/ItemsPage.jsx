@@ -65,6 +65,11 @@ import {
 import { replaceItemSuppliers } from '@/src/services/itemService.js';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import {
+  hasExplicitSalePrice,
+  isPureServiceItem,
+  resolveItemFinancialPolicy
+} from '@/src/features/inventory/itemFinancialPolicy.js';
 
 const MSME_ITEM_PRESET = Object.freeze({
   SELLABLE_POS: 'sellable_pos',
@@ -332,6 +337,10 @@ export default function Items() {
   const handleTogglePosVisibility = async (item, nextVisible) => {
     const itemId = item?.item_id || item?.id;
     if (!itemId) return;
+    if (nextVisible && !hasExplicitSalePrice(item)) {
+      toast.error('Set a selling price before enabling POS visibility.');
+      return;
+    }
 
     try {
       const updated = await updatePosCatalogOverride(itemId, { pos_visible: Boolean(nextVisible) });
@@ -399,6 +408,10 @@ export default function Items() {
   const handleToggleStorefrontVisibility = async (item, nextVisible) => {
     const itemId = item?.item_id || item?.id;
     if (!itemId || !canConfigureStorefrontCatalog) return;
+    if (nextVisible && !hasExplicitSalePrice(item)) {
+      toast.error('Set a selling price before enabling Storefront visibility.');
+      return;
+    }
 
     try {
       const updated = await updateStorefrontCatalogOverride(itemId, { storefront_visible: Boolean(nextVisible) });
@@ -651,8 +664,8 @@ export default function Items() {
   }, [items, folderEntries, doesItemMatchFolder]);
 
   const isLikelyPosSellable = useCallback((item) => (
-    item?.category === 'product' && item?.product_type === 'finished_goods'
-  ), []);
+    resolveItemFinancialPolicy({ workflowMode, item }).show_sale_price
+  ), [workflowMode]);
 
   const buildFallbackPosReadiness = useCallback((item) => {
     // Non-authoritative UI fallback only. Primary readiness contract comes from backend
@@ -660,12 +673,13 @@ export default function Items() {
     const posConfig = resolvePosConfig(item);
     const defaultSalePrice = Number(item?.default_sale_price ?? 0);
     const currentStock = Number(item?.current_stock ?? 0);
+    const stockExempt = isPureServiceItem(item);
     const checks = {
       pos_visible: posConfig.pos_visible !== false,
       has_sale_price: Number.isFinite(defaultSalePrice) && defaultSalePrice > 0,
       stock_non_negative: Number.isFinite(currentStock) && currentStock >= 0,
       status_active: String(item?.status || '').toLowerCase() === 'active',
-      has_available_stock: Number.isFinite(currentStock) && currentStock > 0
+      has_available_stock: stockExempt || (Number.isFinite(currentStock) && currentStock > 0)
     };
 
     const missingRequirements = [];
@@ -673,6 +687,7 @@ export default function Items() {
     if (!checks.has_sale_price) missingRequirements.push({ code: 'SALE_PRICE_MISSING', label: 'Set a sale price' });
     if (!checks.stock_non_negative) missingRequirements.push({ code: 'STOCK_INVALID', label: 'Fix stock value' });
     if (!checks.status_active) missingRequirements.push({ code: 'ITEM_NOT_ACTIVE', label: 'Activate item' });
+    if (!stockExempt && !checks.has_available_stock) missingRequirements.push({ code: 'STOCK_UNAVAILABLE', label: 'Add available stock' });
 
     const checkValues = Object.values(checks);
     const score = Math.round((checkValues.filter(Boolean).length / checkValues.length) * 100);
@@ -1596,6 +1611,7 @@ export default function Items() {
                       onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
                       onOpenInTerminal={openItemInTerminal}
                       isMsmeMode={isMsmeMode}
+                      workflowMode={workflowMode}
                       isSelected={selectedIds.has(item.item_id || item.id)}
                       onSelect={toggleSelection}
                     />
@@ -1634,6 +1650,7 @@ export default function Items() {
                     onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
                     onOpenInTerminal={openItemInTerminal}
                     isMsmeMode={isMsmeMode}
+                    workflowMode={workflowMode}
                     isSelected={selectedIds.has(item.item_id || item.id)}
                     onSelect={toggleSelection}
                   />
@@ -2111,6 +2128,7 @@ export default function Items() {
         <ItemDetailsModal
           item={selectedItem}
           open={showDetailsModal}
+          workflowMode={workflowMode}
           onClose={() => setShowDetailsModal(false)}
           onRefresh={async () => {
             if (!selectedItem) return;
@@ -2302,6 +2320,7 @@ export default function Items() {
                 showPosVisibilityControl={false}
                 showStorefrontVisibilityControl={false}
                 isMsmeMode={isMsmeMode}
+                workflowMode={workflowMode}
               />
             </div>
           ) : null}

@@ -22,6 +22,14 @@ import { getNextExpiryDate, getDaysUntilExpiry } from '@/components/utils/expiry
 import { format } from 'date-fns';
 import { getCategoryConfig, getCategoryLabel } from '@/components/utils/categoryHelpers';
 import { usePermission } from '../../src/hooks/usePermission';
+import { resolveItemFinancialPolicy } from '../../src/features/inventory/itemFinancialPolicy.js';
+
+const safeStockPercentage = (item) => {
+  const currentStock = Number(item?.current_stock ?? 0);
+  const maxCapacity = Number(item?.max_capacity ?? 0);
+  if (!Number.isFinite(currentStock) || !Number.isFinite(maxCapacity) || maxCapacity <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((currentStock / maxCapacity) * 100)));
+};
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },
@@ -49,7 +57,8 @@ export default function ItemCard({
   onToggleStorefrontVisibility,
   isSelected,
   onSelect,
-  isMsmeMode = false
+  isMsmeMode = false,
+  workflowMode
 }) {
   const { canEdit, canDelete } = usePermission();
   const category = getCategoryConfig(item);
@@ -57,9 +66,16 @@ export default function ItemCard({
   const status = isDraft ? 'draft' : getStockStatus(item);
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
-  const percentage = isDraft || !item.max_capacity ? 0 : Math.round((item.current_stock / item.max_capacity) * 100);
+  const percentage = isDraft ? 0 : safeStockPercentage(item);
+  const financialPolicy = resolveItemFinancialPolicy({
+    workflowMode,
+    item,
+    posVisible,
+    storefrontVisible,
+    serviceCostTrackingEnabled: Number(item?.cost_per_unit || 0) > 0
+  });
   const weightedAvgCost = Number(item?.cost_metrics?.global?.weighted_avg_cost || 0);
-  const hasAverageCost = weightedAvgCost > 0
+  const hasAverageCost = financialPolicy.show_cost && weightedAvgCost > 0
     && Math.abs(weightedAvgCost - Number(item?.cost_per_unit || 0)) > 0.0001;
 
   // DnD Hook
@@ -234,13 +250,13 @@ export default function ItemCard({
           <Badge variant="outline" className={category.color}>
             {getCategoryLabel(item)}
           </Badge>
-          {item.fifo_enabled && !isMsmeMode && (
+          {!financialPolicy.is_pure_service && item.fifo_enabled && !isMsmeMode && (
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
               <Check className="w-3 h-3 mr-1" />
               FIFO
             </Badge>
           )}
-          {nextExpiry && daysUntilExpiry !== null && !isMsmeMode && (
+          {!financialPolicy.is_pure_service && nextExpiry && daysUntilExpiry !== null && !isMsmeMode && (
             <Badge variant="outline" className={cn(
               "flex items-center gap-1",
               daysUntilExpiry < 0
@@ -269,6 +285,7 @@ export default function ItemCard({
           )}
         </div>
 
+        {!financialPolicy.is_pure_service && (
         <div>
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="whitespace-nowrap text-slate-500">Stock Level</span>
@@ -285,25 +302,30 @@ export default function ItemCard({
             <span>{percentage}%</span>
           </div>
         </div>
+        )}
 
         <div className="mt-auto space-y-2 border-t border-slate-100 pt-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Unit Cost</span>
-            <span className="font-semibold text-slate-900">{formatPeso(item.cost_per_unit)}</span>
-          </div>
+          {financialPolicy.show_cost && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">{financialPolicy.is_pure_service ? 'Internal Cost' : 'Unit Cost'}</span>
+              <span className="font-semibold text-slate-900">{formatPeso(item.cost_per_unit)}</span>
+            </div>
+          )}
           {hasAverageCost && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Avg Cost (On-hand)</span>
               <span className="text-sm font-semibold text-teal-700">{formatPeso(weightedAvgCost)}</span>
             </div>
           )}
-          {item?.default_sale_price != null && (
+          {financialPolicy.show_sale_price && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Selling Price</span>
-              <span className="text-sm font-semibold text-slate-900">{formatPeso(item.default_sale_price)}</span>
+              <span className="text-sm font-semibold text-slate-900">
+                {Number(item.default_sale_price || 0) > 0 ? formatPeso(item.default_sale_price) : 'Not set'}
+              </span>
             </div>
           )}
-          {nextExpiry && !isMsmeMode && (
+          {!financialPolicy.is_pure_service && nextExpiry && !isMsmeMode && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Next Expiry</span>
               <span className={cn(
