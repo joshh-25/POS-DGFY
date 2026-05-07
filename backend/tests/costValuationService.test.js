@@ -2,6 +2,7 @@ import dbStore from '../src/utils/dbStore.js';
 import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 import {
+  getWeightedInventoryValueOverview,
   getItemsCostMetrics,
   getItemCostMetricsByLocation,
   invalidateItemCostMetricsCache
@@ -155,6 +156,44 @@ describe('costValuationService', () => {
         item: { item_id: 33, cost_per_unit: 7 }
       })
     ).resolves.toEqual([]);
+  });
+
+  it('excludes pure services from inventory valuation overview queries', async () => {
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([
+        { item_id: 22, current_stock: 4, cost_per_unit: 15, category: 'product', mode_item_preset: null }
+      ])
+    };
+    const FIFOBatch = {
+      findAll: jest.fn().mockResolvedValue([])
+    };
+
+    getSpy.mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'FIFOBatch') return FIFOBatch;
+      return {};
+    });
+
+    const result = await getWeightedInventoryValueOverview();
+
+    expect(result.legacy_total_inventory_value).toBe(60);
+    expect(Item.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: expect.arrayContaining(['category', 'mode_item_preset'])
+    }));
+    expect(Item.findAll.mock.calls[0][0].where[Op.and]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        [Op.or]: expect.arrayContaining([
+          { category: { [Op.ne]: 'service' } },
+          { category: null }
+        ])
+      }),
+      expect.objectContaining({
+        [Op.or]: expect.arrayContaining([
+          { mode_item_preset: { [Op.ne]: 'service' } },
+          { mode_item_preset: null }
+        ])
+      })
+    ]));
   });
 
   it('invalidates cached valuation metrics for matching items', async () => {

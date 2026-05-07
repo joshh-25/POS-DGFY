@@ -6,6 +6,7 @@ import {
   resolveTransferLocations
 } from './locationInventoryService.js';
 import { invalidateItemCostMetricsCache } from '../modules/inventory/services/costValuationService.js';
+import { isStockExemptServiceItem } from '../modules/shared/utils/stockBearingPolicy.js';
 
 const INBOUND_MOVEMENT_TYPES = new Set(['purchase_receipt', 'return', 'production_output', 'adjustment']);
 const OUTBOUND_MOVEMENT_TYPES = new Set(['production_consumption', 'calculated_loss', 'goods_issue']);
@@ -288,6 +289,11 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
+    throw error;
+  }
+  if (isStockExemptServiceItem(item)) {
+    const error = new Error('Pure service items are stock-exempt and cannot have stock movements.');
+    error.statusCode = 422;
     throw error;
   }
 

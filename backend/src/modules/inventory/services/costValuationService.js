@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { buildStockBearingItemWhere } from '../../shared/utils/stockBearingPolicy.js';
 
 const DRIFT_TOLERANCE = 0.0001;
 const VALUATION_CACHE_TTL_MS = 60 * 1000;
@@ -481,8 +482,8 @@ export const getItemCostMetricsByLocation = async ({
 export const getWeightedInventoryValueOverview = async ({ transaction = null } = {}) => {
   const Item = dbStore.get('Item');
   const activeItems = await Item.findAll({
-    where: { status: 'active', deleted_at: null },
-    attributes: ['item_id', 'current_stock', 'cost_per_unit'],
+    where: buildStockBearingItemWhere({ status: 'active', deleted_at: null }),
+    attributes: ['item_id', 'current_stock', 'cost_per_unit', 'category', 'mode_item_preset'],
     raw: true,
     ...(transaction ? { transaction } : {})
   });

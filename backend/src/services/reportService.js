@@ -5,6 +5,7 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getItemsCostMetrics, getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 const toNumberOrZero = (value) => {
   const parsed = Number(value);
@@ -87,8 +88,8 @@ export const getExpiryReport = async (filters = {}) => {
       {
         model: Item,
         as: 'item',
-        where: buildVisibleWhere({ status: 'active' }),
-        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
+        where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
+        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category', 'mode_item_preset']
       },
       {
         model: TenantLocation,
@@ -218,8 +219,8 @@ export const getEnhancedStockAgingReport = async (filters = {}) => {
       {
         model: Item,
         as: 'item',
-        where: buildVisibleWhere({ status: 'active' }),
-        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category']
+        where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
+        attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'cost_per_unit', 'category', 'mode_item_preset']
       },
       {
         model: TenantLocation,
@@ -826,7 +827,7 @@ export const getExecutiveSummary = async (filters = {}) => {
 
   // Get low stock items count
   const lowStockItems = await Item.findAll({
-    where: buildVisibleWhere({
+    where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
       min_threshold: { [Op.ne]: null },
       [Op.and]: [
@@ -836,7 +837,7 @@ export const getExecutiveSummary = async (filters = {}) => {
           sequelize.col('min_threshold')
         )
       ]
-    }),
+    })),
     attributes: ['item_id', 'name', 'sku_code', 'current_stock', 'min_threshold']
   });
 
@@ -1328,7 +1329,7 @@ export const getStockAgingReport = async () => {
   const FIFOBatch = dbStore.get('FIFOBatch');
 
   const items = await Item.findAll({
-    where: buildVisibleWhere({ status: 'active' }),
+    where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
     include: [
       {
         model: FIFOBatch,
@@ -1367,7 +1368,7 @@ export const getSurplusShortageReport = async () => {
   const Item = dbStore.get('Item');
 
   const items = await Item.findAll({
-    where: buildVisibleWhere({ status: 'active' })
+    where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' }))
   });
 
   const report = items.map(item => {
@@ -1399,8 +1400,8 @@ export const getFinancialSummary = async () => {
 
   const [items, weightedOverview] = await Promise.all([
     Item.findAll({
-      where: buildVisibleWhere({ status: 'active' }),
-      attributes: ['current_stock', 'cost_per_unit']
+      where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
+      attributes: ['current_stock', 'cost_per_unit', 'category', 'mode_item_preset']
     }),
     getWeightedInventoryValueOverview()
   ]);

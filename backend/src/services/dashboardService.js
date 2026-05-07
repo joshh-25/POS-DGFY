@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 export const getDashboardStats = async () => {
   const Item = dbStore.get('Item');
@@ -27,7 +28,7 @@ export const getDashboardStats = async () => {
     Item.count({ where: buildVisibleWhere({ status: 'active' }) }),
 
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         min_threshold: { [Op.ne]: null },
         [Op.and]: [
@@ -37,12 +38,12 @@ export const getDashboardStats = async () => {
             sequelize.col('min_threshold')
           )
         ]
-      })
+      }))
     }),
 
     // Calculate healthy stock (items with stock between min threshold and max capacity)
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         min_threshold: { [Op.ne]: null },
         [Op.and]: [
@@ -57,12 +58,12 @@ export const getDashboardStats = async () => {
             sequelize.col('max_capacity')
           )
         ]
-      })
+      }))
     }),
 
     // Calculate overstock (items exceeding max capacity)
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         [Op.and]: [
           sequelize.where(
@@ -71,7 +72,7 @@ export const getDashboardStats = async () => {
             sequelize.col('max_capacity')
           )
         ]
-      })
+      }))
     }),
 
     PurchaseOrder.count({ where: { status: 'pending' } }),
@@ -80,7 +81,7 @@ export const getDashboardStats = async () => {
 
     // Calculate total inventory value using DB aggregation
     Item.findAll({
-      where: buildVisibleWhere({ status: 'active' }),
+      where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
       attributes: [
         [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
       ],
@@ -91,18 +92,18 @@ export const getDashboardStats = async () => {
 
     // Data quality: items missing cost_per_unit
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         [Op.or]: [{ cost_per_unit: null }, { cost_per_unit: 0 }]
-      })
+      }))
     }),
 
     // Data quality: items with zero stock
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         current_stock: 0
-      })
+      }))
     })
   ]);
 
@@ -140,7 +141,7 @@ export const getLowStockItems = async () => {
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const items = await Item.findAll({
-    where: buildVisibleWhere({
+    where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
       min_threshold: { [Op.ne]: null }, // Only include items with thresholds set
       [Op.and]: [
@@ -150,7 +151,7 @@ export const getLowStockItems = async () => {
           sequelize.col('min_threshold')
         )
       ]
-    }),
+    })),
     order: [['current_stock', 'ASC']],
     limit: 20
   });
@@ -201,11 +202,11 @@ export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort =
   const safePage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
   const offset = (safePage - 1) * cappedLimit;
 
-  const valueItemWhere = buildVisibleWhere({
+  const valueItemWhere = buildStockBearingItemWhere(buildVisibleWhere({
     status: 'active',
     current_stock: { [Op.gt]: 0 },
     cost_per_unit: { [Op.gt]: 0 }
-  });
+  }));
 
   // Always compute the accurate grand total from ALL qualifying items (not paginated)
   const [grandTotalResult, totalMatchingItems] = await Promise.all([
@@ -257,18 +258,18 @@ export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort =
 
   // Data quality counts for transparency
   const [totalActive, missingCost, zeroStock] = await Promise.all([
-    Item.count({ where: buildVisibleWhere({ status: 'active' }) }),
+    Item.count({ where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })) }),
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         [Op.or]: [{ cost_per_unit: null }, { cost_per_unit: 0 }]
-      })
+      }))
     }),
     Item.count({
-      where: buildVisibleWhere({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
         current_stock: 0
-      })
+      }))
     })
   ]);
 
