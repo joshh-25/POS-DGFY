@@ -151,10 +151,15 @@ bash scripts/deploy-remote.sh
   - [ ] `https://skupervisor.surebizcorp.com/uploads/...` returns `200 image/*`
   - [ ] `https://pos.surebizcorp.com/uploads/...` returns `200 image/*`
   - [ ] `https://surebizcorp.com/uploads/...` returns `200 image/*`
-- [ ] Tenant-store asset URLs from `https://surebizcorp.com/tenant-store` resolve correctly:
+  - [ ] `https://skupervisor.dgfy.ph/uploads/...` returns `200 image/*`
+  - [ ] `https://pos.dgfy.ph/uploads/...` returns `200 image/*`
+  - [ ] `https://dgfy.ph/uploads/...` returns `200 image/*`
+- [ ] Tenant-store asset URLs from both root storefront domains resolve correctly:
+  - [ ] `https://surebizcorp.com/tenant-store`
+  - [ ] `https://dgfy.ph/tenant-store`
   - [ ] JS bundle URL returns JavaScript (not HTML fallback)
   - [ ] Manifest URL returns manifest/json (not HTML fallback)
-- [ ] `surebizcorp.com` Nginx applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
+- [ ] Root storefront Nginx for `surebizcorp.com` and `dgfy.ph` applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
 - [ ] Latest deploy summary exists under `logs/deploy/`
 - [ ] Summary commit matches target commit:
   ```bash

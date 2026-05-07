@@ -197,8 +197,8 @@ JWT_EXPIRY=24h
 REFRESH_TOKEN_SECRET=DIFFERENT_PRODUCTION_SECRET_VERY_LONG
 REFRESH_TOKEN_EXPIRY=7d
 
-# CORS - production domain
-CORS_ORIGIN=https://skupervisor.surebizcorp.com
+# CORS - production domains that call backend APIs directly
+CORS_ORIGIN=https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -295,9 +295,21 @@ sudo systemctl reload nginx
 
 | Service | URL |
 |---------|-----|
-| Frontend | https://skupervisor.surebizcorp.com |
-| Backend API | https://skupervisor.surebizcorp.com/api/v1 |
-| Health Check | https://skupervisor.surebizcorp.com/health |
+| IMS frontend | https://skupervisor.dgfy.ph |
+| POS frontend | https://pos.dgfy.ph |
+| Storefront root | https://dgfy.ph |
+| Storefront app | https://store.dgfy.ph |
+| Backend API | https://skupervisor.dgfy.ph/api/v1 |
+| Health Check | https://skupervisor.dgfy.ph/health |
+
+Legacy SureBiz production domains remain supported while DNS and customer links transition:
+
+| Service | URL |
+|---------|-----|
+| IMS frontend | https://skupervisor.surebizcorp.com |
+| POS frontend | https://pos.surebizcorp.com |
+| Storefront root | https://surebizcorp.com |
+| Storefront app | https://store.surebizcorp.com |
 
 ---
 
