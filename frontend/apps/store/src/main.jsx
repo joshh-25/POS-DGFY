@@ -3,8 +3,6 @@ import ReactDOM from 'react-dom/client';
 import { Toaster } from 'sonner';
 import StorefrontApp from './StorefrontApp.jsx';
 
-export { default as App } from './StorefrontApp.jsx';
-
 const rootElement = document.getElementById('root');
 
 if (rootElement) {

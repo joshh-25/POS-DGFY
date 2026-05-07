@@ -2,24 +2,12 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-06
 applies_to: storefront_ui_only_work
 topic: storefront_ui_implementation_brief
 ---
 
 # Storefront UI Implementation Brief
-
-## Current Status
-This brief is now the implementation reference for the Storefront UI work merged back to `master` on 2026-05-08. It is not a new architecture source of truth; current behavior is reflected in `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md` and `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`.
-
-Implemented code paths from this brief are concentrated in:
-- `frontend/apps/store/src/StorefrontApp.jsx`
-- `frontend/apps/store/src/main.jsx`
-- `frontend/apps/store/src/normalizeStorefrontPageModel.js`
-- `frontend/apps/store/src/servicesStorefrontViewModel.js`
-- `frontend/apps/store/src/modePresentationRegistry.js`
-
-The implementation stayed within the planned boundary: Storefront frontend only, no backend contract change, no POS behavior change, and no SKUpervisor authoring change.
 
 ## 1) Scope
 
@@ -189,9 +177,9 @@ The UI may change CTA prominence, copy, visibility, and action flow, but it must
 ## 10) Rollout And Rollback
 
 ### Rollout
-- The UI work was developed on `codex/storefront-merged-pilot` and selectively merged into `master` because the pilot branch was based behind current `master`.
-- The merged state preserves newer `master` contracts for customer access modes, Storefront/POS catalog separation, F&B storefront behavior, and Storefront follow/discovery tests.
-- Production rollout should deploy the committed `master` state through the repo deployment script after local validation passes.
+- Implement on a dedicated storefront UI branch.
+- Deliver Phase 1 first.
+- Validate with `ABeeZee` service-mode content before widening to other modes.
 
 ### Rollback
 - Revert storefront frontend changes only.
@@ -202,11 +190,3 @@ The UI may change CTA prominence, copy, visibility, and action flow, but it must
 - New architecture allowlist exception introduced: `none`
 - New backend exception introduced: `none`
 - Reclassification trigger: any need to change backend, SKUpervisor, POS, or settings contract behavior
-
-## 12) 2026-05-08 Validation Snapshot
-- `npm --prefix frontend exec vitest run apps/store/src/__tests__` passed 12 storefront test files and 55 tests.
-- `npm --prefix frontend run build:store` passed with the known Vite large chunk warning.
-- `npm run lint:docs` passed.
-- `npm run check:architecture` passed.
-- `git diff --check` passed.
-- Local browser smoke at `/tenant-store` rendered without console errors.

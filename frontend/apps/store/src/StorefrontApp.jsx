@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import maplibregl from 'maplibre-gl';
 import { toast } from 'sonner';
@@ -46,8 +46,6 @@ import { renderBusinessModePinSvg } from './businessModePins.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const FnbReservationPanel = lazy(() => import('./FnbReservationPanel.jsx'));
-
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
 
@@ -57,11 +55,11 @@ const TILING_SERVER = import.meta.env.DEV
 
 const tileTransformRequest = import.meta.env.DEV
   ? (url) => {
-    if (url.startsWith(TILE_BASE)) {
-      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+      if (url.startsWith(TILE_BASE)) {
+        return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+      }
+      return { url };
     }
-    return { url };
-  }
   : undefined;
 
 const ORDER_METHOD_OPTIONS = [
@@ -97,12 +95,6 @@ const normalizeServiceFormFields = (schema) => {
     }))
     .filter((field) => field.id && field.label);
 };
-const shouldBookingFieldSpanFullWidth = (field) => {
-  const label = String(field?.label || '').trim().toLowerCase();
-  const type = String(field?.type || '').trim().toLowerCase();
-  if (type === 'textarea' || type === 'date' || type === 'checkbox') return true;
-  return ['address', 'location', 'schedule', 'instruction', 'instructions', 'notes', 'message', 'details'].some((token) => label.includes(token));
-};
 const buildServicePaymentOptions = (servicePaymentPolicy) => {
   if (servicePaymentPolicy === 'prepaid_required') return [{ value: 'prepaid', label: 'Pay Now' }];
   if (servicePaymentPolicy === 'postpaid_only') return [{ value: 'postpaid', label: 'Pay Later' }];
@@ -117,19 +109,6 @@ const buildServicePaymentOptions = (servicePaymentPolicy) => {
     { value: 'postpaid', label: 'Pay Later' },
     { value: 'prepaid', label: 'Pay Now' }
   ];
-};
-const BOOKING_FIELD_STYLE = {
-  width: '100%',
-  maxWidth: '100%',
-  boxSizing: 'border-box',
-  marginTop: 6,
-  border: '1px solid #cbd5e1',
-  borderRadius: 14,
-  padding: '12px 13px',
-  background: '#fff',
-  fontSize: 14,
-  outline: 'none',
-  transition: 'border-color 0.2s'
 };
 const formatServiceAppointmentSummary = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
@@ -293,47 +272,9 @@ const buildServiceTimeSlotOptions = (serviceItem, dateString) => {
   });
   return [...new Set(values)].map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'availability' }));
 };
-const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '') => {
-  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString);
-  if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
-  return availableSlots[0]?.value || '09:00';
-};
-const normalizePathBase = (value, fallback = '/tenant-store') => {
-  const raw = String(value || '').trim() || fallback;
-  const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`;
-  const normalized = withLeadingSlash.replace(/\/+$/, '');
-  return normalized || '/';
-};
-const TENANT_STORE_BASE_PATH = normalizePathBase(import.meta.env.VITE_TENANT_STORE_BASE_PATH || '/tenant-store');
-const ROOT_TENANT_SLUGS_ENABLED = ['1', 'true', 'yes', 'on'].includes(
-  String(import.meta.env.VITE_ROOT_TENANT_SLUGS || '').trim().toLowerCase()
-);
-const RESERVED_ROOT_PATHS = new Set([
-  'api',
-  'assets',
-  'favicon.ico',
-  'health',
-  'login',
-  'manifest.json',
-  'robots.txt',
-  'store',
-  'sw.js',
-  'tenant-store',
-  'uploads',
-  'version.json'
-]);
-const isReservedRootSegment = (segment) => {
-  const normalized = String(segment || '').trim().toLowerCase();
-  return !normalized || normalized.includes('.') || RESERVED_ROOT_PATHS.has(normalized);
-};
+const TENANT_STORE_BASE_PATH = '/tenant-store';
 const STORE_BOOKING_SUBPAGE = 'book';
-const STORE_SERVICE_SUBPAGE = 'service';
-const discoveryPath = () => (ROOT_TENANT_SLUGS_ENABLED ? '/' : TENANT_STORE_BASE_PATH);
-const storePath = (slug, subpage = null, query = '') => {
-  const encoded = encodeURIComponent(toSlug(slug));
-  const base = ROOT_TENANT_SLUGS_ENABLED ? `/${encoded}` : `${TENANT_STORE_BASE_PATH}/${encoded}`;
-  return `${base}${subpage ? `/${subpage}` : ''}${query || ''}`;
-};
+const storePath = (slug, subpage = null) => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}`;
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -353,24 +294,17 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
-  const basePattern = TENANT_STORE_BASE_PATH.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
-    new RegExp(`^${basePattern}\\/([^/]+)(?:\\/[^/?#]+)?\\/?$`, 'i'),
-    /^\/tenant-store\/([^/]+)(?:\/[^/?#]+)?\/?$/i,
-    /^\/store\/([^/]+)(?:\/[^/?#]+)?\/?$/i
+    /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^\/store\/([^/]+)(?:\/[^/]+)?$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
-  if (ROOT_TENANT_SLUGS_ENABLED) {
-    const rootMatch = path.match(/^\/([^/]+)(?:\/[^/?#]+)?\/?$/i);
-    const segment = rootMatch?.[1] ? decodeURIComponent(rootMatch[1]).toLowerCase() : '';
-    if (segment && !isReservedRootSegment(segment)) return segment;
-  }
   const hashPatterns = [
-    /^#\/tenant-store\/([^/]+)(?:\/[^/?#]+)?\/?$/i,
-    /^#\/store\/([^/]+)(?:\/[^/?#]+)?\/?$/i
+    /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i
   ];
   for (const pattern of hashPatterns) {
     const match = (window.location.hash || '').match(pattern);
@@ -381,36 +315,23 @@ const readRouteSlug = () => {
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
-  const basePattern = TENANT_STORE_BASE_PATH.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
-    new RegExp(`^${basePattern}\\/[^/]+\\/([^/?#]+)\\/?$`, 'i'),
-    /^\/tenant-store\/[^/]+\/([^/?#]+)\/?$/i,
-    /^\/store\/[^/]+\/([^/?#]+)\/?$/i
+    /^\/tenant-store\/[^/]+\/([^/]+)$/i,
+    /^\/store\/[^/]+\/([^/]+)$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
-  if (ROOT_TENANT_SLUGS_ENABLED) {
-    const rootMatch = path.match(/^\/[^/]+\/([^/?#]+)\/?$/i);
-    const segment = rootMatch?.[1] ? decodeURIComponent(rootMatch[1]).toLowerCase() : '';
-    if (segment) return segment;
-  }
   const hashPatterns = [
-    /^#\/tenant-store\/[^/]+\/([^/?#]+)\/?$/i,
-    /^#\/store\/[^/]+\/([^/?#]+)\/?$/i
+    /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
+    /^#\/store\/[^/]+\/([^/]+)$/i
   ];
   for (const pattern of hashPatterns) {
     const match = (window.location.hash || '').match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
   return null;
-};
-const readStoreServiceItemId = () => {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search || '');
-  const raw = String(params.get('service') || '').trim();
-  return raw || null;
 };
 
 const buildRequestError = (message, meta = {}) => {
@@ -741,28 +662,6 @@ const isItemAvailable = (item = {}) => {
 };
 
 const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
-const isFnbStorefront = (store = {}) => String(store?.workflow_mode || store?.business_mode || '').trim().toLowerCase() === 'fnb';
-const nowLocalDateTimeInput = () => {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
-};
-const getDefaultFnbLineModifiers = (item = {}) => (
-  (Array.isArray(item.fnb_modifier_groups) ? item.fnb_modifier_groups : []).flatMap((group) => {
-    const options = Array.isArray(group.options) ? group.options : [];
-    const selected = options.filter((option) => option.is_default === true);
-    return selected.map((option) => ({
-      modifier_group_id: group.modifier_group_id,
-      group_name: group.display_name || group.name,
-      modifier_option_id: option.modifier_option_id,
-      option_name: option.name,
-      price_delta: Number(option.price_delta || 0)
-    }));
-  })
-);
-const getFnbLineModifierDelta = (modifiers = []) => (
-  round4((Array.isArray(modifiers) ? modifiers : []).reduce((sum, modifier) => sum + Number(modifier.price_delta || 0), 0))
-);
 
 const downloadDataUrl = (dataUrl, filename) => {
   const link = document.createElement('a');
@@ -1087,18 +986,18 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
 }
 
 const STYLES = {
-  colors: {
-    brand: '#ea580c',
-    brandDark: '#c2410c',
-    brandLight: '#fff7ed',
-    teal: '#0f766e',
-    tealLight: '#ecfeff',
-    amber: '#f59e0b',
-    dark: '#0f172a',
-    text: '#334155',
-    muted: '#64748b',
-    border: '#e2e8f0',
-    bg: '#f8fafc'
+  colors: { 
+    brand: '#ea580c', 
+    brandDark: '#c2410c', 
+    brandLight: '#fff7ed', 
+    teal: '#0f766e', 
+    tealLight: '#ecfeff', 
+    amber: '#f59e0b', 
+    dark: '#0f172a', 
+    text: '#334155', 
+    muted: '#64748b', 
+    border: '#e2e8f0', 
+    bg: '#f8fafc' 
   },
   radius: { card: '24px', input: '14px', button: '12px' },
   shadow: { sm: '0 4px 12px rgba(15,23,42,0.04)', md: '0 12px 34px rgba(15,23,42,0.08)', lg: '0 24px 58px rgba(15,23,42,0.12)' },
@@ -1110,27 +1009,27 @@ const STYLES = {
 };
 
 const Badge = ({ children, background, color, border, style }) => (
-  <span style={{
-    display: 'inline-flex', alignItems: 'center', padding: '6px 12px',
-    borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em',
-    textTransform: 'uppercase', background: background || STYLES.colors.tealLight,
+  <span style={{ 
+    display: 'inline-flex', alignItems: 'center', padding: '6px 12px', 
+    borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', 
+    textTransform: 'uppercase', background: background || STYLES.colors.tealLight, 
     color: color || STYLES.colors.teal, border: `1px solid ${border || 'transparent'}`,
-    ...style
+    ...style 
   }}>
     {children}
   </span>
 );
 
 const PrimaryButton = ({ children, onClick, disabled, style }) => (
-  <button
-    onClick={onClick}
+  <button 
+    onClick={onClick} 
     disabled={disabled}
-    style={{
-      background: disabled ? STYLES.colors.border : `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-      color: '#fff', border: 'none', borderRadius: STYLES.radius.button,
+    style={{ 
+      background: disabled ? STYLES.colors.border : `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`, 
+      color: '#fff', border: 'none', borderRadius: STYLES.radius.button, 
       padding: '12px 24px', fontSize: 14, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer',
       boxShadow: disabled ? 'none' : '0 10px 24px rgba(234,88,12,0.2)', transition: 'all 0.2s ease',
-      ...style
+      ...style 
     }}
   >
     {children}
@@ -1138,14 +1037,14 @@ const PrimaryButton = ({ children, onClick, disabled, style }) => (
 );
 
 const GhostButton = ({ children, onClick, disabled, style }) => (
-  <button
-    onClick={onClick}
+  <button 
+    onClick={onClick} 
     disabled={disabled}
-    style={{
-      background: '#fff', color: STYLES.colors.dark, border: `1px solid ${STYLES.colors.border}`,
-      borderRadius: STYLES.radius.button, padding: '12px 24px', fontSize: 14, fontWeight: 700,
+    style={{ 
+      background: '#fff', color: STYLES.colors.dark, border: `1px solid ${STYLES.colors.border}`, 
+      borderRadius: STYLES.radius.button, padding: '12px 24px', fontSize: 14, fontWeight: 700, 
       cursor: disabled ? 'not-allowed' : 'pointer', transition: 'all 0.2s ease',
-      ...style
+      ...style 
     }}
   >
     {children}
@@ -1205,9 +1104,7 @@ const buildServiceFallbackReasons = ({ serviceGroups = [], servicesViewModel = n
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
-  const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
   const previousRouteSlugRef = useRef(routeSlug);
-  const bookingPreferredDateInputRef = useRef(null);
 
   const [stores, setStores] = useState([]);
   const [loadingStores, setLoadingStores] = useState(true);
@@ -1226,29 +1123,12 @@ export default function StorefrontApp() {
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
-  const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
   const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
   const [serviceDraftNotes, setServiceDraftNotes] = useState('');
-  const openServiceDetail = (service) => {
-    const normalized = toSlug(selectedStore?.slug || routeSlug);
-    const serviceItemId = String(service?.item_id || '').trim();
-    if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`);
-    if (`${window.location.pathname}${window.location.search}` !== target) {
-      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_SERVICE_SUBPAGE, serviceItemId }, '', target);
-    }
-    setSelectedServiceDetail(service);
-    setRouteSlug(normalized);
-    setRouteSubpage(STORE_SERVICE_SUBPAGE);
-    setRouteServiceItemId(serviceItemId);
-  };
-  const closeServiceDetail = () => {
-    setSelectedServiceDetail(null);
-    setRouteServiceItemId(null);
-    goStoreCatalogPage();
-  };
+  const openServiceDetail = (service) => { setSelectedServiceDetail(service); };
+  const closeServiceDetail = () => { setSelectedServiceDetail(null); };
   const [activeServiceTab, setActiveServiceTab] = useState(null);
   const [serviceSortOption, setServiceSortOption] = useState('recommended');
   const [isServiceFilterOpen, setIsServiceFilterOpen] = useState(false);
@@ -1287,17 +1167,6 @@ export default function StorefrontApp() {
   const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
   const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
   const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
-  const [fnbReservationForm, setFnbReservationForm] = useState({
-    customer_name: '',
-    customer_phone: '',
-    customer_email: '',
-    party_size: 2,
-    requested_at: nowLocalDateTimeInput(),
-    notes: ''
-  });
-  const [fnbReservationLoading, setFnbReservationLoading] = useState(false);
-  const [fnbReservationError, setFnbReservationError] = useState('');
-  const [fnbReservationResult, setFnbReservationResult] = useState(null);
   const [pinLocationLoading, setPinLocationLoading] = useState(false);
   const [pinLocationError, setPinLocationError] = useState('');
   const [quoteResult, setQuoteResult] = useState(null);
@@ -1338,7 +1207,7 @@ export default function StorefrontApp() {
       return next;
     });
   }, []);
-  const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
+const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
 
   const pageModel = useMemo(() => (
     normalizeStorefrontPageModel({
@@ -1346,7 +1215,7 @@ export default function StorefrontApp() {
       catalog
     })
   ), [selectedStore, catalog]);
-  const { isServicesMode, modeAdapter, servicesViewModel, servicesLayoutMode, hero: heroSectionModel, overview: overviewSectionModel, supporting: supportingSectionModel } = pageModel;
+  const { isServicesMode, modeAdapter, servicesViewModel, hero: heroSectionModel, overview: overviewSectionModel, supporting: supportingSectionModel } = pageModel;
 
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
@@ -1434,12 +1303,8 @@ export default function StorefrontApp() {
       }
 
       if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
-        const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
-          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE)
-          : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
-            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
-            : storePath(profile.slug);
-        if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
+        const canonicalPath = storePath(profile.slug, routeSubpage === STORE_BOOKING_SUBPAGE ? STORE_BOOKING_SUBPAGE : null);
+        if (window.location.pathname !== canonicalPath) {
           window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
         }
         setRouteSlug(toSlug(profile.slug));
@@ -1512,7 +1377,7 @@ export default function StorefrontApp() {
     } finally {
       setLoadingCatalog(false);
     }
-  }, [preferredStoreLocationSelection, routeServiceItemId, routeSubpage]);
+  }, [preferredStoreLocationSelection, routeSubpage]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1641,7 +1506,6 @@ export default function StorefrontApp() {
     const onPopState = () => {
       setRouteSlug(readRouteSlug());
       setRouteSubpage(readStoreSubpage());
-      setRouteServiceItemId(readStoreServiceItemId());
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -1658,7 +1522,7 @@ export default function StorefrontApp() {
     if (import.meta.env.DEV) {
       navigator.serviceWorker.getRegistrations()
         .then((regs) => Promise.all(regs.map((r) => r.unregister())))
-        .catch(() => { });
+        .catch(() => {});
       if ('caches' in window) {
         caches.keys()
           .then((keys) => Promise.all(
@@ -1666,7 +1530,7 @@ export default function StorefrontApp() {
               .filter((k) => k.startsWith('sku-store-shell-') || k.startsWith('sku-store-runtime-'))
               .map((k) => caches.delete(k))
           ))
-          .catch(() => { });
+          .catch(() => {});
       }
       return;
     }
@@ -1707,18 +1571,16 @@ export default function StorefrontApp() {
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
-    setRouteServiceItemId(null);
   };
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
     const target = storePath(normalized, STORE_BOOKING_SUBPAGE);
-    if (`${window.location.pathname}${window.location.search}` !== target) {
+    if (window.location.pathname !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_BOOKING_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_BOOKING_SUBPAGE);
-    setRouteServiceItemId(null);
     if (!preserveSelectedService) {
       setSelectedServiceDetail(null);
     }
@@ -1728,20 +1590,17 @@ export default function StorefrontApp() {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
     const target = storePath(normalized);
-    if (`${window.location.pathname}${window.location.search}` !== target) {
+    if (window.location.pathname !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
-    setRouteServiceItemId(null);
   };
 
   const goDiscovery = () => {
-    const target = discoveryPath();
-    if (window.location.pathname !== target) window.history.pushState({}, '', target);
+    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
     setRouteSlug(null);
     setRouteSubpage(null);
-    setRouteServiceItemId(null);
     setSelectedStore(null);
     setStoreLocations([]);
     setPrimaryLocationId(null);
@@ -1837,12 +1696,12 @@ export default function StorefrontApp() {
       const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
       const activeWithCoords = locations
         .filter((location) => location?.is_active !== false)
-        .map((location) => ({
-          ...location,
-          latitude: toNumberOrNull(location?.latitude),
-          longitude: toNumberOrNull(location?.longitude)
-        }))
-        .filter((location) => location.latitude != null && location.longitude != null);
+          .map((location) => ({
+            ...location,
+            latitude: toNumberOrNull(location?.latitude),
+            longitude: toNumberOrNull(location?.longitude)
+          }))
+          .filter((location) => location.latitude != null && location.longitude != null);
       const matchingLocationIds = Array.isArray(store?.matching_location_ids)
         ? store.matching_location_ids
           .map((locationId) => Number(locationId))
@@ -1949,7 +1808,6 @@ export default function StorefrontApp() {
   const productCartPermitted = canUseProductCart(selectedStore);
   const checkoutPermitted = canUseCheckout(selectedStore);
   const bookingPermitted = canUseBooking(selectedStore);
-  const fnbStorefront = isFnbStorefront(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
     const mapStores = storeLocations.length > 0
@@ -1985,10 +1843,10 @@ export default function StorefrontApp() {
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
       ? overviewSectionModel.whyChooseUs.slice(0, 4)
       : buildServiceFallbackReasons({
-        serviceGroups,
-        servicesViewModel,
-        categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
-      });
+          serviceGroups,
+          servicesViewModel,
+          categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
+        });
     const ratingLabel = formatRatingSummary(reviewSummary);
     const reviewCount = Number((reviewSummary?.total_count ?? reviewSummary?.totalCount) || 0);
     const serviceCounts = {
@@ -2022,12 +1880,6 @@ export default function StorefrontApp() {
       reviewCount,
       quickStats,
       serviceCounts,
-      servicesLayoutMode,
-      servicesWithRequiredIntakeCount: Number(servicesViewModel?.servicesWithRequiredIntakeCount || 0),
-      servicesWithAvailabilityCount: Number(servicesViewModel?.servicesWithAvailabilityCount || 0),
-      servicesWithStructuredScheduleCount: Number(servicesViewModel?.servicesWithStructuredScheduleCount || 0),
-      prepaidServiceCount: Number(servicesViewModel?.prepaidServiceCount || 0),
-      postpaidServiceCount: Number(servicesViewModel?.postpaidServiceCount || 0),
       hours,
       contactRows: [
         phone ? { icon: null, label: 'Call', value: phone, href: `tel:` } : null,
@@ -2066,7 +1918,6 @@ export default function StorefrontApp() {
     overviewSectionModel,
     supportingSectionModel,
     servicesViewModel,
-    servicesLayoutMode,
     heroSectionModel,
     modeAdapter.heroDescription,
     modeAdapter.heroEyebrow,
@@ -2179,30 +2030,15 @@ export default function StorefrontApp() {
   const customerStepComplete = String(customerName || '').trim().length > 0 && String(customerPhone || '').trim().length > 0;
   const serviceBookingSummaryTitle = activeBookingService?.variantName || activeBookingService?.name || 'Service booking';
   const serviceBookingSummarySchedule = formatServiceAppointmentSummary(serviceAppointmentAt);
-  const openPreferredBookingDatePicker = useCallback(() => {
-    const input = bookingPreferredDateInputRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === 'function') {
-      try {
-        input.showPicker();
-        return;
-      } catch {
-        // Fall through to focus/click for browsers that block showPicker.
-      }
-    }
-    input.focus();
-    input.click();
-  }, []);
 
   useEffect(() => {
     if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
-    if (fnbStorefront) return;
     if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
     setCart([]);
     setQuoteResult(null);
     setQuoteNeedsRefresh(true);
     setIsCheckoutOpen(false);
-  }, [productCartPermitted, checkoutPermitted, bookingPermitted, fnbStorefront, cart.length, quoteResult, isCheckoutOpen]);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
   useEffect(() => {
     if (!isBookingSubpage) return;
     setIsCheckoutOpen(false);
@@ -2277,25 +2113,6 @@ export default function StorefrontApp() {
     }
   }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
   useEffect(() => {
-    if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
-    const firstDate = bookingDateOptions[0]?.value || '';
-    if (!firstDate) return;
-    setServiceAppointmentAt(combineDateAndTimeParts(firstDate, getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart)));
-  }, [isBookingSubpage, activeBookingService, bookingDateOptions, selectedServiceDatePart, selectedServiceTimePart]);
-  useEffect(() => {
-    if (!isServiceDetailsSubpage) return;
-    if (!routeServiceItemId) {
-      setSelectedServiceDetail(null);
-      return;
-    }
-    const matchedService = (Array.isArray(catalog) ? catalog : []).find((item) => String(item?.item_id) === String(routeServiceItemId));
-    if (matchedService) {
-      setSelectedServiceDetail((previous) => (String(previous?.item_id) === String(matchedService.item_id) ? previous : matchedService));
-    } else if (!loadingCatalog) {
-      setSelectedServiceDetail(null);
-    }
-  }, [catalog, isServiceDetailsSubpage, loadingCatalog, routeServiceItemId]);
-  useEffect(() => {
     if (!Array.isArray(storeLocations) || storeLocations.length === 0) {
       if (selectedLocationId != null) setSelectedLocationId(null);
       return;
@@ -2328,8 +2145,7 @@ export default function StorefrontApp() {
     }
     setCart((prev) => {
       const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
-      const lineModifiers = isServiceCatalogItem(item) ? [] : getDefaultFnbLineModifiers(item);
-      const price = round4(Number(item.default_sale_price ?? 0) + getFnbLineModifierDelta(lineModifiers));
+      const price = Number(item.default_sale_price ?? 0);
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       if (found) {
         if (isServiceCatalogItem(item)) {
@@ -2357,7 +2173,6 @@ export default function StorefrontApp() {
         service_detail: item.service_detail || null,
         quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? 1 : 0),
         price,
-        line_modifiers: lineModifiers,
         image_url: withAssetOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
         max_stock: maxStock
@@ -2376,7 +2191,6 @@ export default function StorefrontApp() {
     setSelectedServiceDetail(serviceItem);
     setCheckoutError('');
     setQuoteError('');
-    setCheckoutResult(null);
     if (isServicesMode) {
       goStoreBookingPage({ preserveSelectedService: true });
       return;
@@ -2483,11 +2297,7 @@ export default function StorefrontApp() {
     delivery_address: isDeliveryOrder ? customerAddress : '',
     delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
-    lines: cart.map((line) => ({
-      item_id: Number(line.item_id),
-      quantity: Number(line.quantity),
-      ...(Array.isArray(line.line_modifiers) && line.line_modifiers.length > 0 ? { line_modifiers: line.line_modifiers } : {})
-    }))
+    lines: cart.map((line) => ({ item_id: Number(line.item_id), quantity: Number(line.quantity) }))
   });
 
   const handlePinMyLocation = () => {
@@ -2645,26 +2455,6 @@ export default function StorefrontApp() {
     if (!selectedStore) return;
     setCheckoutError('');
     setCheckoutResult(null);
-    const serviceBookingLine = hasServiceCart
-      ? firstServiceLine
-      : (isServicesMode && activeBookingService
-        ? {
-          item_id: activeBookingService.item_id,
-          name: activeBookingService.name,
-          variantName: activeBookingService.variantName || '',
-          category: 'service',
-          service_detail: activeBookingService.service_detail || null,
-          quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
-          price: Number(activeBookingService.default_sale_price ?? 0),
-          image_url: withAssetOrigin(activeBookingService.image_url) || null,
-          unit_of_measure: activeBookingService.unit_of_measure || '',
-          max_stock: Number.POSITIVE_INFINITY,
-          service_notes: String(serviceDraftNotes || '').trim(),
-          service_schedule_at: serviceAppointmentAt,
-          payment_timing: servicePaymentTiming,
-          intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null
-        }
-        : null);
     if (checkoutBlockReason === 'stock_violation') {
       const message = 'Cannot checkout: one or more items exceed current stock.';
       setCheckoutError(message);
@@ -2695,15 +2485,14 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
-    if ((hasServiceCart || (isServicesMode && activeBookingService)) && !serviceAppointmentAt) {
+    if (hasServiceCart && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if ((hasServiceCart && missingRequiredIntake.length > 0) || (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0)) {
-      const firstMissingField = hasServiceCart ? missingRequiredIntake[0] : bookingPageMissingRequiredIntake[0];
-      const message = `Complete required intake question: ${firstMissingField.label}`;
+    if (hasServiceCart && missingRequiredIntake.length > 0) {
+      const message = `Complete required intake question: ${missingRequiredIntake[0].label}`;
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -2711,23 +2500,23 @@ export default function StorefrontApp() {
     setCheckoutLoading(true);
     try {
       const authToken = readStoreAuthToken();
-      const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
+      const data = hasServiceCart
         ? await requestJson('/api/v1/store/services/bookings', {
           method: 'POST',
           storeSlug: selectedStore.slug,
           authToken,
           body: {
-            service_item_id: Number(serviceBookingLine.item_id),
+            service_item_id: Number(firstServiceLine.item_id),
             start_at: new Date(serviceAppointmentAt).toISOString(),
             customer_name: customerName,
             customer_email: customerEmail,
             customer_phone: customerPhone,
             location_id: selectedLocationId ?? selectedStore?.location_id,
             payment_timing: servicePaymentTiming,
-            intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
+            intake_responses: serviceIntakeFields.length > 0 ? serviceIntakeResponses : null,
             notes: [
-              Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
-              String(serviceBookingLine.service_notes || serviceDraftNotes || '').trim()
+              Number(firstServiceLine.quantity || 1) > 1 ? `Service quantity/package count: ${firstServiceLine.quantity}` : '',
+              String(firstServiceLine.service_notes || serviceDraftNotes || '').trim()
             ].filter(Boolean).join('\n')
           }
         })
@@ -2741,13 +2530,7 @@ export default function StorefrontApp() {
             payment_type: 'cash'
           }
         });
-      setCheckoutResult({
-        ...data,
-        cart_lines: hasServiceCart
-          ? cart
-          : (serviceBookingLine ? [serviceBookingLine] : []),
-        totals: totalsForDisplay
-      });
+      setCheckoutResult({ ...data, cart_lines: cart, totals: totalsForDisplay });
       if (data?.tracking_pin) {
         setTrackingPinInput(data.tracking_pin);
         setCheckoutTab('track');
@@ -2776,39 +2559,6 @@ export default function StorefrontApp() {
       toast.error(message);
     } finally {
       setCheckoutLoading(false);
-    }
-  };
-
-  const handleFnbReservationRequest = async () => {
-    if (!selectedStore?.slug) return;
-    setFnbReservationError('');
-    setFnbReservationResult(null);
-    setFnbReservationLoading(true);
-    try {
-      const data = await requestJson('/api/v1/store/fnb/reservations', {
-        method: 'POST',
-        storeSlug: selectedStore.slug,
-        authToken: readStoreAuthToken(),
-        body: {
-          ...fnbReservationForm,
-          party_size: Number(fnbReservationForm.party_size || 2),
-          requested_at: new Date(fnbReservationForm.requested_at).toISOString()
-        }
-      });
-      setFnbReservationResult(data?.reservation || data);
-      setFnbReservationForm((prev) => ({
-        ...prev,
-        customer_name: '',
-        customer_phone: '',
-        customer_email: '',
-        notes: '',
-        requested_at: nowLocalDateTimeInput()
-      }));
-      toast.success('Reservation request sent.');
-    } catch (error) {
-      setFnbReservationError(normalizeStorefrontErrorMessage(error, 'Unable to send reservation request.'));
-    } finally {
-      setFnbReservationLoading(false);
     }
   };
 
@@ -3159,525 +2909,267 @@ export default function StorefrontApp() {
                     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: 12, color: '#64748b' }}>Map will appear once storefront data is available.</div>
                   )}
 
-                  {selectedServiceDetail && !isBookingSubpage && !isServiceDetailsSubpage && (
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        aria-label="Close service detail"
-                        onClick={closeServiceDetail}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') closeServiceDetail();
-                        }}
-                        style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(8px)' }}
-                      />
-                      <section
-                        style={{
-                          position: 'relative',
-                          zIndex: 2201,
-                          width: isMobileViewport ? '100%' : 'min(980px, calc(100vw - 48px))',
-                          maxHeight: isMobileViewport ? '92vh' : 'calc(100vh - 48px)',
-                          overflow: 'hidden',
-                          borderRadius: isMobileViewport ? '24px 24px 0 0' : 28,
-                          background: '#ffffff',
-                          border: '1px solid #dbe5ee',
-                          boxShadow: '0 30px 90px rgba(15,23,42,.24)',
-                          display: 'grid',
-                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(280px, 360px) minmax(0, 1fr)'
-                        }}
-                      >
-                        <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
-                          {withAssetOrigin(selectedServiceDetail.image_url) ? (
-                            <img
-                              src={withAssetOrigin(selectedServiceDetail.image_url)}
-                              alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                              No image
-                            </div>
-                          )}
-                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
-                          <button
-                            type="button"
-                            onClick={closeServiceDetail}
-                            style={{
-                              position: 'absolute',
-                              top: 16,
-                              right: 16,
-                              width: 40,
-                              height: 40,
-                              borderRadius: 999,
-                              border: '1px solid rgba(255,255,255,.55)',
-                              background: 'rgba(15,23,42,.55)',
-                              color: '#fff',
-                              display: 'grid',
-                              placeItems: 'center',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <X size={18} />
-                          </button>
-                          <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
-                                {selectedServiceDetail.categoryMeta?.label || 'Service'}
-                              </Badge>
-                              <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
-                                {selectedServiceDetail.serviceAreaLabel}
-                              </Badge>
-                            </div>
-                            <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, color: '#fff' }}>
-                              {selectedServiceDetail.variantName || selectedServiceDetail.name}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'rgba(255,255,255,.92)', fontSize: 13, fontWeight: 700 }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                <Clock3 size={14} />
-                                {selectedServiceDetail.durationLabel}
-                              </span>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                <MousePointer2 size={14} />
-                                {selectedServicePaymentOptions.map((option) => option.label).join(' / ')}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', minHeight: 0 }}>
-                          <div style={{ padding: isMobileViewport ? '18px 18px 12px' : '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.05 }}>
-                                  {money(selectedServiceDetail.default_sale_price ?? 0)}
-                                </div>
-                                <div style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6, maxWidth: 540 }}>
-                                  {selectedServiceDetail.description || 'Service details are synced from SKUpervisor. Select your preferred schedule and booking requirements below.'}
-                                </div>
-                              </div>
-                              {!isMobileViewport && (
-                                <div style={{ minWidth: 180, borderRadius: 18, border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, display: 'grid', gap: 8 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking notes</div>
-                                  <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
-                                    SKUpervisor validates lead time, conflicts, and booking rules when you submit.
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
-                            <section style={{ display: 'grid', gap: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <CalendarDays size={18} color="#f97316" />
-                                <div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
-                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
-                                </div>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 160px', gap: 12 }}>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Preferred date and time
-                                  <input
-                                    type="datetime-local"
-                                    value={serviceAppointmentAt}
-                                    onChange={(event) => setServiceAppointmentAt(event.target.value)}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  />
-                                </label>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Payment timing
-                                  <select
-                                    value={servicePaymentTiming}
-                                    onChange={(event) => setServicePaymentTiming(event.target.value)}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  >
-                                    {selectedServicePaymentOptions.map((option) => (
-                                      <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Units / count
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    value={serviceDraftQuantity}
-                                    onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  />
-                                </label>
-                              </div>
-                            </section>
-
-                            <section style={{ display: 'grid', gap: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <FileText size={18} color="#f97316" />
-                                <div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
-                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
-                                </div>
-                              </div>
-                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                Special instructions
-                                <textarea
-                                  value={serviceDraftNotes}
-                                  onChange={(event) => setServiceDraftNotes(event.target.value)}
-                                  placeholder="Access notes, unit details, pickup preferences, or anything the service team should know."
-                                  style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                />
-                              </label>
-                            </section>
-
-                            {selectedServiceIntakeFields.length > 0 && (
-                              <section style={{ display: 'grid', gap: 12 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                  <CheckCircle2 size={18} color="#f97316" />
-                                  <div>
-                                    <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
-                                    <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-                                  {selectedServiceIntakeFields.map((field) => (
-                                    <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                      {field.label}{field.required ? ' *' : ''}
-                                      {field.type === 'textarea' ? (
-                                        <textarea
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                        />
-                                      ) : field.type === 'select' ? (
-                                        <select
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                        >
-                                          <option value="">Select</option>
-                                          {field.options.map((option) => (
-                                            <option key={option} value={option}>{option}</option>
-                                          ))}
-                                        </select>
-                                      ) : field.type === 'checkbox' ? (
-                                        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={serviceIntakeResponses[field.id] === true}
-                                            onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))}
-                                          />
-                                          <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
-                                        </div>
-                                      ) : (
-                                        <input
-                                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                        />
-                                      )}
-                                    </label>
-                                  ))}
-                                </div>
-                              </section>
-                            )}
-                          </div>
-
-                          <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
-                            {checkoutError && (
-                              <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                {checkoutError}
-                              </div>
-                            )}
-                            {missingRequiredSelectedServiceIntake.length > 0 && (
-                              <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
-                                Complete the required booking details before adding this service to your booking summary.
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', gap: 12 }}>
-                              <div style={{ display: 'grid', gap: 4 }}>
-                                <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Current estimate</div>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
-                                  {money((Number(selectedServiceDetail.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 10 }}>
-                                <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
-                                  Cancel
-                                </GhostButton>
-                                <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
-                                  Add to Booking
-                                </PrimaryButton>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-                  )}
-
                   {highlightedStore && (
                     <article style={{ border: '1px solid #dbeafe', borderRadius: 12, background: '#eff6ff', padding: 10 }}>
-                      {false && selectedServiceDetail && !isBookingSubpage && (
-                        <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label="Close service detail"
-                            onClick={closeServiceDetail}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') closeServiceDetail();
-                            }}
-                            style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(8px)' }}
-                          />
-                          <section
-                            style={{
-                              position: 'relative',
-                              zIndex: 2201,
-                              width: isMobileViewport ? '100%' : 'min(980px, calc(100vw - 48px))',
-                              maxHeight: isMobileViewport ? '92vh' : 'calc(100vh - 48px)',
-                              overflow: 'hidden',
-                              borderRadius: isMobileViewport ? '24px 24px 0 0' : 28,
-                              background: '#ffffff',
-                              border: '1px solid #dbe5ee',
-                              boxShadow: '0 30px 90px rgba(15,23,42,.24)',
-                              display: 'grid',
-                              gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(280px, 360px) minmax(0, 1fr)'
-                            }}
-                          >
-                            <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
-                              {withAssetOrigin(selectedServiceDetail.image_url) ? (
-                                <img
-                                  src={withAssetOrigin(selectedServiceDetail.image_url)}
-                                  alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
-                              ) : (
-                                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                                  No image
-                                </div>
-                              )}
-                              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
-                              <button
-                                type="button"
-                                onClick={closeServiceDetail}
-                                style={{
-                                  position: 'absolute',
-                                  top: 16,
-                                  right: 16,
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: 999,
-                                  border: '1px solid rgba(255,255,255,.55)',
-                                  background: 'rgba(15,23,42,.55)',
-                                  color: '#fff',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <X size={18} />
-                              </button>
-                              <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                  <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
-                                    {selectedServiceDetail.categoryMeta?.label || 'Service'}
-                                  </Badge>
-                                  <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
-                                    {selectedServiceDetail.serviceAreaLabel}
-                                  </Badge>
-                                </div>
-                                <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, color: '#fff' }}>
-                                  {selectedServiceDetail.variantName || selectedServiceDetail.name}
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'rgba(255,255,255,.92)', fontSize: 13, fontWeight: 700 }}>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                    <Clock3 size={14} />
-                                    {selectedServiceDetail.durationLabel}
-                                  </span>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                    <MousePointer2 size={14} />
-                                    {selectedServicePaymentOptions.map((option) => option.label).join(' / ')}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+          {selectedServiceDetail && !isBookingSubpage && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Close service detail"
+                onClick={closeServiceDetail}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') closeServiceDetail();
+                }}
+                style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(8px)' }}
+              />
+              <section
+                style={{
+                  position: 'relative',
+                  zIndex: 2201,
+                  width: isMobileViewport ? '100%' : 'min(980px, calc(100vw - 48px))',
+                  maxHeight: isMobileViewport ? '92vh' : 'calc(100vh - 48px)',
+                  overflow: 'hidden',
+                  borderRadius: isMobileViewport ? '24px 24px 0 0' : 28,
+                  background: '#ffffff',
+                  border: '1px solid #dbe5ee',
+                  boxShadow: '0 30px 90px rgba(15,23,42,.24)',
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(280px, 360px) minmax(0, 1fr)'
+                }}
+              >
+                <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
+                  {withAssetOrigin(selectedServiceDetail.image_url) ? (
+                    <img
+                      src={withAssetOrigin(selectedServiceDetail.image_url)}
+                      alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
+                      No image
+                    </div>
+                  )}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
+                  <button
+                    type="button"
+                    onClick={closeServiceDetail}
+                    style={{
+                      position: 'absolute',
+                      top: 16,
+                      right: 16,
+                      width: 40,
+                      height: 40,
+                      borderRadius: 999,
+                      border: '1px solid rgba(255,255,255,.55)',
+                      background: 'rgba(15,23,42,.55)',
+                      color: '#fff',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                  <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
+                        {selectedServiceDetail.categoryMeta?.label || 'Service'}
+                      </Badge>
+                      <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
+                        {selectedServiceDetail.serviceAreaLabel}
+                      </Badge>
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, color: '#fff' }}>
+                      {selectedServiceDetail.variantName || selectedServiceDetail.name}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'rgba(255,255,255,.92)', fontSize: 13, fontWeight: 700 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Clock3 size={14} />
+                        {selectedServiceDetail.durationLabel}
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <MousePointer2 size={14} />
+                        {selectedServicePaymentOptions.map((option) => option.label).join(' / ')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-                            <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', minHeight: 0 }}>
-                              <div style={{ padding: isMobileViewport ? '18px 18px 12px' : '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-                                  <div style={{ display: 'grid', gap: 8 }}>
-                                    <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.05 }}>
-                                      {money(selectedServiceDetail.default_sale_price ?? 0)}
-                                    </div>
-                                    <div style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6, maxWidth: 540 }}>
-                                      {selectedServiceDetail.description || 'Service details are synced from SKUpervisor. Select your preferred schedule and booking requirements below.'}
-                                    </div>
-                                  </div>
-                                  {!isMobileViewport && (
-                                    <div style={{ minWidth: 180, borderRadius: 18, border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, display: 'grid', gap: 8 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking notes</div>
-                                      <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
-                                        SKUpervisor validates lead time, conflicts, and booking rules when you submit.
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
-                                <section style={{ display: 'grid', gap: 12 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    <CalendarDays size={18} color="#f97316" />
-                                    <div>
-                                      <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
-                                      <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 160px', gap: 12 }}>
-                                    <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                      Preferred date and time
-                                      <input
-                                        type="datetime-local"
-                                        value={serviceAppointmentAt}
-                                        onChange={(event) => setServiceAppointmentAt(event.target.value)}
-                                        style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                      />
-                                    </label>
-                                    <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                      Payment timing
-                                      <select
-                                        value={servicePaymentTiming}
-                                        onChange={(event) => setServicePaymentTiming(event.target.value)}
-                                        style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                      >
-                                        {selectedServicePaymentOptions.map((option) => (
-                                          <option key={option.value} value={option.value}>{option.label}</option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                      Units / count
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        step="1"
-                                        value={serviceDraftQuantity}
-                                        onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
-                                        style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                      />
-                                    </label>
-                                  </div>
-                                </section>
-
-                                <section style={{ display: 'grid', gap: 12 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    <FileText size={18} color="#f97316" />
-                                    <div>
-                                      <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
-                                      <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
-                                    </div>
-                                  </div>
-                                  <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                    Special instructions
-                                    <textarea
-                                      value={serviceDraftNotes}
-                                      onChange={(event) => setServiceDraftNotes(event.target.value)}
-                                      placeholder="Access notes, unit details, pickup preferences, or anything the service team should know."
-                                      style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                    />
-                                  </label>
-                                </section>
-
-                                {selectedServiceIntakeFields.length > 0 && (
-                                  <section style={{ display: 'grid', gap: 12 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                      <CheckCircle2 size={18} color="#f97316" />
-                                      <div>
-                                        <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
-                                        <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-                                      {selectedServiceIntakeFields.map((field) => (
-                                        <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                          {field.label}{field.required ? ' *' : ''}
-                                          {field.type === 'textarea' ? (
-                                            <textarea
-                                              value={serviceIntakeResponses[field.id] || ''}
-                                              onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                              style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                            />
-                                          ) : field.type === 'select' ? (
-                                            <select
-                                              value={serviceIntakeResponses[field.id] || ''}
-                                              onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                              style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                            >
-                                              <option value="">Select</option>
-                                              {field.options.map((option) => (
-                                                <option key={option} value={option}>{option}</option>
-                                              ))}
-                                            </select>
-                                          ) : field.type === 'checkbox' ? (
-                                            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
-                                              <input
-                                                type="checkbox"
-                                                checked={serviceIntakeResponses[field.id] === true}
-                                                onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))}
-                                              />
-                                              <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
-                                            </div>
-                                          ) : (
-                                            <input
-                                              type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                              value={serviceIntakeResponses[field.id] || ''}
-                                              onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                              style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                            />
-                                          )}
-                                        </label>
-                                      ))}
-                                    </div>
-                                  </section>
-                                )}
-                              </div>
-
-                              <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
-                                {checkoutError && (
-                                  <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                    {checkoutError}
-                                  </div>
-                                )}
-                                {missingRequiredSelectedServiceIntake.length > 0 && (
-                                  <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
-                                    Complete the required booking details before adding this service to your booking summary.
-                                  </div>
-                                )}
-                                <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', gap: 12 }}>
-                                  <div style={{ display: 'grid', gap: 4 }}>
-                                    <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Current estimate</div>
-                                    <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
-                                      {money((Number(selectedServiceDetail.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 10 }}>
-                                    <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
-                                      Cancel
-                                    </GhostButton>
-                                    <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
-                                      Add to Booking
-                                    </PrimaryButton>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </section>
+                <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', minHeight: 0 }}>
+                  <div style={{ padding: isMobileViewport ? '18px 18px 12px' : '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.05 }}>
+                          {money(selectedServiceDetail.default_sale_price ?? 0)}
+                        </div>
+                        <div style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6, maxWidth: 540 }}>
+                          {selectedServiceDetail.description || 'Service details are synced from SKUpervisor. Select your preferred schedule and booking requirements below.'}
+                        </div>
+                      </div>
+                      {!isMobileViewport && (
+                        <div style={{ minWidth: 180, borderRadius: 18, border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, display: 'grid', gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking notes</div>
+                          <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                            SKUpervisor validates lead time, conflicts, and booking rules when you submit.
+                          </div>
                         </div>
                       )}
+                    </div>
+                  </div>
 
-                      {(() => {
+                  <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
+                    <section style={{ display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <CalendarDays size={18} color="#f97316" />
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
+                          <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 160px', gap: 12 }}>
+                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                          Preferred date and time
+                          <input
+                            type="datetime-local"
+                            value={serviceAppointmentAt}
+                            onChange={(event) => setServiceAppointmentAt(event.target.value)}
+                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                          />
+                        </label>
+                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                          Payment timing
+                          <select
+                            value={servicePaymentTiming}
+                            onChange={(event) => setServicePaymentTiming(event.target.value)}
+                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                          >
+                            {selectedServicePaymentOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                          Units / count
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={serviceDraftQuantity}
+                            onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                          />
+                        </label>
+                      </div>
+                    </section>
+
+                    <section style={{ display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <FileText size={18} color="#f97316" />
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
+                          <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
+                        </div>
+                      </div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                        Special instructions
+                        <textarea
+                          value={serviceDraftNotes}
+                          onChange={(event) => setServiceDraftNotes(event.target.value)}
+                          placeholder="Access notes, unit details, pickup preferences, or anything the service team should know."
+                          style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
+                        />
+                      </label>
+                    </section>
+
+                    {selectedServiceIntakeFields.length > 0 && (
+                      <section style={{ display: 'grid', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <CheckCircle2 size={18} color="#f97316" />
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
+                            <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+                          {selectedServiceIntakeFields.map((field) => (
+                            <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                              {field.label}{field.required ? ' *' : ''}
+                              {field.type === 'textarea' ? (
+                                <textarea
+                                  value={serviceIntakeResponses[field.id] || ''}
+                                  onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                  style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
+                                />
+                              ) : field.type === 'select' ? (
+                                <select
+                                  value={serviceIntakeResponses[field.id] || ''}
+                                  onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                  style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                >
+                                  <option value="">Select</option>
+                                  {field.options.map((option) => (
+                                    <option key={option} value={option}>{option}</option>
+                                  ))}
+                                </select>
+                              ) : field.type === 'checkbox' ? (
+                                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={serviceIntakeResponses[field.id] === true}
+                                    onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))}
+                                  />
+                                  <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                </div>
+                              ) : (
+                                <input
+                                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                  value={serviceIntakeResponses[field.id] || ''}
+                                  onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                  style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                />
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+
+                  <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
+                    {checkoutError && (
+                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
+                        {checkoutError}
+                      </div>
+                    )}
+                    {missingRequiredSelectedServiceIntake.length > 0 && (
+                      <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
+                        Complete the required booking details before adding this service to your booking summary.
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', gap: 12 }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Current estimate</div>
+                        <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
+                          {money((Number(selectedServiceDetail.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 10 }}>
+                        <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
+                          Cancel
+                        </GhostButton>
+                        <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
+                          Add to Booking
+                        </PrimaryButton>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {(() => {
                         const highlightedSlug = toSlug(highlightedStore?.slug);
                         const highlightedProfileImageUrl = withAssetOrigin(highlightedStore?.storefront_profile_image_url);
                         const highlightedProfileImageKey = `highlighted-profile:${highlightedSlug}:${highlightedProfileImageUrl}`;
@@ -3689,65 +3181,65 @@ export default function StorefrontApp() {
                         });
                         return (
                           <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ width: 30, height: 30, borderRadius: 999, overflow: 'hidden', border: '1px solid #d1d5db', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {highlightedProfileImageUrl && !isBrandingImageBlocked(highlightedProfileImageKey) ? (
-                                    <img
-                                      src={highlightedProfileImageUrl}
-                                      alt={`${highlightedStore.tenant_name} profile`}
-                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                      onError={() => markBrandingImageError(highlightedProfileImageKey)}
-                                    />
-                                  ) : (
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>ICON</span>
-                                  )}
-                                </div>
-                                <strong>{highlightedStore.tenant_name}</strong>
-                              </div>
-                              <span style={{ color: highlightedStore.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700, fontSize: 12 }}>
-                                {highlightedStore.storefront_open ? 'Open' : 'Closed'}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 999, overflow: 'hidden', border: '1px solid #d1d5db', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {highlightedProfileImageUrl && !isBrandingImageBlocked(highlightedProfileImageKey) ? (
+                              <img
+                                src={highlightedProfileImageUrl}
+                                alt={`${highlightedStore.tenant_name} profile`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={() => markBrandingImageError(highlightedProfileImageKey)}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>ICON</span>
+                            )}
+                          </div>
+                          <strong>{highlightedStore.tenant_name}</strong>
+                        </div>
+                        <span style={{ color: highlightedStore.storefront_open ? '#0f766e' : '#b45309', fontWeight: 700, fontSize: 12 }}>
+                          {highlightedStore.storefront_open ? 'Open' : 'Closed'}
+                        </span>
+                      </div>
+                      {highlightedBadges.length > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {highlightedBadges.map((badge) => {
+                            const tone = DISCOVERY_BADGE_TONE_STYLES[badge.tone] || DISCOVERY_BADGE_TONE_STYLES.slate;
+                            return (
+                              <span
+                                key={`highlighted:${badge.key}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  borderRadius: 999,
+                                  border: `1px solid ${tone.borderColor}`,
+                                  background: tone.background,
+                                  color: tone.color,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: '3px 8px'
+                                }}
+                              >
+                                {badge.label}
                               </span>
-                            </div>
-                            {highlightedBadges.length > 0 && (
-                              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {highlightedBadges.map((badge) => {
-                                  const tone = DISCOVERY_BADGE_TONE_STYLES[badge.tone] || DISCOVERY_BADGE_TONE_STYLES.slate;
-                                  return (
-                                    <span
-                                      key={`highlighted:${badge.key}`}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        borderRadius: 999,
-                                        border: `1px solid ${tone.borderColor}`,
-                                        background: tone.background,
-                                        color: tone.color,
-                                        fontSize: 11,
-                                        fontWeight: 700,
-                                        padding: '3px 8px'
-                                      }}
-                                    >
-                                      {badge.label}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 13, marginTop: 6, color: '#334155' }}>{highlightedStore.address_line || 'Address unavailable'}</div>
-                            {Number.isFinite(Number(highlightedStore.nearest_distance_km)) && (
-                              <div style={{ marginTop: 6, fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
-                                {Number(highlightedStore.nearest_distance_km).toFixed(2)} km from your location
-                              </div>
-                            )}
-                            {highlightedStore.nearest_location_name && (
-                              <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>
-                                Closest active branch: <strong>{highlightedStore.nearest_location_name}</strong> {highlightedStore.nearest_is_primary ? '(Primary)' : ''}
-                              </div>
-                            )}
-                            <button type="button" onClick={() => goStore(highlightedStore.slug, highlightedPreferredLocationId)} style={{ marginTop: 10, width: '100%', borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 10px', fontWeight: 700 }}>
-                              Open This Tenant Storefront
-                            </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 13, marginTop: 6, color: '#334155' }}>{highlightedStore.address_line || 'Address unavailable'}</div>
+                      {Number.isFinite(Number(highlightedStore.nearest_distance_km)) && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#0f766e', fontWeight: 700 }}>
+                          {Number(highlightedStore.nearest_distance_km).toFixed(2)} km from your location
+                        </div>
+                      )}
+                      {highlightedStore.nearest_location_name && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>
+                          Closest active branch: <strong>{highlightedStore.nearest_location_name}</strong> {highlightedStore.nearest_is_primary ? '(Primary)' : ''}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => goStore(highlightedStore.slug, highlightedPreferredLocationId)} style={{ marginTop: 10, width: '100%', borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 10px', fontWeight: 700 }}>
+                        Open This Tenant Storefront
+                      </button>
                           </>
                         );
                       })()}
@@ -3766,7 +3258,7 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
+            {isServicesMode && !isBookingSubpage && selectedStore && serviceHeroModel && (
               <section style={{ marginBottom: 40 }}>
                 <div style={{
                   background: '#ffffff',
@@ -3902,12 +3394,12 @@ export default function StorefrontApp() {
                           )}
                         </div>
                         <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                          <h1 style={{
-                            margin: 0,
-                            color: '#fff',
-                            fontSize: isMobileViewport ? 38 : 50,
-                            fontWeight: 900,
-                            lineHeight: 1.05,
+                          <h1 style={{ 
+                            margin: 0, 
+                            color: '#fff', 
+                            fontSize: isMobileViewport ? 38 : 50, 
+                            fontWeight: 900, 
+                            lineHeight: 1.05, 
                             letterSpacing: '-0.03em'
                           }}>{serviceHeroModel.name}</h1>
                           {serviceHeroModel.tagline ? (
@@ -4112,12 +3604,12 @@ export default function StorefrontApp() {
                                 const icon = row.label === 'Call' || row.label === 'Phone'
                                   ? <Phone size={16} />
                                   : row.label === 'Message'
-                                    ? <MessageCircle size={16} />
-                                    : row.label === 'Facebook'
-                                      ? <MessageCircle size={16} />
-                                      : row.label === 'Email'
-                                        ? <Mail size={16} />
-                                        : <Clock3 size={16} />;
+                                  ? <MessageCircle size={16} />
+                                  : row.label === 'Facebook'
+                                  ? <MessageCircle size={16} />
+                                  : row.label === 'Email'
+                                  ? <Mail size={16} />
+                                  : <Clock3 size={16} />;
                                 const content = (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
                                     <div style={{ color: STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
@@ -4184,7 +3676,7 @@ export default function StorefrontApp() {
                               <StoresMap
                                 stores={serviceHeroModel.mapStores}
                                 selectedKey={serviceHeroModel.mapSelectedKey}
-                                onSelectStore={() => { }}
+                                onSelectStore={() => {}}
                               />
                             </div>
                           )}
@@ -4323,18 +3815,18 @@ export default function StorefrontApp() {
                   </section>
 
                   {/* Overlapping Avatar */}
-                  <div style={{
-                    position: 'absolute',
-                    left: isMobileViewport ? '50%' : '40px',
-                    bottom: '-60px',
+                  <div style={{ 
+                    position: 'absolute', 
+                    left: isMobileViewport ? '50%' : '40px', 
+                    bottom: '-60px', 
                     transform: isMobileViewport ? 'translateX(-50%)' : 'none',
-                    width: 200,
-                    height: 200,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    border: '8px solid #fff',
-                    boxShadow: STYLES.shadow.lg,
-                    overflow: 'hidden',
+                    width: 200, 
+                    height: 200, 
+                    borderRadius: '50%', 
+                    background: '#fff', 
+                    border: '8px solid #fff', 
+                    boxShadow: STYLES.shadow.lg, 
+                    overflow: 'hidden', 
                     zIndex: 10,
                     display: 'flex',
                     alignItems: 'center',
@@ -4349,9 +3841,9 @@ export default function StorefrontApp() {
                 </div>
 
                 {/* Mission Control Info Panels */}
-                <div style={{
-                  background: '#fff',
-                  borderRadius: '0 0 28px 28px',
+                <div style={{ 
+                  background: '#fff', 
+                  borderRadius: '0 0 28px 28px', 
                   padding: isMobileViewport ? '80px 20px 40px' : '40px 40px 40px 280px',
                   border: '1px solid #e2e8f0',
                   borderTop: 'none',
@@ -4367,7 +3859,7 @@ export default function StorefrontApp() {
                       <StoresMap
                         stores={[{ ...selectedStore, location_id: selectedLocationId }]}
                         selectedKey={selectedLocationId}
-                        onSelectStore={() => { }}
+                        onSelectStore={() => {}}
                       />
                     </div>
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -4427,95 +3919,45 @@ export default function StorefrontApp() {
               </section>
             )}
             {!isServicesMode && (
-              <>
-                {/* ZONE 1: Navigation & Header */}
-                <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
-                    Back to Discovery
-                  </GhostButton>
-                  <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
-                </section>
-                <div style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
-                  Tenant page: {routeSlug}
+            <>
+            {/* ZONE 1: Navigation & Header */}
+            <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
+                Back to Discovery
+              </GhostButton>
+              <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
+            </section>
+
+            {/* ZONE 2: Hero Branding */}
+            <section style={{ 
+              background: STYLES.colors.dark, borderRadius: STYLES.radius.card, 
+              padding: isMobileViewport ? 24 : 48, marginBottom: 24,
+              position: 'relative', overflow: 'hidden', color: '#fff',
+              boxShadow: STYLES.shadow.lg
+            }}>
+              <div style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', background: `linear-gradient(225deg, ${STYLES.colors.brand}22, transparent)`, pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', zIndex: 1, maxWidth: 800 }}>
+                <Badge style={{ marginBottom: 16 }}>{modeAdapter.heroEyebrow}</Badge>
+                <h1 style={{ margin: 0, fontSize: isMobileViewport ? 32 : 56, fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em' }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
+                <p style={{ margin: '16px 0 0 0', fontSize: isMobileViewport ? 16 : 20, opacity: 0.8, lineHeight: 1.5 }}>{modeAdapter.heroDescription}</p>
+                
+                <div style={{ marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <PrimaryButton onClick={() => {
+                    if (isServicesMode && hasServiceCart) {
+                      goStoreBookingPage();
+                      return;
+                    }
+                    if (isServicesMode) {
+                      document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      return;
+                    }
+                    setIsCheckoutOpen(true);
+                  }}>{modeAdapter.primaryActionLabel}</PrimaryButton>
+                  <GhostButton style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }} onClick={handleShareAction}>Share Storefront</GhostButton>
                 </div>
-
-                {/* ZONE 2: Hero Branding */}
-                <section style={{
-                  background: selectedStore?.storefront_cover_image_url && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
-                    ? `linear-gradient(rgba(15,23,42,.72), rgba(15,23,42,.72)), url(${withAssetOrigin(selectedStore.storefront_cover_image_url)}) center/cover`
-                    : STYLES.colors.dark,
-                  borderRadius: STYLES.radius.card,
-                  padding: isMobileViewport ? 24 : 48, marginBottom: 24,
-                  position: 'relative', overflow: 'hidden', color: '#fff',
-                  boxShadow: STYLES.shadow.lg
-                }}>
-                  {selectedStore?.storefront_cover_image_url && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-                    <img
-                      src={withAssetOrigin(selectedStore.storefront_cover_image_url)}
-                      alt={`${selectedStore?.tenant_name || 'Storefront'} cover`}
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.24 }}
-                      onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
-                    />
-                  )}
-                  <div style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', background: `linear-gradient(225deg, ${STYLES.colors.brand}22, transparent)`, pointerEvents: 'none' }} />
-                  <div style={{ position: 'relative', zIndex: 1, maxWidth: 800 }}>
-                    <div style={{ width: 78, height: 78, borderRadius: 999, overflow: 'hidden', border: '2px solid rgba(255,255,255,.8)', background: 'rgba(255,255,255,.12)', display: 'grid', placeItems: 'center', marginBottom: 16 }}>
-                      {selectedStore?.storefront_profile_image_url && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-                        <img
-                          src={withAssetOrigin(selectedStore.storefront_profile_image_url)}
-                          alt={`${selectedStore?.tenant_name || 'Storefront'} profile`}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
-                        />
-                      ) : (
-                        <span style={{ color: '#fff', fontSize: 13, fontWeight: 900 }}>ICON</span>
-                      )}
-                    </div>
-                    <Badge style={{ marginBottom: 16 }}>{modeAdapter.heroEyebrow}</Badge>
-                    <h1 style={{ margin: 0, fontSize: isMobileViewport ? 32 : 56, fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em' }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
-                    <p style={{ margin: '16px 0 0 0', fontSize: isMobileViewport ? 16 : 20, opacity: 0.8, lineHeight: 1.5 }}>{modeAdapter.heroDescription}</p>
-
-                    <div style={{ marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <PrimaryButton onClick={() => {
-                        if (isServicesMode && hasServiceCart) {
-                          goStoreBookingPage();
-                          return;
-                        }
-                        if (isServicesMode) {
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          return;
-                        }
-                        setIsCheckoutOpen(true);
-                      }}>{modeAdapter.primaryActionLabel}</PrimaryButton>
-                      <GhostButton style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }} onClick={handleShareAction}>Share Storefront</GhostButton>
-                    </div>
-                    {isStorefrontV2 && (followEnabledForStore || parseBooleanFlag(selectedStore?.storefront_share_enabled, false)) && !isMobileViewport && (
-                      <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.78)', fontWeight: 700 }}>{followState.followersCount} follower(s)</span>
-                        {followEnabledForStore && (
-                          <button
-                            type="button"
-                            aria-label="Follow this storefront"
-                            disabled={followState.loading}
-                            onClick={handleFollowAction}
-                            style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,.28)', background: followState.isFollowing ? '#ecfeff' : 'rgba(255,255,255,.12)', color: followState.isFollowing ? '#334155' : '#fff', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}
-                          >
-                            {followState.isFollowing ? 'Following' : 'Follow'}
-                          </button>
-                        )}
-                        {parseBooleanFlag(selectedStore?.storefront_share_enabled, false) && (
-                          <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,.28)', background: 'rgba(255,255,255,.12)', color: '#fff', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700 }}>
-                            Share
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {followState.error && (
-                      <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#fecaca', fontWeight: 700 }}>{followState.error}</p>
-                    )}
-                  </div>
-                </section>
-              </>
+              </div>
+            </section>
+            </>
             )}
 
             {/* ZONE 3: Location Map Snapshot */}
@@ -4535,8 +3977,8 @@ export default function StorefrontApp() {
               const isMultiGroup = isServicesMode && servicesViewModel.serviceGroups.length > 1;
               const resolvedTab = isMultiGroup
                 ? (activeServiceTab && servicesViewModel.serviceGroups.some(g => g.categoryKey === activeServiceTab)
-                  ? activeServiceTab
-                  : servicesViewModel.serviceGroups[0]?.categoryKey)
+                    ? activeServiceTab
+                    : servicesViewModel.serviceGroups[0]?.categoryKey)
                 : null;
               const activeGroup = isMultiGroup
                 ? (servicesViewModel.serviceGroups.find(g => g.categoryKey === resolvedTab) || servicesViewModel.serviceGroups[0])
@@ -4585,29 +4027,8 @@ export default function StorefrontApp() {
                 const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
                 const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
                 const reviewGridColumns = isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
-                const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
-                const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
-                const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
-                const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
-                const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
-                const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
-                const servicesSectionTitle = isLeadGenLayout
-                  ? 'Service Highlights'
-                  : isBookingHeavyLayout
-                    ? 'Choose a Service'
-                    : 'Services';
-                const servicesSectionSubtitle = isLeadGenLayout
-                  ? 'Start with the core services, then contact or book the team from the storefront.'
-                  : isBookingHeavyLayout
-                    ? 'Pick the service you need, review what to prepare, and continue to booking when you are ready.'
-                    : 'Browse available services from this storefront.';
-                const servicesGridColumns = isMobileViewport
-                  ? '1fr'
-                  : isLeadGenLayout
-                    ? 'repeat(2, minmax(0, 1fr))'
-                    : (viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))');
-                if (isServiceDetailsSubpage) {
+                if (isBookingSubpage) {
+                  const currentStep = hasServiceCart ? 3 : serviceBookingStep;
                   const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
                   return (
                     <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
@@ -4615,361 +4036,92 @@ export default function StorefrontApp() {
                         position: 'sticky',
                         top: 0,
                         zIndex: 100,
-                        background: '#ffffff',
-                        borderBottom: '1px solid #e5e7eb',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                        background: 'rgba(255,255,255,0.96)',
+                        backdropFilter: 'blur(12px)',
+                        borderBottom: '1px solid #e2e8f0',
+                        boxShadow: '0 6px 18px rgba(15, 23, 42, 0.05)',
                         width: '100vw',
                         marginLeft: 'calc(50% - 50vw)'
                       }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '10px 16px' : '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
-                            <button type="button" onClick={goStoreCatalogPage} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}>
-                              <ArrowLeft size={22} strokeWidth={2.5} />
+                        <div style={{
+                          maxWidth: 1320,
+                          margin: '0 auto',
+                          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+                          display: 'grid',
+                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(260px, auto) minmax(320px, 1fr) auto',
+                          alignItems: 'center',
+                          gap: 14
+                        }}>
+                          <div style={{ display: 'grid', justifyItems: 'start', gap: 8, minWidth: 0 }}>
+                            <button
+                              type="button"
+                              onClick={goStoreCatalogPage}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                            >
+                              <ArrowLeft size={18} />
+                              Back to Services
                             </button>
-                            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                Service details
-                              </div>
-                              <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                Review the service before booking
-                              </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>{serviceHeroModel.name}</div>
+                              <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Booking Page</div>
                             </div>
                           </div>
-
-                          {!isMobileViewport && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                              {serviceHeroModel.profileImageUrl ? (
-                                <img src={serviceHeroModel.profileImageUrl} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
-                              ) : (
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                                  <ShoppingBag size={18} color="#f97316" />
-                                </div>
-                              )}
-                              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                                {serviceHeroModel.name}
-                              </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Step {currentStep} of 3
                             </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flex: 1 }}>
+                            <div style={{ marginTop: 4, fontSize: 15, color: STYLES.colors.dark, fontWeight: 700 }}>
+                              {hasServiceCart ? 'Review and confirm your booking' : 'Complete your booking details'}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'flex-start' : 'flex-end' }}>
                             {supportHref ? (
-                              <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: '#f97316', color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)', whiteSpace: 'nowrap' }}>
-                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
-                                {isMobileViewport ? 'Message' : 'Message Us'}
+                              <button
+                                type="button"
+                                onClick={() => openStorefrontActionLink(supportHref)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 42, borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', color: STYLES.colors.dark, padding: '0 14px', fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                <MessageCircle size={16} />
+                                Message Us
                               </button>
                             ) : null}
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-                          {!detailPageServiceItem ? (
-                            <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 28, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16, maxWidth: 760 }}>
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>No service details available</div>
-                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                  Go back to the services page and choose a service to view its details.
-                                </p>
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>Browse Services</PrimaryButton>
-                              </div>
-                            </section>
-                          ) : (
-                            <div style={{ display: 'grid', gap: 24 }}>
-                              <div style={{ display: 'grid', gap: 10 }}>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                  <Badge background="#fff7ed" color={STYLES.colors.brand} border="#fdba74">
-                                    {detailPageServiceItem.categoryMeta?.label || 'Service'}
-                                  </Badge>
-                                  <Badge background="#ffffff" color={STYLES.colors.dark} border="#dbe5ee">
-                                    {detailPageServiceItem.serviceAreaLabel}
-                                  </Badge>
-                                </div>
-                                <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 40, lineHeight: 1.05, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                                  {detailPageServiceItem.variantName || detailPageServiceItem.name}
-                                </h1>
-                                <p style={{ margin: 0, maxWidth: 760, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted }}>
-                                  {detailPageServiceItem.description || 'Service details are synced from SKUpervisor. Review the service information below before continuing to booking.'}
-                                </p>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
-                                <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
-                                  <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
-                                    {withAssetOrigin(detailPageServiceItem.image_url) ? (
-                                      <img src={withAssetOrigin(detailPageServiceItem.image_url)} alt={detailPageServiceItem.variantName || detailPageServiceItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                      <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                                        No image
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div style={{ padding: isMobileViewport ? 18 : 22, display: 'grid', gap: 18 }}>
-                                    <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                        Starting at
-                                      </div>
-                                      <div style={{ fontSize: 30, fontWeight: 900, color: STYLES.colors.dark }}>
-                                        {money(detailPageServiceItem.default_sale_price ?? 0)}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                                      <PrimaryButton style={{ minHeight: 46 }} onClick={() => beginServiceBooking(detailPageServiceItem)}>
-                                        Order Now
-                                      </PrimaryButton>
-                                      <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
-                                        Back to Services
-                                      </GhostButton>
-                                    </div>
-                                  </div>
-                                </section>
-
-                                <div style={{ display: 'grid', gap: 18 }}>
-                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
-                                    <div style={{ display: 'grid', gap: 6 }}>
-                                      <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.dark }}>
-                                        Service details
-                                      </div>
-                                      <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                        Core service information from SKUpervisor.
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.categoryMeta?.label || 'Service'}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service area</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.serviceAreaLabel}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated duration</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.durationLabel}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payment options</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPagePaymentOptions.map((option) => option.label).join(' / ')}</div>
-                                      </div>
-                                    </div>
-                                  </section>
-
-                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 10 }}>
-                                    <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Description</div>
-                                    <div style={{ fontSize: 14, lineHeight: 1.7, color: '#334155' }}>
-                                      {detailPageServiceItem.description || 'This service does not have a detailed description yet in SKUpervisor.'}
-                                    </div>
-                                  </section>
-                                </div>
-                              </div>
-                            </div>
-                          )}
+                      <div style={{ maxWidth: 1320, width: '100%', margin: '0 auto', padding: isMobileViewport ? '20px 16px 40px' : '26px 24px 56px', display: 'grid', gap: 24 }}>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <h1 style={{ margin: 0, fontSize: isMobileViewport ? 30 : 38, fontWeight: 900, color: STYLES.colors.dark }}>Complete Your Booking</h1>
+                          <p style={{ margin: 0, fontSize: 15, color: STYLES.colors.muted, maxWidth: 760 }}>
+                            This flow stays aligned with the current services booking contract. Weekly availability is used when configured, and final availability is still confirmed by SKUpervisor on submission.
+                          </p>
                         </div>
-                      </div>
-                    </section>
-                  );
-                }
-                if (isBookingSubpage) {
-                  const currentStep = hasServiceCart ? 3 : serviceBookingStep;
-                  const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
-                  const bookingConfirmation = checkoutResult?.booking || null;
-                  const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
-                  const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
-                  const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
-                  const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-                  return (
-                    <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
-                      <div style={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 100,
-                        background: '#ffffff',
-                        borderBottom: '1px solid #e5e7eb',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-                        width: '100vw',
-                        marginLeft: 'calc(50% - 50vw)',
-                        backdropFilter: 'blur(8px)'
-                      }}>
-                        <div style={{
-                          maxWidth: 1320,
-                          margin: '0 auto',
-                          padding: isMobileViewport ? '10px 16px' : '12px 24px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: 16
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
-                            <button
-                              type="button"
-                              onClick={goStoreCatalogPage}
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}
-                            >
-                              <ArrowLeft size={22} strokeWidth={2.5} />
-                            </button>
-                            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                Step {currentStep} of 3
-                              </div>
-                              <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {hasServiceCart ? 'Review and confirm your booking' : 'Complete your booking details'}
-                              </div>
+
+                        {!activeBookingService ? (
+                          <div style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 24 : 32, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 14, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>No service selected yet</div>
+                            <div style={{ fontSize: 14, color: STYLES.colors.muted }}>Choose a service from the storefront first, then continue the booking here.</div>
+                            <div>
+                              <PrimaryButton onClick={goStoreCatalogPage}>Browse Services</PrimaryButton>
                             </div>
                           </div>
-
-                          {!isMobileViewport && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                              {serviceHeroModel.profileImageUrl ? (
-                                <img
-                                  src={serviceHeroModel.profileImageUrl}
-                                  alt=""
-                                  style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-                                />
-                              ) : (
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                                  <ShoppingBag size={18} color="#f97316" />
-                                </div>
-                              )}
-                              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                                {serviceHeroModel.name}
-                              </div>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', flex: 1 }}>
-                            {supportHref ? (
-                              <button
-                                type="button"
-                                onClick={() => openStorefrontActionLink(supportHref)}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  height: 42,
-                                  padding: isMobileViewport ? '0 12px' : '0 20px',
-                                  borderRadius: 12,
-                                  background: '#f97316',
-                                  color: '#fff',
-                                  border: 'none',
-                                  fontWeight: 800,
-                                  fontSize: 14,
-                                  cursor: 'pointer',
-                                  boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
-                                {isMobileViewport ? 'Message' : 'Message Us'}
-                              </button>
-                            ) : <div style={{ width: 40 }} />}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-                          <div style={{ display: 'grid', gap: 18, marginBottom: 24 }}>
-                            <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                              Complete Your Booking
-                            </h1>
-                            <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                              Review service details, select your preferred schedule, complete the required information, and submit the booking here.
-                            </p>
-                          </div>
-
-                          {bookingConfirmation ? (
-                            <section
-                              style={{
-                                border: '1px solid #dbe5ee',
-                                borderRadius: 28,
-                                background: '#fff',
-                                padding: isMobileViewport ? 20 : 28,
-                                boxShadow: '0 22px 56px rgba(15, 23, 42, 0.08)',
-                                display: 'grid',
-                                gap: 20,
-                                maxWidth: 860
-                              }}
-                            >
-                              <div style={{ display: 'grid', gap: 10 }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', color: '#15803d', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                                  <CheckCircle2 size={16} />
-                                  Booking submitted
-                                </div>
-                                <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
-                                  Your booking has been received
-                                </div>
-                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted, maxWidth: 680 }}>
-                                  The service request has been sent to the store. They will confirm the final schedule and next steps through your provided contact details.
-                                </p>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
-                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
-                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationReference || 'Pending'}</div>
-                                </div>
-                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
-                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationServiceName}</div>
-                                </div>
-                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
-                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{money(confirmationAmount)}</div>
-                                </div>
-                              </div>
-                              <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
-                                <div>Keep your booking reference for status checks or follow-up.</div>
-                                <div>You can return to the services page to browse or book another service.</div>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12, flexWrap: 'wrap' }}>
-                                <PrimaryButton
-                                  onClick={() => {
-                                    setCheckoutResult(null);
-                                    goStoreCatalogPage();
-                                  }}
-                                  style={{ minHeight: 46 }}
-                                >
-                                  Back to Services
-                                </PrimaryButton>
-                              </div>
-                            </section>
-                          ) : !activeBookingService ? (
-                            <section
-                              style={{
-                                border: '1px solid #dbe5ee',
-                                borderRadius: 24,
-                                background: '#fff',
-                                padding: isMobileViewport ? 20 : 28,
-                                boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
-                                display: 'grid',
-                                gap: 16,
-                                maxWidth: 760
-                              }}
-                            >
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
-                                  No service selected yet
-                                </div>
-                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                  Choose a service first so we can load its booking details and requirements here.
-                                </p>
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>
-                                  Browse Services
-                                </PrimaryButton>
-                              </div>
-                            </section>
-                          ) : (
-                          <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', alignItems: 'start' }}>
-                            <div style={{ display: 'grid', gap: 18 }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-                                {[
-                                  { step: 1, label: 'Schedule your service', complete: scheduleStepComplete },
-                                  { step: 2, label: 'Service requirements', complete: requirementsStepComplete },
-                                  { step: 3, label: 'Customer information', complete: customerStepComplete }
-                                ].map((item) => (
+                        ) : !hasServiceCart ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', gap: 24, alignItems: 'start' }}>
+                            <div style={{ display: 'grid', gap: 16 }}>
+                              <div style={{ display: 'grid', gap: 12 }}>
+                                {[{
+                                  step: 1,
+                                  label: 'Schedule your service',
+                                  complete: scheduleStepComplete
+                                }, {
+                                  step: 2,
+                                  label: 'Service requirements',
+                                  complete: requirementsStepComplete
+                                }, {
+                                  step: 3,
+                                  label: 'Customer information',
+                                  complete: customerStepComplete
+                                }].map((item) => (
                                   <button
                                     key={`booking-step-${item.step}`}
                                     type="button"
@@ -5025,118 +4177,101 @@ export default function StorefrontApp() {
                                         Choose a preferred date and time window. Final availability is confirmed by SKUpervisor after submission.
                                       </div>
                                     </div>
-                                    <div style={{ display: 'grid', gap: 16 }}>
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-                                        <label style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-                                          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred date</div>
-                                          <div style={{ position: 'relative', minWidth: 0 }}>
-                                            <div
-                                              role="button"
-                                              tabIndex={0}
-                                              onMouseDown={(event) => {
-                                                event.preventDefault();
-                                                openPreferredBookingDatePicker();
-                                              }}
-                                              onClick={openPreferredBookingDatePicker}
-                                              onKeyDown={(event) => {
-                                                if (event.key === 'Enter' || event.key === ' ') {
-                                                  event.preventDefault();
-                                                  openPreferredBookingDatePicker();
-                                                }
-                                              }}
-                                              style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8', fontWeight: selectedServiceDatePart ? 700 : 500, cursor: 'pointer' }}
-                                            >
-                                              <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
-                                              <CalendarDays size={18} color="#f97316" />
-                                            </div>
-                                            <input
-                                              ref={bookingPreferredDateInputRef}
-                                              type="date"
-                                              value={selectedServiceDatePart}
-                                              min={bookingDateOptions[0]?.value || undefined}
-                                              onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
-                                              aria-hidden="true"
-                                              tabIndex={-1}
-                                              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
-                                            />
-                                          </div>
-                                        </label>
-
-                                        <label style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred time slot</div>
-                                            {selectedServiceDatePart ? (
-                                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                                {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
-                                                  ? 'Available from service schedule'
-                                                  : 'Suggested times based on service duration'}
-                                              </div>
-                                            ) : null}
-                                          </div>
-                                          <select
-                                            value={selectedServiceTimePart}
-                                            disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
-                                            onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, event.target.value))}
-                                            style={{ ...BOOKING_FIELD_STYLE, minHeight: 52, color: !selectedServiceDatePart || bookingTimeSlotOptions.length === 0 ? '#94a3b8' : STYLES.colors.dark }}
+                                    <div style={{ display: 'grid', gap: 10 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred date</div>
+                                      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+                                        {bookingDateOptions.map((option) => (
+                                          <button
+                                            key={`booking-date-${option.value}`}
+                                            type="button"
+                                            onClick={() => setServiceAppointmentAt(combineDateAndTimeParts(option.value, selectedServiceTimePart || bookingTimeSlotOptions[0]?.value || '09:00'))}
+                                            style={{
+                                              minWidth: 92,
+                                              borderRadius: 16,
+                                              border: `1px solid ${selectedServiceDatePart === option.value ? '#f97316' : '#e2e8f0'}`,
+                                              background: selectedServiceDatePart === option.value ? '#fff7ed' : '#fff',
+                                              color: STYLES.colors.dark,
+                                              padding: '12px 14px',
+                                              display: 'grid',
+                                              gap: 4,
+                                              textAlign: 'center',
+                                              cursor: 'pointer',
+                                              flexShrink: 0
+                                            }}
                                           >
-                                            <option value="">
-                                              {!selectedServiceDatePart
-                                                ? 'Choose a date first'
-                                                : bookingTimeSlotOptions.length === 0
-                                                  ? 'No suggested time slots available'
-                                                  : 'Select a time slot'}
-                                            </option>
-                                            {bookingTimeSlotOptions.map((slot) => (
-                                              <option key={`booking-slot-${slot.value}`} value={slot.value}>
-                                                {slot.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </label>
+                                            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>{option.weekday}</span>
+                                            <span style={{ fontSize: 14, fontWeight: 900 }}>{option.label}</span>
+                                          </button>
+                                        ))}
                                       </div>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                        Or choose another date
+                                        <input
+                                          type="date"
+                                          value={selectedServiceDatePart}
+                                          onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, selectedServiceTimePart || bookingTimeSlotOptions[0]?.value || '09:00'))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                        />
+                                      </label>
+                                    </div>
 
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                          Units / quantity
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={serviceDraftQuantity}
-                                            onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
-                                            style={BOOKING_FIELD_STYLE}
-                                          />
-                                        </label>
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                          Payment timing
-                                          <select
-                                            value={servicePaymentTiming}
-                                            onChange={(event) => setServicePaymentTiming(event.target.value)}
-                                            style={BOOKING_FIELD_STYLE}
+                                    <div style={{ display: 'grid', gap: 10 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred time slot</div>
+                                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                        {bookingTimeSlotOptions.map((slot) => (
+                                          <button
+                                            key={`booking-slot-${slot.value}`}
+                                            type="button"
+                                            onClick={() => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart || bookingDateOptions[0]?.value || formatLocalDateInputValue(new Date()), slot.value))}
+                                            style={{
+                                              minHeight: 44,
+                                              borderRadius: 14,
+                                              border: `1px solid ${selectedServiceTimePart === slot.value ? '#f97316' : '#e2e8f0'}`,
+                                              background: selectedServiceTimePart === slot.value ? '#f97316' : '#fff',
+                                              color: selectedServiceTimePart === slot.value ? '#fff' : STYLES.colors.dark,
+                                              padding: '0 16px',
+                                              fontWeight: 800,
+                                              cursor: 'pointer'
+                                            }}
                                           >
-                                            {bookingPagePaymentOptions.map((option) => (
-                                              <option key={`booking-page-payment-${option.value}`} value={option.value}>{option.label}</option>
-                                            ))}
-                                          </select>
-                                        </label>
+                                            {slot.label}
+                                          </button>
+                                        ))}
                                       </div>
                                     </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                        Units / quantity
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          step="1"
+                                          value={serviceDraftQuantity}
+                                          onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                        />
+                                      </label>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                        Payment timing
+                                        <select
+                                          value={servicePaymentTiming}
+                                          onChange={(event) => setServicePaymentTiming(event.target.value)}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                        >
+                                          {bookingPagePaymentOptions.map((option) => (
+                                            <option key={`booking-page-payment-${option.value}`} value={option.value}>{option.label}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    </div>
                                     {!scheduleStepComplete && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
+                                      <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
                                         Select both a preferred date and a preferred time slot before continuing.
                                       </div>
                                     )}
                                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                      <PrimaryButton
-                                        onClick={() => {
-                                          if (!scheduleStepComplete) {
-                                            toast.error('Complete the preferred date and time slot before continuing.');
-                                            return;
-                                          }
-                                          setServiceBookingStep(2);
-                                        }}
-                                        style={{ minHeight: 46 }}
-                                      >
+                                      <PrimaryButton onClick={() => { if (scheduleStepComplete) setServiceBookingStep(2); }} style={{ minHeight: 46 }}>
                                         Continue to Requirements
                                       </PrimaryButton>
                                     </div>
@@ -5151,33 +4286,24 @@ export default function StorefrontApp() {
                                         These fields come directly from the SKUpervisor intake schema for this service.
                                       </div>
                                     </div>
-                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                      Additional details / Special instructions
+                                    <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                      Special instructions
                                       <textarea
                                         value={serviceDraftNotes}
                                         onChange={(event) => setServiceDraftNotes(event.target.value)}
                                         placeholder="Access notes, pickup preferences, unit details, or anything the service team should know."
-                                        style={{ ...BOOKING_FIELD_STYLE, minHeight: 96, resize: 'vertical' }}
+                                        style={{ width: '100%', minHeight: 96, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
                                       />
                                     </label>
                                     {bookingPageIntakeFields.length > 0 ? (
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
                                         {bookingPageIntakeFields.map((field) => (
-                                          <label
-                                            key={`booking-step-two-${field.id}`}
-                                            style={{
-                                              display: 'block',
-                                              fontSize: 12,
-                                              color: '#475569',
-                                              minWidth: 0,
-                                              gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto'
-                                            }}
-                                          >
+                                          <label key={`booking-step-two-${field.id}`} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                                             {field.label}{field.required ? ' *' : ''}
                                             {field.type === 'textarea' ? (
-                                              <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }} />
+                                              <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }} />
                                             ) : field.type === 'select' ? (
-                                              <select value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE}>
+                                              <select value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}>
                                                 <option value="">Select</option>
                                                 {field.options.map((option) => (
                                                   <option key={`${field.id}-${option}`} value={option}>{option}</option>
@@ -5189,7 +4315,7 @@ export default function StorefrontApp() {
                                                 <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
                                               </div>
                                             ) : (
-                                              <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />
+                                              <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
                                             )}
                                           </label>
                                         ))}
@@ -5200,23 +4326,13 @@ export default function StorefrontApp() {
                                       </div>
                                     )}
                                     {bookingPageMissingRequiredIntake.length > 0 && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
+                                      <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
                                         Complete all required service fields before continuing.
                                       </div>
                                     )}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                       <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: 46 }}>Back</GhostButton>
-                                      <PrimaryButton
-                                        onClick={() => {
-                                          if (!requirementsStepComplete) {
-                                            const firstMissingField = bookingPageMissingRequiredIntake[0];
-                                            toast.error(firstMissingField ? `Complete "${firstMissingField.label}" before continuing.` : 'Complete the required service details before continuing.');
-                                            return;
-                                          }
-                                          setServiceBookingStep(3);
-                                        }}
-                                        style={{ minHeight: 46 }}
-                                      >
+                                      <PrimaryButton onClick={() => { if (requirementsStepComplete) setServiceBookingStep(3); }} style={{ minHeight: 46 }}>
                                         Continue to Customer Info
                                       </PrimaryButton>
                                     </div>
@@ -5231,11 +4347,11 @@ export default function StorefrontApp() {
                                         Keep contact details separate from service requirements to make the booking flow easier to finish.
                                       </div>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
                                       {storeLocations.length > 0 && (
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                                           Fulfillment location
-                                          <select value={selectedLocationId ?? ''} onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)} style={BOOKING_FIELD_STYLE}>
+                                          <select value={selectedLocationId ?? ''} onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}>
                                             {storeLocations.map((location) => (
                                               <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
                                                 {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
@@ -5244,17 +4360,17 @@ export default function StorefrontApp() {
                                           </select>
                                         </label>
                                       )}
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                                         Full name *
-                                        <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={BOOKING_FIELD_STYLE} />
+                                        <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
                                       </label>
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                                         Contact number *
-                                        <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={BOOKING_FIELD_STYLE} />
+                                        <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
                                       </label>
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                                         Email address
-                                        <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or account linking" style={BOOKING_FIELD_STYLE} />
+                                        <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
                                       </label>
                                     </div>
                                     {selectedLocation?.is_open === false && (
@@ -5264,32 +4380,14 @@ export default function StorefrontApp() {
                                     )}
                                     {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
                                     {!customerStepComplete && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                        Add your full name and contact number before submitting your booking.
+                                      <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
+                                        Add your full name and contact number before continuing to review.
                                       </div>
                                     )}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                       <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: 46 }}>Back</GhostButton>
-                                      <PrimaryButton
-                                        onClick={() => {
-                                          if (!scheduleStepComplete) {
-                                            toast.error('Select the preferred date and time slot before submitting your booking.');
-                                            return;
-                                          }
-                                          if (!requirementsStepComplete) {
-                                            const firstMissingField = bookingPageMissingRequiredIntake[0];
-                                            toast.error(firstMissingField ? `Complete "${firstMissingField.label}" before submitting your booking.` : 'Complete the required service details before submitting your booking.');
-                                            return;
-                                          }
-                                          if (!customerStepComplete) {
-                                            toast.error('Add your full name and contact number before submitting your booking.');
-                                            return;
-                                          }
-                                          handleCheckout();
-                                        }}
-                                        style={{ minHeight: 46 }}
-                                      >
-                                        {checkoutLoading ? 'Submitting...' : 'Submit Booking'}
+                                      <PrimaryButton onClick={() => { if (scheduleStepComplete && requirementsStepComplete && customerStepComplete) saveServiceBookingDraft(activeBookingService, 'review'); }} style={{ minHeight: 46 }}>
+                                        Continue to Review
                                       </PrimaryButton>
                                     </div>
                                   </div>
@@ -5333,114 +4431,209 @@ export default function StorefrontApp() {
                                     </div>
                                   ))}
                                 </div>
+                                <PrimaryButton onClick={() => { if (serviceBookingStep < 3) setServiceBookingStep(serviceBookingStep + 1); else if (scheduleStepComplete && requirementsStepComplete && customerStepComplete) saveServiceBookingDraft(activeBookingService, 'review'); }} style={{ minHeight: 50 }}>
+                                  {serviceBookingStep < 3 ? 'Continue' : 'Continue to Review'}
+                                </PrimaryButton>
                               </div>
                             </aside>
                           </div>
-                          )}
-                        </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', gap: 24, alignItems: 'start' }}>
+                            <div style={{ display: 'grid', gap: 18 }}>
+                              <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Review Summary</div>
+                                    <div style={{ marginTop: 4, fontSize: 26, fontWeight: 900, color: STYLES.colors.dark }}>{firstServiceLine?.variantName || firstServiceLine?.name}</div>
+                                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>{firstServiceLine?.service_detail?.service_area_type || firstServiceLine?.serviceAreaLabel || 'Service'}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>{serviceBookingSummarySchedule}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>Qty {firstServiceLine?.quantity || 1}</span>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                    <GhostButton onClick={openServiceCartEditor}>Edit Service</GhostButton>
+                                    <GhostButton onClick={() => { removeCartItem(firstServiceLine.item_id); goStoreCatalogPage(); }} style={{ color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2' }}>Remove</GhostButton>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
+                                    <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.6 }}>{String(firstServiceLine?.service_notes || '').trim() || 'No special instructions yet.'}</div>
+                                  </div>
+                                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Backend validation</div>
+                                    <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.6 }}>SKUpervisor confirms lead time, booking conflicts, and service rules when you submit.</div>
+                                  </div>
+                                </div>
+
+                                {serviceIntakeFields.length > 0 && (
+                                  <div style={{ display: 'grid', gap: 10 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service requirements</div>
+                                    <div style={{ display: 'grid', gap: 8 }}>
+                                      {serviceIntakeFields.map((field) => (
+                                        <div key={`booking-page-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '190px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
+                                          <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
+                                          <div style={{ fontSize: 13, color: '#334155' }}>
+                                            {field.type === 'checkbox'
+                                              ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
+                                              : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </section>
+
+                              <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
+                                <div>
+                                  <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Customer Information</div>
+                                  <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>Review or finish the contact details required by the current services booking endpoint.</div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+                                  {storeLocations.length > 0 && (
+                                    <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                      Fulfillment location
+                                      <select
+                                        value={selectedLocationId ?? ''}
+                                        onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
+                                        style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                      >
+                                        {storeLocations.map((location) => (
+                                          <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
+                                            {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  )}
+                                  <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                    Customer name
+                                    <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
+                                  </label>
+                                  <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                    Phone number
+                                    <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
+                                  </label>
+                                  <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                    Email
+                                    <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }} />
+                                  </label>
+                                </div>
+                                {selectedLocation?.is_open === false && (
+                                  <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                                    Selected location is closed and cannot accept bookings right now.
+                                  </div>
+                                )}
+                                {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                                {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
+                                  <div style={{ display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 16, padding: '14px 16px' }}>
+                                    <p style={{ margin: 0, fontSize: 14, color: '#0f766e' }}>
+                                      Booking created. Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
+                                    </p>
+                                    {checkoutResult?.payment?.checkout_url && (
+                                      <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
+                                        Pay Now
+                                      </a>
+                                    )}
+                                    <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
+                                      Download Booking Image
+                                    </button>
+                                  </div>
+                                )}
+                              </section>
+                            </div>
+
+                            <aside style={{ display: 'grid', gap: 16, position: isMobileViewport ? 'static' : 'sticky', top: 100 }}>
+                              <div style={{ border: '1px solid #dbe5ee', borderRadius: 28, background: '#fff', padding: 24, boxShadow: '0 22px 56px rgba(15, 23, 42, 0.12)', display: 'grid', gap: 16 }}>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
+                                  <div style={{ marginTop: 6, fontSize: 30, fontWeight: 900, color: STYLES.colors.dark }}>{money(cartTotal)}</div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Service</span>
+                                    <strong>{firstServiceLine?.variantName || firstServiceLine?.name}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Schedule</span>
+                                    <strong>{serviceBookingSummarySchedule}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Payment timing</span>
+                                    <strong>{servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending'}</strong>
+                                  </div>
+                                </div>
+                                <PrimaryButton onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 50 }}>
+                                  {checkoutLoading ? 'Processing...' : 'Submit Booking'}
+                                </PrimaryButton>
+                                <GhostButton onClick={goStoreCatalogPage}>Back to Services</GhostButton>
+                              </div>
+                            </aside>
+                          </div>
+                        )}
                       </div>
                     </section>
                   );
                 }
+
                 return (
                   <>
-                    <section
-                      id="storefront-catalog-section"
-                      style={{
-                        display: 'grid',
-                        gap: 18,
-                        background: '#ffffff',
-                        borderRadius: 0,
-                        padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
-                        marginLeft: 'calc(50% - 50vw)',
-                        width: '100vw'
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: 1320,
-                          width: '100%',
-                          margin: '0 auto',
-                          paddingLeft: isMobileViewport ? 16 : 24,
-                          paddingRight: isMobileViewport ? 16 : 24,
-                          display: 'grid',
-                          gap: 18
-                        }}
-                      >
-                        <div style={{ display: 'grid', gap: 6 }}>
-                          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
-                            {servicesSectionTitle}
-                          </h2>
-                          <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>{servicesSectionSubtitle}</p>
+                  <section id="storefront-catalog-section" style={{
+                    display: 'grid',
+                    gap: 18,
+                    background: '#ffffff',
+                    borderRadius: 0,
+                    padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
+                    marginLeft: 'calc(50% - 50vw)',
+                    width: '100vw'
+                  }}>
+                    <div style={{
+                      maxWidth: 1320,
+                      width: '100%',
+                      margin: '0 auto',
+                      paddingLeft: isMobileViewport ? 16 : 24,
+                      paddingRight: isMobileViewport ? 16 : 24,
+                      display: 'grid',
+                      gap: 18
+                    }}>
+                        <div>
+                          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>Services</h2>
+                          <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>Browse available services from this storefront.</p>
                         </div>
 
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: isMobileViewport ? 'column' : 'row',
-                            gap: 12,
-                            alignItems: isMobileViewport ? 'stretch' : 'center',
-                            width: '100%'
-                          }}
-                        >
-                          <label
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 10,
-                              border: '1px solid #e5e7eb',
-                              borderRadius: 999,
-                              background: '#f8fafc',
-                              padding: '0 12px 0 14px',
-                              minHeight: 44,
-                              width: '100%',
-                              flex: isMobileViewport ? '0 0 auto' : '1 1 0',
-                              maxWidth: isMobileViewport ? '100%' : 620
-                            }}
-                          >
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: isMobileViewport ? 'column' : 'row',
+                          gap: 12,
+                          alignItems: isMobileViewport ? 'stretch' : 'center',
+                          width: '100%'
+                        }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e5e7eb', borderRadius: 999, background: '#f8fafc', padding: '0 12px 0 14px', minHeight: 44, width: '100%', flex: isMobileViewport ? '0 0 auto' : '1 1 0', maxWidth: isMobileViewport ? '100%' : 620 }}>
                             <Search size={16} color="#64748b" />
                             <input
                               value={catalogSearch}
                               onChange={(event) => setCatalogSearch(event.target.value)}
                               placeholder="Search services"
-                              style={{
-                                border: 'none',
-                                outline: 'none',
-                                background: 'transparent',
-                                width: '100%',
-                                minWidth: 0,
-                                fontSize: 14,
-                                color: STYLES.colors.text
-                              }}
+                              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text }}
                             />
                           </label>
 
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: isMobileViewport ? 'column' : 'row',
-                              gap: 12,
-                              alignItems: isMobileViewport ? 'stretch' : 'center',
-                              marginLeft: isMobileViewport ? 0 : 'auto',
-                              width: isMobileViewport ? '100%' : 'auto',
-                              flexShrink: 0
-                            }}
-                          >
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: isMobileViewport ? 'column' : 'row',
+                            gap: 12,
+                            alignItems: isMobileViewport ? 'stretch' : 'center',
+                            marginLeft: isMobileViewport ? 0 : 'auto',
+                            width: isMobileViewport ? '100%' : 'auto',
+                            flexShrink: 0
+                          }}>
                             <select
                               value={serviceSortOption}
                               onChange={(event) => setServiceSortOption(event.target.value)}
-                              style={{
-                                minHeight: 44,
-                                borderRadius: 12,
-                                border: '1px solid #e5e7eb',
-                                background: '#ffffff',
-                                padding: '0 12px',
-                                fontSize: 14,
-                                color: STYLES.colors.dark,
-                                outline: 'none',
-                                width: isMobileViewport ? '100%' : 252,
-                                flexShrink: 0
-                              }}
+                              style={{ minHeight: 44, borderRadius: 12, border: '1px solid #e5e7eb', background: '#ffffff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none', width: isMobileViewport ? '100%' : 252, flexShrink: 0 }}
                             >
                               <option value="recommended">Recommended</option>
                               <option value="price_asc">Price: Low to High</option>
@@ -5467,10 +4660,7 @@ export default function StorefrontApp() {
                                 width: isMobileViewport ? '100%' : 'auto',
                                 minWidth: isMobileViewport ? 0 : 128,
                                 flexShrink: 0,
-                                boxShadow:
-                                  isServiceFilterOpen || hasActiveFilters
-                                    ? '0 10px 24px rgba(234,88,12,0.28)'
-                                    : '0 8px 20px rgba(255,138,0,0.22)'
+                                boxShadow: isServiceFilterOpen || hasActiveFilters ? '0 10px 24px rgba(234,88,12,0.28)' : '0 8px 20px rgba(255,138,0,0.22)'
                               }}
                             >
                               <SlidersHorizontal size={16} />
@@ -5479,29 +4669,15 @@ export default function StorefrontApp() {
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            flexWrap: 'wrap'
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: 10,
-                              overflowX: 'auto',
-                              paddingBottom: 4,
-                              scrollbarWidth: 'none',
-                              flex: '1 1 420px'
-                            }}
-                          >
-                            {(isMultiGroup || isDirectoryLayout || isBookingHeavyLayout
-                              ? servicesViewModel.serviceGroups
-                              : []
-                            ).map((group) => {
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          flexWrap: 'wrap'
+                        }}>
+                          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none', flex: '1 1 420px' }}>
+                            {servicesViewModel.serviceGroups.map((group) => {
                               const isActive = resolvedTab === group.categoryKey;
                               return (
                                 <button
@@ -5529,16 +4705,7 @@ export default function StorefrontApp() {
                             })}
                           </div>
 
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: isMobileViewport ? 'flex-start' : 'flex-end',
-                              gap: 12,
-                              flexWrap: 'wrap',
-                              marginLeft: isMobileViewport ? 0 : 'auto'
-                            }}
-                          >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'flex-start' : 'flex-end', gap: 12, flexWrap: 'wrap', marginLeft: isMobileViewport ? 0 : 'auto' }}>
                             <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
                               {sortedServices.length} service{sortedServices.length === 1 ? '' : 's'} shown
                             </div>
@@ -5572,40 +4739,29 @@ export default function StorefrontApp() {
                         </div>
 
                         {isServiceFilterOpen && (
-                          <div
-                            style={{
-                              position: 'fixed',
-                              inset: 0,
-                              zIndex: 2200,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: isMobileViewport ? 16 : 24
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: 'absolute',
-                                inset: 0,
-                                background: 'rgba(15,23,42,0.45)',
-                                backdropFilter: 'blur(4px)'
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: 'relative',
-                                zIndex: 1,
-                                width: '100%',
-                                maxWidth: 560,
-                                background: '#ffffff',
-                                borderRadius: 22,
-                                border: '1px solid #e5e7eb',
-                                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
-                                padding: isMobileViewport ? 18 : 22,
-                                display: 'grid',
-                                gap: 16
-                              }}
-                            >
+                          <div style={{
+                            position: 'fixed',
+                            inset: 0,
+                            zIndex: 2200,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: isMobileViewport ? 16 : 24
+                          }}>
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }} />
+                            <div style={{
+                              position: 'relative',
+                              zIndex: 1,
+                              width: '100%',
+                              maxWidth: 560,
+                              background: '#ffffff',
+                              borderRadius: 22,
+                              border: '1px solid #e5e7eb',
+                              boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
+                              padding: isMobileViewport ? 18 : 22,
+                              display: 'grid',
+                              gap: 16
+                            }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                                 <div>
                                   <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Filter Services</div>
@@ -5616,29 +4772,16 @@ export default function StorefrontApp() {
                                 <button
                                   type="button"
                                   onClick={() => setIsServiceFilterOpen(false)}
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 999,
-                                    border: '1px solid #e5e7eb',
-                                    background: '#fff',
-                                    color: STYLES.colors.dark,
-                                    cursor: 'pointer',
-                                    fontWeight: 800
-                                  }}
+                                  style={{ width: 36, height: 36, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', color: STYLES.colors.dark, cursor: 'pointer', fontWeight: 800 }}
                                 >
-                                  ×
+                                  Ã—
                                 </button>
                               </div>
 
                               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Availability
-                                  <select
-                                    value={serviceAvailabilityFilter}
-                                    onChange={(event) => setServiceAvailabilityFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
+                                  <select value={serviceAvailabilityFilter} onChange={(event) => setServiceAvailabilityFilter(event.target.value)} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}>
                                     <option value="all">All services</option>
                                     <option value="available">Available now</option>
                                     <option value="unavailable">Unavailable</option>
@@ -5646,11 +4789,7 @@ export default function StorefrontApp() {
                                 </label>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Service area
-                                  <select
-                                    value={serviceAreaFilter}
-                                    onChange={(event) => setServiceAreaFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
+                                  <select value={serviceAreaFilter} onChange={(event) => setServiceAreaFilter(event.target.value)} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}>
                                     <option value="all">All areas</option>
                                     <option value="in_store">In-store</option>
                                     <option value="customer_location">Home / on-site</option>
@@ -5658,11 +4797,7 @@ export default function StorefrontApp() {
                                 </label>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Duration
-                                  <select
-                                    value={serviceDurationFilter}
-                                    onChange={(event) => setServiceDurationFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
+                                  <select value={serviceDurationFilter} onChange={(event) => setServiceDurationFilter(event.target.value)} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}>
                                     <option value="all">Any duration</option>
                                     <option value="short">Short under 1 hr</option>
                                     <option value="standard">Standard 1-2 hrs</option>
@@ -5682,7 +4817,10 @@ export default function StorefrontApp() {
                                 >
                                   Clear filters
                                 </GhostButton>
-                                <PrimaryButton style={{ minHeight: 42, fontSize: 13 }} onClick={() => setIsServiceFilterOpen(false)}>
+                                <PrimaryButton
+                                  style={{ minHeight: 42, fontSize: 13 }}
+                                  onClick={() => setIsServiceFilterOpen(false)}
+                                >
                                   Apply filters
                                 </PrimaryButton>
                               </div>
@@ -5690,7 +4828,11 @@ export default function StorefrontApp() {
                           </div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+                          gap: 22
+                        }}>
                           {paginatedServices.map((item) => {
                             const imageUrl = withAssetOrigin(item.image_url);
                             const available = isItemAvailable(item);
@@ -5709,28 +4851,17 @@ export default function StorefrontApp() {
                                 }}
                                 onClick={() => openServiceDetail(item)}
                               >
-                                <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: '#f3f4f6', position: 'relative', overflow: 'hidden' }}>
+                                <div style={{ width: '100%', aspectRatio: '16 / 8', background: '#f3f4f6', position: 'relative' }}>
                                   {imageUrl ? (
-                                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   ) : (
-                                    <div
-                                      style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        display: 'grid',
-                                        placeItems: 'center',
-                                        color: STYLES.colors.muted,
-                                        fontSize: 13
-                                      }}
-                                    >
+                                    <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 13 }}>
                                       No image
                                     </div>
                                   )}
                                   {!available && (
                                     <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                                      <Badge background="#fff7ed" color="#c2410c" border="#fdba74">
-                                        Unavailable
-                                      </Badge>
+                                      <Badge background="#fff7ed" color="#c2410c" border="#fdba74">Unavailable</Badge>
                                     </div>
                                   )}
                                 </div>
@@ -5743,18 +4874,7 @@ export default function StorefrontApp() {
                                       {item.variantName || item.name}
                                     </h4>
                                   </div>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: 12,
-                                      color: STYLES.colors.text,
-                                      lineHeight: 1.45,
-                                      display: '-webkit-box',
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical',
-                                      overflow: 'hidden'
-                                    }}
-                                  >
+                                  <p style={{ margin: 0, fontSize: 12, color: STYLES.colors.text, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                                     {item.description || 'Professional service options synced from SKUpervisor.'}
                                   </p>
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -5783,18 +4903,10 @@ export default function StorefrontApp() {
                           })}
 
                           {sortedServices.length === 0 && (
-                            <div
-                              style={{
-                                gridColumn: '1 / -1',
-                                textAlign: 'center',
-                                padding: isMobileViewport ? 24 : 48,
-                                color: STYLES.colors.muted,
-                                border: '1px dashed #cbd5e1',
-                                borderRadius: 18,
-                                background: '#f8fafc'
-                              }}
-                            >
-                              {hasSearchQuery ? 'No services found. Try another keyword.' : 'No services available in this category yet.'}
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: isMobileViewport ? 24 : 48, color: STYLES.colors.muted, border: '1px dashed #cbd5e1', borderRadius: 18, background: '#f8fafc' }}>
+                              {hasSearchQuery
+                                ? 'No services found. Try another keyword.'
+                                : 'No services available in this category yet.'}
                             </div>
                           )}
                         </div>
@@ -5813,9 +4925,7 @@ export default function StorefrontApp() {
                                   style={{ minHeight: 36, borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', padding: '0 10px', fontSize: 13, color: STYLES.colors.dark, outline: 'none' }}
                                 >
                                   {[4, 8, 12, 16].map((size) => (
-                                    <option key={`service-page-size-bottom-${size}`} value={size}>
-                                      {size}
-                                    </option>
+                                    <option key={`service-page-size-bottom-${size}`} value={size}>{size}</option>
                                   ))}
                                 </select>
                               </label>
@@ -5828,27 +4938,25 @@ export default function StorefrontApp() {
                               >
                                 Previous
                               </GhostButton>
-                              {Array.from({ length: totalServicePages }, (_, index) => index + 1)
-                                .slice(Math.max(0, resolvedServicePage - 3), Math.max(0, resolvedServicePage - 3) + 5)
-                                .map((pageNumber) => (
-                                  <button
-                                    key={`service-page-${pageNumber}`}
-                                    type="button"
-                                    onClick={() => setServicePage(pageNumber)}
-                                    style={{
-                                      minWidth: 38,
-                                      minHeight: 38,
-                                      borderRadius: 10,
-                                      border: `1px solid ${pageNumber === resolvedServicePage ? '#f97316' : '#e5e7eb'}`,
-                                      background: pageNumber === resolvedServicePage ? '#f97316' : '#fff',
-                                      color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
-                                      fontWeight: 800,
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    {pageNumber}
-                                  </button>
-                                ))}
+                              {Array.from({ length: totalServicePages }, (_, index) => index + 1).slice(Math.max(0, resolvedServicePage - 3), Math.max(0, resolvedServicePage - 3) + 5).map((pageNumber) => (
+                                <button
+                                  key={`service-page-${pageNumber}`}
+                                  type="button"
+                                  onClick={() => setServicePage(pageNumber)}
+                                  style={{
+                                    minWidth: 38,
+                                    minHeight: 38,
+                                    borderRadius: 10,
+                                    border: `1px solid ${pageNumber === resolvedServicePage ? '#f97316' : '#e5e7eb'}`,
+                                    background: pageNumber === resolvedServicePage ? '#f97316' : '#fff',
+                                    color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
+                                    fontWeight: 800,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {pageNumber}
+                                </button>
+                              ))}
                               <GhostButton
                                 style={{ minHeight: 38, padding: '0 14px', opacity: resolvedServicePage === totalServicePages ? 0.5 : 1 }}
                                 onClick={() => setServicePage((previous) => Math.min(totalServicePages, previous + 1))}
@@ -5859,167 +4967,154 @@ export default function StorefrontApp() {
                             </div>
                           </div>
                         )}
-                      </div>
-                    </section>
 
-                    <section
-                      style={{
-                        marginTop: 0,
-                        marginLeft: 'calc(50% - 50vw)',
-                        width: '100vw',
-                        padding: isMobileViewport ? '36px 0 30px' : '72px 0 42px',
-                        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-                        borderTop: '1px solid #e2e8f0',
-                        borderBottom: '1px solid #e2e8f0',
-                        display: 'grid',
-                        gap: 18
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: 1320,
-                          width: '100%',
-                          margin: '0 auto',
-                          paddingLeft: isMobileViewport ? 16 : 24,
-                          paddingRight: isMobileViewport ? 16 : 24,
+                    </div>
+                  </section>
+
+                  <section style={{
+                      marginTop: 0,
+                      marginLeft: 'calc(50% - 50vw)',
+                      width: '100vw',
+                          padding: isMobileViewport ? '36px 0 30px' : '72px 0 42px',
+                          background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+                          borderTop: '1px solid #e2e8f0',
+                          borderBottom: '1px solid #e2e8f0',
                           display: 'grid',
                           gap: 18
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: isMobileViewport ? 'flex-start' : 'center',
-                            justifyContent: 'space-between',
-                            flexDirection: isMobileViewport ? 'column' : 'row',
-                            gap: 16
-                          }}
-                        >
-                          <div>
-                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
-                              Customer Reviews
-                            </h2>
-                            <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>
-                              See what customers say about this storefront.
-                            </p>
-                          </div>
-                          {hasReviewSummary && (
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 14,
-                                padding: '14px 16px',
-                                border: '1px solid #dbe5ee',
-                                borderRadius: 16,
-                                background: '#fcfdff',
-                                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
-                              }}
-                            >
-                              <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
-                                {reviewScore.toFixed(1)}
+                        }}>
+                          <div style={{
+                            maxWidth: 1320,
+                            width: '100%',
+                            margin: '0 auto',
+                            paddingLeft: isMobileViewport ? 16 : 24,
+                            paddingRight: isMobileViewport ? 16 : 24,
+                            display: 'grid',
+                            gap: 18
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: isMobileViewport ? 'flex-start' : 'center',
+                              justifyContent: 'space-between',
+                              flexDirection: isMobileViewport ? 'column' : 'row',
+                              gap: 16
+                            }}>
+                              <div>
+                                <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>Customer Reviews</h2>
+                                <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>See what customers say about this service.</p>
                               </div>
-                              <div style={{ display: 'grid', gap: 4 }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
-                                  {Array.from({ length: 5 }, (_, index) => (
-                                    <span key={`review-summary-star-${index}`} style={{ opacity: index < Math.round(reviewScore) ? 1 : 0.25 }}>
-                                      *
-                                    </span>
-                                  ))}
-                                </div>
-                                <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
-                                  from {reviewCount} review{reviewCount === 1 ? '' : 's'}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {reviewHighlights.length > 0 ? (
-                          <div style={{ display: 'grid', gridTemplateColumns: reviewGridColumns, gap: 18 }}>
-                            {reviewHighlights.map((review, index) => {
-                              const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
-                              const rating = Number(review?.rating);
-                              const comment = String(review?.comment || '').trim();
-                              return (
-                                <article
-                                  key={`customer-review-${index}`}
-                                  style={{
-                                    background: '#fcfdff',
-                                    border: '1px solid #dbe5ee',
-                                    borderRadius: 18,
-                                    padding: 18,
-                                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
-                                    display: 'grid',
-                                    gap: 12,
-                                    alignContent: 'start'
-                                  }}
-                                >
-                                  <div style={{ display: 'grid', gap: 6 }}>
-                                    <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
-                                    {Number.isFinite(rating) && rating > 0 && (
-                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
-                                        {Array.from({ length: 5 }, (_, starIndex) => (
-                                          <span key={`review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
-                                            *
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
+                              {hasReviewSummary && (
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 14,
+                                  padding: '14px 16px',
+                                  border: '1px solid #dbe5ee',
+                                  borderRadius: 16,
+                                  background: '#fcfdff',
+                                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
+                                }}>
+                                  <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
+                                    {reviewScore.toFixed(1)}
                                   </div>
-                                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>{comment}</p>
-                                </article>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              background: '#fcfdff',
-                              border: '1px solid #dbe5ee',
-                              borderRadius: 18,
-                              padding: isMobileViewport ? 20 : 24,
-                              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
-                              fontSize: 14,
-                              color: STYLES.colors.muted
-                            }}
-                          >
-                            {hasReviewSummary
-                              ? 'Customer review highlights will appear here once detailed review entries are added in SKUpervisor.'
-                              : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
-                          </div>
+                                  <div style={{ display: 'grid', gap: 4 }}>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                                      {Array.from({ length: 5 }, (_, index) => (
+                                        <span key={`review-summary-star-${index}`} style={{ opacity: index < Math.round(reviewScore) ? 1 : 0.25 }}>*</span>
+
+                                      ))}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
+                                      from {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {reviewHighlights.length > 0 ? (
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: reviewGridColumns,
+                                gap: 18
+                              }}>
+                                {reviewHighlights.map((review, index) => {
+                                  const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                                  const rating = Number(review?.rating);
+                                  const comment = String(review?.comment || '').trim();
+                                  return (
+                                    <article
+                                      key={`customer-review-${index}`}
+                                      style={{
+                                        background: '#fcfdff',
+                                        border: '1px solid #dbe5ee',
+                                        borderRadius: 18,
+                                        padding: 18,
+                                        boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                                        display: 'grid',
+                                        gap: 12,
+                                        alignContent: 'start'
+                                      }}
+                                    >
+                                      <div style={{ display: 'grid', gap: 6 }}>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                                        {Number.isFinite(rating) && rating > 0 && (
+                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                                            {Array.from({ length: 5 }, (_, starIndex) => (
+                                              <span key={`review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>*</span>
+
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>
+                                        {comment}
+                                      </p>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{
+                                background: '#fcfdff',
+                                border: '1px solid #dbe5ee',
+                                borderRadius: 18,
+                                padding: isMobileViewport ? 20 : 24,
+                                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                                fontSize: 14,
+                                color: STYLES.colors.muted
+                              }}>
+                                {hasReviewSummary
+                                  ? 'Customer review highlights will appear here once detailed review entries are added in SKUpervisor.'
+                                  : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
+                              </div>
                         )}
                       </div>
                     </section>
 
-                    <footer
-                      style={{
-                        marginLeft: 'calc(50% - 50vw)',
-                        width: '100vw',
-                        background: '#090b0f',
-                        borderTop: '1px solid rgba(148, 163, 184, 0.18)'
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: 1320,
-                          width: '100%',
-                          margin: '0 auto',
-                          padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                    <footer style={{
+                      marginLeft: 'calc(50% - 50vw)',
+                      width: '100vw',
+                      background: '#090b0f',
+                      borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+                    }}>
+                      <div style={{
+                        maxWidth: 1320,
+                        width: '100%',
+                        margin: '0 auto',
+                        padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                        display: 'grid',
+                        gap: 28
+                      }}>
+                        <div style={{
                           display: 'grid',
-                          gap: 28
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
-                            gap: isMobileViewport ? 24 : 36
-                          }}
-                        >
+                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                          gap: isMobileViewport ? 24 : 36
+                        }}>
                           <div style={{ display: 'grid', gap: 18 }}>
                             <div style={{ display: 'grid', gap: 10 }}>
-                              <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>{serviceHeroModel.name}</div>
+                              <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>
+                                {serviceHeroModel.name}
+                              </div>
                               <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
                                 {serviceHeroModel.tagline || serviceHeroModel.aboutText || 'Service storefront powered by SKUpervisor content.'}
                               </div>
@@ -6102,29 +5197,41 @@ export default function StorefrontApp() {
                               {serviceHeroModel.footerLinks
                                 .filter((link) => ['Call', 'Email'].includes(link.label))
                                 .map((link) => (
-                                  <a key={`footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                                  <a
+                                    key={`footer-contact-${link.label}`}
+                                    href={link.href}
+                                    style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                                  >
                                     {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
                                   </a>
                                 ))}
-                              {serviceHeroModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{serviceHeroModel.hours}</div>}
-                              <div style={{ fontSize: 15, color: '#cbd5e1' }}>{serviceHeroModel.locationLabel}</div>
+                              {serviceHeroModel.hours && (
+                                <div style={{ fontSize: 15, color: '#cbd5e1' }}>
+                                  {serviceHeroModel.hours}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 15, color: '#cbd5e1' }}>
+                                {serviceHeroModel.locationLabel}
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            paddingTop: 18,
-                            borderTop: '1px solid rgba(148, 163, 184, 0.12)',
-                            display: 'flex',
-                            alignItems: isMobileViewport ? 'flex-start' : 'center',
-                            justifyContent: 'space-between',
-                            flexDirection: isMobileViewport ? 'column' : 'row',
-                            gap: 10
-                          }}
-                        >
-                          <div style={{ fontSize: 13, color: '#64748b' }}>{serviceHeroModel.name} storefront</div>
-                          <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor content</div>
+                        <div style={{
+                          paddingTop: 18,
+                          borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                          display: 'flex',
+                          alignItems: isMobileViewport ? 'flex-start' : 'center',
+                          justifyContent: 'space-between',
+                          flexDirection: isMobileViewport ? 'column' : 'row',
+                          gap: 10
+                        }}>
+                          <div style={{ fontSize: 13, color: '#64748b' }}>
+                            {serviceHeroModel.name} storefront
+                          </div>
+                          <div style={{ fontSize: 13, color: '#64748b' }}>
+                            Powered by SKUpervisor content
+                          </div>
                         </div>
                       </div>
                     </footer>
@@ -6132,1018 +5239,940 @@ export default function StorefrontApp() {
                 );
               }
 
-return (
-  <div style={{
-    display: 'grid',
-    gap: 24,
-    gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr'
-  }}>
-    <div style={{ display: 'grid', gap: 24 }}>
-      <section id="storefront-catalog-section" style={{
-        background: '#fff', border: `1px solid ${STYLES.colors.border}`,
-        borderRadius: STYLES.radius.card, padding: isMobileViewport ? 16 : 32,
-        boxShadow: STYLES.shadow.sm
-      }}>
-        {/* Section header */}
-        <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
-          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
-          <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
-          {!isServicesMode && (
-            <label style={{
-              marginTop: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              border: '1px solid #dbe5ee',
-              borderRadius: 999,
-              background: '#f8fafc',
-              padding: '0 14px',
-              minHeight: 46,
-              maxWidth: 460
-            }}>
-              <input
-                value={catalogSearch}
-                onChange={(event) => setCatalogSearch(event.target.value)}
-                placeholder={modeAdapter.catalogSearchPlaceholder}
-                style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: 14, color: STYLES.colors.text }}
-              />
-              <Search size={16} color={STYLES.colors.brand} />
-            </label>
-          )}
-        </div>
-
-        {/* Service Family Tabs (only shown when multiple groups exist) */}
-        {isMultiGroup && (
-          <div style={{ marginBottom: 28 }}>
-            {/* Tab scrollable strip */}
-            <div style={{
-              display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4,
-              scrollbarWidth: 'none'
-            }}>
-              {servicesViewModel.serviceGroups.map(group => {
-                const isActive = resolvedTab === group.categoryKey;
-                const meta = group.categoryMeta;
-                return (
-                  <button
-                    key={group.categoryKey}
-                    type="button"
-                    onClick={() => setActiveServiceTab(group.categoryKey)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      flexShrink: 0,
-                      padding: isMobileViewport ? '10px 16px' : '12px 20px',
-                      borderRadius: 14,
-                      border: isActive ? `2px solid ${meta.accent}` : `1.5px solid ${STYLES.colors.border}`,
-                      background: isActive ? meta.accentBg || '#f0fdfa' : '#fff',
-                      color: isActive ? meta.accent : STYLES.colors.text,
-                      fontWeight: isActive ? 800 : 600,
-                      fontSize: 14,
-                      cursor: 'pointer',
-                      transition: 'all 0.18s ease',
-                      boxShadow: isActive ? `0 4px 16px ${meta.accent}22` : 'none'
-                    }}
-                  >
-                    <span style={{ fontSize: 18, lineHeight: 1 }}>{meta.icon || meta.label.charAt(0)}</span>
-                    <span>{meta.label}</span>
-                    <span style={{
-                      marginLeft: 4, padding: '2px 8px', borderRadius: 99,
-                      fontSize: 11, fontWeight: 800,
-                      background: isActive ? meta.accent : STYLES.colors.bg,
-                      color: isActive ? '#fff' : STYLES.colors.muted
-                    }}>
-                      {group.items.length}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Active tab description bar */}
-            {activeGroupMeta && (
-              <div style={{
-                marginTop: 14, padding: '14px 18px',
-                borderRadius: 14, border: `1px solid ${activeGroupMeta.accent}33`,
-                background: activeGroupMeta.accentBg || '#f0fdfa',
-                display: 'flex', alignItems: 'center', gap: 14
-              }}>
-                <span style={{ fontSize: 28 }}>{activeGroupMeta.icon || activeGroupMeta.label.charAt(0)}</span>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: activeGroupMeta.accent }}>{activeGroupMeta.label}</div>
-                  <div style={{ fontSize: 13, color: STYLES.colors.text, marginTop: 2 }}>{activeGroupMeta.description}</div>
-                </div>
-                <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Area</div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: activeGroupMeta.accent }}>{activeGroupMeta.areaLabel}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {(catalogState === 'empty_setup' || catalogState === 'empty_search_on_zero') && (
-          <StoreCatalogEmptyState
-            mode={catalogState === 'empty_search_on_zero' ? 'search_on_empty' : 'setup_pending'}
-            searchQuery={catalogSearch.trim()}
-            onRefreshTenantPage={() => openStoreBySlug(routeSlug)}
-          />
-        )}
-        {catalogState === 'empty_no_match' && (
-          <StoreCatalogEmptyState
-            mode="no_search_match"
-            searchQuery={catalogSearch.trim()}
-            onRefreshTenantPage={() => openStoreBySlug(routeSlug)}
-          />
-        )}
-
-        {/* Catalog items grid */}
-        {catalogState === 'ready' && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
-            {itemsToRender.map((item) => {
-              const imageUrl = withAssetOrigin(item.image_url);
-              const available = isItemAvailable(item);
-              const fnbModifierGroups = Array.isArray(item.fnb_modifier_groups) ? item.fnb_modifier_groups : [];
-              const allergens = Array.isArray(item.allergens) ? item.allergens : [];
-              const inventoryDisplayLabel = getInventoryDisplayLabel(item);
               return (
-                <div key={item.item_id} style={{
-                  background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
-                  overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
-                  boxShadow: STYLES.shadow.sm, cursor: 'pointer'
-                }} onClick={() => openServiceDetail(item)}>
-                  <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
-                    {imageUrl ? (
-                      <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
-                    )}
-                    <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                      <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
-                    </div>
+                <div style={{ 
+                  display: 'grid', 
+                  gap: 24, 
+                  gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr' 
+                }}>
+                  <div style={{ display: 'grid', gap: 24 }}>
+                    <section id="storefront-catalog-section" style={{ 
+                      background: '#fff', border: `1px solid ${STYLES.colors.border}`, 
+                      borderRadius: STYLES.radius.card, padding: isMobileViewport ? 16 : 32,
+                      boxShadow: STYLES.shadow.sm
+                    }}>
+                      {/* Section header */}
+                      <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
+                        <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
+                        <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
+                      </div>
+
+                      {/* Service Family Tabs (only shown when multiple groups exist) */}
+                      {isMultiGroup && (
+                        <div style={{ marginBottom: 28 }}>
+                          {/* Tab scrollable strip */}
+                          <div style={{ 
+                            display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4,
+                            scrollbarWidth: 'none'
+                          }}>
+                            {servicesViewModel.serviceGroups.map(group => {
+                              const isActive = resolvedTab === group.categoryKey;
+                              const meta = group.categoryMeta;
+                              return (
+                                <button
+                                  key={group.categoryKey}
+                                  type="button"
+                                  onClick={() => setActiveServiceTab(group.categoryKey)}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    flexShrink: 0,
+                                    padding: isMobileViewport ? '10px 16px' : '12px 20px',
+                                    borderRadius: 14,
+                                    border: isActive ? `2px solid ${meta.accent}` : `1.5px solid ${STYLES.colors.border}`,
+                                    background: isActive ? meta.accentBg || '#f0fdfa' : '#fff',
+                                    color: isActive ? meta.accent : STYLES.colors.text,
+                                    fontWeight: isActive ? 800 : 600,
+                                    fontSize: 14,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.18s ease',
+                                    boxShadow: isActive ? `0 4px 16px ${meta.accent}22` : 'none'
+                                  }}
+                                >
+                                  <span style={{ fontSize: 18, lineHeight: 1 }}>{meta.icon || meta.label.charAt(0)}</span>
+                                  <span>{meta.label}</span>
+                                  <span style={{
+                                    marginLeft: 4, padding: '2px 8px', borderRadius: 99,
+                                    fontSize: 11, fontWeight: 800,
+                                    background: isActive ? meta.accent : STYLES.colors.bg,
+                                    color: isActive ? '#fff' : STYLES.colors.muted
+                                  }}>
+                                    {group.items.length}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Active tab description bar */}
+                          {activeGroupMeta && (
+                            <div style={{
+                              marginTop: 14, padding: '14px 18px',
+                              borderRadius: 14, border: `1px solid ${activeGroupMeta.accent}33`,
+                              background: activeGroupMeta.accentBg || '#f0fdfa',
+                              display: 'flex', alignItems: 'center', gap: 14
+                            }}>
+                              <span style={{ fontSize: 28 }}>{activeGroupMeta.icon || activeGroupMeta.label.charAt(0)}</span>
+                              <div>
+                                <div style={{ fontWeight: 800, fontSize: 15, color: activeGroupMeta.accent }}>{activeGroupMeta.label}</div>
+                                <div style={{ fontSize: 13, color: STYLES.colors.text, marginTop: 2 }}>{activeGroupMeta.description}</div>
+                              </div>
+                              <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Area</div>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: activeGroupMeta.accent }}>{activeGroupMeta.areaLabel}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Catalog items grid */}
+                      {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
+                          {itemsToRender.map((item) => {
+                            const imageUrl = withAssetOrigin(item.image_url);
+                            const available = isItemAvailable(item);
+                            return (
+                              <div key={item.item_id} style={{ 
+                                background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`, 
+                                overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
+                                boxShadow: STYLES.shadow.sm, cursor: 'pointer'
+                              }} onClick={() => openServiceDetail(item)}>
+                                <div style={{ width: '100%', aspectRatio: '16/10', background: STYLES.colors.bg, position: 'relative' }}>
+                                  {imageUrl ? (
+                                    <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
+                                  )}
+                                  <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                                    <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
+                                  </div>
+                                </div>
+                                <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                  <div>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: STYLES.colors.brand, textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryMeta?.label || 'General'}</div>
+                                    <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {item.description || 'Expert service selection.'}
+                                  </p>
+                                  <div style={{ marginTop: 'auto' }}>
+                                    <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.teal, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                      <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
+                                      <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {isServicesMode && itemsToRender.length === 0 && (
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: STYLES.colors.muted }}>
+                              No services available in this category yet.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </section>
                   </div>
-                  <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: STYLES.colors.brand, textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryMeta?.label || 'General'}</div>
-                      <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {item.description || 'Expert service selection.'}
-                    </p>
-                    {(fnbModifierGroups.length > 0 || allergens.length > 0 || item.nutrition?.calories != null || inventoryDisplayLabel) && (
-                      <div style={{ display: 'grid', gap: 4, fontSize: 11 }}>
-                        {fnbModifierGroups.length > 0 && (
-                          <div style={{ color: '#92400e', fontWeight: 700 }}>
-                            {fnbModifierGroups.length} modifier group{fnbModifierGroups.length === 1 ? '' : 's'} available
+
+                  {/* ZONE 5: Sidebar (Desktop) */}
+                  {isServicesMode && !isMobileViewport && (
+                    <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
+                      <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                          <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
+                          <div>
+                            <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
+                            <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
                           </div>
-                        )}
-                        {allergens.length > 0 && (
-                          <div style={{ color: '#b45309', fontWeight: 700 }}>
-                            Allergens: {allergens.slice(0, 3).map((entry) => entry.allergen_name).filter(Boolean).join(', ')}
+                        </div>
+                        {isMultiGroup && (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
+                            {servicesViewModel.serviceGroups.map(group => (
+                              <button
+                                key={group.categoryKey}
+                                type="button"
+                                onClick={() => setActiveServiceTab(group.categoryKey)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '10px 14px', borderRadius: 12,
+                                  border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
+                                  background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
+                                  color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
+                                  fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                                  transition: 'all 0.16s ease'
+                                }}
+                              >
+                                <span>{group.categoryMeta.icon} {group.categoryMeta.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
+                              </button>
+                            ))}
                           </div>
-                        )}
-                        {item.nutrition?.calories != null && (
-                          <div style={{ color: '#64748b' }}>
-                            {item.nutrition.calories} cal{item.nutrition.serving_size ? ` / ${item.nutrition.serving_size}` : ''}
-                          </div>
-                        )}
-                        {inventoryDisplayLabel && (
-                          <div style={{ color: '#0f766e', fontWeight: 700 }}>{inventoryDisplayLabel}</div>
                         )}
                       </div>
-                    )}
-                    <div style={{ marginTop: 'auto' }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.teal, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
-                        <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
-                      </div>
-                    </div>
-                  </div>
+
+                      {(() => {
+                        const promo = parseOptionalObject(selectedStore.storefront_promo);
+                        if (!promo || !promo.active) return null;
+                        return (
+                          <div style={{ 
+                            padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`, 
+                            color: '#fff', boxShadow: STYLES.shadow.md
+                          }}>
+                            <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
+                            <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
+                            <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+                          </div>
+                        );
+                      })()}
+                    </aside>
+                  )}
                 </div>
               );
-            })}
-            {isServicesMode && itemsToRender.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: STYLES.colors.muted }}>
-                No services available in this category yet.
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-    </div>
-
-    {/* ZONE 5: Sidebar (Desktop) */}
-    {isServicesMode && !isMobileViewport && (
-      <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
-        <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-            <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
-            <div>
-              <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
-              <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
-            </div>
-          </div>
-          {isMultiGroup && (
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
-              {servicesViewModel.serviceGroups.map(group => (
-                <button
-                  key={group.categoryKey}
-                  type="button"
-                  onClick={() => setActiveServiceTab(group.categoryKey)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 14px', borderRadius: 12,
-                    border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
-                    background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
-                    color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
-                    fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                    transition: 'all 0.16s ease'
-                  }}
-                >
-                  <span>{group.categoryMeta.icon} {group.categoryMeta.label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {(() => {
-          const promo = parseOptionalObject(selectedStore.storefront_promo);
-          if (!promo || !promo.active) return null;
-          return (
-            <div style={{
-              padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-              color: '#fff', boxShadow: STYLES.shadow.md
-            }}>
-              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
-              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
-              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
-            </div>
-          );
-        })()}
-      </aside>
-    )}
-  </div>
-);
             })()}
           </>
         )}
 
       </div>
 
-  { isStorePage && (checkoutPermitted || bookingPermitted || fnbStorefront) && (
-    <>
-      {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
-        const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
-        const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
-        if (!followEnabled && !shareEnabled) return null;
-        return (
-          <div
+      {isStorePage && (checkoutPermitted || bookingPermitted) && (
+        <>
+          {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
+            const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
+            const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
+            if (!followEnabled && !shareEnabled) return null;
+            return (
+              <div
+                style={{
+                  position: 'fixed',
+                  zIndex: 2090,
+                  left: isMobileViewport ? 10 : 'auto',
+                  right: isMobileViewport ? 10 : 18,
+                  bottom: isMobileViewport ? 78 : 84,
+                  display: 'flex',
+                  gap: 8,
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap'
+                }}
+              >
+                {followEnabled && (
+                  <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
+                    {followState.isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                )}
+                {shareEnabled && (
+                  <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }}>
+                    Share
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+          <button
+            type="button"
+            onClick={() => {
+              if (isServicesMode) {
+                goStoreBookingPage();
+                return;
+              }
+              setIsCheckoutOpen((prev) => {
+                const next = !prev;
+                if (next) setCheckoutTab(isServicesMode && hasServiceCart ? 'review' : 'checkout');
+                return next;
+              });
+            }}
             style={{
               position: 'fixed',
-              zIndex: 2090,
-              left: isMobileViewport ? 10 : 'auto',
+              zIndex: 2100,
+              border: isServicesMode && hasServiceCart ? '1px solid #dbe5ee' : 'none',
+              borderRadius: isMobileViewport ? 16 : 22,
+              background: isServicesMode && hasServiceCart ? '#ffffff' : 'linear-gradient(135deg,#ea580c,#f97316)',
+              color: isServicesMode && hasServiceCart ? '#0f172a' : '#fff',
+              boxShadow: isServicesMode && hasServiceCart ? '0 22px 48px rgba(15,23,42,.16)' : '0 14px 34px rgba(234,88,12,.38)',
+              padding: isServicesMode && hasServiceCart ? (isMobileViewport ? '12px 14px' : '16px 18px') : '12px 18px',
+              minWidth: isServicesMode && hasServiceCart ? (isMobileViewport ? 0 : 320) : (isMobileViewport ? 0 : 255),
+              textAlign: 'left',
+              cursor: 'pointer',
               right: isMobileViewport ? 10 : 18,
-              bottom: isMobileViewport ? 78 : 84,
-              display: 'flex',
-              gap: 8,
-              justifyContent: 'flex-end',
-              flexWrap: 'wrap'
+              left: isMobileViewport ? 10 : 'auto',
+              bottom: isMobileViewport ? 10 : 18,
+              display: isServicesMode && isDesktopViewport ? 'none' : 'block'
             }}
           >
-            {followEnabled && (
-              <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
-                {followState.isFollowing ? 'Following' : 'Follow'}
-              </button>
-            )}
-            {shareEnabled && (
-              <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }}>
-                Share
-              </button>
-            )}
-          </div>
-        );
-      })()}
-      <button
-        type="button"
-        onClick={() => {
-          if (isServicesMode) {
-            goStoreBookingPage();
-            return;
-          }
-          setIsCheckoutOpen((prev) => {
-            const next = !prev;
-            if (next) setCheckoutTab((!checkoutPermitted && !bookingPermitted && fnbStorefront) ? 'reservation' : (isServicesMode && hasServiceCart ? 'review' : 'checkout'));
-            return next;
-          });
-        }}
-        style={{
-          position: 'fixed',
-          zIndex: 2100,
-          border: isServicesMode && hasServiceCart ? '1px solid #dbe5ee' : 'none',
-          borderRadius: isMobileViewport ? 16 : 22,
-          background: isServicesMode && hasServiceCart ? '#ffffff' : 'linear-gradient(135deg,#ea580c,#f97316)',
-          color: isServicesMode && hasServiceCart ? '#0f172a' : '#fff',
-          boxShadow: isServicesMode && hasServiceCart ? '0 22px 48px rgba(15,23,42,.16)' : '0 14px 34px rgba(234,88,12,.38)',
-          padding: isServicesMode && hasServiceCart ? (isMobileViewport ? '12px 14px' : '16px 18px') : '12px 18px',
-          minWidth: isServicesMode && hasServiceCart ? (isMobileViewport ? 0 : 320) : (isMobileViewport ? 0 : 255),
-          textAlign: 'left',
-          cursor: 'pointer',
-          right: isMobileViewport ? 10 : 18,
-          left: isMobileViewport ? 10 : 'auto',
-          bottom: isMobileViewport ? 10 : 18,
-          display: isServicesMode && isDesktopViewport ? 'none' : 'block'
-        }}
-      >
-        {isServicesMode && hasServiceCart ? (
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
-                <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
-              </div>
-              {!isMobileViewport && (
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 8px' }}>
-                  {cartCount} service
+            {isServicesMode && hasServiceCart ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
+                    <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
+                  </div>
+                  {!isMobileViewport && (
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 8px' }}>
+                      {cartCount} service
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#475569' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CalendarDays size={14} color="#f97316" />
-                {serviceBookingSummarySchedule}
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CheckCircle2 size={14} color="#f97316" />
-                {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
-              <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
-                {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 13, opacity: .95 }}>{cartCount} item(s) in cart</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{money(cartTotal)}</div>
-            <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
-          </>
-        )}
-      </button>
-
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: isCheckoutOpen ? 'auto' : 'none' }}>
-        <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
-        <aside
-          style={{
-            position: 'absolute',
-            zIndex: 2001,
-            background: 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
-            border: '1px solid #d6e2e8',
-            boxShadow: isDesktopCheckout ? '0 30px 80px rgba(15,23,42,.18)' : '0 -14px 34px rgba(15,23,42,.22)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            transition: 'transform 220ms ease, opacity 220ms ease',
-            opacity: isCheckoutOpen ? 1 : 0,
-            ...(isDesktopCheckout
-              ? {
-                top: 24,
-                right: 24,
-                bottom: 24,
-                width: 'min(1080px, calc(100vw - 48px))',
-                borderRadius: 26,
-                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(32px)'
-              }
-              : {
-                left: 0,
-                right: 0,
-                bottom: 0,
-                maxHeight: '92vh',
-                borderTopLeftRadius: 22,
-                borderTopRightRadius: 22,
-                transform: isCheckoutOpen ? 'translateY(0)' : 'translateY(105%)'
-              })
-          }}
-        >
-          <div style={{ padding: isDesktopCheckout ? '16px 18px 12px 18px' : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,.88)' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 20 }}>{isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
-              <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
-                  {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
-                </span>
-                {(!isServicesMode || !hasServiceCart) && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
-                    {ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout'}
-                  </span>
-                )}
-                {isServicesMode && hasServiceCart && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#475569' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <CalendarDays size={14} color="#f97316" />
                     {serviceBookingSummarySchedule}
                   </span>
-                )}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <CheckCircle2 size={14} color="#f97316" />
+                    {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+                  <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
+                    {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
+                  </div>
+                </div>
               </div>
-            </div>
-            <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>x</button>
-          </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, opacity: .95 }}>{cartCount} item(s) in cart</div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{money(cartTotal)}</div>
+                <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
+              </>
+            )}
+          </button>
 
-          <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-            {[
-              ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
-              { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
-              ...(fnbStorefront ? [{ id: 'reservation', label: 'Reservation' }] : []),
-              { id: 'track', label: 'Track' },
-              { id: 'account', label: 'Account' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setCheckoutTab(tab.id);
-                  if (tab.id === 'account') handleLoadAccountPanel();
-                }}
-                style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: isCheckoutOpen ? 'auto' : 'none' }}>
+            <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
+            <aside
+              style={{
+                position: 'absolute',
+                zIndex: 2001,
+                background: 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
+                border: '1px solid #d6e2e8',
+                boxShadow: isDesktopCheckout ? '0 30px 80px rgba(15,23,42,.18)' : '0 -14px 34px rgba(15,23,42,.22)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'transform 220ms ease, opacity 220ms ease',
+                opacity: isCheckoutOpen ? 1 : 0,
+                ...(isDesktopCheckout
+                  ? {
+                    top: 24,
+                    right: 24,
+                    bottom: 24,
+                    width: 'min(1080px, calc(100vw - 48px))',
+                    borderRadius: 26,
+                    transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(32px)'
+                  }
+                  : {
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    maxHeight: '92vh',
+                    borderTopLeftRadius: 22,
+                    borderTopRightRadius: 22,
+                    transform: isCheckoutOpen ? 'translateY(0)' : 'translateY(105%)'
+                  })
+              }}
+            >
+              <div style={{ padding: isDesktopCheckout ? '16px 18px 12px 18px' : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,.88)' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 20 }}>{isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
+                  <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
+                      {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
+                    </span>
+                    {(!isServicesMode || !hasServiceCart) && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                        {ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout'}
+                      </span>
+                    )}
+                    {isServicesMode && hasServiceCart && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                        {serviceBookingSummarySchedule}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>x</button>
+              </div>
 
-          <div style={{ overflowY: 'auto', padding: isDesktopCheckout ? '12px 18px 18px 18px' : '8px 14px 16px 14px' }}>
-            {checkoutTab === 'review' && hasServiceCart && (
-              <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
-                <section style={{ display: 'grid', gap: 14 }}>
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      <div>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
-                        <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={openServiceCartEditor}
-                        style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        Edit service
-                      </button>
-                    </div>
+              <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
+                {[
+                  ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
+                  { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
+                  { id: 'track', label: 'Track' },
+                  { id: 'account', label: 'Account' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setCheckoutTab(tab.id);
+                      if (tab.id === 'account') handleLoadAccountPanel();
+                    }}
+                    style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-                    <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 14 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
-                        <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
-                          {firstServiceLine?.image_url && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
-                            <img
-                              src={withAssetOrigin(firstServiceLine.image_url)}
-                              alt={firstServiceLine.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              onError={() => {
-                                const normalizedLineItemId = Number(firstServiceLine.item_id);
-                                if (!Number.isFinite(normalizedLineItemId)) return;
-                                setCartImageErrors((prev) => {
-                                  const next = new Set(prev);
-                                  next.add(normalizedLineItemId);
-                                  return next;
-                                });
-                              }}
-                            />
-                          ) : (
-                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>No image</span>
-                          )}
-                        </div>
-                        <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ overflowY: 'auto', padding: isDesktopCheckout ? '12px 18px 18px 18px' : '8px 14px 16px 14px' }}>
+                {checkoutTab === 'review' && hasServiceCart && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
+                    <section style={{ display: 'grid', gap: 14 }}>
+                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                           <div>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                              {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
-                            </div>
-                            <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
-                              {firstServiceLine?.variantName || firstServiceLine?.name}
-                            </div>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
+                            <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
                           </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
-                              {firstServiceLine?.service_detail?.service_area_type || firstServiceLine?.serviceAreaLabel || 'Service'}
-                            </span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
-                              Qty {firstServiceLine?.quantity || 1}
-                            </span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
-                              {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
-                            </span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={openServiceCartEditor}
+                            style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Edit service
+                          </button>
                         </div>
-                        <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', textAlign: isMobileViewport ? 'left' : 'right' }}>
-                          {money((Number(firstServiceLine?.price || 0) || 0) * Math.max(1, Number(firstServiceLine?.quantity || 1)))}
-                        </div>
-                      </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preferred schedule</div>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{serviceBookingSummarySchedule}</div>
-                        </div>
-                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
-                          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
-                            {String(firstServiceLine?.service_notes || '').trim() || 'No special instructions yet.'}
-                          </div>
-                        </div>
-                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Validation note</div>
-                          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
-                            SKUpervisor confirms conflicts, lead time, and other booking rules when you submit.
-                          </div>
-                        </div>
-                      </div>
-
-                      {serviceIntakeFields.length > 0 && (
-                        <div style={{ display: 'grid', gap: 10 }}>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
-                          <div style={{ display: 'grid', gap: 8 }}>
-                            {serviceIntakeFields.map((field) => (
-                              <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
-                                <div style={{ fontSize: 13, color: '#334155' }}>
-                                  {field.type === 'checkbox'
-                                    ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
-                                    : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
+                        <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 14 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
+                            <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
+                              {firstServiceLine?.image_url && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
+                                <img
+                                  src={withAssetOrigin(firstServiceLine.image_url)}
+                                  alt={firstServiceLine.name}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={() => {
+                                    const normalizedLineItemId = Number(firstServiceLine.item_id);
+                                    if (!Number.isFinite(normalizedLineItemId)) return;
+                                    setCartImageErrors((prev) => {
+                                      const next = new Set(prev);
+                                      next.add(normalizedLineItemId);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              ) : (
+                                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>No image</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                  {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
+                                </div>
+                                <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
+                                  {firstServiceLine?.variantName || firstServiceLine?.name}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </section>
-
-                <aside style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 16, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)', display: 'grid', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
-                    </div>
-                    <div style={{ borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
-                        <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
-                      </div>
-                      <div style={{ fontSize: 12, opacity: .95 }}>
-                        {serviceBookingSummarySchedule}
-                      </div>
-                    </div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutTab('checkout')}
-                        style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: '#0f766e', color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
-                      >
-                        Continue to Checkout
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeCartItem(firstServiceLine.item_id)}
-                        style={{ borderRadius: 14, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                      >
-                        <Trash2 size={16} />
-                        Remove Service
-                      </button>
-                    </div>
-                  </div>
-                </aside>
-              </div>
-            )}
-
-            {checkoutTab === 'checkout' && (
-              <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
-                <section style={{ display: 'grid', gap: 14 }}>
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{hasServiceCart ? 'Customer Details' : 'Delivery Details'}</div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-                      {hasServiceCart
-                        ? 'Finish the booking with the customer contact details required by the current storefront contract.'
-                        : 'Group the must-fill fields together so checkout feels faster and calmer.'}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
-                      {storeLocations.length > 0 && (
-                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                          Fulfillment Location
-                          <select
-                            value={selectedLocationId ?? ''}
-                            onChange={(e) => setSelectedLocationId(e.target.value ? Number(e.target.value) : null)}
-                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                          >
-                            {storeLocations.map((location) => (
-                              <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
-                                {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      {!hasServiceCart && (
-                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                          Order Method
-                          <select
-                            value={orderMethod}
-                            onChange={(e) => {
-                              setOrderMethod(e.target.value);
-                              setPinLocationError('');
-                            }}
-                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                          >
-                            {ORDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                          </select>
-                        </label>
-                      )}
-                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                        Customer Name
-                        <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Who is receiving this?" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                      </label>
-                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                        Phone Number
-                        <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                      </label>
-                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                        Email
-                        <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="For ticket or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                      </label>
-                    </div>
-                    {hasServiceCart && (
-                      <>
-                        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
-                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                            Appointment Date / Time
-                            <input type="datetime-local" value={serviceAppointmentAt} onChange={(e) => setServiceAppointmentAt(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                          </label>
-                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                            Payment Timing
-                            <select value={servicePaymentTiming} onChange={(e) => setServicePaymentTiming(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}>
-                              {servicePaymentOptions.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        {serviceIntakeFields.length > 0 && (
-                          <section style={{ marginTop: 10, border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: '#f8fafc' }}>
-                            <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Service Intake</h3>
-                            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
-                              {serviceIntakeFields.map((field) => (
-                                <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  {field.label}{field.required ? ' *' : ''}
-                                  {field.type === 'textarea' ? (
-                                    <textarea
-                                      value={serviceIntakeResponses[field.id] || ''}
-                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                      style={{ width: '100%', minHeight: 72, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                                    />
-                                  ) : field.type === 'select' ? (
-                                    <select
-                                      value={serviceIntakeResponses[field.id] || ''}
-                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                      style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                                    >
-                                      <option value="">Select</option>
-                                      {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
-                                    </select>
-                                  ) : field.type === 'checkbox' ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={serviceIntakeResponses[field.id] === true}
-                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.checked }))}
-                                      style={{ marginTop: 10 }}
-                                    />
-                                  ) : (
-                                    <input
-                                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                      value={serviceIntakeResponses[field.id] || ''}
-                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                      style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                                    />
-                                  )}
-                                </label>
-                              ))}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                  {firstServiceLine?.service_detail?.service_area_type || firstServiceLine?.serviceAreaLabel || 'Service'}
+                                </span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                  Qty {firstServiceLine?.quantity || 1}
+                                </span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                  {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
+                                </span>
+                              </div>
                             </div>
-                          </section>
-                        )}
-                      </>
-                    )}
-                    {!hasServiceCart && (
-                      <label style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 10 }}>
-                        Delivery Address
-                        <input
-                          value={customerAddress}
-                          onChange={(e) => setCustomerAddress(e.target.value)}
-                          placeholder={isDeliveryOrder ? 'House number, street, landmark' : 'Address is only needed for delivery'}
-                          disabled={!isDeliveryOrder}
-                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: isDeliveryOrder ? '#fff' : '#f1f5f9' }}
-                        />
-                      </label>
-                    )}
-                    {selectedLocation?.is_open === false && (
-                      <div style={{ marginTop: 10, fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
-                        Selected location is closed and cannot accept orders right now.
-                      </div>
-                    )}
-                  </div>
+                            <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', textAlign: isMobileViewport ? 'left' : 'right' }}>
+                              {money((Number(firstServiceLine?.price || 0) || 0) * Math.max(1, Number(firstServiceLine?.quantity || 1)))}
+                            </div>
+                          </div>
 
-                  {!hasServiceCart && (
-                    <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                            <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preferred schedule</div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{serviceBookingSummarySchedule}</div>
+                            </div>
+                            <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
+                              <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+                                {String(firstServiceLine?.service_notes || '').trim() || 'No special instructions yet.'}
+                              </div>
+                            </div>
+                            <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Validation note</div>
+                              <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+                                SKUpervisor confirms conflicts, lead time, and other booking rules when you submit.
+                              </div>
+                            </div>
+                          </div>
+
+                          {serviceIntakeFields.length > 0 && (
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                {serviceIntakeFields.map((field) => (
+                                  <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
+                                    <div style={{ fontSize: 13, color: '#334155' }}>
+                                      {field.type === 'checkbox'
+                                        ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
+                                        : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+
+                    <aside style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
+                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 16, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)', display: 'grid', gap: 12 }}>
                         <div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Location Pin</div>
-                          <div style={{ fontSize: 12, color: '#64748b' }}>
-                            {isDeliveryOrder ? 'Add a precise drop-off pin to help fulfillment.' : 'Pinning is available for delivery orders.'}
+                          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
+                        </div>
+                        <div style={{ borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
+                            <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
+                          </div>
+                          <div style={{ fontSize: 12, opacity: .95 }}>
+                            {serviceBookingSummarySchedule}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'grid', gap: 8 }}>
                           <button
                             type="button"
-                            onClick={handlePinMyLocation}
-                            disabled={!isDeliveryOrder || pinLocationLoading}
-                            style={{ borderRadius: 12, border: '1px solid #0f766e', background: isDeliveryOrder ? '#fff' : '#f8fafc', color: '#0f766e', padding: '9px 12px', fontWeight: 700, cursor: isDeliveryOrder ? 'pointer' : 'not-allowed' }}
+                            onClick={() => setCheckoutTab('checkout')}
+                            style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: '#0f766e', color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
                           >
-                            {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                            Continue to Checkout
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCustomerPin(null)}
-                            disabled={!isDeliveryOrder || !customerPin}
-                            style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700, cursor: (!isDeliveryOrder || !customerPin) ? 'not-allowed' : 'pointer' }}
+                            onClick={() => removeCartItem(firstServiceLine.item_id)}
+                            style={{ borderRadius: 14, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                           >
-                            Clear Pin
+                            <Trash2 size={16} />
+                            Remove Service
                           </button>
                         </div>
                       </div>
-                      <div style={{ marginBottom: 10, fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
-                        {isDeliveryOrder
-                          ? (customerPin
-                            ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
-                            : 'No pin selected yet. Tap the map or use your current location.')
-                          : 'Switch order method to Delivery if you want to save a location pin.'}
-                      </div>
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        <DeliveryPinMap
-                          pin={customerPin}
-                          onPinChange={setCustomerPin}
-                          disabled={!isDeliveryOrder}
-                        />
-                        {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
-                      </div>
-                    </div>
-                  )}
-                </section>
+                    </aside>
+                  </div>
+                )}
 
-                <section style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 14, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Order Summary</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Keep the total visible while editing.</div>
-                      </div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
-                    </div>
-                    <div style={{ maxHeight: isDesktopCheckout ? 320 : 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 16, padding: 10, marginTop: 12, background: '#fbfeff' }}>
-                      {cart.length === 0 && <p style={{ margin: 0, color: '#64748b' }}>Cart is empty.</p>}
-                      {cart.map((line) => (
-                        <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
-                          <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-                              <img
-                                src={withAssetOrigin(line.image_url)}
-                                alt={line.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onError={() => {
-                                  const normalizedLineItemId = Number(line.item_id);
-                                  if (!Number.isFinite(normalizedLineItemId)) return;
-                                  setCartImageErrors((prev) => {
-                                    const next = new Set(prev);
-                                    next.add(normalizedLineItemId);
-                                    return next;
-                                  });
+                {checkoutTab === 'checkout' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
+                    <section style={{ display: 'grid', gap: 14 }}>
+                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{hasServiceCart ? 'Customer Details' : 'Delivery Details'}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                          {hasServiceCart
+                            ? 'Finish the booking with the customer contact details required by the current storefront contract.'
+                            : 'Group the must-fill fields together so checkout feels faster and calmer.'}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                          {storeLocations.length > 0 && (
+                            <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                              Fulfillment Location
+                              <select
+                                value={selectedLocationId ?? ''}
+                                onChange={(e) => setSelectedLocationId(e.target.value ? Number(e.target.value) : null)}
+                                style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                              >
+                                {storeLocations.map((location) => (
+                                  <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
+                                    {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          {!hasServiceCart && (
+                            <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                              Order Method
+                              <select
+                                value={orderMethod}
+                                onChange={(e) => {
+                                  setOrderMethod(e.target.value);
+                                  setPinLocationError('');
                                 }}
-                              />
-                            ) : (
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'center', padding: 6 }}>No Image</span>
+                                style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                              >
+                                {ORDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                            </label>
+                          )}
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Customer Name
+                            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Who is receiving this?" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                          </label>
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Phone Number
+                            <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                          </label>
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Email
+                            <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="For ticket or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                          </label>
+                        </div>
+                        {hasServiceCart && (
+                          <>
+                            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                Appointment Date / Time
+                                <input type="datetime-local" value={serviceAppointmentAt} onChange={(e) => setServiceAppointmentAt(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                              </label>
+                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                Payment Timing
+                                <select value={servicePaymentTiming} onChange={(e) => setServicePaymentTiming(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}>
+                                  {servicePaymentOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            {serviceIntakeFields.length > 0 && (
+                              <section style={{ marginTop: 10, border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: '#f8fafc' }}>
+                                <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Service Intake</h3>
+                                <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                                  {serviceIntakeFields.map((field) => (
+                                    <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                      {field.label}{field.required ? ' *' : ''}
+                                      {field.type === 'textarea' ? (
+                                        <textarea
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', minHeight: 72, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        />
+                                      ) : field.type === 'select' ? (
+                                        <select
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        >
+                                          <option value="">Select</option>
+                                          {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                                        </select>
+                                      ) : field.type === 'checkbox' ? (
+                                        <input
+                                          type="checkbox"
+                                          checked={serviceIntakeResponses[field.id] === true}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.checked }))}
+                                          style={{ marginTop: 10 }}
+                                        />
+                                      ) : (
+                                        <input
+                                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                        />
+                                      )}
+                                    </label>
+                                  ))}
+                                </div>
+                              </section>
                             )}
+                          </>
+                        )}
+                        {!hasServiceCart && (
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 10 }}>
+                            Delivery Address
+                            <input
+                              value={customerAddress}
+                              onChange={(e) => setCustomerAddress(e.target.value)}
+                              placeholder={isDeliveryOrder ? 'House number, street, landmark' : 'Address is only needed for delivery'}
+                              disabled={!isDeliveryOrder}
+                              style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: isDeliveryOrder ? '#fff' : '#f1f5f9' }}
+                            />
+                          </label>
+                        )}
+                        {selectedLocation?.is_open === false && (
+                          <div style={{ marginTop: 10, fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                            Selected location is closed and cannot accept orders right now.
                           </div>
+                        )}
+                      </div>
+
+                      {!hasServiceCart && (
+                        <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
                           <div>
-                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{line.name}</div>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>
-                              Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Location Pin</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>
+                              {isDeliveryOrder ? 'Add a precise drop-off pin to help fulfillment.' : 'Pinning is available for delivery orders.'}
                             </div>
-                            <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
-                              {line.category === 'service' ? 'Bookable appointment' : 'Availability checked on quote/checkout'}
-                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <button
                               type="button"
-                              onClick={() => removeCartItem(line.item_id)}
-                              style={{ marginTop: 6, border: 'none', background: 'transparent', padding: 0, color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                              onClick={handlePinMyLocation}
+                              disabled={!isDeliveryOrder || pinLocationLoading}
+                              style={{ borderRadius: 12, border: '1px solid #0f766e', background: isDeliveryOrder ? '#fff' : '#f8fafc', color: '#0f766e', padding: '9px 12px', fontWeight: 700, cursor: isDeliveryOrder ? 'pointer' : 'not-allowed' }}
                             >
-                              Remove
+                              {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCustomerPin(null)}
+                              disabled={!isDeliveryOrder || !customerPin}
+                              style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700, cursor: (!isDeliveryOrder || !customerPin) ? 'not-allowed' : 'pointer' }}
+                            >
+                              Clear Pin
                             </button>
                           </div>
-                          <input type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateQty(line.item_id, e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 10px', background: '#fff', fontWeight: 700 }} />
-                          <span style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{money(line.quantity * line.price)}</span>
                         </div>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 12, borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14 }}>
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
+                        <div style={{ marginBottom: 10, fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+                          {isDeliveryOrder
+                            ? (customerPin
+                              ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
+                              : 'No pin selected yet. Tap the map or use your current location.')
+                            : 'Switch order method to Delivery if you want to save a location pin.'}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>Vatable Sales</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vatable_sales)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>VAT Amount</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_amount)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>VAT-Exempt Sales</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_exempt_sales)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, opacity: .95 }}>Zero-Rated Sales</span>
-                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.zero_rated_sales)}</strong>
-                        </div>
-                        <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,.24)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 14, fontWeight: 800 }}>Total Amount Due</span>
-                          <strong style={{ fontSize: 22 }}>{money(totalsForDisplay.total_amount)}</strong>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          <DeliveryPinMap
+                            pin={customerPin}
+                            onPinChange={setCustomerPin}
+                            disabled={!isDeliveryOrder}
+                          />
+                          {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
                         </div>
                       </div>
-                      <div style={{ marginTop: 10, fontSize: 12, opacity: .95 }}>
-                        {hasServiceCart
-                          ? 'Service booking totals are estimated from the selected service. Complete appointment details to book.'
-                          : quoteResult
-                            ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
-                            : 'No quote yet. Click Quote to unlock checkout.'}
-                      </div>
-                      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
-                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>Quote</button>
-                        )}
-                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : 'Checkout')}</button>
-                      </div>
-                    </div>
-                    {hasStockViolation && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c', fontWeight: 700 }}>
-                        Cannot checkout: one or more lines exceed current stock.
-                      </p>
-                    )}
-                    {!hasServiceCart && !quoteResult && cart.length > 0 && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
-                        Quote is required before checkout.
-                      </p>
-                    )}
-                    {!hasServiceCart && quoteResult && quoteNeedsRefresh && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
-                        Cart changed after quote. Click Quote again to proceed.
-                      </p>
-                    )}
-                    {hasMixedServiceCart && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
-                        Services must be booked separately from regular product orders.
-                      </p>
-                    )}
-                    {hasServiceCart && !serviceAppointmentAt && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
-                        Choose an appointment date and time before booking.
-                      </p>
-                    )}
-                    {quoteError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
-                    {!hasServiceCart && quoteResult && (
-                      <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>
-                        Quote synced. Total due: {money(totalsForDisplay.total_amount)}
-                      </p>
-                    )}
-                    {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                    {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
-                      <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
-                        <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
-                          {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
-                        </p>
-                        {checkoutResult?.account_action?.show_signup === true && (
-                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
-                            You can sign in or register to save this latest transaction to your account.
+                      )}
+                    </section>
+
+                    <section style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
+                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 14, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Order Summary</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Keep the total visible while editing.</div>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
+                        </div>
+                        <div style={{ maxHeight: isDesktopCheckout ? 320 : 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 16, padding: 10, marginTop: 12, background: '#fbfeff' }}>
+                          {cart.length === 0 && <p style={{ margin: 0, color: '#64748b' }}>Cart is empty.</p>}
+                          {cart.map((line) => (
+                            <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
+                              <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                                  <img
+                                    src={withAssetOrigin(line.image_url)}
+                                    alt={line.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={() => {
+                                      const normalizedLineItemId = Number(line.item_id);
+                                      if (!Number.isFinite(normalizedLineItemId)) return;
+                                      setCartImageErrors((prev) => {
+                                        const next = new Set(prev);
+                                        next.add(normalizedLineItemId);
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                ) : (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'center', padding: 6 }}>No Image</span>
+                                )}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: '#0f172a' }}>{line.name}</div>
+                                <div style={{ fontSize: 11, color: '#64748b' }}>
+                                  Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
+                                  {line.category === 'service' ? 'Bookable appointment' : 'Availability checked on quote/checkout'}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeCartItem(line.item_id)}
+                                  style={{ marginTop: 6, border: 'none', background: 'transparent', padding: 0, color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <input type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateQty(line.item_id, e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 10px', background: '#fff', fontWeight: 700 }} />
+                              <span style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{money(line.quantity * line.price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 12, borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14 }}>
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>Vatable Sales</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vatable_sales)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>VAT Amount</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_amount)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>VAT-Exempt Sales</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_exempt_sales)}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, opacity: .95 }}>Zero-Rated Sales</span>
+                              <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.zero_rated_sales)}</strong>
+                            </div>
+                            <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,.24)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 14, fontWeight: 800 }}>Total Amount Due</span>
+                              <strong style={{ fontSize: 22 }}>{money(totalsForDisplay.total_amount)}</strong>
+                            </div>
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 12, opacity: .95 }}>
+                            {hasServiceCart
+                              ? 'Service booking totals are estimated from the selected service. Complete appointment details to book.'
+                              : quoteResult
+                              ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
+                              : 'No quote yet. Click Quote to unlock checkout.'}
+                          </div>
+                          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
+                              <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>Quote</button>
+                            )}
+                            <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : 'Checkout')}</button>
+                          </div>
+                        </div>
+                        {hasStockViolation && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c', fontWeight: 700 }}>
+                            Cannot checkout: one or more lines exceed current stock.
                           </p>
                         )}
-                        {checkoutResult?.payment?.checkout_url && (
-                          <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
-                            Pay Now
-                          </a>
-                        )}
-                        {checkoutResult?.account_action?.show_signup !== true && (
-                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
-                            This ticket can be kept as an image for your gallery.
+                        {!hasServiceCart && !quoteResult && cart.length > 0 && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Quote is required before checkout.
                           </p>
                         )}
-                        <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
-                          Download Image
-                        </button>
+                        {!hasServiceCart && quoteResult && quoteNeedsRefresh && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Cart changed after quote. Click Quote again to proceed.
+                          </p>
+                        )}
+                        {hasMixedServiceCart && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Services must be booked separately from regular product orders.
+                          </p>
+                        )}
+                        {hasServiceCart && !serviceAppointmentAt && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                            Choose an appointment date and time before booking.
+                          </p>
+                        )}
+                        {quoteError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
+                        {!hasServiceCart && quoteResult && (
+                          <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>
+                            Quote synced. Total due: {money(totalsForDisplay.total_amount)}
+                          </p>
+                        )}
+                        {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                        {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
+                          <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
+                            <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
+                              {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
+                            </p>
+                            {checkoutResult?.account_action?.show_signup === true && (
+                              <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                                You can sign in or register to save this latest transaction to your account.
+                              </p>
+                            )}
+                            {checkoutResult?.payment?.checkout_url && (
+                              <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
+                                Pay Now
+                              </a>
+                            )}
+                            {checkoutResult?.account_action?.show_signup !== true && (
+                              <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                                This ticket can be kept as an image for your gallery.
+                              </p>
+                            )}
+                            <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
+                              Download Image
+                            </button>
+                          </div>
+                        )}
+                        <p style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>{DGFY_ACRONYM}</p>
                       </div>
-                    )}
-                    <p style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>{DGFY_ACRONYM}</p>
+                    </section>
                   </div>
-                </section>
-              </div>
-            )}
+                )}
 
-            {checkoutTab === 'reservation' && fnbStorefront && (
-              <Suspense fallback={<div style={{ color: '#64748b', fontSize: 13 }}>Loading reservation form...</div>}>
-                <FnbReservationPanel
-                  form={fnbReservationForm}
-                  setForm={setFnbReservationForm}
-                  loading={fnbReservationLoading}
-                  selectedStore={selectedStore}
-                  error={fnbReservationError}
-                  result={fnbReservationResult}
-                  isDesktopCheckout={isDesktopCheckout}
-                  onSubmit={handleFnbReservationRequest}
-                />
-              </Suspense>
-            )}
-
-            {checkoutTab === 'track' && (
-              <div style={{ maxWidth: 560, border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
-                <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Order</h3>
-                <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Enter a tracking PIN to check the latest status without leaving the sheet.</p>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input value={trackingPinInput} onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())} placeholder="SK-XXXXXX" style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                  <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
-                </div>
-                {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
-                {trackingResult && <div style={{ marginTop: 10, fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>Status: <strong>{trackingResult.status_label || trackingResult.status}</strong></div>}
-              </div>
-            )}
-
-            {checkoutTab === 'account' && (
-              <div style={{ display: 'grid', gap: 14, maxWidth: 860 }}>
-                <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                    <div>
-                      <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>My Account</h3>
-                      <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Bookings, orders, tickets, receipts, and the latest linked transaction.</p>
+                {checkoutTab === 'track' && (
+                  <div style={{ maxWidth: 560, border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                    <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Order</h3>
+                    <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Enter a tracking PIN to check the latest status without leaving the sheet.</p>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input value={trackingPinInput} onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())} placeholder="SK-XXXXXX" style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                      <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
                     </div>
-                    <button type="button" onClick={handleLoadAccountPanel} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700 }}>Refresh</button>
+                    {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
+                    {trackingResult && <div style={{ marginTop: 10, fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>Status: <strong>{trackingResult.status_label || trackingResult.status}</strong></div>}
                   </div>
-                  {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
-                  {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
-                  {accountPanel.me && (
-                    <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
-                      <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
+                )}
+
+                {checkoutTab === 'account' && (
+                  <div style={{ display: 'grid', gap: 14, maxWidth: 860 }}>
+                    <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                        <div>
+                          <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>My Account</h3>
+                          <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Bookings, orders, tickets, receipts, and the latest linked transaction.</p>
+                        </div>
+                        <button type="button" onClick={handleLoadAccountPanel} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700 }}>Refresh</button>
+                      </div>
+                      {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
+                      {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
+                      {accountPanel.me && (
+                        <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
+                          <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
-                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
-                    {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
-                    {accountPanel.bookings.map((booking) => (
-                      <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
-                        <strong>{booking.public_reference}</strong>
-                        <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} Â· {booking.status}</div>
-                        <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} Â· {booking.payment_status}</div>
-                      </div>
-                    ))}
-                  </section>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
-                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
-                    {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
-                    {accountPanel.orders.map((order) => (
-                      <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
-                        <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
-                        <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} Â· {money(order.total_amount)}</div>
-                        <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
-                      </div>
-                    ))}
-                  </section>
-                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
+                      <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
+                        {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
+                        {accountPanel.bookings.map((booking) => (
+                          <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                            <strong>{booking.public_reference}</strong>
+                            <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} Â· {booking.status}</div>
+                            <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} Â· {booking.payment_status}</div>
+                          </div>
+                        ))}
+                      </section>
+                      <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
+                        {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
+                        {accountPanel.orders.map((order) => (
+                          <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                            <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
+                            <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} Â· {money(order.total_amount)}</div>
+                            <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
+                          </div>
+                        ))}
+                      </section>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </aside>
           </div>
-        </aside>
-      </div>
-    </>
-  )}
-    </main >
+        </>
+      )}
+    </main>
   );
 }

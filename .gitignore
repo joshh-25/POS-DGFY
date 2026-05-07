@@ -67,6 +67,8 @@ htdocs/.htaccess
 # Build outputs
 .vite/
 .deploy-state/
+/dist-apps/
+/frontend/apps/store/src/scratch/
 
 nul
 

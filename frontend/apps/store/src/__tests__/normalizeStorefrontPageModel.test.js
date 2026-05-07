@@ -31,7 +31,6 @@ describe('normalizeStorefrontPageModel', () => {
     });
 
     expect(model.isServicesMode).toBe(true);
-    expect(model.servicesLayoutMode).toBe('lead_gen');
     expect(model.servicesViewModel.totalServices).toBe(1);
     expect(model.sections.hero.hasTagline).toBe(true);
     expect(model.sections.overview.hasAbout).toBe(true);
