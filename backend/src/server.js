@@ -202,11 +202,15 @@ const isDevelopmentOriginAllowed = (origin) => {
   try {
     const parsed = new URL(origin);
     const host = parsed.hostname.toLowerCase();
-    const surebizcorpSurface = host === 'skupervisor.surebizcorp.com'
+    const knownSurface = host === 'skupervisor.surebizcorp.com'
       || host === 'pos.surebizcorp.com'
       || host === 'surebizcorp.com'
-      || host === 'store.surebizcorp.com';
-    return Boolean(surebizcorpSurface);
+      || host === 'store.surebizcorp.com'
+      || host === 'skupervisor.dgfy.ph'
+      || host === 'pos.dgfy.ph'
+      || host === 'dgfy.ph'
+      || host === 'store.dgfy.ph';
+    return Boolean(knownSurface);
   } catch {
     return false;
   }

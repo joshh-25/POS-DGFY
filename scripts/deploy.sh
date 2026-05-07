@@ -1087,10 +1087,10 @@ IMS_HEALTH_OVERRIDE="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
 POS_HEALTH_OVERRIDE="${DEPLOY_POS_HEALTH_URL:-}"
 STORE_HEALTH_OVERRIDE="${DEPLOY_STORE_HEALTH_URL:-}"
 
-IMS_PUBLIC_URL="${DEPLOY_IMS_URL:-https://skupervisor.surebizcorp.com}"
-POS_PUBLIC_URL="${DEPLOY_POS_URL:-https://pos.surebizcorp.com}"
-STOREFRONT_PUBLIC_URL="${DEPLOY_STOREFRONT_URL:-https://surebizcorp.com}"
-TENANT_STORE_PUBLIC_URL="${DEPLOY_TENANT_STORE_URL:-https://surebizcorp.com${STORE_BASE_PATH%/}}"
+IMS_PUBLIC_URL="${DEPLOY_IMS_URL:-https://skupervisor.dgfy.ph}"
+POS_PUBLIC_URL="${DEPLOY_POS_URL:-https://pos.dgfy.ph}"
+STOREFRONT_PUBLIC_URL="${DEPLOY_STOREFRONT_URL:-https://dgfy.ph}"
+TENANT_STORE_PUBLIC_URL="${DEPLOY_TENANT_STORE_URL:-https://dgfy.ph${STORE_BASE_PATH%/}}"
 
 mapfile -t IMS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$IMS_HEALTH_OVERRIDE" "http://127.0.0.1:5173/")
 mapfile -t POS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$POS_HEALTH_OVERRIDE" "http://127.0.0.1:5174/")
