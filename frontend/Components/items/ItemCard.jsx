@@ -3,7 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder, Monitor } from 'lucide-react';
+import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder, Monitor, AlertTriangle } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,12 @@ export default function ItemCard({
   const weightedAvgCost = Number(item?.cost_metrics?.global?.weighted_avg_cost || 0);
   const hasAverageCost = financialPolicy.show_cost && weightedAvgCost > 0
     && Math.abs(weightedAvgCost - Number(item?.cost_per_unit || 0)) > 0.0001;
+  const itemDomId = String(item.item_id || item.id || item.sku_code || item.name || 'item')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-');
+  const showCatalogControls = showPosVisibilityControl || showStorefrontVisibilityControl;
+  const catalogPriceMissing = showCatalogControls && !financialPolicy.has_explicit_sale_price;
+  const salePriceSetupNeeded = financialPolicy.show_sale_price && !financialPolicy.has_explicit_sale_price;
+  const catalogPriceWarningId = `item-card-${itemDomId}-customer-price-warning`;
 
   // DnD Hook
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -208,11 +214,16 @@ export default function ItemCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4">
-        {(showPosVisibilityControl || showStorefrontVisibilityControl) && (
+        {showCatalogControls && (
           <div className="space-y-2">
             {showPosVisibilityControl && (
               <div
-                className="flex min-h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                className={cn(
+                  "flex min-h-10 items-center justify-between rounded-lg border px-3 py-2",
+                  catalogPriceMissing
+                    ? "border-amber-200 bg-amber-50/80"
+                    : "border-slate-200 bg-slate-50"
+                )}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -222,12 +233,18 @@ export default function ItemCard({
                   onCheckedChange={handleTogglePos}
                   disabled={!canTogglePosVisibility}
                   aria-label={`Toggle POS visibility for ${item.name}`}
+                  aria-describedby={catalogPriceMissing ? catalogPriceWarningId : undefined}
                 />
               </div>
             )}
             {showStorefrontVisibilityControl && (
               <div
-                className="flex min-h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                className={cn(
+                  "flex min-h-10 items-center justify-between rounded-lg border px-3 py-2",
+                  catalogPriceMissing
+                    ? "border-amber-200 bg-amber-50/80"
+                    : "border-slate-200 bg-slate-50"
+                )}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -237,7 +254,18 @@ export default function ItemCard({
                   onCheckedChange={handleToggleStorefront}
                   disabled={!canToggleStorefrontVisibility}
                   aria-label={`Toggle storefront visibility for ${item.name}`}
+                  aria-describedby={catalogPriceMissing ? catalogPriceWarningId : undefined}
                 />
+              </div>
+            )}
+            {catalogPriceMissing && (
+              <div
+                id={catalogPriceWarningId}
+                role="status"
+                className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800"
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>Set a positive selling price before enabling POS or Storefront sales.</span>
               </div>
             )}
           </div>
@@ -319,9 +347,19 @@ export default function ItemCard({
           )}
           {financialPolicy.show_sale_price && (
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Selling Price</span>
-              <span className="text-sm font-semibold text-slate-900">
-                {Number(item.default_sale_price || 0) > 0 ? formatPeso(item.default_sale_price) : 'Not set'}
+              <span className="flex min-w-0 items-center gap-2 text-sm text-slate-500">
+                <span>Selling Price</span>
+                {salePriceSetupNeeded && (
+                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[11px] font-semibold text-amber-700">
+                    Setup needed
+                  </Badge>
+                )}
+              </span>
+              <span className={cn(
+                "text-sm font-semibold",
+                salePriceSetupNeeded ? "text-amber-700" : "text-slate-900"
+              )}>
+                {financialPolicy.has_explicit_sale_price ? formatPeso(item.default_sale_price) : 'Not set'}
               </span>
             </div>
           )}

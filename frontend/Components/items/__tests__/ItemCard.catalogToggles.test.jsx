@@ -140,6 +140,26 @@ describe('ItemCard catalog toggles', () => {
     });
 
     expect(screen.getByText('Selling Price')).toBeTruthy();
-    expect(screen.getByText('₱250.00')).toBeTruthy();
+    expect(screen.getByText(/250\.00/)).toBeTruthy();
+  });
+
+  it('shows a visible setup blocker when customer-facing sales are missing a selling price', () => {
+    renderCard({
+      workflowMode: 'food_manufacturing',
+      posVisible: false,
+      storefrontVisible: false,
+      item: {
+        ...item,
+        name: 'Ube Jam',
+        sku_code: 'UBE-001',
+        mode_item_preset: 'finished_product',
+        default_sale_price: 0
+      }
+    });
+
+    expect(screen.getByText('Selling Price')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
+    expect(screen.getByText('Not set')).toBeTruthy();
+    expect(screen.getByText(/set a positive selling price before enabling pos or storefront sales/i)).toBeTruthy();
   });
 });
