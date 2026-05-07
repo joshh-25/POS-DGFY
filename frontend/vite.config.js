@@ -35,7 +35,7 @@ export default defineConfig({
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
   server: {
-    allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49', 'localhost'],
+    allowedHosts: ['skupervisor.surebizcorp.com', 'skupervisor.dgfy.ph', '10.123.33.49', 'localhost'],
     headers: devSecurityHeaders,
     proxy: {
       '/api': {
@@ -53,7 +53,7 @@ export default defineConfig({
   preview: {
     port: 5173,
     host: true,
-    allowedHosts: ['skupervisor.surebizcorp.com', '10.123.33.49', 'localhost'],
+    allowedHosts: ['skupervisor.surebizcorp.com', 'skupervisor.dgfy.ph', '10.123.33.49', 'localhost'],
     headers: securityHeaders,
     proxy: {
       '/api': {

@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-brand-primary: #E8540A;
+    --color-brand-primary-light: #F26522;
+    --color-background-page: #F5F5F5;
+    --color-background-white: #FFFFFF;
+    --color-text-primary: #1A1A1A;
+    --color-text-secondary: #555555;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
+  }
+}
+
+/* Custom scrollbar for tabs */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Menu card hover effect */
+.menu-card {
+  @apply transition-all duration-200 hover:shadow-lg;
+}
