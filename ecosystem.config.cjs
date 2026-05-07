@@ -15,7 +15,7 @@ module.exports = {
             restart_delay: 5000,
             env: {
                 NODE_ENV: 'development',
-                CORS_ORIGIN: 'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com',
+                CORS_ORIGIN: 'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph',
             },
             env_production: {
                 NODE_ENV: 'production',
@@ -28,7 +28,7 @@ module.exports = {
                 TENANT_REGISTRATION_APPROVAL_MODE: 'manual',
                 PAYMENTS_ENABLED: 'false',
                 DB_AUTO_SYNC: 'false',
-                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com',
+                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph',
             },
         },
         {
