@@ -26,6 +26,9 @@ export const createItemSchema = Joi.object({
   }).messages({
     'any.only': 'product_type must be one of: work_in_progress, finished_goods'
   }),
+  mode_item_preset: Joi.string().max(64).allow(null, '').messages({
+    'string.max': 'Mode item preset must not exceed 64 characters'
+  }),
   product_folder: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'Product folder must not exceed 100 characters'
   }),
@@ -167,6 +170,7 @@ export const createItemDraftSchema = Joi.object({
     then: Joi.string().valid('work_in_progress', 'finished_goods').allow(null, ''),
     otherwise: Joi.valid(null, '')
   }),
+  mode_item_preset: Joi.string().max(64).allow(null, ''),
   product_folder: Joi.string().max(100).allow(null, ''),
   description: Joi.string().allow(null, ''),
   max_capacity: Joi.number().positive().allow(null, '').messages({
@@ -275,6 +279,7 @@ export const updateItemSchema = Joi.object({
     then: Joi.string().valid('work_in_progress', 'finished_goods'),
     otherwise: Joi.valid(null, '')
   }),
+  mode_item_preset: Joi.string().max(64).allow(null, ''),
   product_folder: Joi.string().max(100).allow(null, ''),
   description: Joi.string().allow(null, ''),
   max_capacity: Joi.number().positive().messages({

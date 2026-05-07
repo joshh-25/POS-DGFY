@@ -82,4 +82,39 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('existingItems={skuSuggestionItems}');
     expect(itemsPageSource).toContain('items={skuSuggestionItems}');
   });
+
+  it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const uomSelectSource = readFrontendFile('Components/ui/UomSelect.jsx');
+
+    expect(itemFormSource).toContain('resolveModeItemTaxonomy');
+    expect(itemFormSource).toContain("Label>{modeItemTaxonomy ? 'Item Type' : 'Category'}");
+    expect(itemFormSource).toContain('allowedGroups={currentItemPreset?.allowed_uom_groups || []}');
+    expect(itemFormSource).toContain('mode_item_preset: modeItemTaxonomy');
+    expect(itemFormSource).toContain('This item type is stock-exempt');
+    expect(itemFormSource).toContain("if (msmeMode && item)");
+    expect(itemFormSource).toContain('setMsmeCategoryTouched(true)');
+    expect(uomSelectSource).toContain('filterUomOptions');
+    expect(uomSelectSource).toContain('Legacy/current value:');
+  });
+
+  it('keeps read-only item financial views mode-aware and service-stock-exempt', () => {
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const itemDetailsSource = readFrontendFile('Components/items/ItemDetailsModal.jsx');
+    const itemCardSource = readFrontendFile('Components/items/ItemCard.jsx');
+    const costFinancialSource = readFrontendFile('Components/items/details/CostFinancialSection.jsx');
+
+    expect(itemsPageSource).toContain('workflowMode={workflowMode}');
+    expect(itemCardSource).toContain('workflowMode,');
+    expect(itemCardSource).toContain('resolveItemFinancialPolicy({');
+    expect(itemCardSource).toContain('!financialPolicy.is_pure_service && item.fifo_enabled');
+
+    expect(itemDetailsSource).toContain('workflowMode })');
+    expect(itemDetailsSource).toContain('<CostFinancialSection item={item} workflowMode={workflowMode} />');
+    expect(itemDetailsSource).toContain('!financialPolicy.is_pure_service && item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days)');
+    expect(itemDetailsSource).toContain('!financialPolicy.is_pure_service && item.fifo_enabled && (');
+
+    expect(costFinancialSource).toContain('hasExplicitSalePrice');
+    expect(costFinancialSource).toContain('workflowMode,');
+  });
 });

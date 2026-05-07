@@ -12,15 +12,18 @@
 // ============================================
 
 /**
- * UOM Groups with conversion factors to base unit
+ * UOM groups. Only groups marked convertible can be automatically converted.
  * - Weight: base unit is grams (g)
  * - Volume: base unit is milliliters (mL)
  * - Count: base unit is pieces (pcs)
+ * - Packaging, presentation, and time are valid business units but require
+ *   item-specific conversion before inventory math can convert them.
  */
 export const UOM_GROUPS = {
     weight: {
         base: 'g',
         label: 'Weight',
+        convertible: true,
         units: {
             mg: { factor: 0.001, label: 'Milligram (mg)' },
             g: { factor: 1, label: 'Gram (g)' },
@@ -32,6 +35,7 @@ export const UOM_GROUPS = {
     volume: {
         base: 'mL',
         label: 'Volume',
+        convertible: true,
         units: {
             mL: { factor: 1, label: 'Milliliter (mL)' },
             L: { factor: 1000, label: 'Liter (L)' },
@@ -44,10 +48,52 @@ export const UOM_GROUPS = {
     count: {
         base: 'pcs',
         label: 'Count',
+        convertible: true,
         units: {
             pcs: { factor: 1, label: 'Pieces (pcs)' },
             units: { factor: 1, label: 'Units' },
             dozen: { factor: 12, label: 'Dozen' }
+        }
+    },
+    packaging: {
+        base: null,
+        label: 'Packaging',
+        convertible: false,
+        units: {
+            pack: { label: 'Pack' },
+            case: { label: 'Case' },
+            carton: { label: 'Carton' },
+            box: { label: 'Box' },
+            tray: { label: 'Tray' },
+            sack: { label: 'Sack' },
+            bottle: { label: 'Bottle' },
+            can: { label: 'Can' },
+            pouch: { label: 'Pouch' },
+            bag: { label: 'Bag' }
+        }
+    },
+    presentation: {
+        base: null,
+        label: 'Presentation',
+        convertible: false,
+        units: {
+            serving: { label: 'Serving' },
+            portion: { label: 'Portion' },
+            service: { label: 'Service' },
+            session: { label: 'Session' },
+            booking: { label: 'Booking' },
+            ticket: { label: 'Ticket' },
+            room_night: { label: 'Room night' }
+        }
+    },
+    time: {
+        base: null,
+        label: 'Time',
+        convertible: false,
+        units: {
+            minute: { label: 'Minute' },
+            hour: { label: 'Hour' },
+            day: { label: 'Day' }
         }
     }
 };
@@ -72,7 +118,29 @@ const UOM_ALIASES = {
     // Count
     'piece': 'pcs', 'pieces': 'pcs', 'Piece': 'pcs', 'Pieces': 'pcs', 'pc': 'pcs',
     'unit': 'units', 'Unit': 'units', 'Units': 'units',
-    'doz': 'dozen', 'Dozen': 'dozen', 'Doz': 'dozen'
+    'doz': 'dozen', 'Dozen': 'dozen', 'Doz': 'dozen',
+    // Packaging
+    'packs': 'pack', 'Pack': 'pack', 'Packs': 'pack',
+    'cases': 'case', 'Case': 'case', 'Cases': 'case',
+    'cartons': 'carton', 'Carton': 'carton', 'Cartons': 'carton',
+    'boxes': 'box', 'Box': 'box', 'Boxes': 'box',
+    'trays': 'tray', 'Tray': 'tray', 'Trays': 'tray',
+    'sacks': 'sack', 'Sack': 'sack', 'Sacks': 'sack',
+    'bottles': 'bottle', 'Bottle': 'bottle', 'Bottles': 'bottle',
+    'cans': 'can', 'Can': 'can', 'Cans': 'can',
+    'pouches': 'pouch', 'Pouch': 'pouch', 'Pouches': 'pouch',
+    'bags': 'bag', 'Bag': 'bag', 'Bags': 'bag',
+    // Presentation/time
+    'servings': 'serving', 'Serving': 'serving', 'Servings': 'serving',
+    'portions': 'portion', 'Portion': 'portion', 'Portions': 'portion',
+    'services': 'service', 'Service': 'service', 'Services': 'service',
+    'sessions': 'session', 'Session': 'session', 'Sessions': 'session',
+    'bookings': 'booking', 'Booking': 'booking', 'Bookings': 'booking',
+    'tickets': 'ticket', 'Ticket': 'ticket', 'Tickets': 'ticket',
+    'room night': 'room_night', 'room nights': 'room_night', 'Room night': 'room_night',
+    'minutes': 'minute', 'Minute': 'minute', 'Minutes': 'minute', 'min': 'minute',
+    'hours': 'hour', 'Hour': 'hour', 'Hours': 'hour', 'hr': 'hour',
+    'days': 'day', 'Day': 'day', 'Days': 'day'
 };
 
 // ============================================
@@ -113,7 +181,9 @@ export const getUomGroup = (uom) => {
 export const areCompatible = (uom1, uom2) => {
     const group1 = getUomGroup(uom1);
     const group2 = getUomGroup(uom2);
-    return group1 !== null && group1 === group2;
+    return group1 !== null
+        && group1 === group2
+        && UOM_GROUPS[group1]?.convertible === true;
 };
 
 /**
@@ -122,6 +192,7 @@ export const areCompatible = (uom1, uom2) => {
 export const getBaseUnit = (uom) => {
     const groupName = getUomGroup(uom);
     if (!groupName) return null;
+    if (UOM_GROUPS[groupName].convertible !== true) return null;
     return UOM_GROUPS[groupName].base;
 };
 
@@ -139,6 +210,7 @@ export const convertQuantity = (value, fromUom, toUom) => {
 
     const groupName = getUomGroup(normalizedFrom);
     const group = UOM_GROUPS[groupName];
+    if (!group?.convertible) return null;
 
     const fromFactor = group.units[normalizedFrom].factor;
     const toFactor = group.units[normalizedTo].factor;
@@ -167,6 +239,18 @@ export const getAllUomOptions = () => {
     return options;
 };
 
+export const filterUomOptions = ({ allowedGroups = [], allowedUnits = [] } = {}) => {
+    const groupSet = new Set((allowedGroups || []).filter(Boolean));
+    const unitSet = new Set((allowedUnits || []).map((unit) => normalizeUom(unit)).filter(Boolean));
+    if (unitSet.size > 0) {
+        return getAllUomOptions().filter((option) => unitSet.has(option.value));
+    }
+    return getAllUomOptions().filter((option) => (
+        groupSet.size === 0
+        || groupSet.has(option.groupKey)
+    ));
+};
+
 /**
  * Get UOM options grouped by category
  */
@@ -182,6 +266,17 @@ export const getGroupedUomOptions = () => {
 
     return grouped;
 };
+
+export const groupUomOptions = (options = []) => (
+    options.reduce((grouped, option) => {
+        if (!grouped[option.group]) grouped[option.group] = [];
+        grouped[option.group].push({
+            value: option.value,
+            label: option.label
+        });
+        return grouped;
+    }, {})
+);
 
 /**
  * Get the display label for a UOM
@@ -264,7 +359,9 @@ export default {
     convertQuantity,
     convertWithDetails,
     getAllUomOptions,
+    filterUomOptions,
     getGroupedUomOptions,
+    groupUomOptions,
     getUomLabel,
     getUomShortLabel,
     isValidUom,

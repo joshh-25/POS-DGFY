@@ -39,6 +39,11 @@ const Item = sequelize.define('Item', {
       }
     }
   },
+  mode_item_preset: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+    comment: 'Corrected workflow-mode item preset key used to preserve mode-native item subtype semantics'
+  },
   product_folder: {
     type: DataTypes.STRING(100),
     allowNull: true
@@ -91,7 +96,7 @@ const Item = sequelize.define('Item', {
     validate: {
       min: 0
     },
-    comment: 'Last-used sale price. Auto-updated from DO dispatches. Defaults to cost_per_unit on first use.'
+    comment: 'Last-used explicit sale price used by POS, Storefront, and Dispatch Orders. Auto-updated from DO dispatches.'
   },
   vat_type: {
     type: DataTypes.ENUM('vatable', 'vat_exempt', 'zero_rated'),
@@ -207,6 +212,7 @@ const Item = sequelize.define('Item', {
   indexes: [
     { fields: ['sku_code'] },
     { fields: ['category'] },
+    { fields: ['mode_item_preset'] },
     { fields: ['folder_id'] },
     { fields: ['deleted_at'] },
     { fields: ['status'] },

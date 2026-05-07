@@ -4,6 +4,8 @@ import {
   resolveWorkflowModeFamily
 } from './workflowMode.js';
 
+import { resolveItemDefaultsForMode } from './modeItemTaxonomy.js';
+
 const TEMPLATE_BASE = Object.freeze({
   itemDefaults: Object.freeze({
     category: 'raw_material',
@@ -135,7 +137,7 @@ export const resolveBusinessModeTemplate = (workflowMode) => {
 };
 
 export const resolveBusinessModeItemDefaults = (workflowMode) => (
-  resolveBusinessModeTemplate(workflowMode).itemDefaults
+  resolveItemDefaultsForMode(workflowMode) || resolveBusinessModeTemplate(workflowMode).itemDefaults
 );
 
 export const resolveBusinessModeProductDefaults = (workflowMode) => (

@@ -5,7 +5,7 @@ import { cn } from "../../../src/lib/utils.js";
 import { formatNumber } from '../../../src/lib/numberUtils.js';
 
 export default function SummaryStep({ data, items }) {
-  const ingredientItems = items?.filter(item => item.category === 'ingredient') || [];
+  const ingredientItems = items?.filter(item => item.category === 'raw_material') || [];
   const packagingItemsList = items?.filter(item => item.category === 'packaging') || [];
 
   const isComplete = (section) => {
@@ -27,7 +27,7 @@ export default function SummaryStep({ data, items }) {
       case 'packaging':
         return data.packaging_items?.length > 0 || data.packaging_info?.primary_packaging;
       case 'cost':
-        return data.cost_per_unit > 0;
+        return data.cost_per_unit > 0 && data.default_sale_price > 0;
       case 'qc':
         return data.quality_control?.test_frequency;
       case 'compliance':
@@ -146,6 +146,10 @@ export default function SummaryStep({ data, items }) {
           <div>
             <p className="text-slate-400">Cost per Unit:</p>
             <p className="font-semibold">₱{formatNumber(data.cost_per_unit, 2)}</p>
+          </div>
+          <div>
+            <p className="text-slate-400">Selling Price:</p>
+            <p className="font-semibold">PHP {formatNumber(data.default_sale_price, 2)}</p>
           </div>
           <div>
             <p className="text-slate-400">Ingredients:</p>

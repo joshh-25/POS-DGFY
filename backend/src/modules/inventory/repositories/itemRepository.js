@@ -287,6 +287,7 @@ const barcodeIncludeItem = () => ([{
         'sku_code',
         'category',
         'product_type',
+        'mode_item_preset',
         'unit_of_measure',
         'default_sale_price',
         'current_stock',
@@ -566,7 +567,7 @@ export const itemRepository = {
 
             const rows = await Item.findAll({
                 where,
-                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'status', 'current_stock', 'cost_per_unit', 'default_sale_price'],
+                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'mode_item_preset', 'status', 'current_stock', 'cost_per_unit', 'default_sale_price'],
                 order: [['name', 'ASC']],
                 limit: parseInt(limit, 10)
             });
@@ -1810,6 +1811,7 @@ export const itemRepository = {
                 'sku_code',
                 'category',
                 'product_type',
+                'mode_item_preset',
                 'status',
                 'default_sale_price',
                 'current_stock'
@@ -1897,7 +1899,7 @@ export const itemRepository = {
 
         const item = await Item.findOne({
             where: visibleItemWhere({ item_id: normalizedItemId }),
-            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'status', 'default_sale_price', 'current_stock'],
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'status', 'default_sale_price', 'current_stock'],
             include: ServiceItemDetail ? [{
                 model: ServiceItemDetail,
                 as: 'serviceDetail',
@@ -1981,7 +1983,7 @@ export const itemRepository = {
         }
 
         const item = await findVisibleItemById(Item, normalizedItemId, {
-            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'unit_of_measure']
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'unit_of_measure']
         });
         if (!item) throw notFoundError('Item not found');
 
@@ -2317,7 +2319,7 @@ export const itemRepository = {
         if (barcodeId) where.item_barcode_id = Number.parseInt(barcodeId, 10);
         const [item, barcode] = await Promise.all([
             findVisibleItemById(Item, normalizedItemId, {
-                attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'default_sale_price']
+                attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'unit_of_measure', 'default_sale_price']
             }),
             ItemBarcode.findOne({
                 where,

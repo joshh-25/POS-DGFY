@@ -104,12 +104,12 @@ async function processTenant(tenantId, tenantName, models) {
             updated++;
         }
 
-        // Set level 0 for raw ingredients
+        // Set level 0 for raw materials/ingredients
         const ingredientResult = await Item.update({
             nesting_level: 0,
             max_child_depth: 0,
             is_leaf_node: true
-        }, { where: { category: 'ingredient' } });
+        }, { where: { category: 'raw_material' } });
 
         console.log(`  ✅ Updated ${updated} products`);
         console.log(`  ✅ Set ${ingredientResult[0]} raw ingredients to level 0`);

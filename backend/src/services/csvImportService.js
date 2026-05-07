@@ -10,8 +10,14 @@ import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/appl
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
-    resolveWorkflowModeFamily
+    resolveWorkflowModeFamily,
+    resolveWorkflowTemplateMode
 } from '../modules/shared/constants/workflowModes.js';
+import {
+    CORRECTED_ITEM_TAXONOMY_MODES,
+    ITEM_STOCK_BEHAVIOR,
+    validateItemAgainstModeTaxonomy
+} from '../modules/shared/constants/modeItemTaxonomy.js';
 import {
     detectBarcodeSymbology,
     normalizeBarcodeMultiplier,
@@ -22,11 +28,11 @@ import {
 } from '../modules/shared/utils/barcodePolicy.js';
 
 // Valid values for enums
-const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies'];
+const VALID_CATEGORIES = ['raw_material', 'packaging', 'product', 'supplies', 'service'];
 const VALID_PRODUCT_TYPES = ['work_in_progress', 'finished_goods'];
 const VALID_VAT_TYPES = ['vatable', 'vat_exempt', 'zero_rated'];
 const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'];
-const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', 'msme'];
+const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', ...CORRECTED_ITEM_TAXONOMY_MODES];
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const TEMPLATE_SCHEMA_VERSION = 'v1';
 const BARCODE_TEMPLATE_HEADERS = Object.freeze([
@@ -82,6 +88,9 @@ const transformRow = (row) => {
         item.product_type = row.product_type.trim().toLowerCase() || null;
     } else {
         item.product_type = null;
+    }
+    if (row.mode_item_preset) {
+        item.mode_item_preset = row.mode_item_preset.trim().toLowerCase() || null;
     }
     if (row.vat_type) {
         item.vat_type = row.vat_type.trim().toLowerCase() || null;
@@ -373,19 +382,51 @@ const syncBarcodeAliasesForItem = async ({ itemId, aliases = [], userId = null }
     }
 };
 
+const plainItem = (item) => (
+    item && typeof item.toJSON === 'function'
+        ? item.toJSON()
+        : item
+);
+
+const buildExistingItemLookup = (existingItems = []) => new Map(
+    existingItems
+        .map((item) => plainItem(item))
+        .map((item) => [normalizeSkuLookupKey(item?.sku_code), item])
+        .filter(([skuKey]) => Boolean(skuKey))
+);
+
+const normalizeImportDataForTaxonomy = (itemData, validationResult) => {
+    const normalizedData = validationResult?.preset && !itemData.mode_item_preset
+        ? { ...itemData, mode_item_preset: validationResult.preset.key }
+        : itemData;
+
+    if (validationResult?.preset?.stock_behavior !== ITEM_STOCK_BEHAVIOR.STOCK_EXEMPT) {
+        return normalizedData;
+    }
+
+    return {
+        ...normalizedData,
+        current_stock: 0,
+        fifo_enabled: false,
+        location_id: null
+    };
+};
+
 /**
  * Validate a single item and check for existing SKU
  */
-const validateItem = async (itemData, rowIndex, existingSkus) => {
+const validateItem = async (itemData, rowIndex, existingSkus, workflowMode, existingItemLookup = new Map()) => {
     const errors = [];
     let action = 'CREATE';
     let existingItemId = null;
+    let existingItem = null;
 
     // Check if SKU already exists
     const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
     if (skuLookupKey && existingSkus.has(skuLookupKey)) {
         action = 'UPDATE';
         existingItemId = existingSkus.get(skuLookupKey);
+        existingItem = existingItemLookup.get(skuLookupKey) || { item_id: existingItemId };
     }
 
     // Choose validator based on action
@@ -428,6 +469,18 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
         errors.push('vat_type is required for finished_goods products');
     }
 
+    let taxonomyValidation = null;
+    try {
+        taxonomyValidation = validateItemAgainstModeTaxonomy({
+            workflowMode,
+            itemData: value || itemData,
+            existingItem,
+            operation: action === 'CREATE' ? 'create' : 'update'
+        });
+    } catch (taxonomyError) {
+        errors.push(taxonomyError.message);
+    }
+
     // Validate allergens
     if (itemData.allergens) {
         const invalidAllergens = itemData.allergens.filter(a => !VALID_ALLERGENS.includes(a));
@@ -440,7 +493,7 @@ const validateItem = async (itemData, rowIndex, existingSkus) => {
         rowIndex,
         action,
         existingItemId,
-        data: value || itemData,
+        data: normalizeImportDataForTaxonomy(value || itemData, taxonomyValidation),
         valid: errors.length === 0,
         errors
     };
@@ -454,12 +507,14 @@ const resolveTenantWorkflowMode = async () => {
     return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
 };
 
-const resolveTenantTemplateWorkflowMode = (workflowMode) => (
-    resolveWorkflowModeFamily(workflowMode) === 'msme' ? 'msme' : 'manufacturing'
-);
+const resolveTenantTemplateWorkflowMode = (workflowMode) => {
+    const templateMode = resolveWorkflowTemplateMode(workflowMode);
+    return CORRECTED_ITEM_TAXONOMY_MODES.includes(templateMode) ? templateMode : 'food_manufacturing';
+};
 
 const normalizeTemplateWorkflowMode = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'manufacturing') return 'food_manufacturing';
     if (VALID_TEMPLATE_WORKFLOW_MODES.includes(normalized)) {
         return normalized;
     }
@@ -489,17 +544,17 @@ const resolveTemplateMetadataFromRecords = (headers = [], records = []) => {
 
     if (hasModeMarker) {
         for (const record of records) {
-            const marker = normalizeTemplateWorkflowMode(record?.template_workflow_mode);
+            const rawMarker = String(record?.template_workflow_mode || '').trim().toLowerCase();
+            const marker = normalizeTemplateWorkflowMode(rawMarker);
             if (!marker) continue;
 
             const schemaVersion = String(record?.template_schema_version || '').trim();
             const issuedAt = String(record?.template_issued_at || '').trim();
             const signature = String(record?.template_signature || '').trim();
-            const expectedSignature = buildTemplateSignature({
-                workflowMode: marker,
-                schemaVersion,
-                issuedAt
-            });
+            const expectedSignatures = new Set([
+                buildTemplateSignature({ workflowMode: marker, schemaVersion, issuedAt }),
+                buildTemplateSignature({ workflowMode: rawMarker, schemaVersion, issuedAt })
+            ]);
 
             if (hasSignatureMarkers) {
                 if (!schemaVersion || !issuedAt || !signature) {
@@ -512,7 +567,7 @@ const resolveTemplateMetadataFromRecords = (headers = [], records = []) => {
                     };
                 }
 
-                if (signature !== expectedSignature) {
+                if (!expectedSignatures.has(signature)) {
                     return {
                         workflowMode: marker,
                         signatureValid: false,
@@ -534,9 +589,9 @@ const resolveTemplateMetadataFromRecords = (headers = [], records = []) => {
     }
 
     // Backwards compatibility fallback:
-    // unmarked templates are treated as manufacturing-oriented.
+    // unmarked templates are treated as food-manufacturing-oriented.
     return {
-        workflowMode: 'manufacturing',
+        workflowMode: 'food_manufacturing',
         signatureValid: true,
         reason: 'legacy_unmarked',
         schemaVersion: '',
@@ -546,17 +601,17 @@ const resolveTemplateMetadataFromRecords = (headers = [], records = []) => {
 
 const inferTemplateMetadataFromRows = (rows = []) => {
     for (const row of rows) {
-        const rowMarker = normalizeTemplateWorkflowMode(row?.template_workflow_mode || row?.data?.template_workflow_mode);
+        const rawRowMarker = String(row?.template_workflow_mode || row?.data?.template_workflow_mode || '').trim().toLowerCase();
+        const rowMarker = normalizeTemplateWorkflowMode(rawRowMarker);
         if (!rowMarker) continue;
 
         const schemaVersion = String(row?.template_schema_version || row?.data?.template_schema_version || '').trim();
         const issuedAt = String(row?.template_issued_at || row?.data?.template_issued_at || '').trim();
         const signature = String(row?.template_signature || row?.data?.template_signature || '').trim();
-        const expectedSignature = buildTemplateSignature({
-            workflowMode: rowMarker,
-            schemaVersion,
-            issuedAt
-        });
+        const expectedSignatures = new Set([
+            buildTemplateSignature({ workflowMode: rowMarker, schemaVersion, issuedAt }),
+            buildTemplateSignature({ workflowMode: rawRowMarker, schemaVersion, issuedAt })
+        ]);
 
         if (schemaVersion || issuedAt || signature) {
             if (!schemaVersion || !issuedAt || !signature) {
@@ -569,7 +624,7 @@ const inferTemplateMetadataFromRows = (rows = []) => {
                 };
             }
 
-            if (signature !== expectedSignature) {
+            if (!expectedSignatures.has(signature)) {
                 return {
                     workflowMode: rowMarker,
                     signatureValid: false,
@@ -590,9 +645,9 @@ const inferTemplateMetadataFromRows = (rows = []) => {
     }
 
     // Backwards compatibility fallback:
-    // unmarked templates are treated as manufacturing-oriented.
+    // unmarked templates are treated as food-manufacturing-oriented.
     return {
-        workflowMode: 'manufacturing',
+        workflowMode: 'food_manufacturing',
         signatureValid: true,
         reason: 'legacy_unmarked',
         schemaVersion: '',
@@ -672,12 +727,14 @@ export const previewImport = async (csvContent) => {
     // Get all existing SKUs for upsert detection
     const Item = dbStore.get('Item');
     const existingItems = await Item.findAll({
-        attributes: ['item_id', 'sku_code'],
+        attributes: ['item_id', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'status'],
         where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
+    const existingItemLookup = buildExistingItemLookup(existingItems);
     const existingSkus = new Map(
         existingItems
-            .map((item) => [normalizeSkuLookupKey(item.sku_code), item.item_id])
+            .map((item) => plainItem(item))
+            .map((item) => [normalizeSkuLookupKey(item?.sku_code), item?.item_id])
             .filter(([skuKey]) => Boolean(skuKey))
     );
     const seenSkuRows = new Map();
@@ -697,7 +754,7 @@ export const previewImport = async (csvContent) => {
         const row = records[i];
         const itemData = transformRow(row);
         const barcodeAliases = rowBarcodeAliases[i] || [];
-        const validation = await validateItem(itemData, i + 1, existingSkus);
+        const validation = await validateItem(itemData, i + 1, existingSkus, tenantWorkflowMode, existingItemLookup);
         const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
         if (skuLookupKey) {
             if (seenSkuRows.has(skuLookupKey)) {
@@ -847,12 +904,14 @@ export const confirmImport = async (rows, userId) => {
     // Get all existing SKUs for re-validation for efficiency
     const Item = dbStore.get('Item');
     const existingItems = await Item.findAll({
-        attributes: ['item_id', 'sku_code'],
+        attributes: ['item_id', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'status'],
         where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
     });
+    const existingItemLookup = buildExistingItemLookup(existingItems);
     const existingSkus = new Map(
         existingItems
-            .map((item) => [normalizeSkuLookupKey(item.sku_code), item.item_id])
+            .map((item) => plainItem(item))
+            .map((item) => [normalizeSkuLookupKey(item?.sku_code), item?.item_id])
             .filter(([skuKey]) => Boolean(skuKey))
     );
     const seenSkuRows = new Map();
@@ -872,7 +931,7 @@ export const confirmImport = async (rows, userId) => {
         const row = rows[rowIndex];
         // Fix 6.1: RE-VALIDATE everything on the backend.
         // Even if client says it is valid, we don't trust it.
-        const validation = await validateItem(row.data, row.rowNumber, existingSkus);
+        const validation = await validateItem(row.data, row.rowNumber, existingSkus, tenantWorkflowMode, existingItemLookup);
         const skuLookupKey = normalizeSkuLookupKey(row.data?.sku_code);
         if (skuLookupKey) {
             if (seenSkuRows.has(skuLookupKey)) {
@@ -1195,6 +1254,7 @@ export const PRODUCTS_HEADERS = [
     'name',
     'category',
     'product_type',
+    'mode_item_preset',
     'vat_type',
     'description',
     'product_folder',
@@ -1279,6 +1339,7 @@ export const MANUFACTURING_TEMPLATE_HEADERS = Object.freeze([
     'name',
     'category',
     'product_type',
+    'mode_item_preset',
     'vat_type',
     'description',
     'product_folder',
@@ -1312,6 +1373,7 @@ export const MSME_TEMPLATE_HEADERS = Object.freeze([
     'name',
     'category',
     'product_type',
+    'mode_item_preset',
     'vat_type',
     'description',
     'max_capacity',
@@ -1417,23 +1479,27 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
         && workflowMode !== null
         && String(workflowMode).trim() !== '';
     if (hasWorkflowModeInput) {
-        return resolveWorkflowModeFamily(workflowMode) === 'msme' ? 'msme' : 'manufacturing';
+        return resolveTenantTemplateWorkflowMode(workflowMode);
     }
 
     // Backwards compatibility:
-    // legacy callers that only pass `type` map to manufacturing templates.
+    // legacy callers that only pass `type` map to food manufacturing templates.
     if (templateType) {
-        return 'manufacturing';
+        return 'food_manufacturing';
     }
 
-    return 'manufacturing';
+    return 'food_manufacturing';
 };
 
-const getTemplateCompatibilityNote = (workflowMode) => (
-    workflowMode === 'msme'
-        ? 'This CSV template is for Simple (MSME) mode family only. It will be rejected for manufacturing-family modes.'
-        : 'This CSV template is for manufacturing-family modes only. It will be rejected for Simple (MSME) mode.'
-);
+const getTemplateCompatibilityNote = (workflowMode) => {
+    const labels = {
+        food_manufacturing: 'Food Manufacturing',
+        msme: 'Simple (MSME)',
+        services: 'Services',
+        fnb: 'Food & Beverage'
+    };
+    return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
+};
 
 const appendTemplateMarkersToRows = (rows, workflowMode) => {
     const note = getTemplateCompatibilityNote(workflowMode);
@@ -1459,20 +1525,44 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
             filename: 'msme_items_import_template.csv',
             headers: [...MSME_TEMPLATE_HEADERS],
             sampleRows: appendTemplateMarkersToRows([
-                ['MSME-PROD-001', 'Chocolate Cookies Pack', 'product', 'finished_goods', 'vatable', 'Retail-ready cookies', '120', '40', '20', '10', 'pack', '65.00', '95.00', 'TRUE', '60', '20', '12', '8', '0.05', 'plastic', 'Retail pouch', '10 pcs', 'wheat,milk', 'MSME-PROD-001-UNIT', 'tenant_generated', 'inventory', 'unit', '1', 'MSME-PROD-001-CASE|supplier|package|case|24'],
-                ['MSME-SUP-001', 'Paper Bag Medium', 'supplies', '', '', 'Takeout packaging bag', '500', '180', '75', '30', 'pcs', '4.50', '8.00', 'FALSE', '', '', '12', '6', '0.01', 'paper', 'Brown kraft', '1 bag', '', 'MSME-SUP-001-CASE', 'supplier', 'package', 'case', '100', '']
+                ['MSME-PROD-001', 'Chocolate Cookies Pack', 'product', 'finished_goods', 'product', 'vatable', 'Retail-ready cookies', '120', '40', '20', '10', 'pack', '65.00', '95.00', 'TRUE', '60', '20', '12', '8', '0.05', 'plastic', 'Retail pouch', '10 pcs', 'wheat,milk', 'MSME-PROD-001-UNIT', 'tenant_generated', 'inventory', 'unit', '1', 'MSME-PROD-001-CASE|supplier|package|case|24'],
+                ['MSME-SUP-001', 'Paper Bag Medium', 'supplies', '', 'supplies', '', 'Takeout packaging bag', '500', '180', '75', '30', 'pcs', '4.50', '8.00', 'FALSE', '', '', '12', '6', '0.01', 'paper', 'Brown kraft', '1 bag', '', 'MSME-SUP-001-CASE', 'supplier', 'package', 'case', '100', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
+    if (resolvedWorkflowMode === 'services') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'services_items_import_template.csv',
+            headers: [...MSME_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['SVC-001', 'Haircut Appointment', 'service', '', 'service', 'vatable', 'Bookable service catalog row', '1', '0', '0', '0', 'service', '0.00', '350.00', 'FALSE', '', '', '', '', '', '', '', '', '', 'SVC-001-TICKET', 'tenant_generated', 'service', 'service', '1', ''],
+                ['SVC-SUP-001', 'Disposable Cape', 'supplies', '', 'supplies', '', 'Service consumable supply', '200', '0', '40', '20', 'pcs', '6.00', '0.00', 'TRUE', '', '', '', '', '', '', '', '', '', 'SVC-SUP-001-CASE', 'supplier', 'package', 'case', '100', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
+    if (resolvedWorkflowMode === 'fnb') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'fnb_items_import_template.csv',
+            headers: [...MANUFACTURING_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['FNB-MENU-001', 'Chicken Adobo Plate', 'product', 'finished_goods', 'menu_item', 'vatable', 'Restaurant menu item with recipe ingredients', 'Mains', '180', '0', '20', '10', 'serving', '95.00', '180.00', 'FALSE', '', '', '1', '95', '5', 'Prepared to order', '', '', '', '', '', '', 'soybeans', 'FNB-MENU-001-POS', 'tenant_generated', 'pos', 'unit', '1', ''],
+                ['FNB-ING-001', 'Chicken Thigh', 'raw_material', '', 'ingredient', '', 'Kitchen ingredient', '', '300', '50', '40', '20', 'kg', '180.00', '0.00', 'TRUE', '5', '2', '', '', '', '', '', '', '', '', '', '', '', 'FNB-ING-001-SACK', 'supplier', 'package', 'case', '25', '']
             ], resolvedWorkflowMode)
         };
     }
 
     return {
         workflowMode: resolvedWorkflowMode,
-        filename: 'manufacturing_items_import_template.csv',
+        filename: 'food_manufacturing_items_import_template.csv',
         headers: [...MANUFACTURING_TEMPLATE_HEADERS],
         sampleRows: appendTemplateMarkersToRows([
-            ['RM-001', 'Flour - All Purpose', 'raw_material', '', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', '70.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', 'wheat', 'RM-001-SACK', 'supplier', 'package', 'case', '25', 'RM-001-UNIT|manufacturer|inventory|unit|1'],
-            ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', '25.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake', '', 'PKG-001-CASE', 'supplier', 'package', 'case', '50', ''],
-            ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'vatable', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', '680.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', 'milk,eggs,wheat', 'FG-001-QR', 'tenant_generated', 'storefront_qr', 'unit', '1', 'FG-001-POS|tenant_generated|pos|unit|1']
+            ['RM-001', 'Flour - All Purpose', 'raw_material', '', 'raw_material', '', 'High quality wheat flour', '', '1000', '500', '100', '50', 'kg', '45.00', '70.00', 'TRUE', '365', '30', '', '', '', '', '', '', '', '', '', '', 'wheat', 'RM-001-SACK', 'supplier', 'package', 'case', '25', 'RM-001-UNIT|manufacturer|inventory|unit|1'],
+            ['PKG-001', 'Cake Box - 8 inch', 'packaging', '', 'packaging', '', 'Standard cake box', '', '500', '250', '50', '25', 'pcs', '15.00', '25.00', 'FALSE', '', '', '', '', '', '', '8', '8', '4', 'Cardboard', 'White with logo', '1 cake', '', 'PKG-001-CASE', 'supplier', 'package', 'case', '50', ''],
+            ['FG-001', 'Chocolate Cake 8inch', 'product', 'finished_goods', 'finished_product', 'vatable', 'Premium chocolate cake', 'Cakes', '50', '10', '10', '5', 'pcs', '450.00', '680.00', 'TRUE', '5', '2', '1', '95', '5', 'Store in cool place', '', '', '', '', '', '', 'milk,eggs,wheat', 'FG-001-QR', 'tenant_generated', 'storefront_qr', 'unit', '1', 'FG-001-POS|tenant_generated|pos|unit|1']
         ], resolvedWorkflowMode)
     };
 };
@@ -1495,6 +1585,7 @@ export const getTemplateHeaders = (type = TEMPLATE_TYPES.MASTER) => {
                 'name',
                 'category',
                 'product_type',
+                'mode_item_preset',
                 'vat_type',
                 'description',
                 'product_folder',

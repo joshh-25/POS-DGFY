@@ -1,6 +1,13 @@
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
-import { getGroupedUomOptions, getUomLabel, normalizeUom, isValidUom } from '../../src/utils/uomConverter';
+import {
+    filterUomOptions,
+    getGroupedUomOptions,
+    getUomLabel,
+    groupUomOptions,
+    normalizeUom,
+    isValidUom
+} from '../../src/utils/uomConverter';
 
 /**
  * UomSelect - A specialized dropdown for selecting Unit of Measure
@@ -23,10 +30,26 @@ export function UomSelect({
     className,
     showGroups = true,
     disabled = false,
+    allowedGroups = [],
+    allowedUnits = [],
     ...props
 }) {
-    const groupedOptions = getGroupedUomOptions();
+    const filteredOptions = filterUomOptions({ allowedGroups, allowedUnits });
     const normalizedValue = normalizeUom(value);
+    const hasFilter = (allowedGroups?.length || 0) > 0 || (allowedUnits?.length || 0) > 0;
+    const hasCurrentOption = filteredOptions.some((option) => option.value === normalizedValue);
+    const options = hasFilter
+        ? [
+            ...filteredOptions,
+            ...(normalizedValue && !hasCurrentOption ? [{
+                value: normalizedValue,
+                label: `Legacy/current value: ${getUomLabel(normalizedValue)}`,
+                group: 'Legacy',
+                groupKey: 'legacy'
+            }] : [])
+        ]
+        : filteredOptions;
+    const groupedOptions = hasFilter ? groupUomOptions(options) : getGroupedUomOptions();
 
     // Get display label for current value
     const displayLabel = value ? getUomLabel(normalizedValue) : null;

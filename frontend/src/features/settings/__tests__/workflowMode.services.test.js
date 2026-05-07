@@ -8,6 +8,12 @@ import {
   modeHasCapability,
   normalizeWorkflowMode
 } from '../workflowMode.js';
+import {
+  PLACEHOLDER_ITEM_TAXONOMY_MODES,
+  resolveItemDefaultsForMode,
+  resolveModeItemTaxonomy
+} from '../modeItemTaxonomy.js';
+import { areCompatible, filterUomOptions, getUomGroup, isValidUom } from '../../../utils/uomConverter.js';
 
 describe('Services and Food Manufacturing workflow modes', () => {
   it('uses Food Manufacturing as the default and legacy manufacturing alias', () => {
@@ -44,5 +50,49 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(isWorkflowPageVisible('DispatchOrders', 'fnb')).toBe(false);
     expect(isWorkflowPathBlocked('/fnb', 'retail')).toBe(true);
     expect(isWorkflowPathBlocked('/job-orders', 'fnb')).toBe(true);
+  });
+
+  it('defines corrected item taxonomy only for governed modes', () => {
+    expect(resolveItemDefaultsForMode('fnb')).toMatchObject({
+      category: 'product',
+      product_type: 'finished_goods',
+      unit_of_measure: 'serving',
+      fifo_enabled: false
+    });
+    expect(resolveItemDefaultsForMode('services')).toMatchObject({
+      category: 'service',
+      unit_of_measure: 'service',
+      fifo_enabled: false
+    });
+    expect(resolveModeItemTaxonomy('food_manufacturing').presets.map((preset) => preset.category)).toContain('raw_material');
+    expect(resolveModeItemTaxonomy('msme').presets.map((preset) => preset.category)).toEqual(['product', 'supplies']);
+    PLACEHOLDER_ITEM_TAXONOMY_MODES.forEach((mode) => {
+      expect(resolveModeItemTaxonomy(mode)).toBeNull();
+    });
+  });
+
+  it('supports presentation and packaging UOMs without auto-converting them', () => {
+    expect(isValidUom('serving')).toBe(true);
+    expect(getUomGroup('serving')).toBe('presentation');
+    expect(isValidUom('bottle')).toBe(true);
+    expect(getUomGroup('bottle')).toBe('packaging');
+    expect(areCompatible('kg', 'g')).toBe(true);
+    expect(areCompatible('serving', 'portion')).toBe(false);
+    expect(areCompatible('bottle', 'case')).toBe(false);
+  });
+
+  it('filters UOM choices to explicit mode-preset units when provided', () => {
+    const menuItemPreset = resolveModeItemTaxonomy('fnb').presets.find((preset) => preset.key === 'menu_item');
+    const servicePreset = resolveModeItemTaxonomy('services').presets.find((preset) => preset.key === 'service');
+
+    expect(filterUomOptions({
+      allowedGroups: menuItemPreset.allowed_uom_groups,
+      allowedUnits: menuItemPreset.allowed_uoms
+    }).map((option) => option.value)).toEqual(['serving', 'portion']);
+
+    expect(filterUomOptions({
+      allowedGroups: servicePreset.allowed_uom_groups,
+      allowedUnits: servicePreset.allowed_uoms
+    }).map((option) => option.value)).toEqual(['service', 'session', 'booking', 'hour']);
   });
 });

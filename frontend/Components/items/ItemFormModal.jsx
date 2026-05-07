@@ -28,6 +28,12 @@ import { useLocations } from '@/src/hooks/useLocations.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
+import {
+  findItemPresetForValues,
+  resolveItemPreset,
+  resolveModeItemTaxonomy
+} from '@/src/features/settings/modeItemTaxonomy.js';
+import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -228,10 +234,35 @@ export default function ItemFormModal({
   });
   const [msmeOriginalCategory, setMsmeOriginalCategory] = useState(null);
   const [msmeCategoryTouched, setMsmeCategoryTouched] = useState(false);
+  const [trackServiceCost, setTrackServiceCost] = useState(false);
   const modeItemDefaults = useMemo(
     () => resolveBusinessModeItemDefaults(workflowMode),
     [workflowMode]
   );
+  const modeItemTaxonomy = useMemo(
+    () => resolveModeItemTaxonomy(workflowMode),
+    [workflowMode]
+  );
+  const currentItemPreset = useMemo(() => {
+    if (!modeItemTaxonomy) return null;
+    if (formData.mode_preset) {
+      const selectedPreset = modeItemTaxonomy.presets.find((presetConfig) => presetConfig.key === formData.mode_preset);
+      if (selectedPreset) return selectedPreset;
+    }
+    return findItemPresetForValues(workflowMode, formData);
+  }, [formData, modeItemTaxonomy, workflowMode]);
+  const isStockExemptItem = currentItemPreset?.stock_behavior === 'stock_exempt' || formData.category === 'service';
+  const financialPolicy = useMemo(() => resolveItemFinancialPolicy({
+    workflowMode,
+    item: {
+      ...formData,
+      mode_item_preset: currentItemPreset?.key || formData.mode_preset || null
+    },
+    preset: currentItemPreset,
+    posVisible: posConfig?.pos_visible === true,
+    storefrontVisible: storefrontConfig?.storefront_visible === true,
+    serviceCostTrackingEnabled: trackServiceCost
+  }), [currentItemPreset, formData, posConfig?.pos_visible, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
   const { locations, loading: loadingLocations } = useLocations();
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
@@ -291,6 +322,14 @@ export default function ItemFormModal({
       const initialCategory = msmeMode
         ? mapCategoryToMsmeSelection(item.category)
         : (item.category || 'raw_material');
+      const initialModePreset = findItemPresetForValues(workflowMode, {
+        category: initialCategory,
+        product_type: initialCategory === MSME_CATEGORY_VALUES.PRODUCT ? 'finished_goods' : (item.product_type || null),
+        unit_of_measure: item.unit_of_measure || modeItemDefaults.unit_of_measure
+      })?.key || '';
+      const persistedModePreset = modeItemTaxonomy?.presets.some((presetConfig) => presetConfig.key === item.mode_item_preset)
+        ? item.mode_item_preset
+        : initialModePreset;
       const locationStocks = Array.isArray(item.item_location_stocks) ? item.item_location_stocks : [];
       const stockByLocation = new Map();
       locationStocks.forEach((stockRow) => {
@@ -312,6 +351,7 @@ export default function ItemFormModal({
       const initialData = {
         sku_code: item.sku_code || '',
         name: item.name || '',
+        mode_preset: persistedModePreset,
         category: initialCategory,
         product_type: initialCategory === MSME_CATEGORY_VALUES.PRODUCT ? 'finished_goods' : (item.product_type || null),
         description: item.description || '',
@@ -387,6 +427,7 @@ export default function ItemFormModal({
       setSkuManuallyEdited(Boolean(String(item.sku_code || '').trim()));
       setLastSuggestedSku('');
       setMarginPercent('');
+      setTrackServiceCost(initialCategory === 'service' && Number(item.cost_per_unit || 0) > 0);
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
         setMsmeCategoryTouched(false);
@@ -398,6 +439,7 @@ export default function ItemFormModal({
       let initialData = {
         sku_code: '',
         name: '',
+        mode_preset: modeItemTaxonomy?.default_preset || '',
         category: modeItemDefaults.category || 'raw_material',
         product_type: modeItemDefaults.product_type ?? null,
         description: '',
@@ -430,6 +472,7 @@ export default function ItemFormModal({
           initialData = {
             ...initialData,
             category: MSME_CATEGORY_VALUES.PRODUCT,
+            mode_preset: 'product',
             product_type: 'finished_goods',
             unit_of_measure: 'pcs',
             vat_type: 'vatable',
@@ -440,6 +483,7 @@ export default function ItemFormModal({
           initialData = {
             ...initialData,
             category: MSME_CATEGORY_VALUES.SUPPLIES,
+            mode_preset: 'supplies',
             product_type: null,
             unit_of_measure: 'pcs',
             max_capacity: 100
@@ -453,10 +497,11 @@ export default function ItemFormModal({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
       setMarginPercent('');
+      setTrackServiceCost(false);
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
     }
-  }, [createPreset, item, modeItemDefaults, msmeMode, open, activeLocations]);
+  }, [createPreset, item, modeItemDefaults, modeItemTaxonomy, msmeMode, open, activeLocations, workflowMode]);
 
   // Track dirty state
   useEffect(() => {
@@ -501,6 +546,26 @@ export default function ItemFormModal({
 
       // Note: min_threshold and purchase_allowance are now calculated by the backend
       // based on system settings (enable_auto_reorder, min_stock_threshold_percent, purchase_allowance_percent)
+
+      if (field === 'mode_preset' && modeItemTaxonomy) {
+        if (value === 'legacy_current') {
+          return prev;
+        }
+        if (msmeMode && item) {
+          setMsmeCategoryTouched(true);
+        }
+        const presetConfig = resolveItemPreset(workflowMode, value);
+        if (presetConfig) {
+          updated.category = presetConfig.category;
+          updated.product_type = presetConfig.product_type;
+          updated.unit_of_measure = presetConfig.default_unit;
+          updated.max_capacity = presetConfig.max_capacity;
+          updated.fifo_enabled = presetConfig.fifo_enabled;
+          if (presetConfig.stock_behavior === 'stock_exempt') {
+            updated.current_stock = 0;
+          }
+        }
+      }
 
       // Ensure product_type is null for non-product categories
       if (field === 'category') {
@@ -675,10 +740,10 @@ export default function ItemFormModal({
   };
 
   const handleSubmit = (isDraft = false) => {
-    // Convert empty strings to 0 for number fields, but validate max_capacity is positive
+    // Convert empty strings to null for financial fields so hidden service cost stays unset.
     const cleanedData = {
       ...formData,
-      cost_per_unit: formData.cost_per_unit === '' ? 0 : (typeof formData.cost_per_unit === 'string' ? parseFloat(formData.cost_per_unit) || 0 : formData.cost_per_unit),
+      cost_per_unit: formData.cost_per_unit === '' ? null : (typeof formData.cost_per_unit === 'string' ? parseFloat(formData.cost_per_unit) : formData.cost_per_unit),
       default_sale_price: formData.default_sale_price === '' ? null : (typeof formData.default_sale_price === 'string' ? parseFloat(formData.default_sale_price) : formData.default_sale_price),
       max_capacity: formData.max_capacity === '' ? 0 : (typeof formData.max_capacity === 'string' ? parseFloat(formData.max_capacity) || 0 : formData.max_capacity),
       current_stock: formData.current_stock === '' ? 0 : (typeof formData.current_stock === 'string' ? parseFloat(formData.current_stock) || 0 : formData.current_stock),
@@ -689,7 +754,7 @@ export default function ItemFormModal({
     };
 
     // Validate max_capacity is positive before submitting (skip validation for drafts)
-    if (!isDraft && (!cleanedData.max_capacity || cleanedData.max_capacity <= 0)) {
+    if (!isDraft && !isStockExemptItem && (!cleanedData.max_capacity || cleanedData.max_capacity <= 0)) {
       toast.error('Max Capacity must be a positive number greater than 0');
       return;
     }
@@ -730,9 +795,10 @@ export default function ItemFormModal({
       name: cleanedData.name || '',
       category: categoryForSave,
       product_type: categoryForSave === 'product' ? 'finished_goods' : null,
+      mode_item_preset: modeItemTaxonomy ? (currentItemPreset?.key || cleanedData.mode_preset || null) : null,
       description: cleanedData.description || '',
-      unit_of_measure: cleanedData.unit_of_measure || 'kg',
-      cost_per_unit: toNumberOrNull(cleanedData.cost_per_unit),
+      unit_of_measure: cleanedData.unit_of_measure || modeItemDefaults.unit_of_measure || '',
+      cost_per_unit: financialPolicy.show_cost ? toNumberOrNull(cleanedData.cost_per_unit) : null,
       default_sale_price: toNumberOrNull(cleanedData.default_sale_price),
       vat_type: cleanedData.vat_type || 'vatable',
       max_capacity: Number(cleanedData.max_capacity) || null, // Allow null for drafts
@@ -779,6 +845,17 @@ export default function ItemFormModal({
         })() : null
       } : {})
     };
+
+    if (!isDraft) {
+      if (financialPolicy.requires_cost && (validFields.cost_per_unit === null || Number(validFields.cost_per_unit) <= 0)) {
+        toast.error('Cost per unit is required for this item mode.');
+        return;
+      }
+      if (financialPolicy.requires_sale_price && (validFields.default_sale_price === null || Number(validFields.default_sale_price) <= 0)) {
+        toast.error('Selling price is required before this item can be sold.');
+        return;
+      }
+    }
 
     if (msmeMode && !isDraft) {
       if (validFields.cost_per_unit === null || Number(validFields.cost_per_unit) <= 0) {
@@ -840,7 +917,7 @@ export default function ItemFormModal({
     handleChange('default_sale_price', suggestedSalePrice);
   };
 
-  const ingredientOptions = dummyItems.filter(i => i.category === 'ingredient');
+  const ingredientOptions = dummyItems.filter(i => i.category === 'raw_material');
 
   return (
     <>
@@ -887,16 +964,31 @@ export default function ItemFormModal({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Category</Label>
+                <Label>{modeItemTaxonomy ? 'Item Type' : 'Category'}</Label>
                 <Select
-                  value={formData.category || (msmeMode ? MSME_CATEGORY_VALUES.SUPPLIES : 'raw_material')}
-                  onValueChange={(v) => handleChange('category', v)}
+                  value={modeItemTaxonomy
+                    ? (currentItemPreset?.key || formData.mode_preset || 'legacy_current')
+                    : (formData.category || (msmeMode ? MSME_CATEGORY_VALUES.SUPPLIES : 'raw_material'))}
+                  onValueChange={(v) => (modeItemTaxonomy ? handleChange('mode_preset', v) : handleChange('category', v))}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {msmeMode ? (
+                    {modeItemTaxonomy ? (
+                      <>
+                        {!currentItemPreset && formData.category && (
+                          <SelectItem value="legacy_current">
+                            Legacy/current value: {formData.category}
+                          </SelectItem>
+                        )}
+                        {modeItemTaxonomy.presets.map((presetConfig) => (
+                          <SelectItem key={presetConfig.key} value={presetConfig.key}>
+                            {presetConfig.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    ) : msmeMode ? (
                       <>
                         <SelectItem value={MSME_CATEGORY_VALUES.PRODUCT}>Products</SelectItem>
                         <SelectItem value={MSME_CATEGORY_VALUES.SUPPLIES}>Supplies</SelectItem>
@@ -910,7 +1002,11 @@ export default function ItemFormModal({
                     )}
                   </SelectContent>
                 </Select>
-                {msmeMode && (
+                {modeItemTaxonomy ? (
+                  <p className="text-xs text-slate-500">
+                    Options follow the corrected {modeItemTaxonomy.label} item taxonomy. Legacy rows stay editable without recategorizing old data.
+                  </p>
+                ) : msmeMode && (
                   <p className="text-xs text-slate-500">
                     MSME mode shows only Products and Supplies. Legacy raw material/packaging records remain preserved.
                   </p>
@@ -919,9 +1015,11 @@ export default function ItemFormModal({
               <div className="space-y-2">
                 <Label>Unit of Measure</Label>
                 <UomSelect
-                  value={formData.unit_of_measure || 'kg'}
+                  value={formData.unit_of_measure || modeItemDefaults.unit_of_measure || ''}
                   onValueChange={(v) => handleChange('unit_of_measure', v)}
                   placeholder="Select unit..."
+                  allowedGroups={currentItemPreset?.allowed_uom_groups || []}
+                  allowedUnits={currentItemPreset?.allowed_uoms || []}
                 />
               </div>
             </div>
@@ -962,53 +1060,77 @@ export default function ItemFormModal({
               />
             </div>
 
+            {financialPolicy.is_pure_service && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Track internal service cost</p>
+                    <p className="text-xs text-slate-500">Leave this off for pure service items such as a haircut.</p>
+                  </div>
+                  <Switch
+                    checked={trackServiceCost}
+                    onCheckedChange={(checked) => {
+                      setTrackServiceCost(Boolean(checked));
+                      if (!checked) handleChange('cost_per_unit', '');
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <div className="space-y-2 lg:col-span-3">
-                <Label htmlFor="cost">Cost per Unit (PHP)</Label>
-                <Input
-                  id="cost"
-                  type="number"
-                  step="0.01"
-                  value={formData.cost_per_unit ?? ''}
-                  onChange={(e) => handleChange('cost_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                />
-                {msmeMode && <p className="text-xs text-slate-500">Required in MSME mode</p>}
-              </div>
-              <div className="space-y-2 lg:col-span-3">
-                <Label htmlFor="sale_price">Selling Price (PHP)</Label>
-                <Input
-                  id="sale_price"
-                  type="number"
-                  step="0.01"
-                  value={formData.default_sale_price ?? ''}
-                  onChange={(e) => handleChange('default_sale_price', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                />
-                {msmeMode && <p className="text-xs text-slate-500">Required in MSME mode</p>}
-              </div>
-              <div className="space-y-2 lg:col-span-3">
-                <Label htmlFor="margin_percent">Margin % (Optional)</Label>
-                <div className="flex gap-2">
+              {financialPolicy.show_cost && (
+                <div className="space-y-2 lg:col-span-3">
+                  <Label htmlFor="cost">Cost per Unit (PHP)</Label>
                   <Input
-                    id="margin_percent"
+                    id="cost"
                     type="number"
                     step="0.01"
-                    value={marginPercent}
-                    onChange={(e) => setMarginPercent(e.target.value)}
-                    placeholder="e.g., 20"
+                    value={formData.cost_per_unit ?? ''}
+                    onChange={(e) => handleChange('cost_per_unit', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={applySuggestedSalePrice}
-                    disabled={!Number.isFinite(suggestedSalePrice)}
-                  >
-                    Apply
-                  </Button>
+                  {(financialPolicy.requires_cost || msmeMode) && <p className="text-xs text-slate-500">Required for this item mode</p>}
                 </div>
-                {Number.isFinite(suggestedSalePrice) && (
-                  <p className="text-xs text-slate-500">Suggested: PHP {suggestedSalePrice.toFixed(2)}</p>
-                )}
-              </div>
+              )}
+              {financialPolicy.show_sale_price && (
+                <div className="space-y-2 lg:col-span-3">
+                  <Label htmlFor="sale_price">Selling Price (PHP)</Label>
+                  <Input
+                    id="sale_price"
+                    type="number"
+                    step="0.01"
+                    value={formData.default_sale_price ?? ''}
+                    onChange={(e) => handleChange('default_sale_price', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                  />
+                  {(financialPolicy.requires_sale_price || msmeMode) && <p className="text-xs text-slate-500">Required before selling</p>}
+                </div>
+              )}
+              {financialPolicy.show_cost && financialPolicy.show_sale_price && (
+                <div className="space-y-2 lg:col-span-3">
+                  <Label htmlFor="margin_percent">Margin % (Optional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="margin_percent"
+                      type="number"
+                      step="0.01"
+                      value={marginPercent}
+                      onChange={(e) => setMarginPercent(e.target.value)}
+                      placeholder="e.g., 20"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={applySuggestedSalePrice}
+                      disabled={!Number.isFinite(suggestedSalePrice)}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  {Number.isFinite(suggestedSalePrice) && (
+                    <p className="text-xs text-slate-500">Suggested: PHP {suggestedSalePrice.toFixed(2)}</p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2 lg:col-span-3">
                 <Label>VAT Type</Label>
                 <Select
@@ -1052,9 +1174,10 @@ export default function ItemFormModal({
                     type="number"
                     min={0}
                     step={1}
-                    value={formData.current_stock ?? ''}
+                    value={isStockExemptItem ? 0 : (formData.current_stock ?? '')}
                     onChange={(e) => handleChange('current_stock', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="pr-20"
+                    disabled={isStockExemptItem}
                   />
                   {formData.unit_of_measure && (
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium uppercase text-slate-400">
@@ -1062,6 +1185,7 @@ export default function ItemFormModal({
                     </span>
                   )}
                 </div>
+                {!isStockExemptItem ? (
                 <div className="space-y-2 pt-2">
                   <Label>Stock Location</Label>
                   <Select
@@ -1084,6 +1208,9 @@ export default function ItemFormModal({
                     <p className="text-xs text-red-600">Required when setting stock in a multi-location tenant.</p>
                   )}
                 </div>
+                ) : (
+                  <p className="text-xs text-slate-500">This item type is stock-exempt and does not create inventory batches.</p>
+                )}
               </div>
             </div>
 
@@ -1342,7 +1469,7 @@ export default function ItemFormModal({
             )}
 
             {/* FIFO Tracking Option - Available for all physically trackable items */}
-            {(formData.category === 'raw_material' || formData.category === 'product' || formData.category === 'packaging' || formData.category === 'supplies') && (
+            {!isStockExemptItem && (formData.category === 'raw_material' || formData.category === 'product' || formData.category === 'packaging' || formData.category === 'supplies') && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1">

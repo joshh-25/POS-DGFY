@@ -2,12 +2,23 @@ import { jest } from '@jest/globals';
 import crypto from 'crypto';
 
 const mockItemModel = {
-  findAll: jest.fn()
+  findAll: jest.fn(),
+  bulkCreate: jest.fn()
+};
+
+const mockTransaction = {
+  commit: jest.fn(),
+  rollback: jest.fn()
+};
+
+const mockSequelize = {
+  transaction: jest.fn()
 };
 
 const mockDbStore = {
   get: jest.fn((name) => {
     if (name === 'Item') return mockItemModel;
+    if (name === 'sequelize') return mockSequelize;
     throw new Error(`Unexpected model lookup: ${name}`);
   })
 };
@@ -37,6 +48,13 @@ describe('csvImportService workflow-mode template enforcement', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockItemModel.findAll.mockResolvedValue([]);
+    mockItemModel.bulkCreate.mockImplementation(async (items) => (
+      items.map((item, index) => ({
+        item_id: index + 1,
+        ...item
+      }))
+    ));
+    mockSequelize.transaction.mockResolvedValue(mockTransaction);
   });
 
   const makeSettingsResult = (workflowMode) => ({
@@ -67,7 +85,7 @@ describe('csvImportService workflow-mode template enforcement', () => {
     const result = await previewImport(csvWithMode('manufacturing'));
 
     expect(result.success).toBe(true);
-    expect(result.templateWorkflowMode).toBe('manufacturing');
+    expect(result.templateWorkflowMode).toBe('food_manufacturing');
     expect(result.tenantWorkflowMode).toBe('food_manufacturing');
   });
 
@@ -81,16 +99,16 @@ describe('csvImportService workflow-mode template enforcement', () => {
     expect(result.tenantWorkflowMode).toBe('msme');
   });
 
-  it('blocks manufacturing template when tenant mode is msme', async () => {
+  it('blocks food manufacturing template when tenant mode is msme', async () => {
     mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
 
-    const result = await previewImport(csvWithMode('manufacturing'));
+    const result = await previewImport(csvWithMode('food_manufacturing'));
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/not compatible with tenant workflow mode/i);
     expect(result.details).toMatchObject({
       code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
-      template_workflow_mode: 'manufacturing',
+      template_workflow_mode: 'food_manufacturing',
       tenant_workflow_mode: 'msme'
     });
   });
@@ -123,6 +141,84 @@ describe('csvImportService workflow-mode template enforcement', () => {
       'template_issued_at',
       'template_signature'
     ]));
+  });
+
+  it('builds Services and F&B mode-aware templates', () => {
+    const servicesTemplate = getTemplateDefinition({ workflowMode: 'services' });
+    const fnbTemplate = getTemplateDefinition({ workflowMode: 'fnb' });
+
+    expect(servicesTemplate.workflowMode).toBe('services');
+    expect(servicesTemplate.filename).toBe('services_items_import_template.csv');
+    expect(servicesTemplate.headers).toContain('mode_item_preset');
+    expect(servicesTemplate.sampleRows[0]).toContain('service');
+    expect(fnbTemplate.workflowMode).toBe('fnb');
+    expect(fnbTemplate.filename).toBe('fnb_items_import_template.csv');
+    expect(fnbTemplate.headers).toContain('mode_item_preset');
+    expect(fnbTemplate.sampleRows[0]).toContain('menu_item');
+    expect(fnbTemplate.sampleRows[0]).toContain('serving');
+  });
+
+  it('blocks Services template when tenant mode is F&B', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+    const result = await previewImport(csvWithMode('services'));
+
+    expect(result.success).toBe(false);
+    expect(result.details).toMatchObject({
+      code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH',
+      template_workflow_mode: 'services',
+      tenant_workflow_mode: 'fnb'
+    });
+  });
+
+  it('rejects Services CSV rows that do not match the mode taxonomy', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('services'));
+    const csv = [
+      'sku_code,name,category,max_capacity,current_stock,unit_of_measure,template_workflow_mode,mode_compatibility_note',
+      'SVC-001,Massage,service,1,5,kg,services,"mode note"'
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(true);
+    expect(result.rows[0].valid).toBe(false);
+    expect(result.rows[0].errors.join(' ')).toMatch(/does not support unit_of_measure/i);
+  });
+
+  it('normalizes stock-exempt service rows before confirm bulk import', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('services'));
+
+    const result = await confirmImport([
+      {
+        rowNumber: 1,
+        sku_code: 'SVC-001',
+        data: {
+          sku_code: 'SVC-001',
+          name: 'Massage',
+          category: 'service',
+          vat_type: 'vatable',
+          max_capacity: 1,
+          current_stock: 5,
+          unit_of_measure: 'service',
+          template_workflow_mode: 'services'
+        }
+      }
+    ], 'test-user');
+
+    expect(result.success).toBe(true);
+    expect(result.results.failed).toEqual([]);
+    expect(mockItemModel.bulkCreate).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        category: 'service',
+        mode_item_preset: 'service',
+        current_stock: 0,
+        fifo_enabled: false,
+        location_id: null
+      })],
+      expect.objectContaining({
+        validate: true
+      })
+    );
   });
 
   it('blocks preview when signed markers are present but signature is invalid', async () => {
@@ -158,6 +254,22 @@ describe('csvImportService workflow-mode template enforcement', () => {
 
     expect(result.success).toBe(true);
     expect(result.templateWorkflowMode).toBe('msme');
+  });
+
+  it('accepts legacy signed manufacturing markers after normalizing to food manufacturing', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('manufacturing'));
+    const schemaVersion = 'v1';
+    const issuedAt = '2026-04-14T00:00:00.000Z';
+    const signature = buildSignature({ workflowMode: 'manufacturing', schemaVersion, issuedAt });
+    const csv = [
+      'sku_code,name,category,max_capacity,unit_of_measure,template_workflow_mode,mode_compatibility_note,template_schema_version,template_issued_at,template_signature',
+      `SKU-001,Flour,raw_material,100,kg,manufacturing,"mode note",${schemaVersion},${issuedAt},${signature}`
+    ].join('\n');
+
+    const result = await previewImport(csv);
+
+    expect(result.success).toBe(true);
+    expect(result.templateWorkflowMode).toBe('food_manufacturing');
   });
 
   it('normalizes SKU matching during preview so case/whitespace variants resolve to UPDATE', async () => {
