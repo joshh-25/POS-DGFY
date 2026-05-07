@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
-const allowedHosts = ['surebizcorp.com', 'store.surebizcorp.com', 'localhost', '127.0.0.1'];
+const allowedHosts = ['surebizcorp.com', 'store.surebizcorp.com', 'store.dgfy.ph', 'dgfy.ph', 'localhost', '127.0.0.1'];
 const normalizedBasePath = (() => {
   const trimmed = String(configuredBasePath).trim() || '/';
   if (trimmed === '/') return '/';
@@ -53,18 +53,6 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/store'),
-    emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined;
-          if (id.includes('maplibre-gl')) return 'vendor-map';
-          if (id.includes('qrcode')) return 'vendor-qr';
-          if (id.includes('sonner')) return 'vendor-feedback';
-          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
-          return 'vendor';
-        }
-      }
-    }
+    emptyOutDir: true
   }
 });
