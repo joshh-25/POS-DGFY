@@ -213,7 +213,7 @@ REFRESH_TOKEN_SECRET=CHANGE_THIS_TO_A_DIFFERENT_STRONG_SECRET_AT_LEAST_32_CHARAC
 REFRESH_TOKEN_EXPIRY=7d
 
 # CORS Configuration
-CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com
+CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379

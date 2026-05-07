@@ -316,7 +316,7 @@ jobs:
           DB_NAME=sku_inventory_manager
           JWT_SECRET=ci_shared_jwt_secret_value_12345678901234567890
           REFRESH_TOKEN_SECRET=ci_shared_refresh_secret_value_12345678901234
-          CORS_ORIGIN=https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph
+          CORS_ORIGIN=https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
           AUTH_BLACKLIST_FAILURE_MODE=fail_open
           TEMP_FILE_STORAGE=local
           DB_AUTO_SYNC=false

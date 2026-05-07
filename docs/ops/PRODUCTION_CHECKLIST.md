@@ -139,6 +139,14 @@ bash scripts/deploy-remote.sh
   - [ ] `https://pos.surebizcorp.com`
   - [ ] `https://surebizcorp.com`
   - [ ] `https://surebizcorp.com/tenant-store`
+  - [ ] `https://skupervisor.dgfy.ph`
+  - [ ] `https://pos.dgfy.ph`
+  - [ ] `https://dgfy.ph`
+  - [ ] `https://store.dgfy.ph`
+- [ ] Backend CORS allows each public DGFY origin:
+  ```bash
+  curl -sS -D - -o /dev/null https://skupervisor.dgfy.ph/api/v1/health -H "Origin: https://store.dgfy.ph"
+  ```
 - [ ] Public upload assets proxy correctly on all surfaces:
   - [ ] `https://skupervisor.surebizcorp.com/uploads/...` returns `200 image/*`
   - [ ] `https://pos.surebizcorp.com/uploads/...` returns `200 image/*`

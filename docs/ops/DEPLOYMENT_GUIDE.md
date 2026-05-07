@@ -39,6 +39,15 @@ No-staging release policy reference:
   - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
   - `REDIS_URL` when `HOSTING_PROFILE=vps`
   - Payment-provider config only when `PAYMENTS_ENABLED=true`
+- Current production `CORS_ORIGIN` must include every public IMS/POS/storefront domain that calls backend APIs directly:
+  - `https://skupervisor.surebizcorp.com`
+  - `https://surebizcorp.com`
+  - `https://pos.surebizcorp.com`
+  - `https://store.surebizcorp.com`
+  - `https://skupervisor.dgfy.ph`
+  - `https://pos.dgfy.ph`
+  - `https://dgfy.ph`
+  - `https://store.dgfy.ph`
 - Optional deploy override:
   - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
     - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
@@ -188,6 +197,10 @@ What `deploy.sh` does:
   - `https://pos.surebizcorp.com`
   - `https://surebizcorp.com`
   - `https://surebizcorp.com/tenant-store`
+  - `https://skupervisor.dgfy.ph`
+  - `https://pos.dgfy.ph`
+  - `https://dgfy.ph`
+  - `https://store.dgfy.ph`
 15. Verifies served frontend entry asset parity against freshly built artifacts for IMS, POS, and Tenant Store
 
 Deployment evidence files:
@@ -376,6 +389,7 @@ After manual PM2 changes, verify:
 ```bash
 pm2 list
 pm2 describe sku-backend
+pm2 env sku-backend | grep '^CORS_ORIGIN'
 curl -fsS http://127.0.0.1:5000/health
 curl -fsS http://127.0.0.1:5173
 curl -fsS http://127.0.0.1:5174
