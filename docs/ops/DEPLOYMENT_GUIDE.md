@@ -394,7 +394,10 @@ curl -fsS http://127.0.0.1:5000/health
 curl -fsS http://127.0.0.1:5173
 curl -fsS http://127.0.0.1:5174
 curl -fsS http://127.0.0.1:5175
+curl -fsS -H "Host: dgfy.ph" http://127.0.0.1:5175/ >/dev/null
 ```
+
+If the browser shows `Blocked request. This host ("dgfy.ph") is not allowed. To allow this host, add "dgfy.ph" to preview.allowedHosts in vite.config.js`, Nginx is already reaching Vite but the Storefront preview process is running stale or incomplete config. Verify the deployed checkout is current, confirm `frontend/apps/store/vite.config.js` includes `dgfy.ph` and `store.dgfy.ph` in `allowedHosts`, then restart `sku-store-frontend` with `pm2 restart sku-store-frontend --update-env` and `pm2 save`.
 
 ## Hosting Profile Verification
 After every deploy or rollback:
