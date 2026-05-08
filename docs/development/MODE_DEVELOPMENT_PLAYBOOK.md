@@ -173,6 +173,7 @@ Before changing any placeholder mode item UI, complete this checklist:
 6. Add backend validation for new non-draft rows and draft finalization.
 7. Add frontend item-form preset/UOM/financial-display tests and backend taxonomy/readiness/reporting parity tests.
 8. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
+9. Keep CSV export and import on the same mode contract. Corrected-mode item exports must reuse the import template definition, include template marker columns, preserve persisted preset keys such as `mode_item_preset`, include customer sale price fields such as `default_sale_price`, and pass a preview-import round trip for the tenant workflow mode. Legacy category-split exports are compatibility behavior only when old callers explicitly request `type=items`, `type=products`, or `type=master`.
 
 Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
 

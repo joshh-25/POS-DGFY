@@ -785,6 +785,32 @@ Manage tenant-local barcode identities and label payloads. `sku_code` remains th
 - Label rendering and scan resolution identify context only; stock movement, POS eligibility, Storefront visibility, location grants, and compliance rules still run in their own use cases.
 - Label payloads include normalized label type, human-readable type, browser-print layout metadata, and a `barcode.label_print_intent` audit entry.
 
+### Item CSV Import/Export Endpoints
+The item CSV endpoints share the same workflow-mode template contract for corrected item-taxonomy modes.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/items/export` | Export filtered items as CSV |
+| `POST` | `/items/export` | Export selected `itemIds` as CSV |
+| `GET` | `/items/export/all` | Export all items as CSV |
+| `GET` | `/items/export/preview` | Return export count and template metadata without downloading |
+
+**Export query/body parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `workflow_mode` | string | Optional. When omitted, export resolves the tenant's active `ops_workflow_mode`. Legacy `manufacturing` normalizes to `food_manufacturing`. |
+| `type` | string | Optional legacy compatibility value: `items`, `products`, or `master`. Explicit legacy values preserve the old category-split export behavior. |
+| `category`, `search`, `fifo`, `folder` | string | Optional filters for filtered export and preview. |
+
+**Current CSV contract**
+- Corrected-mode exports for `food_manufacturing`, `msme`, `services`, and `fnb` reuse the same template definitions as item import.
+- Export headers include the mode template marker columns (`template_workflow_mode`, `mode_compatibility_note`, `template_schema_version`, `template_issued_at`, `template_signature`) and are emitted in the same order as import templates.
+- Rows include `mode_item_preset` and `default_sale_price` whenever the mode template includes those columns.
+- Services exports include `category=service` rows. Pure service rows export `current_stock=0` and `fifo_enabled=FALSE` to preserve the stock-exempt import contract.
+- F&B exports preserve restaurant preset keys such as `menu_item`, `ingredient`, `packaged_beverage`, and `packaging_supply`.
+- Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
+
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
 

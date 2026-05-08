@@ -69,6 +69,7 @@ Item and UOM defaults are now governed by a corrected-mode taxonomy instead of a
 - Corrected-mode rows may persist `items.mode_item_preset` as the mode-native preset key. This is additive and nullable: new corrected-mode creates should persist it, while existing rows without the field remain readable through category/product/UOM inference.
 - New non-draft item creation and draft finalization are strict for corrected modes. Existing legacy rows remain editable unless the operator changes category, product type, UOM, or publishes the row into an invalid corrected-mode combination.
 - CSV templates are mode-aware for corrected modes and signed/marked templates must match the tenant workflow mode. Legacy manufacturing markers normalize to `food_manufacturing`. Preview and confirm paths must validate each row against the same corrected-mode taxonomy used by item create/update/finalize, including optimized bulk-import rows.
+- Item CSV export now uses the same mode-aware import template definitions for corrected modes. Unless an old caller explicitly requests legacy `type=items`, `type=products`, or `type=master`, exports for `food_manufacturing`, `msme`, `services`, and `fnb` must emit the matching import-template headers, marker columns, `mode_item_preset`, `default_sale_price`, and row values in header order so the file can be imported back without column drift.
 
 ## Future Mode Financial Readiness Addendum (2026-05-07)
 

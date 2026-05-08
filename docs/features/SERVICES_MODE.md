@@ -23,6 +23,12 @@ Service-only rows are sellable/bookable through Services POS and Storefront meta
 
 New Services rows persist `items.mode_item_preset` with the selected preset key. This keeps service rows distinct from physical add-ons and supplies across edits, CSV imports, POS eligibility, and Storefront catalog behavior.
 
+## CSV Import And Export
+
+Services item CSV import and export share the same mode-aware template contract. The Services template includes `template_workflow_mode=services`, template schema/signature marker columns, `mode_item_preset`, and `default_sale_price`. Exports resolve the tenant's active `ops_workflow_mode` when `workflow_mode` is omitted, and exported Services CSVs are expected to preview-import back into a Services tenant without header drift.
+
+Service-only rows must be exported instead of being dropped from item exports. Stock-exempt service rows export normalized inventory fields that match import expectations: `current_stock=0` and `fifo_enabled=FALSE`. Physical add-ons/products and supplies remain stock-bearing rows and keep their normal stock/FIFO values.
+
 ## Price And Cost Behavior
 
 - Service rows show Selling Price (`default_sale_price`) by default on create, edit, and view because Services POS/Storefront use it as the customer price.

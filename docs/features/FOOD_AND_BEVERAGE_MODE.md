@@ -68,6 +68,12 @@ New F&B rows persist `items.mode_item_preset` with the selected preset key. This
 
 F&B accepts valid presentation and packaging UOMs such as `serving`, `portion`, `bottle`, `can`, `pack`, and `case`, but automatic conversion remains limited to weight, volume, and count units. Legacy rows outside the F&B presets remain editable until the operator changes category, product type, mode preset, UOM, or finalizes a draft.
 
+## CSV Import And Export
+
+F&B item CSV import and export share the same restaurant-mode template contract. The F&B template includes `template_workflow_mode=fnb`, template schema/signature marker columns, `mode_item_preset`, and `default_sale_price`. Exports resolve the tenant's active `ops_workflow_mode` when `workflow_mode` is omitted, and exported F&B CSVs are expected to preview-import back into an F&B tenant without header drift.
+
+Exports must preserve the persisted preset key for each restaurant item. In particular, `menu_item`, `ingredient`, `packaged_beverage`, and `packaging_supply` must stay in the `mode_item_preset` column so product rows that share `category=product` and `product_type=finished_goods` do not collapse into the wrong subtype on import.
+
 ## Price And Cost Behavior
 
 - Menu Item and Packaged Beverage / Retail Item rows show both Cost and Selling Price in IMS create, edit, wizard summary, item cards, and detail views.

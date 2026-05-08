@@ -1,6 +1,6 @@
-> **Version:** 2.1.1
-> **Last Updated:** March 7, 2026
-> **Tool Count:** 64
+> **Version:** 2.1.2
+> **Last Updated:** May 8, 2026
+> **Tool Count:** 66
 
 This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
 
@@ -112,6 +112,8 @@ The assistant can search project documentation (`search_documentation`) to answe
 | **Export JOs** | Export job orders to CSV | `export_to_csv` |
 | **Export Movements** | Export stock movements to CSV | `export_to_csv` |
 | **Export DOs** | Export dispatch orders + line items to CSV | `export_dispatch_orders` |
+
+Item CSV exports use the same mode-aware template contract as item CSV imports for Food Manufacturing, MSME, Services, and Food & Beverage. The `export_to_csv` tool resolves the tenant's active workflow mode when `options.workflow_mode` is omitted, normalizes legacy `manufacturing` to `food_manufacturing`, and can return either a chat preview or a download using the mode template. Legacy `options.template_type=items|products|master` keeps the old category-split export behavior for compatibility.
 
 ---
 
@@ -622,6 +624,12 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
 - **Null rejection on `update_dispatch_line_sale_price`**: Tool schema used `type: "number"` which rejects null (internal transfers) — fixed to `type: ["number", "null"]`
 - **Archived filter ignored**: `query_dispatch_orders` handler destructured args but excluded `archived` — fixed
 - **Unused import removed**: `RefreshCw` was imported but unused in `ConfirmActionDialog.jsx` — removed
+
+### v2.1.2 (May 8, 2026) - Mode-Aware Item CSV Export
+
+- **CSV Export Contract**: `export_to_csv` item exports now use the same workflow-mode CSV templates as item import for Food Manufacturing, MSME, Services, and Food & Beverage.
+- **Round-Trip Safety**: Item exports preserve template marker columns, `mode_item_preset`, `default_sale_price`, Services stock-exempt fields, and F&B preset keys so exported files can be preview-imported back into the same tenant mode without column drift.
+- **AI Path Parity**: AI item CSV exports now route through the shared CSV export service instead of manually assembling item columns. Non-item CSV exports keep their existing behavior.
 
 ### v2.1.1 (March 7, 2026) - Confirmation Dialog `toolName` Fix
 

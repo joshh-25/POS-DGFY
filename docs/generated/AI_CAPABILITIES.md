@@ -2,8 +2,8 @@
 
 > **Auto-generated** - Do not edit manually
 >
-> Generated: 2026-02-13T07:27:05.853Z
-> Tool Count: 52
+> Generated: 2026-05-08T09:42:15.036Z
+> Tool Count: 66
 
 This document is automatically generated from `backend/src/config/aiTools.js`.
 For the full AI Assistant documentation, see [AI_GUIDELINES.md](../AI_GUIDELINES.md).
@@ -14,20 +14,20 @@ For the full AI Assistant documentation, see [AI_GUIDELINES.md](../AI_GUIDELINES
 
 | Metric | Count |
 |--------|-------|
-| Total Tools | 52 |
-| Read Operations | 25 |
-| Write Operations | 27 |
+| Total Tools | 66 |
+| Read Operations | 32 |
+| Write Operations | 34 |
 
 ### By Category
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| `analysis` | 6 | Analyze data, no confirmation needed |
+| `analysis` | 7 | Analyze data, no confirmation needed |
 | `file_management` | 3 | Miscellaneous tools |
-| `import_export` | 2 | Import/Export data, imports require confirmation |
+| `import_export` | 3 | Import/Export data, imports require confirmation |
 | `inventory_grouping` | 7 | Miscellaneous tools |
-| `read` | 15 | Query data, no confirmation needed |
-| `write` | 19 | Modify data, requires confirmation |
+| `read` | 20 | Query data, no confirmation needed |
+| `write` | 26 | Modify data, requires confirmation |
 
 ---
 
@@ -40,15 +40,21 @@ These tools query data and do not require confirmation.
 | `analyze_production_feasibility` | Analyze what products can be made with current ingredient stock. Handles nest... | Any |
 | `analyze_reorder_needs` | Analyze stock consumption velocity (burn rate) and supplier lead times to rec... | Any |
 | `detect_anomalies` | Analyze stock history for suspicious activities (e.g., potential theft, large... | Any |
+| `export_dispatch_orders` | Export dispatch orders and their line items to a CSV file. Each row represent... | Any |
 | `export_to_csv` | Export data as CSV. Can display in chat or generate a download link. Always a... | Any |
 | `export_users_csv` | Export the user list to CSV format. Includes: username, email, role, active s... | admin |
 | `generate_executive_summary` | Generate a high-level executive summary of the inventory status, including fi... | manager |
 | `get_advanced_analytics` | Get deep insights into Supplier Performance (on-time rate, quality) or Invent... | Any |
 | `get_available_permissions` | Get a list of all available permissions in the system, organized by category.... | admin |
+| `get_company_join_link` | Returns the shareable registration link for this company. Share this link wit... | admin |
 | `get_dashboard_stats` | Get overall inventory statistics including total items, low stock count, heal... | Any |
+| `get_dispatch_earnings` | Get a detailed earnings report for dispatch orders: revenue, COGS, and gross ... | Any |
+| `get_dispatch_order_details` | Get full details of a specific dispatch order including all line items, quant... | Any |
+| `get_dispatch_stats` | Get a summary count of dispatch orders by status (draft, confirmed, partial, ... | Any |
 | `get_expiry_alerts` | Get alerts for items with batches expiring soon. | Any |
 | `get_forecast` | Get stock level forecast for items based on consumption patterns. | Any |
 | `get_inventory_folders` | List logical inventory folders (groups) used to organize SKU items. Returns f... | Any |
+| `get_inventory_value_breakdown` | Get inventory value breakdown showing items that have both stock > 0 AND cost... | Any |
 | `get_item_details` | Get detailed information about a specific item including FIFO batches, stock ... | Any |
 | `get_items` | Search and list inventory items with filtering options. Can filter by categor... | Any |
 | `get_items_in_inventory_folder` | List all inventory items assigned to a specific logical folder. | Any |
@@ -61,6 +67,7 @@ These tools query data and do not require confirmation.
 | `get_system_settings` | Get all system configuration settings (thresholds, alerts, preferences). Requ... | admin |
 | `get_users` | List all system users. Requires admin role. | admin |
 | `list_files` | List files and folders in the physical 'uploads/' directory on the server. Us... | Any |
+| `query_dispatch_orders` | Query and list dispatch orders with optional filters. Use this to check dispa... | Any |
 | `search_documentation` | Search project documentation to answer questions about how the system works, ... | Any |
 
 ---
@@ -72,9 +79,13 @@ These tools modify data and **require user confirmation** before execution.
 | Tool Name | Description | Required Role |
 |-----------|-------------|---------------|
 | `add_supplier_item` | Link an item to a supplier with price and MOQ. Essential for PO creation. | manager |
+| `archive_dispatch_order` | Archive a completed or cancelled dispatch order to hide it from active views.... | manager |
 | `bulk_create_inventory_folders` | Create multiple logical inventory folders in a single operation. Use this whe... | manager |
 | `bulk_delete_inventory_folders` | Delete multiple logical inventory folders in a single operation. Use this whe... | manager |
+| `cancel_dispatch_order` | Cancel a dispatch order. Only allowed for draft, confirmed, or partial orders... | manager |
 | `complete_job_order` | Complete a job order. Consumes ingredients via FIFO, creates finished goods b... | manager |
+| `confirm_dispatch_order` | Confirm a draft dispatch order, locking in the recipient and line items. Move... | manager |
+| `create_dispatch_order` | Create a new dispatch order (draft) for finished goods. Specify the recipient... | manager |
 | `create_folder` | Create a new physical folder in the server's 'uploads/' directory. Use this f... | manager |
 | `create_inventory_folder` | Create a new logical folder to group inventory items together (e.g., 'Packagi... | manager |
 | `create_item` | Create a new inventory item. Requires manager or admin role. Auto-calculates ... | manager |
@@ -86,6 +97,7 @@ These tools modify data and **require user confirmation** before execution.
 | `delete_inventory_folder` | Delete a logical inventory folder. Items inside the folder will be automatica... | manager |
 | `delete_item` | Soft-delete an inventory item. Sets status to 'inactive'. Requires admin role... | admin |
 | `delete_supplier` | Soft-delete a supplier. Requires admin role. Will fail if supplier has active... | admin |
+| `dispatch_items` | Execute a dispatch — deduct stock for one or more lines on a confirmed or par... | manager |
 | `import_csv_data` | Parse and validate CSV data for import. Supports items and suppliers. When th... | manager |
 | `import_users_csv` | Bulk import users from CSV. Creates invitations and sends emails for each val... | admin |
 | `move_file` | Move or rename a physical file/folder within the 'uploads/' directory. | manager |
@@ -93,6 +105,8 @@ These tools modify data and **require user confirmation** before execution.
 | `receive_purchase_order` | Mark a purchase order as received. Creates FIFO batches and updates stock. Re... | manager |
 | `remove_user_from_company` | Permanently remove a user from the company (soft delete). The user will no lo... | manager |
 | `toggle_user_status` | Activate or deactivate a user account. Requires admin role. Cannot deactivate... | admin |
+| `update_dispatch_line_sale_price` | Retroactively update the sale price on an already-dispatched line item. Canno... | manager |
+| `update_dispatch_order` | Edit a dispatch order that is still in draft status. Providing a lines array ... | manager |
 | `update_item` | Update an existing inventory item. Requires manager or admin role. | manager |
 | `update_supplier` | Update supplier details. Requires manager or admin role. | manager |
 | `update_system_settings` | Update system configuration. Requires admin role. Can update multiple setting... | admin |
@@ -129,11 +143,46 @@ Get a list of all available permissions in the system, organized by category. Us
 
 ---
 
-#### `get_dashboard_stats`
+#### `get_company_join_link`
 
-Get overall inventory statistics including total items, low stock count, healthy stock count, overstock count, pending POs, active JOs, and total inventory value.
+Returns the shareable registration link for this company. Share this link with new team members so they can register directly — the company token is pre-filled automatically. Use this when the user asks for a shareable link, invite link, or registration link.
+
+> 🔐 **Required role:** admin
 
 **Parameters:** None
+
+---
+
+#### `get_dashboard_stats`
+
+Get overall inventory statistics including total items, low stock count, healthy stock count, overstock count, pending POs, active JOs, total inventory value, and data quality metrics (how many items are missing cost data). Use this for quick summary stats.
+
+**Parameters:** None
+
+---
+
+#### `get_dispatch_order_details`
+
+Get full details of a specific dispatch order including all line items, quantities, FIFO batch info, and related stock movements.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID |
+
+---
+
+#### `get_dispatch_stats`
+
+Get a summary count of dispatch orders by status (draft, confirmed, partial, completed, cancelled, pending). Use this to give the user an overview of their dispatch pipeline. Optionally filter by date range.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `startDate` | string | No | Count DOs with dispatch_date on or after this date (YYYY-... |
+| `endDate` | string | No | Count DOs with dispatch_date on or before this date (YYYY... |
 
 ---
 
@@ -147,6 +196,20 @@ Get alerts for items with batches expiring soon.
 |-----------|------|----------|-------------|
 | `critical_days` | integer | No | Days threshold for critical alerts (default: 7) |
 | `warning_days` | integer | No | Days threshold for warning alerts (default: 30) |
+
+---
+
+#### `get_inventory_value_breakdown`
+
+Get inventory value breakdown showing items that have both stock > 0 AND cost_per_unit > 0. Returns per-item value (stock × cost), an accurate grand total across ALL qualifying items, and pagination info. USE THIS when user asks about total inventory value, value per item, value breakdowns, or 'highest value items'. NEVER use get_items for value calculations — it is paginated differently and will produce incorrect totals. When user says 'next 100' or 'show more', call again with the next page number.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | integer | No | Number of items per page (default: 100, max: 200) |
+| `page` | integer | No | Page number (default: 1). Use page 2, 3, etc. when user a... |
+| `sort` | string | No | Sort order: 'value_desc' (highest value first, default), ... |
 
 ---
 
@@ -284,6 +347,23 @@ List all system users. Requires admin role.
 
 ---
 
+#### `query_dispatch_orders`
+
+Query and list dispatch orders with optional filters. Use this to check dispatch status, find orders for a recipient, or review pending dispatches.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | No | Filter by dispatch order status |
+| `recipient_name` | string | No | Filter by recipient name (partial match) |
+| `startDate` | string | No | Filter from this dispatch date (YYYY-MM-DD) |
+| `endDate` | string | No | Filter until this dispatch date (YYYY-MM-DD) |
+| `limit` | integer | No | Maximum number of results to return (default: 20) |
+| `archived` | boolean | No | Set to true to query archived dispatch orders (completed/... |
+
+---
+
 #### `search_documentation`
 
 Search project documentation to answer questions about how the system works, features, or troubleshooting.
@@ -362,6 +442,23 @@ Get deep insights into Supplier Performance (on-time rate, quality) or Inventory
 
 ---
 
+#### `get_dispatch_earnings`
+
+Get a detailed earnings report for dispatch orders: revenue, COGS, and gross profit broken down by item, order, recipient, and time period. Only lines with a sale_price_per_unit contribute to revenue — internal transfers (null price) are excluded. Use this when the user asks about sales, earnings, profit, or revenue from dispatched goods.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `date_from` | string | No | Start of the reporting period (YYYY-MM-DD). Defaults to s... |
+| `date_to` | string | No | End of the reporting period (YYYY-MM-DD). Defaults to tod... |
+| `recipient_type` | string | No | Filter to only external customer sales or internal branch... |
+| `item_id` | integer | No | Filter earnings to a single item |
+| `period` | string | No | Time grouping for the by_period breakdown (default: month) |
+| `status` | string | No | Which DO statuses to include (default: completed) |
+
+---
+
 #### `get_forecast`
 
 Get stock level forecast for items based on consumption patterns.
@@ -396,6 +493,39 @@ Link an item to a supplier with price and MOQ. Essential for PO creation.
 
 ---
 
+#### `archive_dispatch_order`
+
+Archive a completed or cancelled dispatch order to hide it from active views. Only completed or cancelled DOs can be archived. Archived orders can still be viewed by setting archived=true in query_dispatch_orders. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID to archive (must be completed or ca... |
+
+---
+
+#### `cancel_dispatch_order`
+
+Cancel a dispatch order. Only allowed for draft, confirmed, or partial orders. Does not auto-void stock movements from partial dispatches — those must be voided separately. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID to cancel |
+| `reason` | string | No | Reason for cancellation |
+
+---
+
 #### `complete_job_order`
 
 Complete a job order. Consumes ingredients via FIFO, creates finished goods batch. Requires manager or admin role.
@@ -410,7 +540,47 @@ Complete a job order. Consumes ingredients via FIFO, creates finished goods batc
 |-----------|------|----------|-------------|
 | `jo_id` | integer | Yes | The ID of the job order |
 | `quantity_produced` | number | Yes | Actual total quantity produced in the base unit of measur... |
+| `source_location_id` | integer | Yes | Location where ingredients are deducted |
+| `destination_location_id` | integer | Yes | Location where finished goods are added |
 | `expiry_date` | string | No | Expiry date for the finished goods batch |
+
+---
+
+#### `confirm_dispatch_order`
+
+Confirm a draft dispatch order, locking in the recipient and line items. Moves status from draft to confirmed. Does NOT deduct stock. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID to confirm |
+
+---
+
+#### `create_dispatch_order`
+
+Create a new dispatch order (draft) for finished goods. Specify the recipient and line items. Does NOT deduct stock — stock is only deducted when the dispatch is executed. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `recipient_name` | string | Yes | Name of the customer or branch receiving the goods |
+| `recipient_type` | string | No | Whether the recipient is an external customer or internal... |
+| `dispatch_date` | string | Yes | Planned dispatch date (YYYY-MM-DD) |
+| `reference_jo` | string | No | Optional: Job Order number this dispatch is linked to |
+| `reference_po` | string | No | Optional: Purchase Order number this dispatch is linked to |
+| `notes` | string | No | Optional notes for the dispatch order |
+| `lines` | array | Yes | List of items to dispatch |
 
 ---
 
@@ -567,6 +737,23 @@ Soft-delete a supplier. Requires admin role. Will fail if supplier has active Pu
 
 ---
 
+#### `dispatch_items`
+
+Execute a dispatch — deduct stock for one or more lines on a confirmed or partial dispatch order. Applies FIFO/FEFO batch selection automatically. Creates a goods_issue stock movement. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID |
+| `lines` | array | Yes | Lines to dispatch in this run |
+
+---
+
 #### `import_users_csv`
 
 Bulk import users from CSV. Creates invitations and sends emails for each valid entry. CSV format: email (required), role (optional, defaults to 'staff'). Skips existing emails. Requires users:manage permission.
@@ -596,7 +783,8 @@ Mark a purchase order as received. Creates FIFO batches and updates stock. Requi
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `po_id` | integer | Yes | The ID of the purchase order |
-| `received_items` | array | No | Items received with quantities |
+| `location_id` | integer | Yes | Location receiving the stock |
+| `received_items` | array | Yes | Items received with quantities |
 
 ---
 
@@ -630,6 +818,47 @@ Activate or deactivate a user account. Requires admin role. Cannot deactivate ow
 |-----------|------|----------|-------------|
 | `target_user_id` | integer | Yes | ID of the user to update |
 | `is_active` | boolean | Yes | True to activate, False to deactivate |
+
+---
+
+#### `update_dispatch_line_sale_price`
+
+Retroactively update the sale price on an already-dispatched line item. Cannot be used on draft orders (use update_dispatch_order instead). Also updates the item's default_sale_price for future dispatches. Set to null to mark the line as an internal transfer (excluded from earnings). Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID |
+| `line_id` | integer | Yes | The specific line ID to update |
+| `sale_price_per_unit` | number | Yes | New selling price per unit in ₱ (must be ≥ 0), or -1 to m... |
+
+---
+
+#### `update_dispatch_order`
+
+Edit a dispatch order that is still in draft status. Providing a lines array REPLACES all existing lines. Only draft orders can be edited — if the order is already confirmed, you must cancel it first or proceed with the existing lines. Requires manager or admin role.
+
+> ⚠️ **Requires confirmation**
+
+> 🔐 **Required role:** manager
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `do_id` | integer | Yes | The dispatch order ID to update (must be in draft status) |
+| `recipient_name` | string | No | Updated recipient name |
+| `recipient_type` | string | No | Updated recipient type |
+| `dispatch_date` | string | No | Updated planned dispatch date (YYYY-MM-DD) |
+| `reference_jo` | string | No | Updated linked Job Order number |
+| `reference_po` | string | No | Updated linked Purchase Order number |
+| `notes` | string | No | Updated notes |
+| `lines` | array | No | New line items — REPLACES all existing lines if provided |
 
 ---
 
@@ -726,6 +955,22 @@ Update a user's role. Requires admin role. Cannot change own role.
 
 ### Import export Tools
 
+#### `export_dispatch_orders`
+
+Export dispatch orders and their line items to a CSV file. Each row represents one line item. Includes DO number, status, recipient, SKU, quantities, costs, sale price, revenue, gross profit, and margin %. Use this when the user wants to download or save dispatch data.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | No | Filter by dispatch order status |
+| `recipient_name` | string | No | Filter by recipient name (partial match) |
+| `startDate` | string | No | Filter from this dispatch date (YYYY-MM-DD) |
+| `endDate` | string | No | Filter until this dispatch date (YYYY-MM-DD) |
+| `archived` | boolean | No | Include archived orders (default: false) |
+
+---
+
 #### `export_to_csv`
 
 Export data as CSV. Can display in chat or generate a download link. Always asks user for their preference before generating.
@@ -736,6 +981,7 @@ Export data as CSV. Can display in chat or generate a download link. Always asks
 |-----------|------|----------|-------------|
 | `entity_type` | string | Yes | What type of data to export |
 | `filters` | object | No | Optional filters to apply |
+| `options` | object | No | Export options. Item exports resolve the tenant workflow ... |
 | `output_preference` | string | No | How to deliver the export. Use 'ask_user' to prompt for p... |
 
 ---
