@@ -685,6 +685,29 @@ const buildStockExceededMessage = (violation = {}) => {
   return `${itemName} is currently unavailable at the selected location.`;
 };
 
+const formatStorefrontAddress = (source = {}) => {
+  if (!source || typeof source !== 'object') return '';
+  const firstLine = [
+    source.barangay,
+    source.street_address || source.streetAddress,
+    source.subdivision
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const secondLine = [
+    source.city,
+    source.state,
+    source.province
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const formatted = [firstLine, secondLine].filter(Boolean).join(', ');
+  if (formatted) return formatted;
+  return String(source.address_line || source.addressLine || '').trim();
+};
+
 const isItemAvailable = (item = {}) => {
   if (item?.is_available === true) return true;
   if (item?.is_available === false) return false;
@@ -1266,6 +1289,40 @@ export default function StorefrontApp() {
     })
   ), [selectedStore, catalog]);
   const { isServicesMode, modeAdapter, servicesViewModel, servicesLayoutMode, hero: heroSectionModel, overview: overviewSectionModel, supporting: supportingSectionModel } = pageModel;
+  const promoSectionModel = useMemo(() => {
+    const rawPromo = supportingSectionModel?.promo && typeof supportingSectionModel.promo === 'object'
+      ? supportingSectionModel.promo
+      : null;
+    const normalizePromoEntry = (entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const title = String(entry.title || '').trim();
+      const subtitle = String(entry.subtitle || '').trim();
+      const badge = String(entry.badge || '').trim();
+      const validityText = String(entry.validity_text || entry.validityText || '').trim();
+      const headline = String(entry.headline || entry.primary_text || '').trim();
+      const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
+      if (!title && !subtitle && !badge && !validityText && !headline && !supportingText) return null;
+      return {
+        title,
+        subtitle,
+        badge,
+        validityText,
+        headline,
+        supportingText
+      };
+    };
+
+    let promoItems = [];
+    if (rawPromo?.active === true) {
+      const rawItems = Array.isArray(rawPromo.items) ? rawPromo.items : [];
+      promoItems = rawItems.map(normalizePromoEntry).filter(Boolean);
+      if (promoItems.length === 0) {
+        const normalizedSingle = normalizePromoEntry(rawPromo);
+        if (normalizedSingle) promoItems = [normalizedSingle];
+      }
+    }
+    return promoItems.slice(0, 3);
+  }, [supportingSectionModel?.promo]);
 
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
@@ -1873,7 +1930,7 @@ export default function StorefrontApp() {
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
-    const addressLine = String(selectedLocation?.address_line || overviewSectionModel?.location?.addressLine || selectedStore?.address_line || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
     const galleryPreview = Array.isArray(supportingSectionModel?.galleryImages)
       ? supportingSectionModel.galleryImages.slice(0, 4).map((entry) => withAssetOrigin(entry.url || entry.path)).filter(Boolean)
       : [];
@@ -1927,7 +1984,7 @@ export default function StorefrontApp() {
       statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
       ratingLabel,
       modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
-      locationLabel: locationName || addressLine || 'Location details coming soon',
+      locationLabel: addressLine || locationName || 'Location details coming soon',
       aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
       categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories.slice(0, 3) : [],
       whyChooseUs,
@@ -5689,6 +5746,152 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
+                    {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+                      <section
+                        style={{
+                          marginLeft: 'calc(50% - 50vw)',
+                          width: '100vw',
+                          marginTop: isMobileViewport ? 20 : 28,
+                          padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                          background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
+                          borderTop: '1px solid #fed7aa',
+                          borderBottom: '1px solid #ffedd5',
+                          display: 'grid',
+                          gap: 14
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxWidth: 1220,
+                            width: '100%',
+                            margin: '0 auto',
+                            paddingLeft: isMobileViewport ? 16 : 24,
+                            paddingRight: isMobileViewport ? 16 : 24,
+                            display: 'grid',
+                            gap: 14
+                          }}
+                        >
+                          <div style={{ display: 'grid', gap: 4 }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                              Current Promos
+                            </h2>
+                            <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                              Limited-time offers available from this storefront.
+                            </p>
+                          </div>
+
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                              gap: 18
+                            }}
+                          >
+                            {promoSectionModel.map((promoEntry, index) => (
+                              <article
+                                key={`promo-card-${index}`}
+                                style={{
+                                  position: 'relative',
+                                  borderRadius: 26,
+                                  border: '1px solid #fed7aa',
+                                  background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
+                                  boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                                  padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                                  display: 'grid',
+                                  gap: 14,
+                                  overflow: 'hidden',
+                                  transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                                  animation: 'promoCardFloatIn 420ms ease both',
+                                  animationDelay: `${index * 90}ms`
+                                }}
+                                onMouseEnter={(event) => {
+                                  if (isMobileViewport) return;
+                                  event.currentTarget.style.transform = 'translateY(-4px)';
+                                  event.currentTarget.style.boxShadow = '0 22px 36px rgba(249, 115, 22, 0.16)';
+                                  event.currentTarget.style.borderColor = '#fb923c';
+                                }}
+                                onMouseLeave={(event) => {
+                                  if (isMobileViewport) return;
+                                  event.currentTarget.style.transform = 'translateY(0)';
+                                  event.currentTarget.style.boxShadow = '0 14px 28px rgba(249, 115, 22, 0.10)';
+                                  event.currentTarget.style.borderColor = '#fed7aa';
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    inset: '0 auto 0 0',
+                                    width: 4,
+                                    background: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)',
+                                    boxShadow: '0 0 22px rgba(249, 115, 22, 0.25)'
+                                  }}
+                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <div
+                                    style={{
+                                      width: 34,
+                                      height: 34,
+                                      borderRadius: 999,
+                                      border: '1px solid #fdba74',
+                                      background: '#fff7ed',
+                                      color: '#f97316',
+                                      display: 'grid',
+                                      placeItems: 'center',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    <Sparkles size={17} />
+                                  </div>
+                                  <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', lineHeight: 1.2 }}>
+                                    {promoEntry.title || promoEntry.badge || 'Promo'}
+                                  </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(96px, 124px) minmax(0, 1fr)',
+                                    gap: isMobileViewport ? 12 : 14,
+                                    alignItems: 'stretch'
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      alignContent: 'center',
+                                      justifyItems: isMobileViewport ? 'start' : 'start',
+                                      paddingRight: isMobileViewport ? 0 : 14,
+                                      borderRight: isMobileViewport ? 'none' : '1px solid #d4d4d8'
+                                    }}
+                                  >
+                                    <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: '#f97316', letterSpacing: '-0.04em' }}>
+                                      {promoEntry.headline || promoEntry.badge || 'Promo'}
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+                                    <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.15 }}>
+                                      {promoEntry.subtitle || 'Storefront offer'}
+                                    </div>
+                                    {promoEntry.supportingText && (
+                                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                                        {promoEntry.supportingText}
+                                      </div>
+                                    )}
+                                    {promoEntry.validityText && (
+                                      <div style={{ fontSize: 13, color: '#6b7280' }}>
+                                        {promoEntry.validityText}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      </section>
+                    )}
+
                     <section
                       style={{
                         marginTop: 0,
@@ -5960,6 +6163,19 @@ export default function StorefrontApp() {
               }
 
 return (
+  <>
+    <style>{`
+      @keyframes promoCardFloatIn {
+        0% {
+          opacity: 0;
+          transform: translateY(10px) scale(0.985);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+    `}</style>
   <div style={{
     display: 'grid',
     gap: 24,
@@ -6151,6 +6367,7 @@ return (
       </aside>
     )}
   </div>
+  </>
 );
             })()}
           </>
