@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-08
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -86,6 +86,10 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
+- Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
+- `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
+- `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
+- F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
 - Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
 
@@ -135,6 +139,12 @@ Validated on 2026-05-06 for FIFO/location stock hardening:
 - Frontend targeted suites: `Components/items/__tests__/FIFOBatchViewer.behavior.test.jsx` and `Components/items/__tests__/FIFOBatchViewer.locationContract.test.js`.
 - Frontend build gate: `npm --prefix frontend run build`.
 - Governance gates: `npm run lint:docs`, `npm run check:architecture`, and `git diff --check`.
+
+Validated on 2026-05-08 for the storefront UI merge:
+- Frontend storefront suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__` passed 12 files and 55 tests, covering discovery, follow behavior, customer access helpers, checkout rules, catalog search, business-mode pins, F&B storefront source contract, mode presentation, storefront normalization, and services view-model behavior.
+- Storefront build gate: `npm --prefix frontend run build:store` passed. The current store build still emits Vite's large main chunk warning after minification.
+- Governance gates: `npm run lint:docs`, `npm run check:architecture`, and `git diff --check` passed.
+- Browser smoke: local `/tenant-store` rendered the Storefront shell with no console errors.
 
 Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
 
