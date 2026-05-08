@@ -54,14 +54,16 @@ export const createItemSchema = Joi.object({
     'number.min': 'Cost per unit must be 0 or greater'
   }),
   default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
-  vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').when(Joi.object({
-    category: Joi.valid('product').required(),
-    product_type: Joi.valid('finished_goods').required()
-  }).unknown(), {
-    then: Joi.required().messages({
-      'any.required': 'VAT type is required for finished goods'
+  vat_type: Joi.when('category', {
+    is: 'product',
+    then: Joi.when('product_type', {
+      is: 'finished_goods',
+      then: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').required().messages({
+        'any.required': 'VAT type is required for finished goods'
+      }),
+      otherwise: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, '').optional()
     }),
-    otherwise: Joi.optional()
+    otherwise: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, '').optional()
   }),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),

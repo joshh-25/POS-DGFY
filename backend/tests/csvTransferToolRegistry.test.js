@@ -128,6 +128,82 @@ describe('csvTransferToolRegistry', () => {
     expect(result.preview.showing).toBe(1);
   });
 
+  it('export_to_csv uses the mode-aware item CSV export service when available', async () => {
+    const csvContent = [
+      'sku_code,name,category,mode_item_preset,template_workflow_mode',
+      'SVC-001,Haircut,service,service,services'
+    ].join('\n');
+    const exportFiltered = jest.fn().mockResolvedValue({
+      success: true,
+      csvContent,
+      filename: 'services_items_export.csv',
+      workflowMode: 'services',
+      count: 1
+    });
+    const storeTemporaryFile = jest.fn().mockResolvedValue({
+      downloadUrl: '/tmp/services.csv',
+      filename: 'services_items_export.csv',
+      expiresAt: '2026-03-05T00:00:00.000Z',
+      expiresIn: 3600
+    });
+
+    const registry = buildCsvTransferToolRegistry({
+      tempFileService: {
+        parseCsv: jest.fn().mockReturnValue({
+          headers: ['sku_code', 'name', 'category', 'mode_item_preset', 'template_workflow_mode'],
+          rows: [{
+            sku_code: 'SVC-001',
+            name: 'Haircut',
+            category: 'service',
+            mode_item_preset: 'service',
+            template_workflow_mode: 'services'
+          }],
+          totalRows: 1
+        }),
+        generateCsv: jest.fn(),
+        storeTemporaryFile
+      },
+      itemService: {
+        getItems: jest.fn()
+      },
+      csvExportService: {
+        exportFiltered
+      },
+      supplierService: {},
+      purchaseOrderService: {},
+      jobOrderService: {},
+      stockMovementService: {},
+      logger: { error: jest.fn() }
+    });
+
+    const result = await registry.export_to_csv({
+      args: {
+        entity_type: 'items',
+        filters: { category: 'service' },
+        options: { workflow_mode: 'services' },
+        output_preference: 'download'
+      },
+      user: { user_id: 2 }
+    });
+
+    expect(exportFiltered).toHaveBeenCalledWith({
+      category: 'service',
+      search: undefined,
+      fifo: undefined,
+      folder: undefined
+    }, {
+      workflowMode: 'services',
+      templateType: undefined
+    });
+    expect(storeTemporaryFile).toHaveBeenCalledWith(
+      csvContent,
+      'services_items_export.csv',
+      2
+    );
+    expect(result.output_mode).toBe('download');
+    expect(result.workflow_mode).toBe('services');
+  });
+
   it('export_to_csv returns download metadata when requested', async () => {
     const storeTemporaryFile = jest.fn().mockResolvedValue({
       downloadUrl: '/tmp/file.csv',

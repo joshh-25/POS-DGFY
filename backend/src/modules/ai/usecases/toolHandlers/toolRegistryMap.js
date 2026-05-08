@@ -1,6 +1,7 @@
 import logger from '../../../../config/logger.js';
 import { PERMISSIONS } from '../../../../config/permissions.js';
 import * as itemService from '../../../../services/itemService.js';
+import * as csvExportService from '../../../../services/csvExportService.js';
 import * as supplierService from '../../../../services/supplierService.js';
 import * as purchaseOrderService from '../../../../services/purchaseOrderService.js';
 import * as dispatchOrderService from '../../../../services/dispatchOrderService.js';
@@ -100,6 +101,7 @@ const supplierToolRegistry = buildSupplierToolRegistry({
 const csvTransferToolRegistry = buildCsvTransferToolRegistry({
   tempFileService,
   itemService,
+  csvExportService,
   supplierService,
   purchaseOrderService,
   jobOrderService,

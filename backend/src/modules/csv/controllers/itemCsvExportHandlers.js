@@ -13,6 +13,11 @@ const buildExportFilters = (query) => ({
   folder: query.folder
 });
 
+const buildExportOptions = ({ query = {}, body = {} } = {}) => ({
+  workflowMode: query.workflow_mode || body.workflow_mode,
+  templateType: query.type || body.type
+});
+
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
 const defaultErrorPayload = (req, res, failure) => ({
@@ -37,7 +42,7 @@ const respondCsvOrZip = (res, resultData) => {
   }
 
   const typePrefix = resultData.templateType === 'products' ? 'products' : 'items';
-  const filename = `${typePrefix}_export_${timestamp}.csv`;
+  const filename = resultData.filename || `${typePrefix}_export_${timestamp}.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   return res.send(resultData.csvContent);
@@ -48,9 +53,15 @@ export const exportItems = async (req, res) => {
     let result;
 
     if (req.method === 'POST' && req.body.itemIds) {
-      result = await exportByIdsUseCase({ itemIds: req.body.itemIds });
+      result = await exportByIdsUseCase({
+        itemIds: req.body.itemIds,
+        ...buildExportOptions({ query: req.query, body: req.body })
+      });
     } else {
-      result = await exportFilteredUseCase({ filters: buildExportFilters(req.query) });
+      result = await exportFilteredUseCase({
+        filters: buildExportFilters(req.query),
+        ...buildExportOptions({ query: req.query, body: req.body })
+      });
     }
 
     await trackProductUsageFromResult({
@@ -63,7 +74,8 @@ export const exportItems = async (req, res) => {
       successMetadataResolver: (data) => ({
         method: req.method,
         is_zip: Boolean(data?.isZip),
-        template_type: data?.templateType || null
+        template_type: data?.templateType || null,
+        workflow_mode: data?.workflowMode || null
       })
     });
 
@@ -86,7 +98,7 @@ export const exportItems = async (req, res) => {
 
 export const exportAllItems = async (req, res) => {
   try {
-    const result = await exportAllItemsUseCase();
+    const result = await exportAllItemsUseCase(buildExportOptions({ query: req.query, body: req.body }));
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -96,7 +108,8 @@ export const exportAllItems = async (req, res) => {
       result,
       successMetadataResolver: (data) => ({
         is_zip: Boolean(data?.isZip),
-        template_type: data?.templateType || null
+        template_type: data?.templateType || null,
+        workflow_mode: data?.workflowMode || null
       })
     });
 
@@ -119,7 +132,10 @@ export const exportAllItems = async (req, res) => {
 
 export const previewExport = async (req, res) => {
   try {
-    const result = await exportFilteredUseCase({ filters: buildExportFilters(req.query) });
+    const result = await exportFilteredUseCase({
+      filters: buildExportFilters(req.query),
+      ...buildExportOptions({ query: req.query })
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -129,7 +145,8 @@ export const previewExport = async (req, res) => {
       result,
       successMetadataResolver: (data) => ({
         count: data?.count ?? null,
-        is_zip: Boolean(data?.isZip)
+        is_zip: Boolean(data?.isZip),
+        workflow_mode: data?.workflowMode || null
       })
     });
 
@@ -147,7 +164,9 @@ export const previewExport = async (req, res) => {
         count: exportData.count,
         isZip: exportData.isZip || false,
         itemsCount: exportData.itemsCount,
-        productsCount: exportData.productsCount
+        productsCount: exportData.productsCount,
+        workflowMode: exportData.workflowMode || null,
+        templateType: exportData.templateType || null
       },
       message: exportData.isZip
         ? `${exportData.count} items would be exported as ZIP (${exportData.itemsCount} items + ${exportData.productsCount} products)`

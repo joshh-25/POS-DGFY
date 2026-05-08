@@ -19,6 +19,28 @@ describe('csv use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 
+  it('exportByIds forwards workflow mode and legacy template type options', async () => {
+    const exportByIds = jest.fn().mockResolvedValue({
+      success: true,
+      csvContent: 'sku_code,name\nA,Item'
+    });
+    const useCase = buildExportByIdsUseCase({
+      csvExportService: { exportByIds }
+    });
+
+    const result = await useCase({
+      itemIds: [1],
+      workflowMode: 'fnb',
+      templateType: 'products'
+    });
+
+    expect(result.success).toBe(true);
+    expect(exportByIds).toHaveBeenCalledWith([1], {
+      workflowMode: 'fnb',
+      templateType: 'products'
+    });
+  });
+
   it('previewItemsImport wraps service success payload', async () => {
     const previewImport = jest.fn().mockResolvedValue({
       success: true,
@@ -71,4 +93,3 @@ describe('csv use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 });
-

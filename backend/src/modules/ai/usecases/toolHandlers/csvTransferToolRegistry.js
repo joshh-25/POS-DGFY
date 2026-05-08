@@ -1,6 +1,7 @@
 export const buildCsvTransferToolRegistry = ({
   tempFileService,
   itemService,
+  csvExportService,
   supplierService,
   purchaseOrderService,
   jobOrderService,
@@ -142,6 +143,7 @@ export const buildCsvTransferToolRegistry = ({
       const {
         entity_type,
         filters = {},
+        options = {},
         output_preference = 'ask_user'
       } = args;
 
@@ -149,27 +151,57 @@ export const buildCsvTransferToolRegistry = ({
         let data = [];
         let columns = [];
         let filename = '';
+        let csvContent = '';
+        let workflowMode = null;
 
         switch (entity_type) {
           case 'items': {
-            const result = await itemService.getItems({
-              category: filters.category,
-              status: filters.status || 'active',
-              limit: 1000
-            });
-            data = result.items || result.data?.items || [];
-            columns = [
-              { key: 'sku_code', label: 'SKU Code' },
-              { key: 'name', label: 'Name' },
-              { key: 'category', label: 'Category' },
-              { key: 'current_stock', label: 'Current Stock' },
-              { key: 'max_capacity', label: 'Max Capacity' },
-              { key: 'min_threshold', label: 'Min Threshold' },
-              { key: 'unit_of_measure', label: 'Unit' },
-              { key: 'cost_per_unit', label: 'Cost/Unit' },
-              { key: 'status', label: 'Status' }
-            ];
-            filename = `items_export_${new Date().toISOString().split('T')[0]}.csv`;
+            if (csvExportService?.exportFiltered) {
+              const result = await csvExportService.exportFiltered({
+                category: filters.category,
+                search: filters.search,
+                fifo: filters.fifo,
+                folder: filters.folder
+              }, {
+                workflowMode: options.workflow_mode || filters.workflow_mode,
+                templateType: options.template_type || filters.template_type
+              });
+
+              if (!result.success) {
+                return { error: result.error || 'Failed to export items' };
+              }
+
+              csvContent = result.csvContent || '';
+              filename = result.filename || `items_export_${new Date().toISOString().split('T')[0]}.csv`;
+              workflowMode = result.workflowMode || null;
+              const parsed = tempFileService.parseCsv
+                ? tempFileService.parseCsv(csvContent)
+                : null;
+              if (parsed?.error) {
+                return { error: parsed.error };
+              }
+              data = parsed?.rows || [];
+              columns = (parsed?.headers || []).map((header) => ({ key: header, label: header }));
+            } else {
+              const result = await itemService.getItems({
+                category: filters.category,
+                status: filters.status || 'active',
+                limit: 1000
+              });
+              data = result.items || result.data?.items || [];
+              columns = [
+                { key: 'sku_code', label: 'SKU Code' },
+                { key: 'name', label: 'Name' },
+                { key: 'category', label: 'Category' },
+                { key: 'current_stock', label: 'Current Stock' },
+                { key: 'max_capacity', label: 'Max Capacity' },
+                { key: 'min_threshold', label: 'Min Threshold' },
+                { key: 'unit_of_measure', label: 'Unit' },
+                { key: 'cost_per_unit', label: 'Cost/Unit' },
+                { key: 'status', label: 'Status' }
+              ];
+              filename = `items_export_${new Date().toISOString().split('T')[0]}.csv`;
+            }
             break;
           }
 
@@ -288,7 +320,9 @@ export const buildCsvTransferToolRegistry = ({
           };
         }
 
-        const csvContent = tempFileService.generateCsv(data, columns);
+        if (!csvContent) {
+          csvContent = tempFileService.generateCsv(data, columns);
+        }
 
         if (output_preference === 'display') {
           const displayRows = data.slice(0, 10);
@@ -296,6 +330,7 @@ export const buildCsvTransferToolRegistry = ({
             success: true,
             output_mode: 'display',
             entity_type,
+            workflow_mode: workflowMode,
             total_records: data.length,
             preview: {
               headers: columns.map((column) => column.label),
@@ -318,6 +353,7 @@ export const buildCsvTransferToolRegistry = ({
             success: true,
             output_mode: 'download',
             entity_type,
+            workflow_mode: workflowMode,
             total_records: data.length,
             download: {
               url: fileInfo.downloadUrl,
@@ -333,8 +369,11 @@ export const buildCsvTransferToolRegistry = ({
           success: true,
           output_mode: 'ask_preference',
           entity_type,
+          workflow_mode: workflowMode,
           total_records: data.length,
-          message: `Ready to export ${data.length} ${entity_type}. How would you like to receive the data?`,
+          message: workflowMode
+            ? `Ready to export ${data.length} ${entity_type} using the ${workflowMode} CSV template. How would you like to receive the data?`
+            : `Ready to export ${data.length} ${entity_type}. How would you like to receive the data?`,
           options: [
             { value: 'display', label: 'Display in chat (first 10 rows)' },
             { value: 'download', label: 'Generate download link' }

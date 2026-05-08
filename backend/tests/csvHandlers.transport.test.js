@@ -78,13 +78,18 @@ describe('csv handlers transport contracts', () => {
     const req = {
       method: 'POST',
       body: { itemIds: [1, 2] },
-      query: {},
+      query: { workflow_mode: 'fnb' },
       requestId: 'req-csv-export'
     };
     const res = createRes();
 
     await exportItems(req, res);
 
+    expect(mockExportByIdsUseCase).toHaveBeenCalledWith({
+      itemIds: [1, 2],
+      workflowMode: 'fnb',
+      templateType: undefined
+    });
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
     expect(res.send).toHaveBeenCalledWith('sku_code,name\nRM-1,Flour');
     expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
@@ -92,6 +97,44 @@ describe('csv handlers transport contracts', () => {
       surface: 'csv',
       action: 'export_items_csv'
     }));
+  });
+
+  it('item export uses mode-aware filename when provided by use case', async () => {
+    mockExportFilteredUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        isZip: false,
+        templateType: 'workflow_mode',
+        workflowMode: 'services',
+        filename: 'services_items_export.csv',
+        csvContent: 'sku_code,template_workflow_mode\nSVC-1,services'
+      }
+    });
+
+    const req = {
+      method: 'GET',
+      body: {},
+      query: { workflow_mode: 'services' },
+      requestId: 'req-csv-export-services'
+    };
+    const res = createRes();
+
+    await exportItems(req, res);
+
+    expect(mockExportFilteredUseCase).toHaveBeenCalledWith({
+      filters: {
+        category: undefined,
+        search: undefined,
+        fifo: undefined,
+        folder: undefined
+      },
+      workflowMode: 'services',
+      templateType: undefined
+    });
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="services_items_export.csv"'
+    );
   });
 
   it('item preview import returns standardized error payload', async () => {

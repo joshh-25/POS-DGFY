@@ -25,7 +25,7 @@ describe('csvExportService folder filter', () => {
 
         buildDbStoreGetMock(Item, ItemFolder);
 
-        const result = await exportFiltered({ folder: 'Bakery' });
+        const result = await exportFiltered({ folder: 'Bakery' }, { templateType: 'items' });
 
         expect(result.success).toBe(true);
         expect(ItemFolder.findOne).toHaveBeenCalledWith({
@@ -48,7 +48,7 @@ describe('csvExportService folder filter', () => {
 
         buildDbStoreGetMock(Item, ItemFolder);
 
-        const result = await exportFiltered({ folder: 'DoesNotExist' });
+        const result = await exportFiltered({ folder: 'DoesNotExist' }, { templateType: 'items' });
 
         expect(result.success).toBe(true);
         const findAllArg = Item.findAll.mock.calls[0][0];
@@ -67,7 +67,7 @@ describe('csvExportService folder filter', () => {
             return {};
         });
 
-        const result = await exportFiltered({ folder: 'Bakery' });
+        const result = await exportFiltered({ folder: 'Bakery' }, { templateType: 'items' });
 
         expect(result.success).toBe(true);
         const findAllArg = Item.findAll.mock.calls[0][0];

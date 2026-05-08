@@ -13,6 +13,7 @@ const parsePositiveInt = (value) => {
 };
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const validTemplateTypes = ['items', 'products', 'master'];
 
 const failWithValidation = (message) => fail(new DomainError(
   DomainErrorCode.VALIDATION_FAILED,
@@ -46,36 +47,68 @@ const withServiceExecution = async (fn, fallbackMessage) => {
 };
 
 export const buildExportByIdsUseCase = ({ csvExportService }) => {
-  return async ({ itemIds }) => {
+  return async ({ itemIds, workflowMode, templateType }) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return failWithValidation('itemIds must be a non-empty array');
     }
 
+    if (templateType !== undefined && !validTemplateTypes.includes(templateType)) {
+      return failWithValidation(`Invalid template type. Must be one of: ${validTemplateTypes.join(', ')}`);
+    }
+
+    if (workflowMode !== undefined && !isWorkflowMode(workflowMode)) {
+      return failWithValidation(
+        `Invalid workflow_mode. Must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
+      );
+    }
+
     return withServiceExecution(
-      () => csvExportService.exportByIds(itemIds),
+      () => csvExportService.exportByIds(itemIds, { workflowMode, templateType }),
       'Failed to export selected items'
     );
   };
 };
 
 export const buildExportFilteredUseCase = ({ csvExportService }) => {
-  return async ({ filters }) => {
+  return async ({ filters, workflowMode, templateType }) => {
     if (filters !== undefined && !isPlainObject(filters)) {
       return failWithValidation('filters must be an object');
     }
 
+    if (templateType !== undefined && !validTemplateTypes.includes(templateType)) {
+      return failWithValidation(`Invalid template type. Must be one of: ${validTemplateTypes.join(', ')}`);
+    }
+
+    if (workflowMode !== undefined && !isWorkflowMode(workflowMode)) {
+      return failWithValidation(
+        `Invalid workflow_mode. Must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
+      );
+    }
+
     return withServiceExecution(
-      () => csvExportService.exportFiltered(filters || {}),
+      () => csvExportService.exportFiltered(filters || {}, { workflowMode, templateType }),
       'Failed to export filtered items'
     );
   };
 };
 
 export const buildExportAllItemsUseCase = ({ csvExportService }) => {
-  return async () => withServiceExecution(
-    () => csvExportService.exportAll(),
-    'Failed to export all items'
-  );
+  return async ({ workflowMode, templateType } = {}) => {
+    if (templateType !== undefined && !validTemplateTypes.includes(templateType)) {
+      return failWithValidation(`Invalid template type. Must be one of: ${validTemplateTypes.join(', ')}`);
+    }
+
+    if (workflowMode !== undefined && !isWorkflowMode(workflowMode)) {
+      return failWithValidation(
+        `Invalid workflow_mode. Must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
+      );
+    }
+
+    return withServiceExecution(
+      () => csvExportService.exportAll({ workflowMode, templateType }),
+      'Failed to export all items'
+    );
+  };
 };
 
 export const buildPreviewItemsImportUseCase = ({ csvImportService }) => {
@@ -111,9 +144,8 @@ export const buildConfirmItemsImportUseCase = ({ csvImportService }) => {
 
 export const buildGetItemsTemplateHeadersUseCase = ({ csvImportService }) => {
   return async ({ templateType, workflowMode }) => {
-    const validTypes = ['items', 'products', 'master'];
-    if (templateType !== undefined && !validTypes.includes(templateType)) {
-      return failWithValidation(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
+    if (templateType !== undefined && !validTemplateTypes.includes(templateType)) {
+      return failWithValidation(`Invalid template type. Must be one of: ${validTemplateTypes.join(', ')}`);
     }
 
     if (

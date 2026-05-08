@@ -1507,6 +1507,22 @@ export const AI_TOOLS = [
               stock_status: { type: "string", description: "Filter by stock status (low, healthy, overstock)" }
             }
           },
+          options: {
+            type: "object",
+            description: "Export options. Item exports resolve the tenant workflow mode when workflow_mode is omitted.",
+            properties: {
+              workflow_mode: {
+                type: "string",
+                enum: ["retail", "services", "manufacturing", "food_manufacturing", "fnb", "hospitality", "healthcare", "ticketing_transport", "logistics_distribution", "education_institutions", "msme"],
+                description: "Optional workflow mode for item CSV template selection. manufacturing normalizes to food_manufacturing."
+              },
+              template_type: {
+                type: "string",
+                enum: ["items", "products", "master"],
+                description: "Optional legacy template type. Explicit values preserve backward-compatible legacy item/product/master exports."
+              }
+            }
+          },
           output_preference: {
             type: "string",
             enum: ["ask_user", "display", "download"],

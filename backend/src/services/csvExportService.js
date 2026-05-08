@@ -3,12 +3,34 @@ import archiver from 'archiver';
 import { PassThrough } from 'stream';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { getAllSettingsUseCase } from '../modules/settings/index.js';
+import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
 import {
+    DEFAULT_WORKFLOW_MODE,
+    normalizeWorkflowMode,
+    resolveWorkflowTemplateMode
+} from '../modules/shared/constants/workflowModes.js';
+import {
+    CORRECTED_ITEM_TAXONOMY_MODES,
+    ITEM_STOCK_BEHAVIOR,
+    findItemPresetForValues
+} from '../modules/shared/constants/modeItemTaxonomy.js';
+import {
+    TEMPLATE_SCHEMA_VERSION,
+    buildTemplateSignature,
+    getTemplateDefinition,
     getTemplateHeaders,
     ITEMS_CATEGORIES,
     PRODUCTS_CATEGORIES,
     TEMPLATE_TYPES
 } from './csvImportService.js';
+
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const LEGACY_TEMPLATE_TYPES = Object.freeze([
+    TEMPLATE_TYPES.ITEMS,
+    TEMPLATE_TYPES.PRODUCTS,
+    TEMPLATE_TYPES.MASTER
+]);
 
 /**
  * Get Sequelize include options for fetching related product data
@@ -80,6 +102,170 @@ const formatBarcodeExportCells = (item) => {
     ];
 };
 
+const barcodeExportMap = (item) => {
+    const [
+        barcode,
+        barcodeSource,
+        barcodeScope,
+        barcodePackagingLevel,
+        barcodeQuantityMultiplier,
+        barcodeAliases
+    ] = formatBarcodeExportCells(item);
+
+    return {
+        barcode,
+        barcode_source: barcodeSource,
+        barcode_scope: barcodeScope,
+        barcode_packaging_level: barcodePackagingLevel,
+        barcode_quantity_multiplier: barcodeQuantityMultiplier,
+        barcode_aliases: barcodeAliases
+    };
+};
+
+const valueCell = (value, fallback = '') => (
+    value !== undefined && value !== null ? String(value) : fallback
+);
+
+const booleanCell = (value) => (value ? 'TRUE' : 'FALSE');
+
+const formatDirectAllergens = (item) => {
+    const allergens = item?.allergens || [];
+    if (!Array.isArray(allergens)) {
+        return valueCell(allergens);
+    }
+
+    return allergens
+        .filter((entry) => !entry?.is_cross_contamination)
+        .map((entry) => (
+            typeof entry === 'string'
+                ? entry
+                : (entry?.allergen_name || entry?.name || '')
+        ))
+        .filter(Boolean)
+        .join(',');
+};
+
+const getPackagingSpecs = (item) => item?.packaging_specs || {};
+
+const resolveTenantWorkflowMode = async () => {
+    const settings = unwrapApplicationResultOrThrow(
+        await getAllSettingsUseCase(),
+        'Failed to retrieve settings for workflow-mode export'
+    );
+    return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
+};
+
+const resolveExportWorkflowMode = async (workflowMode) => {
+    const rawMode = String(workflowMode || '').trim();
+    const tenantWorkflowMode = rawMode ? normalizeWorkflowMode(rawMode) : await resolveTenantWorkflowMode();
+    const templateMode = resolveWorkflowTemplateMode(tenantWorkflowMode);
+    return CORRECTED_ITEM_TAXONOMY_MODES.includes(templateMode) ? templateMode : null;
+};
+
+const shouldUseLegacyExport = (options = {}) => (
+    options.templateType && LEGACY_TEMPLATE_TYPES.includes(options.templateType)
+);
+
+const getModeCompatibilityNote = (workflowMode) => {
+    const labels = {
+        food_manufacturing: 'Food Manufacturing',
+        msme: 'Simple (MSME)',
+        services: 'Services',
+        fnb: 'Food & Beverage'
+    };
+    return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
+};
+
+const resolveModePresetForItem = (workflowMode, item = {}) => {
+    if (item.mode_item_preset) return item.mode_item_preset;
+    return findItemPresetForValues(workflowMode, {
+        category: item.category,
+        product_type: item.product_type,
+        unit_of_measure: item.unit_of_measure
+    })?.key || '';
+};
+
+const buildModeFieldMap = (item, workflowMode, templateMetadata) => {
+    const packagingSpecs = getPackagingSpecs(item);
+    const modePreset = resolveModePresetForItem(workflowMode, item);
+    const presetConfig = findItemPresetForValues(workflowMode, {
+        category: item.category,
+        product_type: item.product_type,
+        unit_of_measure: item.unit_of_measure
+    });
+    const isStockExempt = item.category === 'service'
+        || modePreset === 'service'
+        || presetConfig?.stock_behavior === ITEM_STOCK_BEHAVIOR.STOCK_EXEMPT;
+
+    return {
+        sku_code: valueCell(item.sku_code),
+        name: valueCell(item.name),
+        category: valueCell(item.category),
+        product_type: item.category === 'product' ? valueCell(item.product_type) : '',
+        mode_item_preset: valueCell(modePreset),
+        vat_type: valueCell(item.vat_type),
+        description: valueCell(item.description),
+        product_folder: valueCell(item.product_folder),
+        max_capacity: valueCell(item.max_capacity),
+        current_stock: isStockExempt ? '0' : valueCell(item.current_stock, '0'),
+        min_threshold: valueCell(item.min_threshold),
+        purchase_allowance: valueCell(item.purchase_allowance),
+        unit_of_measure: valueCell(item.unit_of_measure),
+        cost_per_unit: valueCell(item.cost_per_unit),
+        default_sale_price: valueCell(item.default_sale_price),
+        fifo_enabled: isStockExempt ? 'FALSE' : booleanCell(item.fifo_enabled),
+        shelf_life_days: valueCell(item.shelf_life_days),
+        opened_shelf_life_days: valueCell(item.opened_shelf_life_days),
+        batch_size: valueCell(item.batch_size),
+        yield_percentage: valueCell(item.yield_percentage),
+        processing_loss: valueCell(item.processing_loss),
+        production_notes: valueCell(item.production_notes),
+        packaging_height: valueCell(packagingSpecs.height),
+        packaging_width: valueCell(packagingSpecs.width),
+        packaging_thickness: valueCell(packagingSpecs.thickness),
+        packaging_material: valueCell(packagingSpecs.material),
+        packaging_design: valueCell(packagingSpecs.design),
+        packaging_contents: valueCell(packagingSpecs.contents),
+        allergens: formatDirectAllergens(item),
+        ...barcodeExportMap(item),
+        template_workflow_mode: templateMetadata.workflowMode,
+        mode_compatibility_note: getModeCompatibilityNote(templateMetadata.workflowMode),
+        template_schema_version: templateMetadata.schemaVersion,
+        template_issued_at: templateMetadata.issuedAt,
+        template_signature: templateMetadata.signature
+    };
+};
+
+const generateModeCSV = (items, workflowMode) => {
+    const template = getTemplateDefinition({ workflowMode });
+    const issuedAt = new Date().toISOString();
+    const schemaVersion = TEMPLATE_SCHEMA_VERSION;
+    const templateMetadata = {
+        workflowMode: template.workflowMode,
+        schemaVersion,
+        issuedAt,
+        signature: buildTemplateSignature({
+            workflowMode: template.workflowMode,
+            schemaVersion,
+            issuedAt
+        })
+    };
+
+    let csvContent = template.headers.join(',') + '\n';
+    for (const item of items) {
+        const fieldMap = buildModeFieldMap(item, template.workflowMode, templateMetadata);
+        const row = template.headers.map((header) => fieldMap[header] ?? '');
+        csvContent += row.map(escapeCSVCell).join(',') + '\n';
+    }
+
+    return {
+        csvContent,
+        templateType: 'workflow_mode',
+        workflowMode: template.workflowMode,
+        filename: template.filename.replace('_import_template.csv', '_export.csv')
+    };
+};
+
 /**
  * Transform an Item to a CSV row for Items template
  */
@@ -143,6 +329,7 @@ const transformItemToProductsRow = (item) => {
         item.name || '',
         item.category || '',
         item.product_type || '',
+        item.mode_item_preset || '',
         item.vat_type || '',
         item.description || '',
         item.product_folder || '',
@@ -229,6 +416,7 @@ const transformItemToMasterRow = (item) => {
         item.name || '',
         item.category || '',
         item.product_type || '',
+        item.mode_item_preset || '',
         item.vat_type || '',
         item.description || '',
         item.product_folder || '',
@@ -328,32 +516,85 @@ const generateZipBuffer = async (itemsData, productsData) => {
 };
 
 /**
- * Determine if items are mixed (contains both items and products)
- */
-const isMixedExport = (items) => {
-    let hasItems = false;
-    let hasProducts = false;
-
-    for (const item of items) {
-        if (ITEMS_CATEGORIES.includes(item.category)) {
-            hasItems = true;
-        }
-        if (PRODUCTS_CATEGORIES.includes(item.category)) {
-            hasProducts = true;
-        }
-        if (hasItems && hasProducts) return true;
-    }
-
-    return hasItems && hasProducts;
-};
-
-/**
  * Separate items into items and products arrays
  */
 const separateItems = (items) => {
     const itemsData = items.filter(i => ITEMS_CATEGORIES.includes(i.category));
     const productsData = items.filter(i => PRODUCTS_CATEGORIES.includes(i.category));
     return { itemsData, productsData };
+};
+
+const buildExportPayload = async (items, options = {}) => {
+    const workflowMode = shouldUseLegacyExport(options)
+        ? null
+        : await resolveExportWorkflowMode(options.workflowMode);
+
+    if (workflowMode) {
+        const modeCsv = generateModeCSV(items, workflowMode);
+        return {
+            success: true,
+            ...modeCsv,
+            count: items.length,
+            isZip: false
+        };
+    }
+
+    const legacyTemplateType = options.templateType;
+    if (legacyTemplateType) {
+        const csvContent = generateCSV(items, legacyTemplateType);
+        return {
+            success: true,
+            csvContent,
+            count: items.length,
+            isZip: false,
+            templateType: legacyTemplateType
+        };
+    }
+
+    const { itemsData, productsData } = separateItems(items);
+
+    if (itemsData.length === 0 && productsData.length > 0) {
+        const csvContent = generateCSV(productsData, TEMPLATE_TYPES.PRODUCTS);
+        return {
+            success: true,
+            csvContent,
+            count: productsData.length,
+            isZip: false,
+            templateType: TEMPLATE_TYPES.PRODUCTS
+        };
+    }
+
+    if (productsData.length === 0 && itemsData.length > 0) {
+        const csvContent = generateCSV(itemsData, TEMPLATE_TYPES.ITEMS);
+        return {
+            success: true,
+            csvContent,
+            count: itemsData.length,
+            isZip: false,
+            templateType: TEMPLATE_TYPES.ITEMS
+        };
+    }
+
+    if (itemsData.length === 0 && productsData.length === 0) {
+        const csvContent = generateCSV(items, TEMPLATE_TYPES.MASTER);
+        return {
+            success: true,
+            csvContent,
+            count: items.length,
+            isZip: false,
+            templateType: TEMPLATE_TYPES.MASTER
+        };
+    }
+
+    const zipBuffer = await generateZipBuffer(itemsData, productsData);
+    return {
+        success: true,
+        zipBuffer,
+        count: items.length,
+        isZip: true,
+        itemsCount: itemsData.length,
+        productsCount: productsData.length
+    };
 };
 
 /**
@@ -421,7 +662,7 @@ export const buildFilterConditions = async (filters) => {
  * Export items based on filters
  * Returns ZIP if mixed types, or single CSV if uniform types
  */
-export const exportFiltered = async (filters = {}) => {
+export const exportFiltered = async (filters = {}, options = {}) => {
     try {
         const where = await buildFilterConditions(filters);
         // Include related tables for complete product data export
@@ -433,35 +674,10 @@ export const exportFiltered = async (filters = {}) => {
         });
 
         if (items.length === 0) {
-            return { success: true, csvContent: '', count: 0, isZip: false };
+            return buildExportPayload(items, options);
         }
 
-        // Check if mixed types (would need ZIP)
-        if (isMixedExport(items)) {
-            const { itemsData, productsData } = separateItems(items);
-            const zipBuffer = await generateZipBuffer(itemsData, productsData);
-            return {
-                success: true,
-                zipBuffer,
-                count: items.length,
-                isZip: true,
-                itemsCount: itemsData.length,
-                productsCount: productsData.length
-            };
-        }
-
-        // Single type - determine which template to use
-        const isProducts = items.every(i => PRODUCTS_CATEGORIES.includes(i.category));
-        const templateType = isProducts ? TEMPLATE_TYPES.PRODUCTS : TEMPLATE_TYPES.ITEMS;
-        const csvContent = generateCSV(items, templateType);
-
-        return {
-            success: true,
-            csvContent,
-            count: items.length,
-            isZip: false,
-            templateType
-        };
+        return buildExportPayload(items, options);
     } catch (error) {
         console.error('Export filtered error:', error);
         return { success: false, error: error.message };
@@ -471,7 +687,7 @@ export const exportFiltered = async (filters = {}) => {
 /**
  * Export specific items by IDs
  */
-export const exportByIds = async (itemIds) => {
+export const exportByIds = async (itemIds, options = {}) => {
     try {
         if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
             return { success: false, error: 'No item IDs provided' };
@@ -490,35 +706,10 @@ export const exportByIds = async (itemIds) => {
         });
 
         if (items.length === 0) {
-            return { success: true, csvContent: '', count: 0, isZip: false };
+            return buildExportPayload(items, options);
         }
 
-        // Check if mixed types
-        if (isMixedExport(items)) {
-            const { itemsData, productsData } = separateItems(items);
-            const zipBuffer = await generateZipBuffer(itemsData, productsData);
-            return {
-                success: true,
-                zipBuffer,
-                count: items.length,
-                isZip: true,
-                itemsCount: itemsData.length,
-                productsCount: productsData.length
-            };
-        }
-
-        // Single type
-        const isProducts = items.every(i => PRODUCTS_CATEGORIES.includes(i.category));
-        const templateType = isProducts ? TEMPLATE_TYPES.PRODUCTS : TEMPLATE_TYPES.ITEMS;
-        const csvContent = generateCSV(items, templateType);
-
-        return {
-            success: true,
-            csvContent,
-            count: items.length,
-            isZip: false,
-            templateType
-        };
+        return buildExportPayload(items, options);
     } catch (error) {
         console.error('Export by IDs error:', error);
         return { success: false, error: error.message };
@@ -528,7 +719,7 @@ export const exportByIds = async (itemIds) => {
 /**
  * Export all items as ZIP (items.csv + products.csv)
  */
-export const exportAll = async () => {
+export const exportAll = async (options = {}) => {
     try {
         // Include related tables for complete product data export
         // Include related tables for complete product data export
@@ -540,31 +731,10 @@ export const exportAll = async () => {
         });
 
         if (items.length === 0) {
-            return { success: true, csvContent: '', count: 0, isZip: false };
+            return buildExportPayload(items, options);
         }
 
-        const { itemsData, productsData } = separateItems(items);
-
-        // If only one type exists, return single CSV
-        if (itemsData.length === 0 && productsData.length > 0) {
-            const csvContent = generateCSV(productsData, TEMPLATE_TYPES.PRODUCTS);
-            return { success: true, csvContent, count: productsData.length, isZip: false, templateType: TEMPLATE_TYPES.PRODUCTS };
-        }
-        if (productsData.length === 0 && itemsData.length > 0) {
-            const csvContent = generateCSV(itemsData, TEMPLATE_TYPES.ITEMS);
-            return { success: true, csvContent, count: itemsData.length, isZip: false, templateType: TEMPLATE_TYPES.ITEMS };
-        }
-
-        // Both types exist - generate ZIP
-        const zipBuffer = await generateZipBuffer(itemsData, productsData);
-        return {
-            success: true,
-            zipBuffer,
-            count: items.length,
-            isZip: true,
-            itemsCount: itemsData.length,
-            productsCount: productsData.length
-        };
+        return buildExportPayload(items, options);
     } catch (error) {
         console.error('Export all error:', error);
         return { success: false, error: error.message };

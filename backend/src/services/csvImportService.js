@@ -34,7 +34,7 @@ const VALID_VAT_TYPES = ['vatable', 'vat_exempt', 'zero_rated'];
 const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'];
 const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', ...CORRECTED_ITEM_TAXONOMY_MODES];
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
-const TEMPLATE_SCHEMA_VERSION = 'v1';
+export const TEMPLATE_SCHEMA_VERSION = 'v1';
 const BARCODE_TEMPLATE_HEADERS = Object.freeze([
     'barcode',
     'barcode_source',
@@ -94,8 +94,6 @@ const transformRow = (row) => {
     }
     if (row.vat_type) {
         item.vat_type = row.vat_type.trim().toLowerCase() || null;
-    } else {
-        item.vat_type = null;
     }
     if (row.description) item.description = row.description.trim();
     if (row.product_folder) item.product_folder = row.product_folder.trim();
@@ -527,7 +525,7 @@ const getTemplateSigningSecret = () => (
     || 'csv-template-signing-secret'
 );
 
-const buildTemplateSignature = ({ workflowMode, schemaVersion, issuedAt }) => {
+export const buildTemplateSignature = ({ workflowMode, schemaVersion, issuedAt }) => {
     const payload = `${String(workflowMode || '').trim().toLowerCase()}|${String(schemaVersion || '').trim()}|${String(issuedAt || '').trim()}`;
     return crypto
         .createHmac('sha256', getTemplateSigningSecret())
