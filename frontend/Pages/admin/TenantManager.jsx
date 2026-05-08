@@ -65,6 +65,19 @@ const deriveForceNonCompliantEligibility = (tenant) => {
     return { allowed: false, reason: FORCE_NON_COMPLIANT_HELPER_TEXT };
 };
 
+const getTenantEffectivePlan = (tenant = {}) => {
+    if (tenant.effective_plan) return tenant.effective_plan;
+    if (tenant.status === 'pending' || tenant.status === 'active') return 'premium';
+    return tenant.plan || 'premium';
+};
+
+const formatTenantPlanLabel = (plan) => {
+    const normalized = String(plan || '').trim().toLowerCase();
+    if (normalized === 'premium') return 'Premium-capable';
+    if (normalized === 'standard') return 'Standard';
+    return normalized || 'Premium-capable';
+};
+
 const COMPLIANCE_REVIEW_FILTERS = [
     { value: 'needs_review', label: 'Needs review' },
     { value: 'verified', label: 'Verified' },
@@ -149,7 +162,7 @@ export default function TenantManager() {
         name: '',
         adminEmail: '',
         adminPassword: '',
-        plan: 'standard',
+        plan: 'premium',
         complianceMode: 'non_compliant',
         workflowMode: 'food_manufacturing'
     });
@@ -252,7 +265,7 @@ export default function TenantManager() {
                 name: '',
                 adminEmail: '',
                 adminPassword: '',
-                plan: 'standard',
+                plan: 'premium',
                 complianceMode: 'non_compliant',
                 workflowMode: 'food_manufacturing'
             });
@@ -273,7 +286,7 @@ export default function TenantManager() {
             id: tenant.id,
             name: tenant.name,
             status: tenant.status,
-            plan: tenant.plan
+            plan: getTenantEffectivePlan(tenant)
         });
         setShowEditModal(true);
     };
@@ -282,7 +295,7 @@ export default function TenantManager() {
         e.preventDefault();
         setEditLoading(true);
         try {
-            const payload = { status: editForm.status, plan: editForm.plan };
+            const payload = { status: editForm.status };
             await adminService.updateTenant(editForm.id, payload);
             setShowEditModal(false);
             loadTenants();
@@ -812,7 +825,7 @@ export default function TenantManager() {
                                             </div>
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 <span className="text-slate-400">Plan:</span>
-                                                <span className="capitalize">{tenant.plan || 'free'}</span>
+                                                <span>{formatTenantPlanLabel(getTenantEffectivePlan(tenant))}</span>
                                                 {tenant.payment_method && (
                                                     <span className={cn(
                                                         "text-[10px] px-1.5 py-0.5 rounded font-medium",
@@ -1404,11 +1417,11 @@ export default function TenantManager() {
                                     <input
                                         type="text"
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600"
-                                        value="Standard"
+                                        value="Premium-capable"
                                         readOnly
                                     />
                                     <p className="text-xs text-slate-500">
-                                        Premium plan assignment is disabled while subscription billing is paused.
+                                        Registered tenants are premium-capable while subscription billing is paused.
                                     </p>
                                 </div>
                                 <div className="space-y-2">
@@ -1514,16 +1527,14 @@ export default function TenantManager() {
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">Plan</label>
-                                <select
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                    value={editForm.plan || 'standard'}
-                                    onChange={e => setEditForm({ ...editForm, plan: e.target.value })}
-                                >
-                                    <option value="standard">Standard</option>
-                                    <option value="premium">Premium</option>
-                                </select>
+                                <input
+                                    type="text"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600 capitalize"
+                                    value={editForm.plan || 'premium'}
+                                    readOnly
+                                />
                                 <p className="text-xs text-slate-500">
-                                    Plan is updated as tenant metadata. Billing automation remains paused.
+                                    Registered tenants stay premium-capable. Use billing flows when subscription automation returns.
                                 </p>
                             </div>
 

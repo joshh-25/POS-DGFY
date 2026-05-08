@@ -56,7 +56,7 @@ describe('TenantManager edit plan flow', () => {
     cleanup();
   });
 
-  it('submits edited plan metadata from the admin edit modal', async () => {
+  it('does not submit plan metadata from the admin edit modal', async () => {
     const user = userEvent.setup();
     render(<TenantManager />);
 
@@ -68,20 +68,18 @@ describe('TenantManager edit plan flow', () => {
     const editForm = saveButton.closest('form');
     expect(editForm).toBeTruthy();
 
-    const comboBoxes = within(editForm).getAllByRole('combobox');
-    const statusSelect = comboBoxes[0];
-    const planSelect = comboBoxes[1];
+    const statusSelect = within(editForm).getByRole('combobox');
 
     expect(statusSelect.value).toBe('active');
-    expect(planSelect.value).toBe('standard');
+    expect(within(editForm).getByDisplayValue('premium')).toBeTruthy();
+    expect(screen.getAllByText('Premium-capable').length).toBeGreaterThan(0);
 
-    await user.selectOptions(planSelect, 'premium');
+    await user.selectOptions(statusSelect, 'inactive');
     await user.click(saveButton);
 
     await waitFor(() => {
       expect(mocks.adminServiceMock.updateTenant).toHaveBeenCalledWith(17, {
-        status: 'active',
-        plan: 'premium'
+        status: 'inactive'
       });
     });
     expect(mocks.toastMock.success).toHaveBeenCalledWith('Tenant updated successfully');

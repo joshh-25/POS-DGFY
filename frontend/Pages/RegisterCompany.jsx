@@ -58,7 +58,7 @@ export default function RegisterCompany() {
                 name: formData.companyName,
                 adminEmail: formData.adminEmail,
                 adminPassword: formData.adminPassword,
-                plan: 'standard',
+                plan: 'premium',
                 complianceMode: formData.complianceMode,
                 workflowMode: formData.workflowMode
             });
@@ -216,10 +216,10 @@ export default function RegisterCompany() {
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="p-4 border rounded-lg border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600">
                             <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-semibold text-slate-900">Standard</h3>
+                                <h3 className="font-semibold text-slate-900">Premium-capable</h3>
                                 <Building2 className="w-5 h-5 text-slate-500" />
                             </div>
-                            <p className="text-sm text-slate-600">Standard onboarding only</p>
+                            <p className="text-sm text-slate-600">Mode-ready access included</p>
                             <p className="text-xs text-slate-500 mt-1">Subscription billing is currently disabled.</p>
                         </div>
 
@@ -339,7 +339,7 @@ export default function RegisterCompany() {
                             {isLoading ? 'Creating Company...' : 'Create Company'}
                         </Button>
                         <p className="text-xs text-center text-slate-500 mt-1">
-                            Standard company registration may be activated immediately when auto-accept is enabled.
+                            Company registration may be activated immediately when auto-accept is enabled.
                         </p>
                     </form>
 
