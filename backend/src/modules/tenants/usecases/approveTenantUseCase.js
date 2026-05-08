@@ -1,6 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
 
 const extractWorkflowModeFromTenant = (tenant) => {
     const rawSettings = tenant?.settings;
@@ -68,6 +69,11 @@ export const buildApproveTenantUseCase = ({
                         `[TenantApproval] Failed to send approval email to ${tenant.admin_email}: ${emailError.message}`
                     );
                 }
+            }
+
+            const registeredPlan = resolveRegisteredTenantPlan();
+            if (tenant.plan !== registeredPlan) {
+                await tenantAdminRepository.updateTenant(tenant, { plan: registeredPlan });
             }
 
             return ok({

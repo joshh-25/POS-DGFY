@@ -34,7 +34,7 @@ describe('Subscription integration hard-disable policy', () => {
         expect(response.body?.code).toBe('PAYMENTS_DISABLED');
     });
 
-    it('blocks premium registration while payments are disabled', async () => {
+    it('blocks subscription-driven registration while payments are disabled', async () => {
         const response = await request(app)
             .post('/api/v1/admin/tenants/register')
             .send({

@@ -4,6 +4,8 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 export const buildDeleteTenantUseCase = ({
     tenantAdminRepository,
     deleteTenantDatabase,
+    removeStorefrontDiscoveryIndexForTenant,
+    syncStorefrontDiscoveryIndexForTenant,
     logger
 }) => {
     return async ({ id }) => {
@@ -17,6 +19,19 @@ export const buildDeleteTenantUseCase = ({
                 ));
             }
 
+            if (typeof removeStorefrontDiscoveryIndexForTenant === 'function') {
+                try {
+                    await removeStorefrontDiscoveryIndexForTenant({ tenantId: tenant.id });
+                } catch (indexError) {
+                    logger?.error?.(`Failed to remove storefront discovery index row for tenant ${tenant.id}:`, indexError);
+                    return fail(new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        `Failed to remove storefront discovery index row: ${indexError.message}`,
+                        { statusCode: 500 }
+                    ));
+                }
+            }
+
             if (tenant.db_name) {
                 try {
                     await deleteTenantDatabase(tenant.db_name);
@@ -25,6 +40,13 @@ export const buildDeleteTenantUseCase = ({
                         logger?.warn?.(`Tenant database already absent for ${tenant.id} (${tenant.db_name}); continuing cleanup.`);
                     } else {
                         logger?.error?.(`Failed to delete database for tenant ${tenant.id}:`, dbError);
+                        if (typeof syncStorefrontDiscoveryIndexForTenant === 'function') {
+                            try {
+                                await syncStorefrontDiscoveryIndexForTenant({ tenantId: tenant.id });
+                            } catch (restoreError) {
+                                logger?.warn?.(`Failed to restore storefront discovery index row for tenant ${tenant.id} after database deletion failure: ${restoreError.message}`);
+                            }
+                        }
                         return fail(new DomainError(
                             DomainErrorCode.INTERNAL_ERROR,
                             `Failed to delete database: ${dbError.message}`,

@@ -647,6 +647,25 @@ export const syncStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) =
     };
 };
 
+export const removeStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) {
+        return { status: 'skipped', reason: 'missing_tenant_id' };
+    }
+
+    const deleted = await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: normalizedTenantId } });
+    if (deleted > 0) {
+        bumpStorefrontDiscoveryCacheVersion();
+        invalidateStorefrontDiscoverySharedSignatureCache();
+    }
+
+    return {
+        status: 'removed',
+        tenantId: normalizedTenantId,
+        deleted
+    };
+};
+
 export const reconcileStorefrontDiscoveryIndex = async ({
     tenantIds = null,
     pruneStale = true,

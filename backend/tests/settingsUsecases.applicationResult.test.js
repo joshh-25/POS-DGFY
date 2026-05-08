@@ -4,6 +4,7 @@ import { buildGetSettingByKeyUseCase } from '../src/modules/settings/usecases/ge
 import { buildUpdateSettingsUseCase } from '../src/modules/settings/usecases/updateSettingsUseCase.js';
 import { buildUpdateSettingByKeyUseCase } from '../src/modules/settings/usecases/updateSettingByKeyUseCase.js';
 import { buildResetSettingsToDefaultUseCase } from '../src/modules/settings/usecases/resetSettingsToDefaultUseCase.js';
+import { resolveChangedSettingKeys } from '../src/modules/settings/usecases/settingsChangeSet.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 describe('settings use-cases application result contract', () => {
@@ -47,6 +48,40 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.message).toBe('settingsData must be an object');
+  });
+
+  it('resolveChangedSettingKeys ignores unchanged fiscal keys in bulk settings payloads', async () => {
+    const changedKeys = await resolveChangedSettingKeys({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_tin_branch: { value: '' },
+          pos_ptu_number: { value: '' },
+          storefront_tagline: { value: 'Old tagline' }
+        })
+      },
+      settingsData: {
+        pos_tin_branch: '',
+        pos_ptu_number: '',
+        storefront_tagline: 'New tagline'
+      }
+    });
+
+    expect(changedKeys).toEqual(['storefront_tagline']);
+  });
+
+  it('resolveChangedSettingKeys treats a changed fiscal setting as changed', async () => {
+    const changedKeys = await resolveChangedSettingKeys({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_tin_branch: { value: '' }
+        })
+      },
+      settingsData: {
+        pos_tin_branch: '123-456'
+      }
+    });
+
+    expect(changedKeys).toEqual(['pos_tin_branch']);
   });
 
   it('updateSettingByKey returns success envelope', async () => {

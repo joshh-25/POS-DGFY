@@ -18,11 +18,15 @@ describe('listTenants usecase eligibility enrichment', () => {
                 {
                     id: 't-pending',
                     name: 'Pending',
+                    status: 'pending',
+                    plan: 'standard',
                     compliance_mode_state: 'compliant_pending'
                 },
                 {
                     id: 't-active',
                     name: 'Active',
+                    status: 'active',
+                    plan: 'standard',
                     compliance_mode_state: 'compliant_active'
                 }
             ])
@@ -51,14 +55,17 @@ describe('listTenants usecase eligibility enrichment', () => {
         }));
         expect(tenants[2]).toEqual(expect.objectContaining({
             id: 't-pending',
+            effective_plan: 'premium',
+            plan_policy: 'registered_tenant_premium_capable',
             can_force_non_compliant: true,
             force_non_compliant_block_reason: null
         }));
         expect(tenants[3]).toEqual(expect.objectContaining({
             id: 't-active',
+            effective_plan: 'premium',
+            plan_policy: 'registered_tenant_premium_capable',
             can_force_non_compliant: true,
             force_non_compliant_block_reason: null
         }));
     });
 });
-

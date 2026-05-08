@@ -32,8 +32,7 @@ import { paymentsEnabled, paymentsDisabledMessage } from '../../../config/paymen
 import { invalidateTenantLookupCache } from '../../../middleware/tenantHandler.js';
 
 const hasSubscriptionFlowRequest = ({ plan, subscriptionId }) => {
-    const requestedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
-    return requestedPlan === 'premium' || Boolean(subscriptionId);
+    return Boolean(subscriptionId);
 };
 
 const sendPaymentsDisabled = (res) => (

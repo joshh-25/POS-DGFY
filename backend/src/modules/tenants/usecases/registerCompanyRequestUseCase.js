@@ -8,6 +8,11 @@ import {
     WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
 import { TENANT_REGISTRATION_APPROVAL_MODES } from '../../../config/tenantRegistrationApproval.js';
+import {
+    isValidTenantPlan,
+    normalizeRequestedTenantPlan,
+    resolveRegisteredTenantPlan
+} from './tenantPlanPolicy.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
@@ -26,12 +31,13 @@ export const buildRegisterCompanyRequestUseCase = ({
             name,
             adminEmail,
             adminPassword,
-            plan = 'standard',
+            plan = 'premium',
             subscriptionId,
             complianceMode,
             workflowMode
         } = body || {};
-        const normalizedPlan = typeof plan === 'string' ? plan.toLowerCase() : 'standard';
+        const requestedPlan = normalizeRequestedTenantPlan(plan || resolveRegisteredTenantPlan());
+        const normalizedPlan = resolveRegisteredTenantPlan();
         const normalizedComplianceMode = typeof complianceMode === 'string'
             ? complianceMode.trim().toLowerCase()
             : '';
@@ -124,35 +130,19 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
-            if (!['standard', 'premium'].includes(normalizedPlan)) {
+            if (!isValidTenantPlan(requestedPlan)) {
                 await tracker.failed({
                     failureCode: 'validation_failed',
                     failureReason: 'invalid_plan',
                     httpStatus: 400,
                     metadata: {
-                        plan: normalizedPlan
+                        plan: requestedPlan
                     }
                 });
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'Plan must be either standard or premium.',
-                    { statusCode: 400 }
-                ));
-            }
-
-            if (normalizedPlan === 'premium' && !subscriptionId) {
-                await tracker.blocked('missing_subscription', {
-                    httpStatus: 400,
-                    failureReason: 'missing_subscription_id',
-                    metadata: {
-                        plan: normalizedPlan
-                    }
-                });
-
-                return fail(new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'A PayPal subscription ID is required for premium registration.',
                     { statusCode: 400 }
                 ));
             }
@@ -184,8 +174,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             let shouldProvisionImmediately = false;
 
             const approvalMode = getTenantRegistrationApprovalMode();
-            const shouldAutoApproveStandard = normalizedPlan === 'standard'
-                && !subscriptionId
+            const shouldAutoApproveStandard = !subscriptionId
                 && approvalMode === TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD;
 
             if (shouldAutoApproveStandard) {

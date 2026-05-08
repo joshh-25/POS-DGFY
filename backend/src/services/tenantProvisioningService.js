@@ -255,7 +255,6 @@ export const provisionTenant = async (options) => {
         name,
         adminEmail,
         adminPassword,
-        plan = 'standard',        // Default to standard if not provided
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
         workflowMode = 'food_manufacturing',
@@ -309,13 +308,16 @@ export const provisionTenant = async (options) => {
         tenantName = name;
         email = adminEmail;
 
-        // Set initial subscription status based on plan for manual entries
-        if (plan === 'premium') {
-            subscriptionStatus = 'active'; // Assume active if manually creating premium
-            currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-        } else if (plan === 'standard') {
-            // Standard usually pending, but if manually provisioning, assume approval given
-            subscriptionStatus = 'inactive'; // Standard doesn't have "subscription" per se
+        const effectivePlan = 'premium';
+
+        // Premium capability is plan metadata. Subscription state is active only
+        // when a provider subscription id is supplied and verified upstream.
+        if (effectivePlan === 'premium' && subscriptionId) {
+            subscriptionStatus = 'active';
+            currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        } else {
+            subscriptionStatus = 'inactive';
+            currentPeriodEnd = null;
         }
 
         logger.info(`[Provisioning] Starting new provision for: ${name} (DB: ${dbName})`);
@@ -333,7 +335,7 @@ export const provisionTenant = async (options) => {
                 status: 'inactive', // Will be updated to active upon success
                 admin_email: email,
                 admin_password_hash: passwordHash,
-                plan: plan,
+                plan: effectivePlan,
                 subscription_status: subscriptionStatus,
                 paypal_subscription_id: subscriptionId,
                 current_period_end: currentPeriodEnd,

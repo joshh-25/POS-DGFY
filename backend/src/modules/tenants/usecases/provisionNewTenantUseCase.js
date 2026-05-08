@@ -1,6 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
 
 export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
     return async ({ body }) => {
@@ -9,7 +10,6 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 name,
                 adminEmail,
                 adminPassword,
-                plan = 'standard',
                 subscriptionId,
                 complianceMode,
                 workflowMode
@@ -37,7 +37,7 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 name,
                 adminEmail,
                 adminPassword,
-                plan,
+                plan: resolveRegisteredTenantPlan(),
                 subscriptionId,
                 complianceMode: normalizedComplianceMode,
                 workflowMode: normalizedWorkflowMode

@@ -17,6 +17,7 @@ import {
     buildStrictBindingTransitionPatch,
     assertStrictBindingReadiness
 } from './posTerminalLocationBindingPolicy.js';
+import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -97,12 +98,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
+                const changedSettingKeys = await resolveChangedSettingKeys({
+                    settingsRepository,
+                    settingsData
+                });
                 const complianceResult = await assertComplianceOperationAllowed({
                     tenantId: tenant.id,
                     tenant,
                     operation: COMPLIANCE_OPERATION.SETTINGS_UPDATE,
                     context: {
-                        setting_keys: Object.keys(settingsData),
+                        setting_keys: changedSettingKeys,
                         setting_updates: settingsData
                     },
                     actorUser

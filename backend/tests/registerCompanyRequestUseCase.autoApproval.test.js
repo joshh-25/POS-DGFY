@@ -80,7 +80,8 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
             status: 'pending',
             admin_email: validBody.adminEmail,
-            db_name: 'sku_tenant_autoacceptfoods_12345678'
+            db_name: 'sku_tenant_autoacceptfoods_12345678',
+            plan: 'premium'
         }));
         expect(deps.addEmailTenantMapping).toHaveBeenCalledWith(validBody.adminEmail, '12345678-aaaa-bbbb-cccc-123456789abc');
         expect(deps.provisionTenant).not.toHaveBeenCalled();
@@ -103,6 +104,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
             status: 'pending',
             payment_method: 'manual',
+            plan: 'premium',
             subscription_status: 'inactive'
         }));
         expect(deps.addEmailTenantMapping).not.toHaveBeenCalled();

@@ -121,7 +121,7 @@ export default (sequelize) => {
         // Subscription & Payment Fields
         plan: {
             type: DataTypes.ENUM('standard', 'premium'),
-            defaultValue: 'standard'
+            defaultValue: 'premium'
         },
         billing_cycle_anchor: {
             type: DataTypes.INTEGER,

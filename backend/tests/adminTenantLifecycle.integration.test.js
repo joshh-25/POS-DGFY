@@ -80,7 +80,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             status: overrides.status || 'pending',
             admin_email: overrides.admin_email || `tenant-${suffix}@example.test`,
             admin_password_hash: overrides.admin_password_hash || '$2y$10$abcdefghijklmnopqrstuv',
-            plan: overrides.plan || 'standard',
+            plan: overrides.plan || 'premium',
             subscription_status: overrides.subscription_status || 'inactive',
             settings: overrides.settings || {}
         };
@@ -200,7 +200,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
                     name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
                     adminEmail: `auto-register-${testSuffix}@example.test`,
                     adminPassword: 'StrongPass1!',
-                    plan: 'standard',
+                    plan: 'premium',
                     complianceMode: 'non_compliant',
                     workflowMode: 'food_manufacturing'
                 });
@@ -303,16 +303,16 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         }));
 
         const refreshed = await Tenant.findByPk(tenant.id);
-        expect(refreshed.plan).toBe('standard');
+        expect(refreshed.plan).toBe('premium');
     });
 
-    it('updates tenant plan through admin tenant update route', async () => {
+    it('keeps active tenant premium when admin update requests a standard plan', async () => {
         const tenant = await createAdminTestTenant({ status: 'active', plan: 'standard' });
 
         const response = await request(app)
             .put(`/api/v1/admin/tenants/${tenant.id}`)
             .set('Authorization', `Bearer ${adminApiToken}`)
-            .send({ plan: 'premium' });
+            .send({ plan: 'standard' });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);

@@ -4,6 +4,10 @@ import logger from '../../config/logger.js';
 import * as emailService from '../../services/emailService.js';
 import { paypalService } from '../../services/paypalService.js';
 import { provisionTenant, deleteTenantDatabase } from '../../services/tenantProvisioningService.js';
+import {
+    removeStorefrontDiscoveryIndexForTenant,
+    syncStorefrontDiscoveryIndexForTenant
+} from '../../services/storefrontDiscoveryIndexService.js';
 import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
@@ -75,6 +79,8 @@ export const updateTenantUseCase = buildUpdateTenantUseCase({
 export const deleteTenantUseCase = buildDeleteTenantUseCase({
     tenantAdminRepository,
     deleteTenantDatabase,
+    removeStorefrontDiscoveryIndexForTenant,
+    syncStorefrontDiscoveryIndexForTenant,
     logger
 });
 

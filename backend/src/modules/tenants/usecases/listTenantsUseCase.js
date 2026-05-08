@@ -1,5 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { resolveTenantEffectivePlan } from './tenantPlanPolicy.js';
 
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 
@@ -44,9 +45,12 @@ const buildForceNonCompliantEligibility = (tenant) => {
 const enrichTenant = (tenant) => {
     const baseTenant = toPlainTenant(tenant);
     const eligibility = buildForceNonCompliantEligibility(baseTenant);
+    const effectivePlan = resolveTenantEffectivePlan(baseTenant);
 
     return {
         ...baseTenant,
+        effective_plan: effectivePlan,
+        plan_policy: effectivePlan !== baseTenant.plan ? 'registered_tenant_premium_capable' : 'stored_plan',
         ...eligibility
     };
 };

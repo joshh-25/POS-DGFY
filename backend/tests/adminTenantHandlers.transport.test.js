@@ -179,7 +179,14 @@ describe('adminTenantHandlers transport contracts', () => {
     expect(mockRegisterCompanyRequestUseCase).not.toHaveBeenCalled();
   });
 
-  it('provisionNewTenant rejects premium provisioning payloads when payments are disabled', async () => {
+  it('provisionNewTenant allows manual premium-capable payloads when payments are disabled', async () => {
+    mockProvisionNewTenantUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        statusCode: 201,
+        payload: { success: true, data: { id: 1, plan: 'premium' } }
+      }
+    });
     const req = {
       body: {
         name: 'Tenant A',
@@ -192,15 +199,11 @@ describe('adminTenantHandlers transport contracts', () => {
 
     await provisionNewTenant(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(503);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      success: false,
-      code: 'PAYMENTS_DISABLED'
-    }));
-    expect(mockProvisionNewTenantUseCase).not.toHaveBeenCalled();
+    expect(mockProvisionNewTenantUseCase).toHaveBeenCalledWith({ body: req.body });
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it('updateTenant allows manual premium plan metadata updates when payments are disabled', async () => {
+  it('updateTenant forwards admin update payloads to the use case', async () => {
     mockUpdateTenantUseCase.mockResolvedValue({
       success: true,
       data: {

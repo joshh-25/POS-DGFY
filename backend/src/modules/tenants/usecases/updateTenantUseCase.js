@@ -1,6 +1,12 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    isValidTenantPlan,
+    normalizeRequestedTenantPlan,
+    resolveRegisteredTenantPlan,
+    resolveTenantPlanForUpdate
+} from './tenantPlanPolicy.js';
 
 const extractWorkflowModeFromTenant = (tenant) => {
     let settings = tenant?.settings || {};
@@ -23,6 +29,7 @@ export const buildUpdateTenantUseCase = ({
     return async ({ id, body }) => {
         try {
             const { status, plan } = body || {};
+            const requestedPlan = normalizeRequestedTenantPlan(plan);
             const tenant = await tenantAdminRepository.findTenantById(id);
 
             if (!tenant) {
@@ -56,9 +63,10 @@ export const buildUpdateTenantUseCase = ({
                     }
                 }
 
-                if (plan && plan !== tenant.plan) {
+                const nextPlan = resolveRegisteredTenantPlan();
+                if (nextPlan !== tenant.plan) {
                     const refreshed = await tenantAdminRepository.findTenantById(tenant.id);
-                    await tenantAdminRepository.updateTenant(refreshed, { plan });
+                    await tenantAdminRepository.updateTenant(refreshed, { plan: nextPlan });
                 }
 
                 return ok({
@@ -66,23 +74,36 @@ export const buildUpdateTenantUseCase = ({
                     payload: {
                         success: true,
                         message: 'Tenant approved and provisioned successfully.',
-                        data: { ...result, plan: plan || tenant.plan }
+                        data: { ...result, plan: nextPlan }
                     }
                 });
             }
 
+            if (requestedPlan && !isValidTenantPlan(requestedPlan)) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Plan must be either standard or premium.',
+                    { statusCode: 400 }
+                ));
+            }
+
             const updates = {};
             if (status) updates.status = status;
-            if (plan) updates.plan = plan;
+            const nextPlan = resolveTenantPlanForUpdate({
+                currentStatus: tenant.status,
+                requestedStatus: status,
+                requestedPlan
+            });
+            if (nextPlan) updates.plan = nextPlan;
 
-            await tenantAdminRepository.updateTenant(tenant, updates);
+            const updatedTenant = await tenantAdminRepository.updateTenant(tenant, updates);
 
             return ok({
                 statusCode: 200,
                 payload: {
                     success: true,
                     message: 'Tenant updated successfully',
-                    data: tenant
+                    data: updatedTenant
                 }
             });
         } catch (error) {
