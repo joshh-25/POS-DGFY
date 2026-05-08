@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-09
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -52,7 +52,7 @@ Canonical planning entry:
 - Shared-hosting degraded mode and Redis-capable VPS mode are tracked in `docs/ops/HOSTING_PROFILES.md`, with profile validation through `scripts/check-hosting-profile.js`.
 - PM2 production runtime uses root `ecosystem.config.cjs` as the canonical ecosystem file for backend, IMS, POS, and Storefront. Current production readiness steps and exact gate caveats are tracked in `docs/ops/DEPLOYMENT_GUIDE.md`, `docs/ops/PRODUCTION_CHECKLIST.md`, `docs/ops/NO_STAGING_RELEASE_STANDARD.md`, and `docs/testing/release-go-no-go-checklist.md`.
 - Namecheap shared-hosting artifact deploys are tracked in `docs/ops/NAMECHEAP_SHARED_CICD.md`, with CI artifacts and `.github/workflows/deploy-namecheap-shared.yml`.
-- Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `manual` remains the default, while `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` temporarily provisions standard registrations immediately and follows with a normal frontend login call.
+- Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `manual` remains the default, new pending/active registrations are premium-capable by plan metadata, and `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` temporarily provisions manual registrations immediately before the frontend follows with a normal login call.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.

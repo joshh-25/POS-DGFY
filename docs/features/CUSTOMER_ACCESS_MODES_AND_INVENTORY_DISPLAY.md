@@ -54,7 +54,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
 - Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
 - Existing and newly provisioned tenants default to `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`.
-- Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only.
+- Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only. Bulk Settings saves compare incoming keys with persisted values before compliance preflight, so unchanged fiscal POS fields included by the full Settings form do not block unrelated Storefront/profile/system changes for non-compliant tenants.
 - Settings, onboarding classifier saves, tenant location changes, and storefront asset changes refresh the discovery index after successful use-case results so public search/profile rows do not carry stale access-mode or location data.
 
 2. Onboarding

@@ -3757,9 +3757,11 @@ Submit a public company registration request.
 **Access:** Public, rate-limited.
 
 **Current policy**
-- `TENANT_REGISTRATION_APPROVAL_MODE=manual` (default): standard registrations return `status: "pending"` and require platform admin approval before login.
-- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`: standard registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
-- Premium/subscription registration remains disabled while `PAYMENTS_ENABLED=false` and returns `503` with `PAYMENTS_DISABLED`.
+- All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after approval/activation.
+- `TENANT_REGISTRATION_APPROVAL_MODE=manual` (default): registrations return `status: "pending"` and require platform admin approval before login.
+- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`: manual registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
+- Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
+- Manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
 - Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
 - Manual pending registrations create founder email lookup mappings during registration. Auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
@@ -3772,7 +3774,7 @@ Submit a public company registration request.
   "name": "ACME Corp",
   "adminEmail": "admin@acme.com",
   "adminPassword": "StrongPass1!",
-  "plan": "standard",
+  "plan": "premium",
   "complianceMode": "non_compliant",
   "workflowMode": "food_manufacturing"
 }
@@ -3782,12 +3784,12 @@ Submit a public company registration request.
 ```json
 {
   "success": true,
-  "message": "Your standard plan registration has been submitted for review. You will be notified once approved.",
+  "message": "Your premium plan registration has been submitted for review. You will be notified once approved.",
   "data": {
     "id": "tenant-id",
     "name": "ACME Corp",
     "status": "pending",
-    "plan": "standard",
+    "plan": "premium",
     "company_token": "token-acme-123"
   }
 }
@@ -3802,7 +3804,7 @@ Submit a public company registration request.
     "id": "tenant-id",
     "name": "ACME Corp",
     "status": "active",
-    "plan": "standard",
+    "plan": "premium",
     "company_token": "token-acme-123",
     "email_sent": false
   }
@@ -3823,6 +3825,9 @@ List all tenant registrations with their status.
       "admin_email": "admin@acme.com",
       "company_token": "token-acme-123",
       "status": "pending",
+      "plan": "standard",
+      "effective_plan": "premium",
+      "plan_policy": "registered_tenant_premium_capable",
       "compliance_mode_state": null,
       "compliance_mode_choice_required": true,
       "can_force_non_compliant": false,
@@ -3837,6 +3842,8 @@ List all tenant registrations with their status.
 - `can_force_non_compliant`: authoritative eligibility flag for admin `POST /admin/tenants/:id/force-non-compliant` action.
 - `force_non_compliant_block_reason`: human-readable reason when force action is blocked.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
+- `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
+- `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
 
 ### POST /admin/tenants/:id/approve
 Approve a pending tenant registration and provision their isolated database.
@@ -3900,13 +3907,12 @@ Reject a pending tenant registration.
 - `email_sent`: Boolean indicating whether rejection notification email was sent successfully
 
 ### PUT /admin/tenants/:id
-Update tenant status or subscription plan.
+Update tenant status. The legacy `plan` field remains accepted for transport compatibility, but registered tenants are premium-capable by policy.
 
 **Request**
 ```json
 {
-  "status": "inactive",
-  "plan": "premium"
+  "status": "inactive"
 }
 ```
 
@@ -3929,8 +3935,8 @@ Update tenant status or subscription plan.
 - `status` values: "active", "inactive" (soft delete), "pending", "rejected"
 - `plan` values: "standard", "premium"
 - Changing status to "inactive" prevents all users of that tenant from logging in.
-- In default billing-paused mode (`PAYMENTS_ENABLED=false`), this endpoint still allows manual tenant `plan` metadata edits.
-- In billing-paused mode, those manual plan metadata edits are immediately honored by premium route gating.
+- Pending and active tenants are normalized to `plan: "premium"` by this route. Sending `"plan": "standard"` for an active tenant does not downgrade it.
+- In default billing-paused mode (`PAYMENTS_ENABLED=false`), premium route access is plan-driven and does not require `subscription_status: "active"`.
 - Billing automation endpoints remain disabled in that mode (`POST /admin/tenants/:id/change-plan`, `/payments/*` return `503` + `PAYMENTS_DISABLED`).
 
 ### DELETE /admin/tenants/:id
@@ -3948,6 +3954,7 @@ No body required.
 ```
 
 **Side Effects**:
+- Removes the landlord `storefront_discovery_index` row before database deletion. If discovery cleanup fails, the request returns `500` and does not drop the tenant database. If database deletion fails after index cleanup, the backend best-effort restores the discovery row before returning the failure.
 - **DROPS** the tenant's isolated database (`sku_tenant_...`)
 - Removes the tenant record from the `Tenants` table
 - This action cannot be undone. All data is lost.

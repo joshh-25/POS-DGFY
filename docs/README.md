@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-09
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -82,7 +82,7 @@ Start here for all planning and implementation work:
 16. Hosting mode is selected from one codebase by environment profile (`shared` or `vps`) and validated by `npm run preflight:shared` / `npm run preflight:vps`; runtime capabilities are visible through `/health`, `/api/v1/health`, and Admin > Hosting. Namecheap shared production deploys use `.github/workflows/deploy-namecheap-shared.yml` plus the runbook in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
    - The canonical PM2 production entrypoint is root `ecosystem.config.cjs`, which runs backend, IMS, POS, and Storefront processes. Do not use obsolete two-process ecosystem shapes for production signoff.
 17. Services Mode is a first-class workflow mode across IMS, POS, and Storefront. It uses item-backed service catalog rows plus service metadata, appointment bookings, resources/providers, waitlist, intake forms, reminder outbox, client signals, and stock-exempt POS service sales.
-18. Standard company registration defaults to manual platform-admin approval. `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the temporary opt-in path for immediately provisioning standard tenants and signing the founder in through the normal login API; premium/subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
+18. Company registration defaults to manual platform-admin approval. New pending and active registrations are premium-capable by plan metadata. `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the temporary opt-in path for immediately provisioning manual registrations and signing the founder in through the normal login API; provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 19. Public company registration has its own strict IP limiter (`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`) because `auto_standard` can create tenant databases from a public request.
 20. Customer Access Mode is the runtime storefront capability contract behind a controlled rollout flag. Discovery/profile/catalog responses expose additive access metadata; `ghost` suppresses public item-search/catalog rows, `catalog` and `inquiry` suppress cart/quote/checkout/booking, and `transaction` preserves current ordering/booking behavior subject to existing stock, location, compliance, and payment gates.
 21. Inventory Display is independent from Customer Access Mode. Public storefront payloads keep raw `current_stock` and `cost_per_unit` private while exposing only the normalized `inventory_display` object allowed by tenant settings.

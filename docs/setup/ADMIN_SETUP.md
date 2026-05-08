@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: setup
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-09
 applies_to: admin_bootstrap_and_local_setup
 topic: admin_account_setup
 ---
@@ -138,7 +138,7 @@ Allowed values:
 | Value | Behavior |
 |---|---|
 | `manual` | Registrations remain pending until an admin approves them. |
-| `auto_standard` | Standard registrations can be activated automatically after provisioning. Premium/subscription flows remain payment-gated when payments are disabled. |
+| `auto_standard` | Manual non-subscription registrations can be activated automatically after provisioning. New pending and active tenants are premium-capable by plan metadata, while provider subscription flows remain payment-gated when payments are disabled. |
 
 ## Customer Access And Storefront Admin Notes
 

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-09
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -16,15 +16,16 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 ## Tenant Lifecycle
 
 ### 1. Registration (Current Policy)
-- **Standard Account**: Defaults to the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
-- **Temporary Auto-Accept Mode**: When `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, standard registrations are immediately provisioned, activated, and the registration UI signs the founder in through the normal login API. `manual` remains the default and rollback mode.
-- **Premium/Subscription Onboarding**: Disabled for this phase. Requests that require subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
+- **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after approval/activation.
+- **Manual Approval Mode**: Defaults to the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
+- **Temporary Auto-Accept Mode**: When `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, manual registrations are immediately provisioned, activated, and the registration UI signs the founder in through the normal login API. `manual` remains the default and rollback mode.
+- **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
 - **Provisioning Trigger**: Database provisioning runs after explicit admin approval in `manual` mode, or during public registration in `auto_standard` mode.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict when `auto_standard` is enabled because accepted registrations create tenant databases.
 
 ### 2. Approval & Provisioning (Active)
-- Admin clicks **Approve** in the Tenant Manager (for pending Standard accounts) or the public registration use case auto-accepts a Standard account when `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
+- Admin clicks **Approve** in the Tenant Manager (for pending premium-capable accounts) or the public registration use case auto-accepts a manual registration when `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
 - System performs **Provisioning**:
     1.  Generates a unique database name (must start with `sku_tenant_` for safety).
     2.  Creates the database.
@@ -56,22 +57,25 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Safety Measures**:
     1. **Name Matching**: Requires typing the company name exactly to confirm.
     2. **Prefix Enforcement**: For security, the backend ONLY allows dropping databases that start with the `sku_tenant_` prefix.
+    3. **Storefront Discovery Cleanup**: The landlord `storefront_discovery_index` row is removed before database deletion. If discovery cleanup fails, the delete request fails and the tenant database is left intact so public discovery cannot continue showing a tenant after a reported successful deletion. If database deletion fails after index cleanup succeeds, the delete flow attempts to restore the discovery row before returning the failure.
 - **Legacy Note**: Databases created with non-standard naming conventions (e.g., `tenant_standard`) cannot be deleted via the UI and require manual script intervention.
 
 ## Subscription Plans (Current Policy)
 
-Tenants still store plan metadata, but billing/subscription workflows are hard-disabled in this phase.
+Tenants still store plan metadata, but billing/subscription workflows are hard-disabled in this phase. New pending and active registrations default to `plan=premium`; migration `20260508000001-default-registered-tenants-to-premium.cjs` backfills existing pending/active rows.
 
-- **Standard**: Core features (Inventory, Suppliers, Purchase/Job Orders, Reports, Settings).
-- **Premium**: Reserved plan tier metadata for gated features.
+- **Standard**: Legacy/reserved plan tier for inactive historical rows only. Pending and active tenants are normalized back to `premium` by registration, approval, and admin status-update paths.
+- **Premium**: Default registered-tenant plan tier for gated mode surfaces.
 - **Enterprise**: Reserved for future expansion.
 
 Current policy notes:
 1. Payment/subscription endpoints return `503` with `PAYMENTS_DISABLED`.
 2. Legacy billing admin actions (`/admin/tenants/:id/change-plan`, billing setup) are disabled while billing is paused.
-3. Admin can still edit tenant `plan` metadata in Tenant Manager via `PUT /admin/tenants/:id` as an operational override.
-4. Premium registration via provider verification is disabled.
-5. Premium route gates in billing-paused mode are plan-driven (`plan === premium`); live subscription-status enforcement is only applied when `PAYMENTS_ENABLED=true`.
+3. Tenant Manager no longer exposes plan edits. `PUT /admin/tenants/:id` accepts legacy `plan` input for transport compatibility, but pending/active tenants are normalized to `premium`; active tenants cannot be downgraded through that route.
+4. Manual premium-capable tenants keep `subscription_status=inactive` unless a provider subscription id is supplied and verified by an enabled payment flow. Premium route gates in billing-paused mode still use plan metadata only.
+5. Provider-verified subscription registration is disabled while payments are paused.
+6. Live subscription-status enforcement is only applied when `PAYMENTS_ENABLED=true`.
+7. Tenant list responses include `effective_plan` and `plan_policy`; admin UI renders `effective_plan` so stale historical `standard` rows cannot contradict backend premium-capable enforcement.
 
 ### Feature Gating
 
@@ -113,7 +117,7 @@ CREATE TABLE Tenants (
     company_token VARCHAR(255) UNIQUE NOT NULL, -- Header: x-company-token
     db_name VARCHAR(255), -- The name of their isolated DB
     status ENUM('pending', 'active', 'inactive', 'rejected') DEFAULT 'pending',
-    plan ENUM('standard', 'premium') DEFAULT 'standard',
+    plan ENUM('standard', 'premium') DEFAULT 'premium',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     

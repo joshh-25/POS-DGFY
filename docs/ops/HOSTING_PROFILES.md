@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: operations
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-09
 applies_to: deployment_and_runtime_operations
 topic: hosting_profiles
 ---
@@ -110,10 +110,10 @@ Token blacklist runtime behavior must match the reported capability mode:
 - `fail_closed`: Redis/cache check failures deny the request with service-unavailable behavior.
 
 Tenant registration approval mode is security-sensitive operational config:
-- `manual` keeps standard registrations pending until platform-admin approval.
-- `auto_standard` immediately provisions only standard, non-subscription registrations and then the frontend performs a normal login call.
+- `manual` keeps company registrations pending until platform-admin approval.
+- `auto_standard` immediately provisions manual, non-subscription registrations and then the frontend performs a normal login call.
 - Invalid values fall back to `manual`; do not depend on typoed values for rollout state.
-- Premium/subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
+- New pending and active registrations are premium-capable by plan metadata, but provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 
 In `vps` mode, Redis is a required capability. If `REDIS_URL` is configured but Redis is disconnected, `/health` and `/api/v1/health` should report degraded/unhealthy status so deploy automation and operators do not treat the runtime as fully ready.
 
