@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { useCSVExport } from '../../src/hooks/useCSVExport.js';
+import { useWorkflowMode } from '../../src/features/settings/WorkflowModeContext.jsx';
+import { getWorkflowModeLabel } from '../../src/features/settings/workflowMode.js';
 import { toast } from 'sonner';
 
 const EXPORT_MODES = {
@@ -40,22 +42,28 @@ export default function CSVExportModal({
     filteredCount = 0
 }) {
     const { loading, exportAll, exportFiltered, exportByIds, getExportPreview } = useCSVExport();
+    const { workflowMode } = useWorkflowMode();
 
     const [exportMode, setExportMode] = useState(EXPORT_MODES.ALL);
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [allItemsCount, setAllItemsCount] = useState(0);
+    const [exportTemplateLabel, setExportTemplateLabel] = useState('');
+    const workflowModeLabel = getWorkflowModeLabel(workflowMode);
 
     // Get all items count on open
     useEffect(() => {
         if (open) {
-            getExportPreview({}).then(result => {
+            getExportPreview({}, { workflowMode }).then(result => {
                 if (result.success) {
                     setAllItemsCount(result.count);
+                    setExportTemplateLabel(result.workflowMode
+                        ? getWorkflowModeLabel(result.workflowMode)
+                        : workflowModeLabel);
                 }
             });
         }
-    }, [open]);
+    }, [open, workflowMode, workflowModeLabel]);
 
     // Reset state on close
     useEffect(() => {
@@ -101,17 +109,17 @@ export default function CSVExportModal({
         try {
             switch (exportMode) {
                 case EXPORT_MODES.ALL:
-                    result = await exportAll();
+                    result = await exportAll({ workflowMode });
                     break;
                 case EXPORT_MODES.FILTERED:
-                    result = await exportFiltered(filters);
+                    result = await exportFiltered(filters, { workflowMode });
                     break;
                 case EXPORT_MODES.SELECTED:
                     if (selectedIds.size === 0) {
                         toast.error('Please select at least one item to export');
                         return;
                     }
-                    result = await exportByIds(Array.from(selectedIds));
+                    result = await exportByIds(Array.from(selectedIds), { workflowMode });
                     break;
             }
 
@@ -172,7 +180,7 @@ export default function CSVExportModal({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <FileDown className="w-5 h-5 text-blue-600" />
-                        Export Items to CSV
+                        Export Items to {exportTemplateLabel || workflowModeLabel} CSV
                     </DialogTitle>
                 </DialogHeader>
 
@@ -309,7 +317,7 @@ export default function CSVExportModal({
                 <DialogFooter className="mt-4">
                     <div className="flex items-center justify-between w-full">
                         <p className="text-sm text-slate-500">
-                            {getExportCount()} items will be exported
+                            {getExportCount()} items will be exported as {exportTemplateLabel || workflowModeLabel} CSV
                         </p>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={onClose}>

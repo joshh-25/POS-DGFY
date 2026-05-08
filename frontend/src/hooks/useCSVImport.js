@@ -100,9 +100,14 @@ export const useCSVImport = () => {
                 responseType: 'blob'
             });
 
-            const filename = workflowMode === 'msme'
-                ? 'msme_items_import_template.csv'
-                : 'manufacturing_items_import_template.csv';
+            const templateFilenames = {
+                food_manufacturing: 'food_manufacturing_items_import_template.csv',
+                manufacturing: 'food_manufacturing_items_import_template.csv',
+                msme: 'msme_items_import_template.csv',
+                services: 'services_items_import_template.csv',
+                fnb: 'fnb_items_import_template.csv'
+            };
+            const filename = templateFilenames[workflowMode] || 'food_manufacturing_items_import_template.csv';
 
             // Create download link
             const url = window.URL.createObjectURL(new Blob([response.data]));

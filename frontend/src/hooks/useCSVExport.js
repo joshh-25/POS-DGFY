@@ -5,15 +5,24 @@ export const useCSVExport = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    const appendWorkflowMode = (params, workflowMode) => {
+        if (workflowMode) {
+            params.append('workflow_mode', workflowMode);
+        }
+    };
+
     /**
-     * Export all items (will return ZIP if both items and products exist)
+     * Export all items using the active workflow-mode CSV contract.
      */
-    const exportAll = async () => {
+    const exportAll = async ({ workflowMode } = {}) => {
         setLoading(true);
         setError(null);
 
         try {
-            const response = await api.get('/items/export/all', {
+            const params = new URLSearchParams();
+            appendWorkflowMode(params, workflowMode);
+            const queryString = params.toString();
+            const response = await api.get(`/items/export/all${queryString ? `?${queryString}` : ''}`, {
                 responseType: 'blob'
             });
 
@@ -33,7 +42,7 @@ export const useCSVExport = () => {
     /**
      * Export items with filters
      */
-    const exportFiltered = async (filters = {}) => {
+    const exportFiltered = async (filters = {}, { workflowMode } = {}) => {
         setLoading(true);
         setError(null);
 
@@ -52,6 +61,7 @@ export const useCSVExport = () => {
             if (filters.folder && filters.folder !== 'all') {
                 params.append('folder', filters.folder);
             }
+            appendWorkflowMode(params, workflowMode);
 
             const queryString = params.toString();
             const url = `/items/export${queryString ? `?${queryString}` : ''}`;
@@ -76,7 +86,7 @@ export const useCSVExport = () => {
     /**
      * Export specific items by IDs
      */
-    const exportByIds = async (itemIds) => {
+    const exportByIds = async (itemIds, { workflowMode } = {}) => {
         setLoading(true);
         setError(null);
 
@@ -85,7 +95,7 @@ export const useCSVExport = () => {
                 throw new Error('No items selected for export');
             }
 
-            const response = await api.post('/items/export', { itemIds }, {
+            const response = await api.post('/items/export', { itemIds, workflow_mode: workflowMode }, {
                 responseType: 'blob'
             });
 
@@ -105,7 +115,7 @@ export const useCSVExport = () => {
     /**
      * Get export preview count
      */
-    const getExportPreview = async (filters = {}) => {
+    const getExportPreview = async (filters = {}, { workflowMode } = {}) => {
         try {
             const params = new URLSearchParams();
             if (filters.category && filters.category !== 'all') {
@@ -120,6 +130,7 @@ export const useCSVExport = () => {
             if (filters.folder && filters.folder !== 'all') {
                 params.append('folder', filters.folder);
             }
+            appendWorkflowMode(params, workflowMode);
 
             const queryString = params.toString();
             const url = `/items/export/preview${queryString ? `?${queryString}` : ''}`;
@@ -130,7 +141,9 @@ export const useCSVExport = () => {
                 count: response.data.data.count,
                 isZip: response.data.data.isZip || false,
                 itemsCount: response.data.data.itemsCount,
-                productsCount: response.data.data.productsCount
+                productsCount: response.data.data.productsCount,
+                workflowMode: response.data.data.workflowMode || null,
+                templateType: response.data.data.templateType || null
             };
         } catch (err) {
             return { success: false, error: err.message };
