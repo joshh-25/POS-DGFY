@@ -399,6 +399,8 @@ curl -fsS -H "Host: dgfy.ph" http://127.0.0.1:5175/ >/dev/null
 
 If the browser shows `Blocked request. This host ("dgfy.ph") is not allowed. To allow this host, add "dgfy.ph" to preview.allowedHosts in vite.config.js`, Nginx is already reaching Vite but the Storefront preview process is running stale or incomplete config. Verify the deployed checkout is current, confirm `frontend/apps/store/vite.config.js` includes `dgfy.ph` and `store.dgfy.ph` in `allowedHosts`, then restart `sku-store-frontend` with `pm2 restart sku-store-frontend --update-env` and `pm2 save`.
 
+If DGFY browser logins show `404` for `/api/v1/...` while the frontend page itself loads, verify the DGFY Nginx virtual host is proxying `/api` and `/uploads` to the active backend port `127.0.0.1:5001`. A proxy target of `127.0.0.1:5000` can route to the wrong local service and return empty 404s for valid backend routes such as `/api/v1/auth/lookup` and `/api/v1/admin/login`.
+
 ## Hosting Profile Verification
 After every deploy or rollback:
 1. Open `/health` or `/api/v1/health`.
