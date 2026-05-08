@@ -115,6 +115,7 @@ export const normalizeStorefrontPageModel = ({
     modeAdapter,
     isServicesMode,
     servicesViewModel,
+    servicesLayoutMode: servicesViewModel?.servicesLayoutMode || 'directory',
     hero: {
       name: trimText(selectedStore?.tenant_name) || 'Storefront',
       storeName: trimText(selectedStore?.tenant_name) || 'Storefront',

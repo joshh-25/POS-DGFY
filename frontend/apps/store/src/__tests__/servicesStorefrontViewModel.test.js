@@ -40,6 +40,7 @@ describe('servicesStorefrontViewModel', () => {
     expect(viewModel.serviceGroups[0].items[0].variantName).toBe('Wash & Fold');
     expect(viewModel.serviceGroups[0].items[0].requiredIntakeCount).toBe(1);
     expect(viewModel.serviceGroups[1].items[0].serviceAreaLabel).toBe('Home / on-site visit');
+    expect(viewModel.servicesLayoutMode).toBe('booking_heavy');
   });
 
   it('returns sensible fallback metadata for unknown service families', () => {
@@ -74,5 +75,75 @@ describe('servicesStorefrontViewModel', () => {
       item_id: 11,
       variantName: 'Comforter Care'
     }));
+  });
+
+  it('infers a lead-gen layout for small low-friction service catalogs', () => {
+    const viewModel = getServicesStorefrontViewModel([
+      {
+        item_id: 21,
+        name: 'Consultation',
+        category: 'service',
+        service_detail: {
+          service_category: 'consultation',
+          payment_policy: 'customer_choice',
+          service_area_type: 'in_store'
+        }
+      },
+      {
+        item_id: 22,
+        name: 'Follow-up Visit',
+        category: 'service',
+        service_detail: {
+          service_category: 'consultation',
+          payment_policy: 'customer_choice',
+          service_area_type: 'in_store'
+        }
+      }
+    ]);
+
+    expect(viewModel.servicesLayoutMode).toBe('lead_gen');
+  });
+
+  it('infers a directory layout for broader multi-family catalogs without strong booking signals', () => {
+    const viewModel = getServicesStorefrontViewModel([
+      {
+        item_id: 31,
+        name: 'Laundry Service - Wash & Fold',
+        category: 'service',
+        service_detail: { service_category: 'laundry', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      },
+      {
+        item_id: 32,
+        name: 'Laundry Service - Dry Clean',
+        category: 'service',
+        service_detail: { service_category: 'laundry', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      },
+      {
+        item_id: 33,
+        name: 'Home Cleaning',
+        category: 'service',
+        service_detail: { service_category: 'home_cleaning', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      },
+      {
+        item_id: 34,
+        name: 'Pet Grooming',
+        category: 'service',
+        service_detail: { service_category: 'pet_grooming', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      },
+      {
+        item_id: 35,
+        name: 'Massage',
+        category: 'service',
+        service_detail: { service_category: 'wellness', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      },
+      {
+        item_id: 36,
+        name: 'Nail Care',
+        category: 'service',
+        service_detail: { service_category: 'wellness', payment_policy: 'customer_choice', service_area_type: 'in_store' }
+      }
+    ]);
+
+    expect(viewModel.servicesLayoutMode).toBe('directory');
   });
 });

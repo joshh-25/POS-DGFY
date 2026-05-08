@@ -271,6 +271,40 @@ The backend contract still centers on one service booking request per submission
 ### 4. Some Microcopy Is Still Generic
 Some empty-state and support copy is generic storefront copy rather than business-authored content.
 
+### 5. Address Map Pin Is Not Yet Supported By The Booking Contract
+The current services booking storefront can render address-like intake fields cleanly, but it does not have backend support for a structured customer map pin / coordinate field in service bookings.
+
+Current state:
+- storefront booking supports only intake field types already accepted by the services contract
+- `Full Service Address` can be collected as text/textarea input from `intake_form_schema`
+- the storefront should not introduce a map-pin picker yet because there is no confirmed public services booking payload for lat/lng or a dedicated location-pin field
+
+Future backend integration needed if map pin is desired:
+- supported booking field type or explicit payload fields for customer service coordinates
+- persistence for customer-selected latitude/longitude
+- validation rules for optional or required service-location pins
+
+### 6. Storefront Cover Image Can Be Missing Even When Updated In SKUpervisor
+ABeeZee storefront verification showed that the customer-facing storefront hero correctly reads cover-image data from the public discovery payload, but the tenant currently has no persisted cover-image value in the storefront settings used by that payload.
+
+Verified current state for tenant `ABeeZee`:
+- public discovery payload returns `storefront_cover_image_url: null`
+- tenant `system_settings` contains:
+  - `storefront_cover_image_url = ""`
+  - `storefront_cover_image_path = ""`
+- profile image settings are populated and render correctly
+
+Impact:
+- the storefront hero falls back to the dark gradient background
+- the frontend is behaving as designed because no cover image is available in the public discovery record
+
+Backend handoff:
+- verify where the SKUpervisor dashboard writes the storefront cover image
+- ensure the dashboard persists one or both of these tenant settings:
+  - `storefront_cover_image_url`
+  - `storefront_cover_image_path`
+- ensure the discovery-index rebuild path materializes the persisted cover image into the public storefront discovery payload
+
 ## Current Standing
 Services mode storefront is currently in a solid `UI-refresh + contract-aligned` state for the reference tenant and existing backend.
 
@@ -292,4 +326,3 @@ For UI and docs work in this phase, the relevant checks are:
 - `npm --prefix frontend run build:store`
 - targeted storefront frontend tests
 - `npm run lint:docs` when this document changes
-
