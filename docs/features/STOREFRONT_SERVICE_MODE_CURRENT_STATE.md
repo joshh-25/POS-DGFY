@@ -308,6 +308,11 @@ Backend handoff:
   - `storefront_cover_image_path`
 - ensure the discovery-index rebuild path materializes the persisted cover image into the public storefront discovery payload
 
+May 11, 2026 ingress finding:
+- IMS Settings cover/profile uploads can fail before backend validation when production Nginx keeps the default 1 MiB request-body limit.
+- Backend storefront asset validation allows 5 MiB image files and persists `storefront_cover_image_url` / `storefront_cover_image_path` or `storefront_profile_image_url` / `storefront_profile_image_path`.
+- Production deploy now installs an Nginx guard with `client_max_body_size 8m;` so normal multipart image uploads reach the backend while backend validation remains authoritative.
+
 ## Current Standing
 Services mode storefront is currently in a solid `UI-refresh + contract-aligned` state for the reference tenant and existing backend.
 
