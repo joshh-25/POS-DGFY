@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,storefront,onboarding,inventory
 reason_codes_impacted: ALLOWED,POS_READINESS_INCOMPLETE,STOREFRONT_READINESS_INCOMPLETE
 policy_version: 2026.05.11
-verification_evidence: npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js,npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemFinancialPolicy.test.js,npm --prefix frontend run build:skupervisor,npm run check:architecture,npm run lint:docs,git diff --check
+verification_evidence: node --check backend/src/config/uploadConfig.js,npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js,npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemFinancialPolicy.test.js,npm --prefix frontend run build:skupervisor,npm run check:architecture,npm run lint:docs,git diff --check
 rollback_note: Revert the bulk Catalog Setup backend, frontend, and docs commits; then verify POS and Storefront single-item visibility/image controls still preserve their independent override tables.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -39,10 +39,12 @@ This declaration covers the bulk POS and Storefront catalog setup hardening pass
 4. Service and stock-exempt rows may remain ready without physical stock when the mode/service contract allows it and all other blockers pass.
 5. Bulk image uploads must preserve current visibility and must not auto-enable POS or Storefront visibility.
 6. Storefront visible/default-visible price-less rows must remain blocked from Storefront image setup.
+7. Bulk catalog image transport limits must remain below production ingress limits while the use cases enforce the 5 MB product image policy per file.
 
 ## Verification Evidence
 
 - `npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js`
+- `node --check backend/src/config/uploadConfig.js`
 - `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemFinancialPolicy.test.js`
 - `npm --prefix frontend run build:skupervisor`
 - `npm run check:architecture`

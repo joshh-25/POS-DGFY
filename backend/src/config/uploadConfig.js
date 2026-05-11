@@ -14,6 +14,8 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 export const TEMP_DIR = uploadDir;
+const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 6 * 1024 * 1024;
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -62,7 +64,7 @@ export const upload = multer({
     fileFilter: fileFilter
 });
 
-const buildStrictImageUpload = ({ maxBytes = 5 * 1024 * 1024, maxFiles = 1 } = {}) => multer({
+const buildStrictImageUpload = ({ maxBytes = IMAGE_UPLOAD_MAX_BYTES, maxFiles = 1 } = {}) => multer({
     storage,
     limits: {
         fileSize: maxBytes,
@@ -78,7 +80,7 @@ const buildStrictImageUpload = ({ maxBytes = 5 * 1024 * 1024, maxFiles = 1 } = {
     }
 });
 
-const buildBulkCatalogImageUpload = ({ maxBytes = 10 * 1024 * 1024, maxFiles = 50 } = {}) => multer({
+const buildBulkCatalogImageUpload = ({ maxBytes = BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles = 50 } = {}) => multer({
     storage,
     limits: {
         fileSize: maxBytes,
@@ -89,8 +91,8 @@ const buildBulkCatalogImageUpload = ({ maxBytes = 10 * 1024 * 1024, maxFiles = 5
     }
 });
 
-export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
-export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
-export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: 10 * 1024 * 1024, maxFiles: 50 });
-export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
-export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: 10 * 1024 * 1024, maxFiles: 50 });
+export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
+export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
+export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: 50 });
+export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
+export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: 50 });
