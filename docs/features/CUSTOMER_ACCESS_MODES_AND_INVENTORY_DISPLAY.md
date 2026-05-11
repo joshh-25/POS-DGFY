@@ -92,6 +92,13 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
 - Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
+- The inventory Catalog Setup workflow covers both POS and Storefront setup. It shows mode-aware recommendations, POS readiness, missing blockers, visibility state, image state, SKU-filename bulk image previews, and bulk POS/Storefront visibility actions.
+- Bulk POS visibility uses `PATCH /api/v1/pos/catalog-overrides/bulk`; enabling requires POS readiness, while disabling is allowed for incomplete rows.
+- Bulk Storefront visibility uses `PATCH /api/v1/items/storefront-overrides/bulk`; enabling requires Storefront readiness and positive customer price, while disabling is allowed for incomplete rows and never mutates POS visibility.
+- Bulk POS images use `POST /api/v1/pos/catalog-overrides/images/bulk` with multipart field `images`. Bulk Storefront images use `POST /api/v1/items/storefront-images/bulk` with multipart field `images`. Both match files by SKU filename stem, preserve current visibility, return per-file partial-success results, and keep POS and Storefront image assets independent.
+- Visible/default-visible Storefront rows without a positive `default_sale_price` are blocked from Storefront bulk image upload. Hidden rows may store Storefront images for later setup.
+- Bulk image upload parsing is intentionally lenient enough for the use cases to return per-file validation results for unsupported MIME/signature and 5 MB readiness failures instead of rejecting the whole batch at the upload middleware. The transport cap remains 50 files per request and 10 MB per uploaded temp file; catalog use cases enforce the 5 MB image policy per result row.
+- Onboarding `has_sellable_item` uses POS readiness rather than the legacy item `pos_visible` column. It evaluates effective POS override/default visibility, positive sale price, active status, non-negative stock, available stock for stock-bearing rows, and service stock exemption with service metadata.
 
 6. Inventory item detail UI
 - Stock-bearing item detail views group active FIFO batches by `location_id` and show location stock, batch quantity, weighted cost, and inventory value together.
@@ -121,8 +128,10 @@ Runtime behavior:
 - Backend unit tests: mode normalization, rank comparison, stage-derived max mode, inventory display serialization, Settings validator coverage, legacy `visibility_mode` compatibility.
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
+- Backend bulk setup tests: POS readiness emits `STOCK_UNAVAILABLE` for stock-bearing out-of-stock rows, stock-exempt service rows remain ready without stock, onboarding sellable-item readiness uses POS readiness, bulk POS/Storefront visibility returns per-item `updated`, `blocked`, `not_found`, or `failed` results, and bulk image uploads cover matched, unmatched, duplicate filename, unsupported MIME, oversize, blocked readiness, and failed-write cleanup paths.
 - Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
+- Frontend Catalog Setup tests: recommendations, readiness blockers, visibility state, image state, Storefront controls hidden without `items:edit`, bulk action preview, and POS/Storefront image upload independence.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
 - Stock-bearing mode regression tests: checkout/fulfillment in every mode with physical items preserves location-scoped FIFO depletion, while truly service-only rows remain stock-exempt.
 
@@ -147,6 +156,14 @@ Validated on 2026-05-08 for the storefront UI merge:
 - Browser smoke: local `/tenant-store` rendered the Storefront shell with no console errors.
 
 Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
+
+Validated on 2026-05-11 for bulk Catalog Setup hardening:
+- Backend targeted suites: `npm test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js` passed 43 tests, covering POS `STOCK_UNAVAILABLE`, service stock exemption, bulk POS visibility mixed results, POS bulk image duplicate/unmatched per-file results, Storefront visibility price blockers, Storefront image preservation/cleanup, and Storefront bulk image price blockers.
+- Frontend targeted suite: `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemFinancialPolicy.test.js` passed.
+- SKUpervisor build: `npm --prefix frontend run build:skupervisor` passed.
+- Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed.
+
+Operational readiness rating after the bulk Catalog Setup hardening pass: **8.8/10**. Remaining risk is browser-level multipart smoke evidence against a real tenant with sample images, plus broader frontend interaction tests for the Catalog Setup modal.
 
 ## Assumptions
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.

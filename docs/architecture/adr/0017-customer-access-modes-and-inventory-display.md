@@ -91,3 +91,20 @@ Storefront visibility does not make item cost public:
 - `storefront_catalog_overrides.storefront_visible=true` is a sale-readiness configuration. Enabling it on an item without a positive `default_sale_price` must surface a readiness blocker in IMS and must fail closed in Storefront checkout.
 - Storefront image upload must not create or preserve a visible Storefront override for a price-less row. Hidden rows may still store images for later setup, but visible rows must pass sale-price readiness first.
 - Inventory Display remains quantity/availability presentation only. It does not alter cost visibility and does not authorize public cost exposure.
+
+## Addendum: Bulk Catalog Setup And Mode-Aware Readiness (2026-05-11)
+
+Bulk setup is now part of the item-level catalog contract:
+
+- POS and Storefront readiness use shared setup policy helpers so onboarding, single-item controls, bulk visibility APIs, and bulk image APIs report the same blocker vocabulary.
+- POS readiness requires active status, effective POS visibility, positive sale price, non-negative stock, and available stock for stock-bearing rows. Service and stock-exempt rows may be POS-ready without physical stock when the other blockers pass.
+- Onboarding `has_sellable_item` must count POS-ready items, not merely active or POS-visible rows.
+- Storefront readiness reports effective visibility, sale-price readiness, image state, active status, and blocker reasons. Visible Storefront rows without a positive `default_sale_price` remain blocked.
+- `PATCH /api/v1/pos/catalog-overrides/bulk` may enable POS visibility only for POS-ready rows. Disabling remains allowed for incomplete rows.
+- `PATCH /api/v1/items/storefront-overrides/bulk` may enable Storefront visibility only for Storefront-ready rows and must never mutate POS visibility. Disabling remains allowed for incomplete rows.
+- `POST /api/v1/pos/catalog-overrides/images/bulk` and `POST /api/v1/items/storefront-images/bulk` match files by SKU filename stem, preserve current visibility, return per-file partial-success results, and clean up failed stored/temp files.
+- Bulk image middleware accepts the batch for use-case validation so unsupported MIME/signature, duplicate filenames, unmatched SKU stems, readiness blockers, and 5 MB policy failures can be reported per file. The middleware still caps uploads at 50 files and 10 MB per temporary file.
+- POS and Storefront bulk image uploads are separate asset paths. A POS bulk image upload must not set Storefront image fields, and a Storefront bulk image upload must not set POS image fields.
+- Onboarding readiness must not use the legacy `items.pos_visible` column as a shortcut. It must evaluate the same POS readiness policy as the catalog setup flow and page through item rows rather than assuming the first query window contains the sellable candidate.
+
+Mode-aware recommendations are advisory, not permission bypasses. Corrected taxonomy modes use their mode-native sellable/internal item presets. Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, and `education_institutions`) must continue using conservative finished-goods defaults until a governed mode pass defines their taxonomy, financial policy, POS policy, Storefront policy, import/export columns, onboarding expectations, bulk setup recommendations, and tests.

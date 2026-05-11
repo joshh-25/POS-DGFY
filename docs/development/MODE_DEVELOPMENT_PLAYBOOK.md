@@ -64,6 +64,7 @@ Every mode implementation plan must include explicit RBAC and tenant-provisionin
    - Approval and auto-approval provisioning failures must leave the landlord tenant row in a valid retryable lifecycle state. Do not introduce temporary statuses outside the landlord `Tenant.status` enum unless the enum, API contract, UI filters, and recovery paths are updated together.
    - Declare stock behavior for every sellable line type as `stock_bearing` or `stock_exempt`. Stock-bearing lines in every mode must use location-scoped FIFO; stock-exempt lines must state why no inventory batch can be affected.
    - Define item creation presets before UI/backend work begins. Each preset must declare its user-facing label, canonical `items.category`, `product_type`, default UOM, allowed UOM groups/units, stock behavior, FIFO default, POS eligibility, Storefront eligibility, and legacy-row behavior. When explicit allowed units are present, both frontend selectors and backend validators must enforce those units instead of expanding to every unit in the allowed group.
+   - Define catalog setup behavior before exposing a preset in POS or Storefront. The mode contract must state stock-bearing versus stock-exempt behavior, sale-price and cost requirements, POS visibility defaults and blockers, Storefront visibility defaults and customer-price blockers, image upload behavior, and whether the item should be recommended for POS, Storefront, both, or internal use only.
    - If two presets share the same canonical category/product type, persist the preset key (for example `items.mode_item_preset`) instead of relying on UOM inference to recover user intent.
    - Separate convertible UOMs from valid business presentation units. Automatic conversion is allowed only for weight, volume, and count groups. Presentation and packaging units such as `serving`, `service`, `ticket`, `pack`, `case`, and `bottle` require explicit item-specific conversion before stock math can convert them.
 
@@ -174,8 +175,22 @@ Before changing any placeholder mode item UI, complete this checklist:
 7. Add frontend item-form preset/UOM/financial-display tests and backend taxonomy/readiness/reporting parity tests.
 8. Update CSV templates/import rules for that mode, including preview and confirm validation for optimized bulk-import paths.
 9. Keep CSV export and import on the same mode contract. Corrected-mode item exports must reuse the import template definition, include template marker columns, preserve persisted preset keys such as `mode_item_preset`, include customer sale price fields such as `default_sale_price`, and pass a preview-import round trip for the tenant workflow mode. Legacy category-split exports are compatibility behavior only when old callers explicitly request `type=items`, `type=products`, or `type=master`.
+10. Define the mode's Catalog Setup contract before promotion:
+    - Corrected item presets and mode-native labels.
+    - Stock-bearing versus stock-exempt behavior for every POS/Storefront candidate.
+    - Sale-price and cost requirements by preset.
+    - POS visibility defaults, POS readiness blockers, and service/stock exemptions.
+    - Storefront visibility defaults, customer-price blockers, and public cost/privacy boundaries.
+    - POS image versus Storefront image behavior, public/private asset boundaries, and cleanup expectations for failed writes.
+    - Bulk image upload validation behavior. Unsupported files, duplicate SKU filenames, unmatched SKU filenames, readiness blockers, and failed writes must return per-file results where transport limits allow it.
+    - Import/export template columns for visibility, price, cost, images, and preset keys.
+    - Onboarding readiness expectations, including what counts as a sellable POS-ready row.
+    - Bulk setup recommendation rules for `Recommended for POS`, `Recommended for Storefront`, `Keep internal`, `Needs setup`, and any mode-specific labels.
+    - Backend and frontend tests for single-item setup, bulk visibility, bulk image upload, onboarding readiness, import/export, and all mode fallback behavior.
 
 Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
+
+Placeholder modes must not gain custom POS, Storefront, image, import/export, or recommendation defaults through one-off UI logic. Until the checklist above is complete, they inherit conservative finished-goods catalog defaults and must be labelled as conservative/default behavior in future implementation notes.
 
 ## Future Mode Provisioning Checklist
 
