@@ -3,7 +3,15 @@ import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertPosRepositoryContract } from '../contracts/posRepository.contract.js';
 import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
+import {
+    DEFAULT_WORKFLOW_MODE,
+    normalizeWorkflowMode
+} from '../../shared/constants/workflowModes.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import {
+    buildCatalogSetupRecommendation,
+    buildPosReadiness
+} from '../../shared/utils/catalogSetupPolicy.js';
 import {
     detectBarcodeSymbology,
     isBarcodeScopeAllowedForSurface,
@@ -23,6 +31,7 @@ const toPositiveInt = (value) => {
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const parseJsonLoosely = (value) => {
@@ -68,10 +77,6 @@ const normalizeTerminalRegistry = (rawValue) => {
         });
     });
     return normalized;
-};
-const toPositiveNumber = (value) => {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 };
 const toBoolean = (value, fallback = false) => {
     if (typeof value === 'boolean') return value;
@@ -206,62 +211,14 @@ const buildFnbCatalogIncludes = () => {
     return includes;
 };
 
-const buildPosReadiness = ({ item, override }) => {
-    const payload = toPlain(item) || {};
-    const isServiceItem = isStockExemptServiceItem(payload);
-    const currentStock = toNumber(payload.current_stock, 0);
-    const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
-    const status = String(payload.status || '').trim().toLowerCase();
-
-    const checks = {
-        pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }) !== false,
-        has_sale_price: defaultSalePrice > 0,
-        stock_non_negative: currentStock >= 0,
-        status_active: status === 'active',
-        has_available_stock: isServiceItem || currentStock > 0
-    };
-
-    const missingRequirements = [];
-    if (!checks.pos_visible) {
-        missingRequirements.push({
-            code: 'POS_VISIBILITY_DISABLED',
-            label: 'Enable POS visibility',
-            fix_hint: 'Turn on Show in POS Menu for this item.'
-        });
-    }
-    if (!checks.has_sale_price) {
-        missingRequirements.push({
-            code: 'SALE_PRICE_MISSING',
-            label: 'Set a sale price',
-            fix_hint: 'Set default_sale_price above zero before selling in POS.'
-        });
-    }
-    if (!checks.stock_non_negative) {
-        missingRequirements.push({
-            code: 'STOCK_INVALID',
-            label: 'Fix stock value',
-            fix_hint: 'Stock cannot be negative.'
-        });
-    }
-    if (!checks.status_active) {
-        missingRequirements.push({
-            code: 'ITEM_NOT_ACTIVE',
-            label: 'Activate item',
-            fix_hint: 'Only active items are considered POS-ready.'
-        });
-    }
-
-    const checkValues = Object.values(checks);
-    const passingCount = checkValues.filter(Boolean).length;
-    const score = Math.round((passingCount / checkValues.length) * 100);
-
-    return {
-        ready: missingRequirements.length === 0,
-        state: missingRequirements.length === 0 ? 'ready' : 'needs_attention',
-        score,
-        checks,
-        missing_requirements: missingRequirements
-    };
+const getCurrentWorkflowMode = async () => {
+    const SystemSetting = safeGetModel('SystemSetting');
+    if (!SystemSetting) return DEFAULT_WORKFLOW_MODE;
+    const row = await SystemSetting.findOne({
+        where: { setting_key: WORKFLOW_MODE_SETTING_KEY },
+        attributes: ['setting_value']
+    });
+    return normalizeWorkflowMode(row?.setting_value ?? DEFAULT_WORKFLOW_MODE);
 };
 
 const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
@@ -466,7 +423,26 @@ export const posRepository = {
                 { item_id: itemId },
                 { statusField: 'status', excludeInactiveStatus: false }
             ),
-            attributes: ['item_id', 'name', 'category', 'product_type', 'status'],
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'status', 'default_sale_price', 'current_stock'],
+            include: buildServiceDetailInclude(),
+            transaction: options.transaction
+        });
+    },
+
+    async findItemsBySkuCodes(skuCodes = [], options = {}) {
+        const Item = dbStore.get('Item');
+        const normalizedSkuCodes = [...new Set((Array.isArray(skuCodes) ? skuCodes : [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean))];
+        if (normalizedSkuCodes.length === 0) return [];
+
+        return Item.findAll({
+            where: buildVisibleWhere(
+                { sku_code: { [Op.in]: normalizedSkuCodes } },
+                { statusField: 'status', excludeInactiveStatus: false }
+            ),
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'status', 'default_sale_price', 'current_stock'],
+            include: buildServiceDetailInclude(),
             transaction: options.transaction
         });
     },
@@ -1278,6 +1254,7 @@ export const posRepository = {
                 'sku_code',
                 'category',
                 'product_type',
+                'mode_item_preset',
                 'status',
                 'default_sale_price',
                 'current_stock',
@@ -1298,17 +1275,24 @@ export const posRepository = {
         });
 
         const overrideMap = await loadCatalogOverridesMap(items.map((item) => item.item_id));
+        const workflowMode = await getCurrentWorkflowMode();
         return items.map((item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
             const readiness = buildPosReadiness({ item: payload, override });
+            const recommendation = buildCatalogSetupRecommendation({
+                item: payload,
+                workflowMode,
+                posReadiness: readiness
+            });
             return {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
                 has_override: Boolean(override),
-                pos_readiness: readiness
+                pos_readiness: readiness,
+                catalog_setup_recommendation: recommendation
             };
         });
     },
@@ -1330,6 +1314,7 @@ export const posRepository = {
                 'sku_code',
                 'category',
                 'product_type',
+                'mode_item_preset',
                 'status',
                 'default_sale_price',
                 'current_stock',
@@ -1354,13 +1339,20 @@ export const posRepository = {
             ? override
             : { ...(override || {}), pos_visible: forcedPosVisible === true };
         const readiness = buildPosReadiness({ item: payload, override: effectiveOverride });
+        const workflowMode = await getCurrentWorkflowMode();
+        const recommendation = buildCatalogSetupRecommendation({
+            item: payload,
+            workflowMode,
+            posReadiness: readiness
+        });
 
         return {
             item_id: payload.item_id,
             pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride, surface: 'pos' }),
             pos_image_url: effectiveOverride?.pos_image_url || null,
             pos_image_path: effectiveOverride?.pos_image_path || null,
-            pos_readiness: readiness
+            pos_readiness: readiness,
+            catalog_setup_recommendation: recommendation
         };
     },
 

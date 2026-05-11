@@ -4,8 +4,10 @@ import os from 'os';
 import path from 'path';
 import {
     buildUploadStorefrontCatalogImageUseCase,
+    buildUploadBulkStorefrontCatalogImagesUseCase,
     buildDeleteStorefrontCatalogImageUseCase,
-    buildUpdateStorefrontCatalogOverrideUseCase
+    buildUpdateStorefrontCatalogOverrideUseCase,
+    buildUpdateBulkStorefrontCatalogOverridesUseCase
 } from '../src/modules/inventory/usecases/storefrontCatalogUseCases.js';
 
 const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
@@ -98,6 +100,53 @@ describe('storefront catalog use cases', () => {
             })
         });
         expect(upsertStorefrontCatalogOverride).not.toHaveBeenCalled();
+    });
+
+    it('bulk storefront visibility blocks price-less rows and never calls POS override writes', async () => {
+        const upsertStorefrontCatalogOverride = jest.fn().mockResolvedValue({
+            item_id: 501,
+            storefront_visible: true
+        });
+        const updatePosCatalogOverride = jest.fn();
+        const getStorefrontCatalogReadinessByItemId = jest.fn()
+            .mockResolvedValueOnce({
+                item_id: 501,
+                storefront_readiness: { ready: true, missing_requirements: [] }
+            })
+            .mockResolvedValueOnce({
+                item_id: 502,
+                storefront_readiness: {
+                    ready: false,
+                    missing_requirements: [{ code: 'SALE_PRICE_MISSING', label: 'Set a customer price' }]
+                }
+            });
+        const useCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({
+            itemRepository: {
+                getStorefrontCatalogReadinessByItemId,
+                upsertStorefrontCatalogOverride,
+                updatePosCatalogOverride
+            }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [501, 502], storefront_visible: true },
+            user: editableUser
+        });
+
+        expect(result.summary).toEqual({
+            updated: 1,
+            blocked: 1,
+            not_found: 0,
+            failed: 0
+        });
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ item_id: 501, status: 'updated' }),
+            expect.objectContaining({ item_id: 502, status: 'blocked' })
+        ]));
+        expect(upsertStorefrontCatalogOverride).toHaveBeenCalledWith(501, {
+            storefront_visible: true
+        });
+        expect(updatePosCatalogOverride).not.toHaveBeenCalled();
     });
 
     it('uploadStorefrontCatalogImage preserves an existing hidden storefront visibility flag', async () => {
@@ -257,6 +306,65 @@ describe('storefront catalog use cases', () => {
         expect(remove).not.toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/old.png' });
 
         await fs.rm(tempPath, { force: true });
+    });
+
+    it('uploadBulkStorefrontCatalogImages blocks visible price-less rows per file', async () => {
+        const tempPath = path.join(os.tmpdir(), `bulk-storefront-price-${Date.now()}.png`);
+        await fs.writeFile(tempPath, Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]));
+        const store = jest.fn();
+        const updateStorefrontCatalogImage = jest.fn();
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository: {
+                findItemsBySkuCodes: jest.fn().mockResolvedValue([{
+                    item_id: 601,
+                    sku_code: 'SF-601',
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    status: 'active',
+                    default_sale_price: 0
+                }]),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue(null),
+                getStorefrontCatalogReadinessByItemId: jest.fn().mockResolvedValue({
+                    item_id: 601,
+                    storefront_readiness: {
+                        ready: false,
+                        checks: { has_sale_price: false },
+                        missing_requirements: [{ code: 'SALE_PRICE_MISSING', label: 'Set a customer price' }]
+                    }
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: {
+                store,
+                remove: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'SF-601.png', size: 12 }],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({
+            uploaded: 0,
+            blocked_readiness: 1
+        });
+        expect(result.results).toEqual([
+            expect.objectContaining({
+                item_id: 601,
+                status: 'blocked_readiness',
+                readiness_snapshot: expect.objectContaining({
+                    missing_requirements: expect.arrayContaining([
+                        expect.objectContaining({ code: 'SALE_PRICE_MISSING' })
+                    ])
+                })
+            })
+        ]);
+        expect(store).not.toHaveBeenCalled();
+        expect(updateStorefrontCatalogImage).not.toHaveBeenCalled();
     });
 
     it('deleteStorefrontCatalogImage clears only storefront image fields', async () => {

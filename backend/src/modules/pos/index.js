@@ -13,7 +13,9 @@ import {
     buildIncrementGovernedResetCounterUseCase,
     buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
+    buildUpdateBulkPosCatalogOverridesUseCase,
     buildUploadPosCatalogImageUseCase,
+    buildUploadBulkPosCatalogImagesUseCase,
     buildDeletePosCatalogImageUseCase,
     buildOpenTerminalShiftUseCase,
     buildSwitchTerminalShiftLocationUseCase,
@@ -38,7 +40,12 @@ export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRep
 export const incrementGovernedResetCounterUseCase = buildIncrementGovernedResetCounterUseCase({ posRepository });
 export const listPosCatalogOverridesUseCase = buildListPosCatalogOverridesUseCase({ posRepository });
 export const updatePosCatalogOverrideUseCase = buildUpdatePosCatalogOverrideUseCase({ posRepository });
+export const updateBulkPosCatalogOverridesUseCase = buildUpdateBulkPosCatalogOverridesUseCase({ posRepository });
 export const uploadPosCatalogImageUseCase = buildUploadPosCatalogImageUseCase({
+    posRepository,
+    imageStorage: posCatalogImageStorage
+});
+export const uploadBulkPosCatalogImagesUseCase = buildUploadBulkPosCatalogImagesUseCase({
     posRepository,
     imageStorage: posCatalogImageStorage
 });

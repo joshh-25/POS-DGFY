@@ -10,9 +10,12 @@ import {
     buildScanPosBarcodeUseCase,
     buildListPosCatalogOverridesUseCase,
     buildUpdatePosCatalogOverrideUseCase,
+    buildUpdateBulkPosCatalogOverridesUseCase,
     buildUploadPosCatalogImageUseCase,
+    buildUploadBulkPosCatalogImagesUseCase,
     buildUpdateOnlineOrderStatusUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
+import { buildPosReadiness } from '../src/modules/shared/utils/catalogSetupPolicy.js';
 import { DomainError, DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import dbStore from '../src/utils/dbStore.js';
 
@@ -472,6 +475,81 @@ describe('pos use-cases application result contract', () => {
         expect(upsertCatalogOverride).toHaveBeenCalledWith(203, { pos_visible: false });
     });
 
+    it('buildPosReadiness blocks stock-bearing out-of-stock rows with STOCK_UNAVAILABLE', () => {
+        const readiness = buildPosReadiness({
+            item: {
+                item_id: 301,
+                category: 'product',
+                product_type: 'finished_goods',
+                status: 'active',
+                default_sale_price: 120,
+                current_stock: 0
+            },
+            override: { pos_visible: true }
+        });
+
+        expect(readiness.ready).toBe(false);
+        expect(readiness.missing_requirements).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'STOCK_UNAVAILABLE' })
+        ]));
+    });
+
+    it('buildPosReadiness keeps service rows stock-exempt when otherwise ready', () => {
+        const readiness = buildPosReadiness({
+            item: {
+                item_id: 302,
+                category: 'service',
+                mode_item_preset: 'service',
+                status: 'active',
+                default_sale_price: 500,
+                current_stock: 0
+            },
+            override: { pos_visible: true }
+        });
+
+        expect(readiness.ready).toBe(true);
+        expect(readiness.missing_requirements).toEqual([]);
+    });
+
+    it('updateBulkPosCatalogOverrides returns mixed updated and blocked results', async () => {
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 401, pos_visible: true });
+        const getCatalogReadinessByItemId = jest.fn()
+            .mockResolvedValueOnce({
+                item_id: 401,
+                pos_readiness: { ready: true, missing_requirements: [] }
+            })
+            .mockResolvedValueOnce({
+                item_id: 402,
+                pos_readiness: {
+                    ready: false,
+                    missing_requirements: [{ code: 'STOCK_UNAVAILABLE', label: 'Add available stock' }]
+                }
+            })
+            .mockResolvedValueOnce(null);
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401, 402, 999], pos_visible: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toEqual({
+            updated: 1,
+            blocked: 1,
+            not_found: 1,
+            failed: 0
+        });
+        expect(result.data.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ item_id: 401, status: 'updated' }),
+            expect.objectContaining({ item_id: 402, status: 'blocked' }),
+            expect.objectContaining({ item_id: 999, status: 'not_found' })
+        ]));
+        expect(upsertCatalogOverride).toHaveBeenCalledTimes(1);
+    });
+
     it('uploadPosCatalogImage preserves an existing hidden POS visibility flag', async () => {
         const tempPath = path.join(os.tmpdir(), `pos-image-${Date.now()}.png`);
         await fs.writeFile(tempPath, Buffer.from([
@@ -573,6 +651,49 @@ describe('pos use-cases application result contract', () => {
         expect(remove).not.toHaveBeenCalledWith({ path: 'pos-catalog/tenant/old.png' });
 
         await fs.rm(tempPath, { force: true });
+    });
+
+    it('uploadBulkPosCatalogImages returns per-file unmatched and duplicate filename statuses', async () => {
+        const firstDuplicate = path.join(os.tmpdir(), `bulk-pos-dup-a-${Date.now()}.png`);
+        const secondDuplicate = path.join(os.tmpdir(), `bulk-pos-dup-b-${Date.now()}.png`);
+        const unmatched = path.join(os.tmpdir(), `bulk-pos-unmatched-${Date.now()}.png`);
+        await Promise.all([firstDuplicate, secondDuplicate, unmatched].map((filePath) => fs.writeFile(filePath, Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]))));
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: {
+                findItemsBySkuCodes: jest.fn().mockResolvedValue([]),
+                findCatalogOverrideByItemId: jest.fn(),
+                getCatalogReadinessByItemId: jest.fn(),
+                updateCatalogImage: jest.fn()
+            },
+            imageStorage: {
+                store: jest.fn(),
+                remove: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: firstDuplicate, mimetype: 'image/png', originalname: 'DUP-001.png', size: 12 },
+                { path: secondDuplicate, mimetype: 'image/png', originalname: 'DUP-001.jpg', size: 12 },
+                { path: unmatched, mimetype: 'image/png', originalname: 'NO-SKU.png', size: 12 }
+            ],
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toMatchObject({
+            duplicate_filename: 2,
+            unmatched: 1,
+            uploaded: 0
+        });
+        expect(result.data.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'DUP-001.png', status: 'duplicate_filename' }),
+            expect.objectContaining({ filename: 'DUP-001.jpg', status: 'duplicate_filename' }),
+            expect.objectContaining({ filename: 'NO-SKU.png', status: 'unmatched' })
+        ]));
     });
 
     it('updateOnlineOrderStatus deducts inventory when online order transitions to completed', async () => {

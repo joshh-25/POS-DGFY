@@ -16,6 +16,10 @@ import {
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
+    buildCatalogSetupRecommendation,
+    buildStorefrontReadiness
+} from '../../shared/utils/catalogSetupPolicy.js';
+import {
     buildBarcodeConflictPayload,
     detectBarcodeSymbology,
     generateInternalBarcodeValue,
@@ -1791,8 +1795,10 @@ export const itemRepository = {
         const Item = dbStore.get('Item');
         const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+        const ServiceItemDetail = dbStore.get('ServiceItemDetail');
         const normalizedLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 200, 1000));
         const normalizedSearch = String(search || '').trim();
+        const workflowMode = await getCurrentWorkflowMode();
 
         const where = visibleItemWhere({});
         if (normalizedSearch) {
@@ -1817,6 +1823,12 @@ export const itemRepository = {
                 'current_stock'
             ],
             include: [
+                ServiceItemDetail ? {
+                    model: ServiceItemDetail,
+                    as: 'serviceDetail',
+                    attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+                    required: false
+                } : null,
                 StorefrontCatalogOverride ? {
                     model: StorefrontCatalogOverride,
                     as: 'storefrontCatalogOverride',
@@ -1832,12 +1844,23 @@ export const itemRepository = {
             const payload = toPlain(item);
             const override = payload?.storefrontCatalogOverride || null;
             const legacyPosOverride = allowLegacyPosFallback ? (payload?.posCatalogOverride || null) : null;
+            const readiness = buildStorefrontReadiness({
+                item: payload,
+                override,
+                legacyPosOverride
+            });
+            const recommendation = buildCatalogSetupRecommendation({
+                item: payload,
+                workflowMode,
+                storefrontReadiness: readiness
+            });
             return {
                 item_id: payload.item_id,
                 name: payload.name,
                 sku_code: payload.sku_code,
                 category: payload.category,
                 product_type: payload.product_type,
+                mode_item_preset: payload.mode_item_preset,
                 status: payload.status,
                 storefront_visible: resolveStorefrontCatalogVisibility({
                     item: payload,
@@ -1846,7 +1869,9 @@ export const itemRepository = {
                 }),
                 storefront_image_path: override?.storefront_image_path || legacyPosOverride?.pos_image_path || null,
                 storefront_image_url: override?.storefront_image_url || legacyPosOverride?.pos_image_url || null,
-                has_storefront_override: Boolean(override)
+                has_storefront_override: Boolean(override),
+                storefront_readiness: readiness,
+                catalog_setup_recommendation: recommendation
             };
         };
 
@@ -1865,12 +1890,15 @@ export const itemRepository = {
 
             const fallbackRows = await Item.findAll({
                 ...baseQuery,
-                include: PosCatalogOverride ? [{
+                include: [
+                    ...(baseQuery.include || []),
+                    PosCatalogOverride ? {
                     model: PosCatalogOverride,
                     as: 'posCatalogOverride',
                     attributes: ['pos_visible', 'pos_image_path', 'pos_image_url'],
                     required: false
-                }] : []
+                    } : null
+                ].filter(Boolean)
             });
             return fallbackRows.map((row) => mapRow(row, { allowLegacyPosFallback: true }));
         }
@@ -1913,6 +1941,17 @@ export const itemRepository = {
         const effectiveOverride = forcedStorefrontVisible === null
             ? override
             : { ...(override || {}), storefront_visible: forcedStorefrontVisible === true };
+        const readiness = buildStorefrontReadiness({
+            item: payload,
+            override: effectiveOverride,
+            legacyPosOverride: null
+        });
+        const workflowMode = await getCurrentWorkflowMode();
+        const recommendation = buildCatalogSetupRecommendation({
+            item: payload,
+            workflowMode,
+            storefrontReadiness: readiness
+        });
 
         return {
             item_id: payload.item_id,
@@ -1922,8 +1961,29 @@ export const itemRepository = {
                 legacyPosOverride: null
             }),
             storefront_image_path: effectiveOverride?.storefront_image_path || null,
-            storefront_image_url: effectiveOverride?.storefront_image_url || null
+            storefront_image_url: effectiveOverride?.storefront_image_url || null,
+            storefront_readiness: readiness,
+            catalog_setup_recommendation: recommendation
         };
+    },
+    async findItemsBySkuCodes(skuCodes = [], options = {}) {
+        const Item = dbStore.get('Item');
+        const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+        const normalizedSkuCodes = [...new Set((Array.isArray(skuCodes) ? skuCodes : [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean))];
+        if (normalizedSkuCodes.length === 0) return [];
+
+        return Item.findAll({
+            where: visibleItemWhere({ sku_code: { [Op.in]: normalizedSkuCodes } }),
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_type', 'mode_item_preset', 'status', 'default_sale_price', 'current_stock'],
+            include: ServiceItemDetail ? [{
+                model: ServiceItemDetail,
+                as: 'serviceDetail',
+                required: false
+            }] : [],
+            transaction: options.transaction
+        });
     },
     async upsertStorefrontCatalogOverride(itemId, payload = {}, options = {}) {
         const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
