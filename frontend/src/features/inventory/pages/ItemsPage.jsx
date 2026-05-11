@@ -53,13 +53,17 @@ import { useNavigate } from 'react-router-dom';
 import {
   getPosCatalogOverrides,
   updatePosCatalogOverride,
+  updateBulkPosCatalogOverrides,
   uploadPosCatalogImage,
+  uploadBulkPosCatalogImages,
   deletePosCatalogImage
 } from '@/services/posCatalogService.js';
 import {
   getStorefrontCatalogOverrides,
   updateStorefrontCatalogOverride,
+  updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import { replaceItemSuppliers } from '@/src/services/itemService.js';
@@ -77,7 +81,6 @@ const MSME_ITEM_PRESET = Object.freeze({
 });
 
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
-const POS_READINESS_INCOMPLETE = 'POS_READINESS_INCOMPLETE';
 
 export default function Items() {
   const navigate = useNavigate();
@@ -184,6 +187,10 @@ export default function Items() {
   const [posChecklistStatus, setPosChecklistStatus] = useState('all');
   const [posChecklistSelectedIds, setPosChecklistSelectedIds] = useState(new Set());
   const [bulkPosToggleLoading, setBulkPosToggleLoading] = useState(false);
+  const [bulkStorefrontToggleLoading, setBulkStorefrontToggleLoading] = useState(false);
+  const [bulkPosImageFiles, setBulkPosImageFiles] = useState([]);
+  const [bulkStorefrontImageFiles, setBulkStorefrontImageFiles] = useState([]);
+  const [bulkImageUploadLoading, setBulkImageUploadLoading] = useState(false);
   const [guidedPosReadyItemId, setGuidedPosReadyItemId] = useState(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const normalizedSearchQuery = useMemo(
@@ -475,6 +482,117 @@ export default function Items() {
   const checklistSelectedCount = posChecklistSelectedIds.size;
   const checklistFilteredCount = posChecklistItems.length;
 
+  const buildBulkImagePreview = useCallback((files = [], surface = 'pos') => {
+    const skuToItem = new Map(items.map((item) => [
+      String(item?.sku_code || '').trim().toUpperCase(),
+      item
+    ]));
+    const skuCounts = new Map();
+    files.forEach((file) => {
+      const filename = file?.name || '';
+      const dotIndex = filename.lastIndexOf('.');
+      const skuCode = (dotIndex > 0 ? filename.slice(0, dotIndex) : filename).trim().toUpperCase();
+      if (!skuCode) return;
+      skuCounts.set(skuCode, (skuCounts.get(skuCode) || 0) + 1);
+    });
+    return files.map((file) => {
+      const filename = file?.name || '';
+      const dotIndex = filename.lastIndexOf('.');
+      const skuCode = (dotIndex > 0 ? filename.slice(0, dotIndex) : filename).trim();
+      const skuKey = skuCode.toUpperCase();
+      const duplicate = (skuCounts.get(skuKey) || 0) > 1;
+      const item = skuToItem.get(skuKey);
+      const storefrontConfig = item ? resolveStorefrontConfig(item) : null;
+      const storefrontVisible = storefrontConfig?.storefront_visible !== false;
+      const priceMissing = item ? !hasExplicitSalePrice(item) : false;
+      const blocked = surface === 'storefront' && item && storefrontVisible && priceMissing;
+      return {
+        filename,
+        sku_code: skuCode,
+        item,
+        duplicate,
+        blocked,
+        status: duplicate
+          ? 'duplicate'
+          : !item
+            ? 'unmatched'
+            : blocked
+              ? 'blocked'
+              : 'matched'
+      };
+    });
+  }, [items, resolveStorefrontConfig]);
+
+  const bulkPosImagePreview = useMemo(
+    () => buildBulkImagePreview(bulkPosImageFiles, 'pos'),
+    [buildBulkImagePreview, bulkPosImageFiles]
+  );
+
+  const bulkStorefrontImagePreview = useMemo(
+    () => buildBulkImagePreview(bulkStorefrontImageFiles, 'storefront'),
+    [buildBulkImagePreview, bulkStorefrontImageFiles]
+  );
+
+  const renderBulkImagePreviewRows = (previewRows = []) => {
+    if (!previewRows.length) return null;
+    return (
+      <div className="mt-3 max-h-28 overflow-auto rounded border border-slate-100 bg-slate-50">
+        {previewRows.slice(0, 12).map((entry, index) => (
+          <div key={`${entry.filename}-${index}`} className="flex items-center justify-between gap-3 border-b border-slate-100 px-2 py-1 text-xs last:border-b-0">
+            <span className="truncate text-slate-700">{entry.filename}</span>
+            <span className={cn(
+              'shrink-0 font-medium',
+              entry.status === 'matched' && 'text-emerald-700',
+              entry.status === 'blocked' && 'text-amber-700',
+              ['duplicate', 'unmatched'].includes(entry.status) && 'text-red-700'
+            )}>
+              {entry.status === 'matched'
+                ? `matches ${entry.item?.sku_code || entry.sku_code}`
+                : entry.status}
+            </span>
+          </div>
+        ))}
+        {previewRows.length > 12 && (
+          <div className="px-2 py-1 text-xs text-slate-500">
+            {previewRows.length - 12} more file{previewRows.length - 12 === 1 ? '' : 's'} queued.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const uploadBulkCatalogImages = async (surface) => {
+    const files = surface === 'storefront' ? bulkStorefrontImageFiles : bulkPosImageFiles;
+    if (!files.length) {
+      toast.error('Choose one or more SKU-named image files first.');
+      return;
+    }
+    setBulkImageUploadLoading(true);
+    try {
+      const result = surface === 'storefront'
+        ? await uploadBulkStorefrontCatalogImages(files)
+        : await uploadBulkPosCatalogImages(files);
+      const uploaded = result?.summary?.uploaded || 0;
+      const blocked = result?.summary?.blocked_readiness || 0;
+      const failed = (result?.summary?.failed || 0)
+        + (result?.summary?.unmatched || 0)
+        + (result?.summary?.duplicate_filename || 0);
+      toast[failed || blocked ? 'warning' : 'success'](
+        `${surface === 'storefront' ? 'Storefront' : 'POS'} images: ${uploaded} uploaded, ${blocked} blocked, ${failed} failed or unmatched.`
+      );
+      if (surface === 'storefront') {
+        setBulkStorefrontImageFiles([]);
+      } else {
+        setBulkPosImageFiles([]);
+      }
+      await Promise.all([fetchPosOverrides(), fetchStorefrontOverrides()]);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload bulk catalog images.');
+    } finally {
+      setBulkImageUploadLoading(false);
+    }
+  };
+
   const toggleChecklistSelection = (itemId) => {
     setPosChecklistSelectedIds((prev) => {
       const next = new Set(prev);
@@ -504,45 +622,80 @@ export default function Items() {
 
     setBulkPosToggleLoading(true);
     try {
-      const updates = await Promise.allSettled(
-        targetIds.map(async (itemId) => {
-          const updated = await updatePosCatalogOverride(itemId, { pos_visible: Boolean(nextVisible) });
-          return { itemId, updated };
-        })
-      );
+      const result = await updateBulkPosCatalogOverrides({
+        itemIds: targetIds,
+        posVisible: Boolean(nextVisible)
+      });
+      const updatedRows = Array.isArray(result?.results)
+        ? result.results.filter((entry) => entry.status === 'updated')
+        : [];
 
-      const successes = updates
-        .filter((result) => result.status === 'fulfilled')
-        .map((result) => result.value);
-      const failures = updates.length - successes.length;
-      const blockedReadiness = updates.filter((result) => (
-        result.status === 'rejected' && result.reason?.reason_code === POS_READINESS_INCOMPLETE
-      ));
-
-      if (successes.length > 0) {
+      if (updatedRows.length > 0) {
         setPosCatalogOverrides((prev) => {
           const next = { ...prev };
-          successes.forEach(({ itemId, updated }) => {
-            next[itemId] = { ...(next[itemId] || {}), ...updated };
+          updatedRows.forEach(({ item_id, data }) => {
+            next[item_id] = { ...(next[item_id] || {}), ...(data || { pos_visible: Boolean(nextVisible) }) };
           });
           return next;
         });
       }
 
-      if (failures === 0) {
-        toast.success(`Updated POS visibility for ${successes.length} item${successes.length !== 1 ? 's' : ''}.`);
+      const blocked = result?.summary?.blocked || 0;
+      const failed = result?.summary?.failed || 0;
+      const notFound = result?.summary?.not_found || 0;
+      if (blocked + failed + notFound === 0) {
+        toast.success(`Updated POS visibility for ${updatedRows.length} item${updatedRows.length !== 1 ? 's' : ''}.`);
       } else {
-        if (blockedReadiness.length > 0 && nextVisible) {
-          toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${blockedReadiness.length} blocked by readiness requirements.`);
-        } else {
-          toast.warning(`Updated ${successes.length} item${successes.length !== 1 ? 's' : ''}; ${failures} failed.`);
-        }
+        toast.warning(`Updated ${updatedRows.length} item${updatedRows.length !== 1 ? 's' : ''}; ${blocked} blocked, ${failed + notFound} failed or missing.`);
       }
       clearChecklistSelection();
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to apply bulk POS visibility update.');
     } finally {
       setBulkPosToggleLoading(false);
+    }
+  };
+
+  const applyBulkStorefrontVisibility = async (nextVisible) => {
+    const targetIds = Array.from(posChecklistSelectedIds);
+    if (targetIds.length === 0) {
+      toast.error('Select at least one item first.');
+      return;
+    }
+
+    setBulkStorefrontToggleLoading(true);
+    try {
+      const result = await updateBulkStorefrontCatalogOverrides({
+        itemIds: targetIds,
+        storefrontVisible: Boolean(nextVisible)
+      });
+      const updatedRows = Array.isArray(result?.results)
+        ? result.results.filter((entry) => entry.status === 'updated')
+        : [];
+
+      if (updatedRows.length > 0) {
+        setStorefrontCatalogOverrides((prev) => {
+          const next = { ...prev };
+          updatedRows.forEach(({ item_id, data }) => {
+            next[item_id] = { ...(next[item_id] || {}), ...(data || { storefront_visible: Boolean(nextVisible) }) };
+          });
+          return next;
+        });
+      }
+
+      const blocked = result?.summary?.blocked || 0;
+      const failed = result?.summary?.failed || 0;
+      const notFound = result?.summary?.not_found || 0;
+      if (blocked + failed + notFound === 0) {
+        toast.success(`Updated Storefront visibility for ${updatedRows.length} item${updatedRows.length !== 1 ? 's' : ''}.`);
+      } else {
+        toast.warning(`Updated ${updatedRows.length} item${updatedRows.length !== 1 ? 's' : ''}; ${blocked} blocked, ${failed + notFound} failed or missing.`);
+      }
+      clearChecklistSelection();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to apply bulk Storefront visibility update.');
+    } finally {
+      setBulkStorefrontToggleLoading(false);
     }
   };
 
@@ -707,6 +860,39 @@ export default function Items() {
     }
     return buildFallbackPosReadiness(item);
   }, [buildFallbackPosReadiness, resolvePosConfig]);
+
+  const getCatalogRecommendationForItem = useCallback((item) => {
+    const itemId = item?.item_id || item?.id;
+    const backendRecommendation = posCatalogOverrides[itemId]?.catalog_setup_recommendation
+      || storefrontCatalogOverrides[itemId]?.catalog_setup_recommendation;
+    if (backendRecommendation?.label) return backendRecommendation;
+
+    const preset = String(item?.mode_item_preset || '').toLowerCase();
+    const category = String(item?.category || '').toLowerCase();
+    const productType = String(item?.product_type || '').toLowerCase();
+    const finishedGoods = category === 'product' && productType === 'finished_goods';
+    const placeholderModes = new Set([
+      'retail',
+      'hospitality',
+      'healthcare',
+      'ticketing_transport',
+      'logistics_distribution',
+      'education_institutions'
+    ]);
+    if (placeholderModes.has(workflowMode)) {
+      return {
+        code: 'placeholder_conservative_default',
+        label: 'Placeholder mode: conservative default'
+      };
+    }
+    if (
+      ['finished_product', 'product', 'service', 'physical_add_on', 'menu_item', 'packaged_beverage'].includes(preset)
+      || finishedGoods
+    ) {
+      return { code: 'recommended_for_pos_storefront', label: 'Recommended for POS and Storefront' };
+    }
+    return { code: 'keep_internal', label: 'Keep internal' };
+  }, [posCatalogOverrides, storefrontCatalogOverrides, workflowMode]);
 
   const posReadinessByItemId = useMemo(() => {
     const map = {};
@@ -1806,9 +1992,9 @@ export default function Items() {
         >
           <DialogContent className="sm:max-w-7xl">
             <DialogHeader>
-              <DialogTitle className="text-xl">Make Item POS-Ready</DialogTitle>
+              <DialogTitle className="text-xl">Catalog Setup</DialogTitle>
               <DialogDescription>
-                Resolve POS readiness requirements from item setup through terminal preview.
+                Resolve POS and Storefront readiness, visibility, and SKU-named image setup from one workflow.
               </DialogDescription>
             </DialogHeader>
 
@@ -1912,7 +2098,102 @@ export default function Items() {
                   >
                     Disable POS
                   </Button>
+                  {canConfigureStorefrontCatalog && (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => applyBulkStorefrontVisibility(true)}
+                        disabled={bulkStorefrontToggleLoading || checklistSelectedCount === 0}
+                      >
+                        Enable Storefront
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => applyBulkStorefrontVisibility(false)}
+                        disabled={bulkStorefrontToggleLoading || checklistSelectedCount === 0}
+                      >
+                        Disable Storefront
+                      </Button>
+                    </>
+                  )}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">POS Images by SKU Filename</p>
+                      <p className="text-xs text-slate-500">Example: FG-001.jpg matches sku_code FG-001 and keeps POS visibility unchanged.</p>
+                    </div>
+                    <label className="cursor-pointer rounded border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50">
+                      Choose Images
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => setBulkPosImageFiles(Array.from(event.target.files || []))}
+                      />
+                    </label>
+                  </div>
+                  {bulkPosImagePreview.length > 0 && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                      <Badge variant="outline">{bulkPosImagePreview.filter((entry) => entry.status === 'matched').length} matched</Badge>
+                      <Badge variant="outline">{bulkPosImagePreview.filter((entry) => entry.status === 'unmatched').length} unmatched</Badge>
+                      <Badge variant="outline">{bulkPosImagePreview.filter((entry) => entry.status === 'duplicate').length} duplicate</Badge>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => uploadBulkCatalogImages('pos')}
+                        disabled={bulkImageUploadLoading}
+                      >
+                        Upload POS Images
+                      </Button>
+                    </div>
+                  )}
+                  {renderBulkImagePreviewRows(bulkPosImagePreview)}
+                </div>
+                {canConfigureStorefrontCatalog && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Storefront Images by SKU Filename</p>
+                        <p className="text-xs text-slate-500">Visible items without customer prices are previewed as blocked; hidden items can store images.</p>
+                      </div>
+                      <label className="cursor-pointer rounded border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50">
+                        Choose Images
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(event) => setBulkStorefrontImageFiles(Array.from(event.target.files || []))}
+                        />
+                      </label>
+                    </div>
+                    {bulkStorefrontImagePreview.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <Badge variant="outline">{bulkStorefrontImagePreview.filter((entry) => entry.status === 'matched').length} matched</Badge>
+                        <Badge variant="outline">{bulkStorefrontImagePreview.filter((entry) => entry.status === 'unmatched').length} unmatched</Badge>
+                        <Badge variant="outline">{bulkStorefrontImagePreview.filter((entry) => entry.status === 'duplicate').length} duplicate</Badge>
+                        <Badge variant="outline">{bulkStorefrontImagePreview.filter((entry) => entry.status === 'blocked').length} blocked</Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => uploadBulkCatalogImages('storefront')}
+                          disabled={bulkImageUploadLoading}
+                        >
+                        Upload Storefront Images
+                      </Button>
+                    </div>
+                  )}
+                    {renderBulkImagePreviewRows(bulkStorefrontImagePreview)}
+                  </div>
+                )}
               </div>
 
               <div className="max-h-[60vh] overflow-auto rounded-lg border border-slate-200">
@@ -1923,6 +2204,7 @@ export default function Items() {
                       <th className="p-3 text-left">Item</th>
                       <th className="p-3 text-left">Category</th>
                       <th className="p-3 text-left">Status</th>
+                      <th className="p-3 text-left">Recommendation</th>
                       <th className="p-3 text-left">Readiness</th>
                       <th className="p-3 text-left">Missing</th>
                       <th className="p-3 text-left">POS Visible</th>
@@ -1948,6 +2230,7 @@ export default function Items() {
                       const storefrontImageUrl = storefrontConfigResolved.storefront_image_url || null;
                       const checked = posChecklistSelectedIds.has(itemId);
                       const readiness = posReadinessByItemId[itemId] || buildFallbackPosReadiness(item);
+                      const recommendation = getCatalogRecommendationForItem(item);
                       const missingCount = Array.isArray(readiness?.missing_requirements) ? readiness.missing_requirements.length : 0;
                       const readinessReady = readiness?.ready === true;
 
@@ -1971,6 +2254,18 @@ export default function Items() {
                           </td>
                           <td className="p-3 capitalize text-slate-700">{effectiveCategory}</td>
                           <td className="p-3 capitalize text-slate-700">{item.status || 'active'}</td>
+                          <td className="p-3">
+                            <Badge
+                              variant="outline"
+                              className={recommendation.code === 'keep_internal'
+                                ? 'bg-slate-50 text-slate-600 border-slate-200'
+                                : recommendation.code === 'placeholder_conservative_default'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-teal-50 text-teal-700 border-teal-200'}
+                            >
+                              {recommendation.label}
+                            </Badge>
+                          </td>
                           <td className="p-3">
                             <Badge
                               variant="outline"
@@ -2113,7 +2408,7 @@ export default function Items() {
                     })}
                     {posChecklistItems.length === 0 && (
                       <tr>
-                        <td colSpan={canConfigureStorefrontCatalog ? 11 : 9} className="p-6 text-center text-slate-500">
+                        <td colSpan={canConfigureStorefrontCatalog ? 12 : 10} className="p-6 text-center text-slate-500">
                           No items match the current filters.
                         </td>
                       </tr>

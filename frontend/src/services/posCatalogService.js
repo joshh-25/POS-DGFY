@@ -36,10 +36,25 @@ export const updatePosCatalogOverride = async (itemId, payload) => {
   }
 };
 
+export const updateBulkPosCatalogOverrides = async ({ itemIds, posVisible }) => {
+  const response = await api.patch('/pos/catalog-overrides/bulk', {
+    item_ids: itemIds,
+    pos_visible: posVisible
+  });
+  return response.data.data;
+};
+
 export const uploadPosCatalogImage = async (itemId, file) => {
   const formData = new FormData();
   formData.append('image', file);
   const response = await api.post(`/pos/catalog-overrides/${itemId}/image`, formData);
+  return response.data.data;
+};
+
+export const uploadBulkPosCatalogImages = async (files = []) => {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('images', file));
+  const response = await api.post('/pos/catalog-overrides/images/bulk', formData);
   return response.data.data;
 };
 
