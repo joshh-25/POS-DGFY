@@ -54,6 +54,32 @@ const bookingInclude = () => ([
     }
 ]);
 
+const holdInclude = () => ([
+    {
+        model: dbStore.get('Item'),
+        as: 'serviceItem',
+        attributes: ['item_id', 'sku_code', 'name', 'description', 'default_sale_price', 'vat_type', 'unit_of_measure'],
+        include: [
+            {
+                model: dbStore.get('ServiceItemDetail'),
+                as: 'serviceDetail',
+                required: false
+            }
+        ]
+    },
+    {
+        model: dbStore.get('ServiceResource'),
+        as: 'resource',
+        required: false
+    },
+    {
+        model: dbStore.get('TenantLocation'),
+        as: 'location',
+        required: false,
+        attributes: ['location_id', 'name', 'address_line']
+    }
+]);
+
 const assignmentInclude = () => ([
     {
         model: dbStore.get('Item'),
@@ -354,10 +380,172 @@ export const serviceRepository = {
         return rows.map(toPlain);
     },
 
+    async findAvailabilityConflicts({
+        serviceItemId = null,
+        providerUserIds = [],
+        resourceIds = [],
+        locationIds = [],
+        startAt,
+        endAt
+    } = {}, options = {}) {
+        const ServiceBooking = dbStore.get('ServiceBooking');
+        const or = [];
+        const normalizedProviderIds = [...new Set(providerUserIds.map((id) => Number(id)).filter(Boolean))];
+        const normalizedResourceIds = [...new Set(resourceIds.map((id) => Number(id)).filter(Boolean))];
+        const normalizedLocationIds = [...new Set(locationIds.map((id) => Number(id)).filter(Boolean))];
+        if (normalizedProviderIds.length > 0) or.push({ provider_user_id: { [Op.in]: normalizedProviderIds } });
+        if (normalizedResourceIds.length > 0) or.push({ resource_id: { [Op.in]: normalizedResourceIds } });
+        if (normalizedLocationIds.length > 0) or.push({ location_id: { [Op.in]: normalizedLocationIds } });
+        if (or.length === 0) return [];
+
+        const where = {
+            status: { [Op.in]: ['requested', 'confirmed', 'checked_in', 'in_service'] },
+            start_at: { [Op.lt]: endAt },
+            end_at: { [Op.gt]: startAt },
+            [Op.or]: or
+        };
+        if (serviceItemId) where.service_item_id = serviceItemId;
+
+        const rows = await ServiceBooking.findAll({
+            where,
+            order: [['start_at', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async findConflictingHolds({
+        providerUserId = null,
+        resourceId = null,
+        locationId = null,
+        startAt,
+        endAt,
+        excludeHoldId = null
+    } = {}, options = {}) {
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const or = [];
+        if (providerUserId) or.push({ provider_user_id: providerUserId });
+        if (resourceId) or.push({ resource_id: resourceId });
+        if (locationId && !providerUserId && !resourceId) or.push({ location_id: locationId });
+        if (or.length === 0) return [];
+
+        const where = {
+            status: 'active',
+            expires_at: { [Op.gt]: new Date() },
+            start_at: { [Op.lt]: endAt },
+            end_at: { [Op.gt]: startAt },
+            [Op.or]: or
+        };
+        if (excludeHoldId) where.hold_id = { [Op.ne]: excludeHoldId };
+
+        const rows = await ServiceBookingHold.findAll({
+            where,
+            order: [['start_at', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async findAvailabilityHoldConflicts({
+        providerUserIds = [],
+        resourceIds = [],
+        locationIds = [],
+        startAt,
+        endAt
+    } = {}, options = {}) {
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const or = [];
+        const normalizedProviderIds = [...new Set(providerUserIds.map((id) => Number(id)).filter(Boolean))];
+        const normalizedResourceIds = [...new Set(resourceIds.map((id) => Number(id)).filter(Boolean))];
+        const normalizedLocationIds = [...new Set(locationIds.map((id) => Number(id)).filter(Boolean))];
+        if (normalizedProviderIds.length > 0) or.push({ provider_user_id: { [Op.in]: normalizedProviderIds } });
+        if (normalizedResourceIds.length > 0) or.push({ resource_id: { [Op.in]: normalizedResourceIds } });
+        if (normalizedLocationIds.length > 0) or.push({ location_id: { [Op.in]: normalizedLocationIds } });
+        if (or.length === 0) return [];
+
+        const rows = await ServiceBookingHold.findAll({
+            where: {
+                status: 'active',
+                expires_at: { [Op.gt]: new Date() },
+                start_at: { [Op.lt]: endAt },
+                end_at: { [Op.gt]: startAt },
+                [Op.or]: or
+            },
+            order: [['start_at', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async createBookingHold(payload = {}, options = {}) {
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const row = await ServiceBookingHold.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findActiveHoldByToken(holdToken, options = {}) {
+        const normalized = String(holdToken || '').trim();
+        if (!normalized) return null;
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const row = await ServiceBookingHold.findOne({
+            where: {
+                hold_token: normalized,
+                status: 'active',
+                expires_at: { [Op.gt]: new Date() }
+            },
+            include: holdInclude(),
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async findHoldsByIdempotencyKey(idempotencyKey, options = {}) {
+        const normalized = String(idempotencyKey || '').trim();
+        if (!normalized) return [];
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const rows = await ServiceBookingHold.findAll({
+            where: { idempotency_key: normalized },
+            include: holdInclude(),
+            order: [['hold_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async updateHoldById(holdId, payload = {}, options = {}) {
+        const ServiceBookingHold = dbStore.get('ServiceBookingHold');
+        const row = await ServiceBookingHold.findByPk(holdId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async createBooking(payload = {}, options = {}) {
         const ServiceBooking = dbStore.get('ServiceBooking');
         const row = await ServiceBooking.create(payload, { transaction: options.transaction });
         return toPlain(row);
+    },
+
+    async findBookingsByIdempotencyKey(idempotencyKey, options = {}) {
+        const normalized = String(idempotencyKey || '').trim();
+        if (!normalized) return [];
+        const ServiceBooking = dbStore.get('ServiceBooking');
+        const rows = await ServiceBooking.findAll({
+            where: { idempotency_key: normalized },
+            include: bookingInclude(),
+            order: [['booking_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
     },
 
     async getBookingById(bookingId, options = {}) {
@@ -421,7 +609,7 @@ export const serviceRepository = {
         });
         const bookings = rows.map(toPlain);
         return bookings.reduce((acc, booking) => {
-            const amount = Number(booking?.serviceItem?.default_sale_price || 0);
+            const amount = Number(booking?.serviceItem?.default_sale_price || 0) * Math.max(1, Number(booking?.quantity || 1));
             const startAt = new Date(booking.start_at);
             const startsInFuture = startAt.getTime() >= now.getTime();
             const startsToday = Number.isFinite(startAt.getTime()) && startAt.toISOString().slice(0, 10) === todayKey;

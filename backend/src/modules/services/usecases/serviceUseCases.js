@@ -17,6 +17,7 @@ const PAYMENT_TIMINGS = Object.freeze(['prepaid', 'postpaid', 'deposit']);
 const WAITLIST_STATUSES = Object.freeze(['waiting', 'notified', 'booked', 'expired', 'cancelled']);
 const REMINDER_STATUSES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
 const CLAIM_TOKEN_TTL_MS = 30 * 60 * 1000;
+const BOOKING_HOLD_TTL_MS = 10 * 60 * 1000;
 const MAX_REFERENCE_ATTEMPTS = 20;
 const BOOKING_STATUS_TRANSITIONS = Object.freeze({
     requested: ['confirmed', 'cancelled', 'no_show'],
@@ -42,11 +43,31 @@ const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const trim = (value, maxLength = 255) => String(value || '').trim().slice(0, maxLength);
 const normalizeEmail = (value) => trim(value, 255).toLowerCase();
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const normalizeIdempotencyKey = (value) => {
+    const normalized = trim(value, 120);
+    return normalized.length >= 8 ? normalized : '';
+};
+const normalizeHoldToken = (value) => trim(value, 80);
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
 );
+
+const stableStringify = (value) => {
+    if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const hashRequestPayload = (payload = {}) => crypto
+    .createHash('sha256')
+    .update(stableStringify(payload))
+    .digest('hex');
+
+const generateHoldToken = () => `hold_${crypto.randomBytes(24).toString('hex')}`;
 
 const normalizeJsonValue = (value) => {
     if (value == null || value === '') return null;
@@ -197,7 +218,10 @@ const serializeCatalogItem = (row = {}, options = {}) => {
     return payload;
 };
 
-const bookingAmount = (row = {}) => round4(row?.serviceItem?.default_sale_price ?? row?.service?.default_sale_price ?? 0);
+const bookingAmount = (row = {}) => round4(
+    (row?.serviceItem?.default_sale_price ?? row?.service?.default_sale_price ?? 0)
+    * Math.max(1, Number(row?.quantity || 1))
+);
 
 const bookingDurationMinutes = (row = {}, detail = null) => {
     const fromDetail = toPositiveInt(detail?.duration_minutes);
@@ -206,6 +230,24 @@ const bookingDurationMinutes = (row = {}, detail = null) => {
     const end = new Date(row.end_at);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
     return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+};
+
+const serializeBookingHold = (hold = {}) => {
+    const row = toPlain(hold) || {};
+    return {
+        hold_id: row.hold_id,
+        hold_token: row.hold_token,
+        service_item_id: row.service_item_id,
+        provider_user_id: row.provider_user_id || null,
+        resource_id: row.resource_id || null,
+        location_id: row.location_id || null,
+        quantity: Math.max(1, Number(row.quantity || 1)),
+        start_at: row.start_at,
+        end_at: row.end_at,
+        expires_at: row.expires_at,
+        status: row.status,
+        source: row.source
+    };
 };
 
 const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
@@ -224,6 +266,7 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
         location: row.location || null,
         resource: row.resource || null,
         store_customer_id: row.store_customer_id || null,
+        quantity: Math.max(1, Number(row.quantity || 1)),
         start_at: row.start_at,
         end_at: row.end_at,
         duration_minutes: bookingDurationMinutes(row, detail),
@@ -527,6 +570,89 @@ const buildPaymentHandoff = ({ paymentTiming, bookingReference, amount }) => {
     };
 };
 
+const bookingPaymentResponse = (booking = {}, fallback = {}) => {
+    const paymentTiming = booking.payment_timing || fallback.paymentTiming || 'postpaid';
+    return {
+        booking_id: booking.booking_id || null,
+        public_reference: booking.public_reference || fallback.publicReference || null,
+        payment_timing: paymentTiming,
+        payment_status: booking.payment_status || fallback.paymentStatus || 'unpaid',
+        checkout_url: booking.payment_checkout_url || fallback.checkoutUrl || null,
+        provider: paymentTiming === 'postpaid' ? null : 'paymongo'
+    };
+};
+
+const batchPaymentResponse = (bookings = [], payments = []) => {
+    const paymentRows = payments.length > 0
+        ? payments
+        : bookings.map((booking) => bookingPaymentResponse(booking));
+    const hasPayNow = paymentRows.some((payment) => payment.checkout_url);
+    const hasPending = paymentRows.some((payment) => payment.payment_status === 'payment_pending');
+    return {
+        payment: {
+            payment_timing: paymentRows.length === 1 ? paymentRows[0].payment_timing : 'multiple',
+            payment_status: hasPending ? 'payment_pending' : 'unpaid',
+            checkout_url: paymentRows.length === 1 ? paymentRows[0].checkout_url : null,
+            provider: hasPayNow || hasPending ? 'paymongo' : null,
+            payments_count: paymentRows.length
+        },
+        payments: paymentRows
+    };
+};
+
+const bookingRequestHashPayload = ({ payload = {}, source = 'storefront', storeCustomer = null } = {}) => {
+    const payloadWithoutIdempotency = { ...(payload || {}) };
+    delete payloadWithoutIdempotency.idempotency_key;
+    return {
+        source,
+        store_customer_id: storeCustomer?.customer_id || null,
+        payload: payloadWithoutIdempotency
+    };
+};
+
+const holdRequestHashPayload = ({ payload = {}, source = 'storefront', storeCustomer = null } = {}) => {
+    const payloadWithoutIdempotency = { ...(payload || {}) };
+    delete payloadWithoutIdempotency.idempotency_key;
+    return {
+        source,
+        store_customer_id: storeCustomer?.customer_id || null,
+        payload: payloadWithoutIdempotency
+    };
+};
+
+const assertStorefrontIdempotency = ({ source, idempotencyKey }) => {
+    if (source !== 'storefront') return;
+    if (idempotencyKey) return;
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'idempotency_key is required',
+        { statusCode: 400 }
+    );
+};
+
+const replayBookingsForIdempotency = async ({
+    serviceRepository,
+    idempotencyKey,
+    requestHash,
+    transaction
+}) => {
+    if (!idempotencyKey || typeof serviceRepository.findBookingsByIdempotencyKey !== 'function') return null;
+    const existing = await serviceRepository.findBookingsByIdempotencyKey(idempotencyKey, {
+        transaction,
+        lock: true
+    });
+    if (existing.length === 0) return null;
+    const existingHash = String(existing[0]?.request_hash || '');
+    if (existingHash && existingHash === requestHash) {
+        return existing;
+    }
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'idempotency_key was already used with a different payload',
+        { statusCode: 409 }
+    );
+};
+
 export const buildListServiceCatalogUseCase = ({ serviceRepository }) => async ({ query = {}, storefrontOnly = false } = {}) => {
     try {
         const accessPolicy = storefrontOnly
@@ -741,21 +867,442 @@ export const buildUpdateServiceAssignmentUseCase = ({ serviceRepository }) => as
     }
 };
 
-export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async ({
-    payload = {},
-    source = 'admin',
-    storeCustomer = null
-} = {}) => {
-    const transaction = await serviceRepository.beginTransaction();
+const intervalsOverlap = (leftStart, leftEnd, rightStart, rightEnd) => (
+    leftStart.getTime() < rightEnd.getTime() && leftEnd.getTime() > rightStart.getTime()
+);
+
+const bookingQuantity = (booking = {}) => Math.max(1, Number(booking.quantity || 1));
+const bookingLineAmount = (booking = {}) => round4(Number(booking?.serviceItem?.default_sale_price || 0) * bookingQuantity(booking));
+
+const pendingBookingConflicts = ({
+    providerUserId,
+    resourceId,
+    locationId,
+    startAt,
+    endAt,
+    pendingRequests = []
+}) => pendingRequests.filter((booking) => {
+    if (!intervalsOverlap(startAt, endAt, booking.startAt, booking.endAt)) return false;
+    if (providerUserId && Number(booking.provider_user_id) === Number(providerUserId)) return true;
+    if (resourceId && Number(booking.resource_id) === Number(resourceId)) return true;
+    if (locationId && !providerUserId && !resourceId && Number(booking.location_id) === Number(locationId)) return true;
+    return false;
+});
+
+const parseAvailabilityDate = (value) => {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date must use YYYY-MM-DD format', { statusCode: 422 });
+    }
+    const parsed = new Date(`${raw}T00:00:00`);
+    const parsedKey = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+    if (!Number.isFinite(parsed.getTime()) || parsedKey !== raw) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date must be a valid calendar date', { statusCode: 422 });
+    }
+    return parsed;
+};
+
+const formatLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const addMinutes = (date, minutes) => new Date(date.getTime() + (minutes * 60 * 1000));
+
+const startOfDay = (date) => {
+    const clone = new Date(date);
+    clone.setHours(0, 0, 0, 0);
+    return clone;
+};
+
+const buildAvailabilityStartCandidates = ({
+    date,
+    durationMinutes,
+    intervalMinutes,
+    leadTimeMinutes,
+    weeklyAvailability = null
+}) => {
+    const dayStart = startOfDay(date);
+    const dayEnd = addMinutes(dayStart, 24 * 60);
+    const earliest = new Date(Date.now() + (toNonNegativeInt(leadTimeMinutes, 0) * 60 * 1000));
+    const hasAvailabilityRules = isPlainObject(weeklyAvailability) && Object.keys(weeklyAvailability).length > 0;
+    const rawSlots = hasAvailabilityRules
+        ? dayAvailabilityKeys(date).map((key) => weeklyAvailability[key]).find((value) => value !== undefined)
+        : null;
+    const availabilityRanges = hasAvailabilityRules
+        ? normalizeAvailabilitySlots(rawSlots)
+        : [{ start: 9 * 60, end: 17 * 60 }];
+    const candidates = [];
+    availabilityRanges.forEach((range) => {
+        const rangeStart = addMinutes(dayStart, range.start);
+        const rangeEnd = addMinutes(dayStart, range.end);
+        for (let cursor = rangeStart; cursor.getTime() + (durationMinutes * 60 * 1000) <= rangeEnd.getTime(); cursor = addMinutes(cursor, intervalMinutes)) {
+            if (cursor.getTime() < dayStart.getTime() || cursor.getTime() >= dayEnd.getTime()) continue;
+            if (cursor.getTime() < earliest.getTime()) continue;
+            candidates.push(new Date(cursor));
+        }
+    });
+    if (candidates.length === 0 && !hasAvailabilityRules) {
+        for (let cursor = addMinutes(dayStart, 9 * 60); cursor.getTime() + (durationMinutes * 60 * 1000) <= addMinutes(dayStart, 17 * 60).getTime(); cursor = addMinutes(cursor, intervalMinutes)) {
+            if (cursor.getTime() >= earliest.getTime() && cursor.getTime() < dayEnd.getTime()) candidates.push(new Date(cursor));
+        }
+    }
+    return candidates;
+};
+
+const uniqueCandidateKey = (candidate = {}) => [
+    candidate.capacityAnchor,
+    candidate.providerUserId || '',
+    candidate.resourceId || '',
+    candidate.locationId || ''
+].join(':');
+
+const buildCapacityCandidate = ({ assignment = {}, resource = null, requested = {} } = {}) => {
+    const resourceId = toPositiveInt(resource?.resource_id || assignment.resource_id);
+    const providerUserId = toPositiveInt(requested.providerUserId || assignment.user_id);
+    const locationId = toPositiveInt(requested.locationId || resource?.location_id || assignment.location_id);
+    if (resourceId) {
+        return {
+            capacityAnchor: 'resource',
+            resourceId,
+            resourceName: resource?.name || null,
+            providerUserId: toPositiveInt(assignment.user_id),
+            locationId,
+            capacity: toPositiveInt(resource?.capacity, 1),
+            weeklyAvailability: resource?.weekly_availability || null,
+            blackoutDates: resource?.blackout_dates || []
+        };
+    }
+    if (providerUserId) {
+        return {
+            capacityAnchor: 'provider',
+            resourceId: null,
+            resourceName: null,
+            providerUserId,
+            locationId,
+            capacity: 1,
+            weeklyAvailability: null,
+            blackoutDates: []
+        };
+    }
+    if (locationId) {
+        return {
+            capacityAnchor: 'location',
+            resourceId: null,
+            resourceName: null,
+            providerUserId: null,
+            locationId,
+            capacity: 1,
+            weeklyAvailability: null,
+            blackoutDates: []
+        };
+    }
+    return {
+        capacityAnchor: 'unanchored',
+        resourceId: null,
+        resourceName: null,
+        providerUserId: null,
+        locationId: null,
+        capacity: 1,
+        weeklyAvailability: null,
+        blackoutDates: []
+    };
+};
+
+const loadAvailabilityCandidates = async ({
+    serviceRepository,
+    assignments = [],
+    requestedResourceId,
+    requestedProviderUserId,
+    requestedLocationId
+}) => {
+    const requested = {
+        providerUserId: requestedProviderUserId,
+        locationId: requestedLocationId
+    };
+    if (requestedResourceId) {
+        const resource = await serviceRepository.findResourceById(requestedResourceId);
+        if (!resource || resource.is_active === false) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Selected service resource is not active or does not exist', { statusCode: 404 });
+        }
+        if (requestedLocationId && resource.location_id && Number(resource.location_id) !== Number(requestedLocationId)) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'Selected resource does not belong to the selected location', { statusCode: 409 });
+        }
+        return [buildCapacityCandidate({ resource, requested })];
+    }
+
+    const resourceAssignments = assignments.filter((assignment) => toPositiveInt(assignment.resource_id));
+    if (resourceAssignments.length > 0) {
+        const candidates = [];
+        const seen = new Set();
+        for (const assignment of resourceAssignments) {
+            if (requestedProviderUserId && assignment.user_id && Number(assignment.user_id) !== Number(requestedProviderUserId)) continue;
+            if (requestedLocationId && assignment.location_id && Number(assignment.location_id) !== Number(requestedLocationId)) continue;
+            const resourceId = toPositiveInt(assignment.resource_id);
+            const resource = await serviceRepository.findResourceById(resourceId);
+            if (!resource || resource.is_active === false) continue;
+            if (requestedLocationId && resource.location_id && Number(resource.location_id) !== Number(requestedLocationId)) continue;
+            const candidate = buildCapacityCandidate({ assignment, resource, requested });
+            const key = uniqueCandidateKey(candidate);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            candidates.push(candidate);
+        }
+        return candidates;
+    }
+
+    const providerAssignments = assignments.filter((assignment) => toPositiveInt(assignment.user_id));
+    if (providerAssignments.length > 0) {
+        const candidates = providerAssignments
+            .filter((assignment) => !requestedProviderUserId || Number(assignment.user_id) === Number(requestedProviderUserId))
+            .filter((assignment) => !requestedLocationId || !assignment.location_id || Number(assignment.location_id) === Number(requestedLocationId))
+            .map((assignment) => buildCapacityCandidate({ assignment, requested }));
+        return [...new Map(candidates.map((candidate) => [uniqueCandidateKey(candidate), candidate])).values()];
+    }
+
+    return [buildCapacityCandidate({ requested })];
+};
+
+const sumCapacityUsage = (bookings = [], candidate = {}) => bookings
+    .filter((booking) => {
+        if (candidate.resourceId) return Number(booking.resource_id) === Number(candidate.resourceId);
+        if (candidate.providerUserId) return Number(booking.provider_user_id) === Number(candidate.providerUserId);
+        if (candidate.locationId) return Number(booking.location_id) === Number(candidate.locationId);
+        return false;
+    })
+    .reduce((sum, booking) => sum + bookingQuantity(booking), 0);
+
+const incrementReason = (target, reason) => {
+    if (!reason) return;
+    target[reason] = (target[reason] || 0) + 1;
+};
+
+const bookingWindowOverlaps = (booking = {}, startAt, endAt) => {
+    const bookingStartAt = parseDate(booking.start_at, 'booking.start_at');
+    const bookingEndAt = parseDate(booking.end_at, 'booking.end_at');
+    return intervalsOverlap(startAt, endAt, bookingStartAt, bookingEndAt);
+};
+
+const summarizeAvailabilityDiagnostics = ({ reasonCounts = {}, candidates = [], requestedQuantity = 1 } = {}) => {
+    const candidateCount = candidates.length;
+    const maxCapacity = candidates.reduce((max, candidate) => Math.max(max, toPositiveInt(candidate.capacity, 1)), 0);
+    const setupWarnings = [];
+    if (candidateCount === 0) {
+        setupWarnings.push('No active provider/resource/location assignment matched this service selection.');
+    }
+    if (requestedQuantity > 1 && maxCapacity < requestedQuantity) {
+        setupWarnings.push('Quantity above 1 requires an active assigned service resource with enough capacity.');
+    }
+    const dominantReason = Object.entries(reasonCounts)
+        .sort((left, right) => right[1] - left[1])
+        .map(([reason]) => reason)[0] || null;
+    return {
+        candidate_count: candidateCount,
+        max_candidate_capacity: maxCapacity,
+        blocked_counts: reasonCounts,
+        dominant_blocker: dominantReason,
+        setup_warnings: setupWarnings
+    };
+};
+
+const serializeAvailabilitySlot = ({ startAt, endAt, candidate, availableCapacity }) => ({
+    start_at: startAt.toISOString(),
+    end_at: endAt.toISOString(),
+    resource_id: candidate.resourceId || null,
+    resource_name: candidate.resourceName || null,
+    provider_user_id: candidate.providerUserId || null,
+    location_id: candidate.locationId || null,
+    capacity_anchor: candidate.capacityAnchor,
+    available_capacity: availableCapacity
+});
+
+export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => async ({ query = {}, storefrontOnly = false } = {}) => {
     try {
-        if (source === 'storefront') {
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+        if (storefrontOnly) {
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository);
             assertServiceStorefrontActionAllowed({
-                action: 'service_booking',
-                capability: 'booking',
+                action: 'service_availability',
+                capability: 'catalog',
                 accessPolicy
             });
         }
+
+        const serviceItemId = toPositiveInt(query.service_item_id || query.item_id);
+        if (!serviceItemId) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'service_item_id is required', { statusCode: 422 });
+        }
+        const date = parseAvailabilityDate(query.date);
+        const requestedQuantity = toPositiveInt(query.quantity, 1);
+        const requestedResourceId = toPositiveInt(query.resource_id);
+        const requestedProviderUserId = toPositiveInt(query.provider_user_id);
+        const requestedLocationId = toPositiveInt(query.location_id);
+        const intervalMinutes = Math.max(5, Math.min(240, toPositiveInt(query.slot_interval_minutes, 30)));
+
+        const service = await serviceRepository.findServiceItemById(serviceItemId);
+        if (!service) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Service is not available for booking', { statusCode: 404 });
+        }
+        const detail = service.serviceDetail || {};
+        const durationMinutes = toPositiveInt(detail.duration_minutes, 60);
+        const baseResponse = {
+            service_item_id: service.item_id,
+            date: formatLocalDateKey(date),
+            quantity: requestedQuantity,
+            duration_minutes: durationMinutes,
+            slot_interval_minutes: intervalMinutes,
+            capacity_contract: {
+                resource_capacity_allows_quantity: true,
+                provider_capacity: 1,
+                location_capacity: 1,
+                final_booking_validation_is_authoritative: true
+            }
+        };
+
+        if (detail.bookable === false || round4(service.default_sale_price) <= 0) {
+            const unavailableReason = detail.bookable === false ? 'service_not_bookable' : 'positive_sale_price_required';
+            return ok({
+                ...baseResponse,
+                available: false,
+                unavailable_reason: unavailableReason,
+                slots: [],
+                diagnostics: {
+                    candidate_count: 0,
+                    max_candidate_capacity: 0,
+                    blocked_counts: { [unavailableReason]: 1 },
+                    dominant_blocker: unavailableReason,
+                    setup_warnings: []
+                }
+            });
+        }
+
+        const assignments = await serviceRepository.listActiveAssignmentsForService(service.item_id);
+        const candidates = await loadAvailabilityCandidates({
+            serviceRepository,
+            assignments,
+            requestedResourceId,
+            requestedProviderUserId,
+            requestedLocationId
+        });
+        const slotMap = new Map();
+        const reasonCounts = {};
+        let checkedSlots = 0;
+        const bufferBeforeMinutes = toNonNegativeInt(detail.buffer_before_minutes, 0);
+        const bufferAfterMinutes = toNonNegativeInt(detail.buffer_after_minutes, 0);
+        const dayWindowStart = addMinutes(startOfDay(date), -bufferBeforeMinutes);
+        const dayWindowEnd = addMinutes(startOfDay(date), (24 * 60) + durationMinutes + bufferAfterMinutes);
+        const availabilityConflicts = typeof serviceRepository.findAvailabilityConflicts === 'function'
+            ? await serviceRepository.findAvailabilityConflicts({
+                serviceItemId: service.item_id,
+                providerUserIds: candidates.map((candidate) => candidate.providerUserId).filter(Boolean),
+                resourceIds: candidates.map((candidate) => candidate.resourceId).filter(Boolean),
+                locationIds: candidates.map((candidate) => candidate.locationId).filter(Boolean),
+                startAt: dayWindowStart,
+                endAt: dayWindowEnd
+            })
+            : null;
+        const availabilityHoldConflicts = typeof serviceRepository.findAvailabilityHoldConflicts === 'function'
+            ? await serviceRepository.findAvailabilityHoldConflicts({
+                providerUserIds: candidates.map((candidate) => candidate.providerUserId).filter(Boolean),
+                resourceIds: candidates.map((candidate) => candidate.resourceId).filter(Boolean),
+                locationIds: candidates.map((candidate) => candidate.locationId).filter(Boolean),
+                startAt: dayWindowStart,
+                endAt: dayWindowEnd
+            })
+            : null;
+        for (const candidate of candidates) {
+            const startCandidates = buildAvailabilityStartCandidates({
+                date,
+                durationMinutes,
+                intervalMinutes,
+                leadTimeMinutes: detail.lead_time_minutes,
+                weeklyAvailability: candidate.weeklyAvailability
+            });
+            if (startCandidates.length === 0) {
+                incrementReason(reasonCounts, 'outside_weekly_availability_or_lead_time');
+            }
+            for (const startAt of startCandidates) {
+                const endAt = addMinutes(startAt, durationMinutes);
+                checkedSlots += 1;
+                if (requestedQuantity > candidate.capacity) {
+                    incrementReason(reasonCounts, 'requested_quantity_exceeds_capacity_anchor');
+                    continue;
+                }
+                if (isBlackedOut({ startAt, blackoutDates: candidate.blackoutDates })) {
+                    incrementReason(reasonCounts, 'resource_blackout_date');
+                    continue;
+                }
+                if (!isWithinWeeklyAvailability({ startAt, endAt, weeklyAvailability: candidate.weeklyAvailability })) {
+                    incrementReason(reasonCounts, 'outside_weekly_availability');
+                    continue;
+                }
+                const bufferStartAt = addMinutes(startAt, -bufferBeforeMinutes);
+                const bufferEndAt = addMinutes(endAt, bufferAfterMinutes);
+                const conflicts = Array.isArray(availabilityConflicts)
+                    ? availabilityConflicts.filter((booking) => bookingWindowOverlaps(booking, bufferStartAt, bufferEndAt))
+                    : await serviceRepository.findConflictingBookings({
+                        providerUserId: candidate.providerUserId,
+                        resourceId: candidate.resourceId,
+                        locationId: candidate.locationId,
+                        startAt: bufferStartAt,
+                        endAt: bufferEndAt
+                    });
+                const holdConflicts = Array.isArray(availabilityHoldConflicts)
+                    ? availabilityHoldConflicts.filter((hold) => bookingWindowOverlaps(hold, bufferStartAt, bufferEndAt))
+                    : [];
+                const usedCapacity = sumCapacityUsage([...conflicts, ...holdConflicts], candidate);
+                const availableCapacity = Math.max(0, candidate.capacity - usedCapacity);
+                if (availableCapacity < requestedQuantity) {
+                    incrementReason(reasonCounts, 'overlapping_booking_capacity_full');
+                    continue;
+                }
+                const slot = serializeAvailabilitySlot({ startAt, endAt, candidate, availableCapacity });
+                const existing = slotMap.get(slot.start_at);
+                if (!existing || Number(existing.available_capacity || 0) < availableCapacity) {
+                    slotMap.set(slot.start_at, slot);
+                }
+            }
+        }
+        const slots = [...slotMap.values()]
+            .sort((left, right) => new Date(left.start_at).getTime() - new Date(right.start_at).getTime())
+            .slice(0, 48);
+        if (candidates.length === 0) incrementReason(reasonCounts, 'no_matching_capacity_anchor');
+        const diagnostics = {
+            ...summarizeAvailabilityDiagnostics({ reasonCounts, candidates, requestedQuantity }),
+            checked_slot_candidates: checkedSlots,
+            conflict_query_strategy: Array.isArray(availabilityConflicts) ? 'window_prefetch' : 'per_slot_fallback',
+            hold_conflicts_included: Array.isArray(availabilityHoldConflicts),
+            guidance: null
+        };
+        diagnostics.guidance = diagnostics.setup_warnings[0]
+            || (slots.length === 0 && diagnostics.dominant_blocker === 'overlapping_booking_capacity_full'
+                ? 'All matching capacity is already booked for the generated slots.'
+                : null);
+        const unavailableReason = slots.length > 0
+            ? null
+            : diagnostics.dominant_blocker || 'no_capacity_for_date_or_quantity';
+
+        return ok({
+            ...baseResponse,
+            available: slots.length > 0,
+            unavailable_reason: unavailableReason,
+            diagnostics,
+            slots
+        });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to load service availability'));
+    }
+};
+
+const createServiceBookingRecord = async ({
+    serviceRepository,
+    payload = {},
+    source = 'admin',
+    storeCustomer = null,
+    transaction,
+    pendingRequests = [],
+    accountResolution: providedAccountResolution = null,
+    idempotencyKey = null,
+    requestHash = null,
+    holdOnly = false
+}) => {
         const serviceItemId = toPositiveInt(payload.service_item_id || payload.item_id);
         if (!serviceItemId) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'service_item_id is required', { statusCode: 422 });
@@ -770,6 +1317,14 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
         const detail = service.serviceDetail || {};
         if (detail.bookable === false) {
             throw new DomainError(DomainErrorCode.CONFLICT, 'Service is not bookable', { statusCode: 409 });
+        }
+        const salePrice = round4(service.default_sale_price);
+        if (['storefront', 'pos'].includes(String(source || '').trim()) && salePrice <= 0) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Service requires a positive sale price before storefront booking',
+                { statusCode: 422 }
+            );
         }
         const startAt = parseDate(payload.start_at || payload.scheduled_for, 'start_at');
         const leadTimeMs = toNonNegativeInt(detail.lead_time_minutes, 0) * 60 * 1000;
@@ -789,9 +1344,68 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
         }
         const bufferStartAt = new Date(startAt.getTime() - toNonNegativeInt(detail.buffer_before_minutes, 0) * 60 * 1000);
         const bufferEndAt = new Date(endAt.getTime() + toNonNegativeInt(detail.buffer_after_minutes, 0) * 60 * 1000);
-        const providerUserId = toPositiveInt(payload.provider_user_id);
-        const resourceId = toPositiveInt(payload.resource_id);
-        const locationId = toPositiveInt(payload.location_id);
+        let providerUserId = toPositiveInt(payload.provider_user_id);
+        let resourceId = toPositiveInt(payload.resource_id);
+        let locationId = toPositiveInt(payload.location_id);
+        const quantity = toPositiveInt(payload.quantity, 1);
+        const holdToken = normalizeHoldToken(payload.hold_token);
+        let activeHold = null;
+        let replacementHold = null;
+        if (holdToken) {
+            if (typeof serviceRepository.findActiveHoldByToken !== 'function') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold validation is not available', { statusCode: 409 });
+            }
+            activeHold = await serviceRepository.findActiveHoldByToken(holdToken, { transaction, lock: true });
+            if (!activeHold) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold is expired or unavailable', { statusCode: 409 });
+            }
+            if (Number(activeHold.service_item_id) !== Number(service.item_id)) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold does not match the requested service', { statusCode: 409 });
+            }
+            const activeHoldSource = String(activeHold.source || source || '').trim();
+            if (activeHoldSource && activeHoldSource !== String(source || '').trim()) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold source does not match the requested booking source', { statusCode: 409 });
+            }
+            const activeHoldCustomerId = toPositiveInt(activeHold.store_customer_id);
+            const requestCustomerId = toPositiveInt(storeCustomer?.customer_id);
+            if (activeHoldCustomerId && requestCustomerId && activeHoldCustomerId !== requestCustomerId) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold belongs to a different customer account', { statusCode: 409 });
+            }
+            if (bookingQuantity(activeHold) < quantity) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold quantity is lower than the requested quantity', { statusCode: 409 });
+            }
+            if (
+                parseDate(activeHold.start_at, 'hold.start_at').getTime() !== startAt.getTime()
+                || parseDate(activeHold.end_at, 'hold.end_at').getTime() !== endAt.getTime()
+            ) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold schedule does not match the requested schedule', { statusCode: 409 });
+            }
+            providerUserId = providerUserId || toPositiveInt(activeHold.provider_user_id);
+            resourceId = resourceId || toPositiveInt(activeHold.resource_id);
+            locationId = locationId || toPositiveInt(activeHold.location_id);
+        }
+        const replacementHoldToken = holdOnly ? normalizeHoldToken(payload.replace_hold_token) : null;
+        if (replacementHoldToken) {
+            if (typeof serviceRepository.findActiveHoldByToken !== 'function') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Service hold replacement is not available', { statusCode: 409 });
+            }
+            replacementHold = await serviceRepository.findActiveHoldByToken(replacementHoldToken, { transaction, lock: true });
+            if (replacementHold) {
+                if (Number(replacementHold.service_item_id) !== Number(service.item_id)) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'Replacement hold does not match the requested service', { statusCode: 409 });
+                }
+                const replacementSource = String(replacementHold.source || source || '').trim();
+                if (replacementSource && replacementSource !== String(source || '').trim()) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'Replacement hold source does not match the requested hold source', { statusCode: 409 });
+                }
+                const replacementCustomerId = toPositiveInt(replacementHold.store_customer_id);
+                const requestCustomerId = toPositiveInt(storeCustomer?.customer_id);
+                if (replacementCustomerId && requestCustomerId && replacementCustomerId !== requestCustomerId) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'Replacement hold belongs to a different customer account', { statusCode: 409 });
+                }
+            }
+        }
+        const excludedHoldId = activeHold?.hold_id || replacementHold?.hold_id || null;
 
         let resource = null;
         if (resourceId) {
@@ -823,22 +1437,107 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
             }
         }
 
-        const conflicts = await serviceRepository.findConflictingBookings({
+        if (!providerUserId && !resourceId) {
+            const resourceAssignments = assignments.filter((assignment) => {
+                const assignmentResourceId = toPositiveInt(assignment.resource_id);
+                if (!assignmentResourceId) return false;
+                if (locationId && assignment.location_id && Number(assignment.location_id) !== Number(locationId)) return false;
+                return true;
+            });
+            for (const assignment of resourceAssignments) {
+                const candidateResourceId = toPositiveInt(assignment.resource_id);
+                const candidateResource = await serviceRepository.findResourceById(candidateResourceId, { transaction, lock: true });
+                if (!candidateResource || candidateResource.is_active === false) continue;
+                if (locationId && candidateResource.location_id && Number(candidateResource.location_id) !== Number(locationId)) continue;
+                if (isBlackedOut({ startAt, blackoutDates: candidateResource.blackout_dates })) continue;
+                if (!isWithinWeeklyAvailability({ startAt, endAt, weeklyAvailability: candidateResource.weekly_availability })) continue;
+                const candidatePersistedConflicts = await serviceRepository.findConflictingBookings({
+                    resourceId: candidateResourceId,
+                    startAt: bufferStartAt,
+                    endAt: bufferEndAt
+                }, { transaction, lock: true });
+                const candidateHoldConflicts = typeof serviceRepository.findConflictingHolds === 'function'
+                    ? await serviceRepository.findConflictingHolds({
+                        resourceId: candidateResourceId,
+                        startAt: bufferStartAt,
+                        endAt: bufferEndAt,
+                        excludeHoldId: excludedHoldId
+                    }, { transaction, lock: true })
+                    : [];
+                const candidateConflicts = [
+                    ...candidatePersistedConflicts,
+                    ...candidateHoldConflicts,
+                    ...pendingBookingConflicts({
+                        resourceId: candidateResourceId,
+                        startAt: bufferStartAt,
+                        endAt: bufferEndAt,
+                        pendingRequests
+                    })
+                ];
+                const candidateConflictCount = candidateConflicts
+                    .filter((booking) => Number(booking.resource_id) === Number(candidateResourceId))
+                    .reduce((sum, booking) => sum + bookingQuantity(booking), 0);
+                if (candidateConflictCount + quantity <= toPositiveInt(candidateResource.capacity, 1)) {
+                    resourceId = candidateResourceId;
+                    resource = candidateResource;
+                    break;
+                }
+            }
+            if (quantity > 1 && resourceAssignments.length > 0 && !resourceId) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'No assigned service resource has enough capacity for the requested quantity and schedule',
+                    { statusCode: 409 }
+                );
+            }
+        }
+
+        const persistedConflicts = await serviceRepository.findConflictingBookings({
             providerUserId,
             resourceId,
             locationId,
             startAt: bufferStartAt,
             endAt: bufferEndAt
         }, { transaction, lock: true });
+        const persistedHoldConflicts = typeof serviceRepository.findConflictingHolds === 'function'
+            ? await serviceRepository.findConflictingHolds({
+                providerUserId,
+                resourceId,
+                locationId,
+                startAt: bufferStartAt,
+                endAt: bufferEndAt,
+                excludeHoldId: excludedHoldId
+            }, { transaction, lock: true })
+            : [];
+        const conflicts = [
+            ...persistedConflicts,
+            ...persistedHoldConflicts,
+            ...pendingBookingConflicts({
+                providerUserId,
+                resourceId,
+                locationId,
+                startAt: bufferStartAt,
+                endAt: bufferEndAt,
+                pendingRequests
+            })
+        ];
         const resourceCapacity = resource ? toPositiveInt(resource.capacity, 1) : 1;
         const providerConflictCount = providerUserId
-            ? conflicts.filter((booking) => Number(booking.provider_user_id) === Number(providerUserId)).length
+            ? conflicts
+                .filter((booking) => Number(booking.provider_user_id) === Number(providerUserId))
+                .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
             : 0;
         const resourceConflictCount = resourceId
-            ? conflicts.filter((booking) => Number(booking.resource_id) === Number(resourceId)).length
+            ? conflicts
+                .filter((booking) => Number(booking.resource_id) === Number(resourceId))
+                .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
             : 0;
-        const locationConflictCount = (!providerUserId && !resourceId && locationId) ? conflicts.length : 0;
-        const hasCapacityConflict = providerConflictCount > 0 || resourceConflictCount >= resourceCapacity || locationConflictCount > 0;
+        const locationConflictCount = (!providerUserId && !resourceId && locationId)
+            ? conflicts.reduce((sum, booking) => sum + bookingQuantity(booking), 0)
+            : 0;
+        const hasCapacityConflict = (providerUserId ? providerConflictCount + quantity > 1 : false)
+            || (resourceId ? resourceConflictCount + quantity > resourceCapacity : false)
+            || ((!providerUserId && !resourceId && locationId) ? locationConflictCount + quantity > 1 : false);
         if (hasCapacityConflict) {
             throw new DomainError(
                 DomainErrorCode.CONFLICT,
@@ -853,6 +1552,28 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
             );
         }
 
+        if (holdOnly) {
+            return {
+                service,
+                detail,
+                quantity,
+                providerUserId,
+                resourceId,
+                locationId,
+                startAt,
+                endAt,
+                replacementHoldId: replacementHold?.hold_id || null,
+                capacityFootprint: {
+                    provider_user_id: providerUserId,
+                    resource_id: resourceId,
+                    location_id: locationId,
+                    startAt: bufferStartAt,
+                    endAt: bufferEndAt,
+                    quantity
+                }
+            };
+        }
+
         const customerName = trim(payload.customer_name || storeCustomer?.name, 255);
         const customerEmail = normalizeEmail(payload.customer_email || storeCustomer?.email);
         const customerPhone = trim(payload.customer_phone || storeCustomer?.phone, 50);
@@ -863,7 +1584,7 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'customer_email or customer_phone is required', { statusCode: 422 });
         }
 
-        const accountResolution = await buildGuestAccountAction({
+        const accountResolution = providedAccountResolution || await buildGuestAccountAction({
             serviceRepository,
             email: customerEmail,
             storeCustomer,
@@ -881,7 +1602,7 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
         const paymentHandoff = buildPaymentHandoff({
             paymentTiming,
             bookingReference: publicReference,
-            amount: service.default_sale_price || 0
+            amount: salePrice * quantity
         });
 
         const booking = await serviceRepository.createBooking({
@@ -892,6 +1613,7 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
             customer_name: customerName,
             customer_email: customerEmail || null,
             customer_phone: customerPhone || null,
+            quantity,
             provider_user_id: providerUserId,
             resource_id: resourceId,
             location_id: locationId,
@@ -904,25 +1626,278 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
             payment_checkout_url: paymentHandoff.payment_checkout_url,
             pos_transaction_id: toPositiveInt(payload.pos_transaction_id),
             source: ['storefront', 'pos', 'admin'].includes(String(source || '').trim()) ? String(source).trim() : 'admin',
+            idempotency_key: idempotencyKey || null,
+            request_hash: requestHash || null,
             notes: trim(payload.notes, 4000) || null,
             intake_responses: isPlainObject(payload.intake_responses) ? payload.intake_responses : null,
             ...(accountResolution.claimTokenPayload || {})
         }, { transaction });
         const hydrated = await serviceRepository.getBookingById(booking.booking_id, { transaction });
-        await transaction.commit();
-        return ok({
-            booking: serializeBooking(hydrated),
-            account_action: accountResolution.accountAction,
-            payment: {
-                payment_timing: paymentTiming,
-                payment_status: paymentHandoff.payment_status,
-                checkout_url: paymentHandoff.payment_checkout_url,
-                provider: paymentTiming === 'postpaid' ? null : 'paymongo'
+        if (activeHold && typeof serviceRepository.updateHoldById === 'function') {
+            await serviceRepository.updateHoldById(activeHold.hold_id, { status: 'consumed' }, { transaction, lock: true });
+        }
+        return {
+            booking: hydrated,
+            accountResolution,
+            paymentTiming,
+            paymentHandoff,
+            capacityFootprint: {
+                provider_user_id: providerUserId,
+                resource_id: resourceId,
+                location_id: locationId,
+                startAt: bufferStartAt,
+                endAt: bufferEndAt,
+                quantity
             }
+        };
+};
+
+export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async ({
+    payload = {},
+    source = 'admin',
+    storeCustomer = null
+} = {}) => {
+    const transaction = await serviceRepository.beginTransaction();
+    try {
+        const idempotencyKey = normalizeIdempotencyKey(payload.idempotency_key);
+        assertStorefrontIdempotency({ source, idempotencyKey });
+        const requestHash = idempotencyKey
+            ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
+            : null;
+        if (source === 'storefront') {
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            assertServiceStorefrontActionAllowed({
+                action: 'service_booking',
+                capability: 'booking',
+                accessPolicy
+            });
+        }
+        const replayBookings = await replayBookingsForIdempotency({
+            serviceRepository,
+            idempotencyKey,
+            requestHash,
+            transaction
+        });
+        if (replayBookings) {
+            await transaction.commit();
+            const booking = serializeBooking(replayBookings[0]);
+            return ok({
+                booking,
+                bookings: [booking],
+                account_action: null,
+                payment: bookingPaymentResponse(replayBookings[0]),
+                payments: [bookingPaymentResponse(replayBookings[0])],
+                idempotency: {
+                    outcome: 'idempotent_replay',
+                    idempotent_replay: true
+                }
+            });
+        }
+        const created = await createServiceBookingRecord({
+            serviceRepository,
+            payload,
+            source,
+            storeCustomer,
+            transaction,
+            idempotencyKey,
+            requestHash
+        });
+        await transaction.commit();
+        const payment = bookingPaymentResponse(created.booking, {
+            paymentTiming: created.paymentTiming,
+            paymentStatus: created.paymentHandoff.payment_status,
+            checkoutUrl: created.paymentHandoff.payment_checkout_url
+        });
+        return ok({
+            booking: serializeBooking(created.booking),
+            bookings: [serializeBooking(created.booking)],
+            account_action: created.accountResolution.accountAction,
+            payment,
+            payments: [payment]
         });
     } catch (error) {
         if (!transaction.finished) await transaction.rollback();
         return fail(mapError(error, 'Failed to create service booking'));
+    }
+};
+
+export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => async ({
+    payload = {},
+    source = 'storefront',
+    storeCustomer = null
+} = {}) => {
+    const transaction = await serviceRepository.beginTransaction();
+    try {
+        const idempotencyKey = normalizeIdempotencyKey(payload.idempotency_key);
+        assertStorefrontIdempotency({ source, idempotencyKey });
+        const requestHash = idempotencyKey
+            ? hashRequestPayload(holdRequestHashPayload({ payload, source, storeCustomer }))
+            : null;
+        if (source === 'storefront') {
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            assertServiceStorefrontActionAllowed({
+                action: 'service_booking_hold',
+                capability: 'booking',
+                accessPolicy
+            });
+        }
+        if (idempotencyKey && typeof serviceRepository.findHoldsByIdempotencyKey === 'function') {
+            const existing = await serviceRepository.findHoldsByIdempotencyKey(idempotencyKey, { transaction, lock: true });
+            const active = existing.find((hold) => hold.status === 'active' && new Date(hold.expires_at).getTime() > Date.now());
+            if (active) {
+                if (String(active.request_hash || '') !== requestHash) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'idempotency_key was already used with a different hold payload', { statusCode: 409 });
+                }
+                await transaction.commit();
+                return ok({
+                    hold: serializeBookingHold(active),
+                    idempotency: {
+                        outcome: 'idempotent_replay',
+                        idempotent_replay: true
+                    }
+                });
+            }
+        }
+        const validated = await createServiceBookingRecord({
+            serviceRepository,
+            payload,
+            source,
+            storeCustomer,
+            transaction,
+            idempotencyKey,
+            requestHash,
+            holdOnly: true
+        });
+        const hold = await serviceRepository.createBookingHold({
+            hold_token: generateHoldToken(),
+            service_item_id: validated.service.item_id,
+            service_detail_id: validated.detail.service_detail_id || null,
+            store_customer_id: toPositiveInt(storeCustomer?.customer_id),
+            quantity: validated.quantity,
+            provider_user_id: validated.providerUserId || null,
+            resource_id: validated.resourceId || null,
+            location_id: validated.locationId || null,
+            start_at: validated.startAt,
+            end_at: validated.endAt,
+            expires_at: new Date(Date.now() + BOOKING_HOLD_TTL_MS),
+            status: 'active',
+            source,
+            idempotency_key: idempotencyKey || null,
+            request_hash: requestHash || null
+        }, { transaction });
+        if (validated.replacementHoldId && typeof serviceRepository.updateHoldById === 'function') {
+            await serviceRepository.updateHoldById(validated.replacementHoldId, { status: 'cancelled' }, { transaction, lock: true });
+        }
+        await transaction.commit();
+        return ok({ hold: serializeBookingHold(hold) });
+    } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        return fail(mapError(error, 'Failed to create service booking hold'));
+    }
+};
+
+export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository }) => async ({
+    payload = {},
+    source = 'storefront',
+    storeCustomer = null
+} = {}) => {
+    const transaction = await serviceRepository.beginTransaction();
+    try {
+        const idempotencyKey = normalizeIdempotencyKey(payload.idempotency_key);
+        assertStorefrontIdempotency({ source, idempotencyKey });
+        const requestHash = idempotencyKey
+            ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
+            : null;
+        if (source === 'storefront') {
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            assertServiceStorefrontActionAllowed({
+                action: 'service_booking',
+                capability: 'booking',
+                accessPolicy
+            });
+        }
+        const bookingDrafts = Array.isArray(payload.bookings) ? payload.bookings : [];
+        if (bookingDrafts.length === 0) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'bookings must contain at least one booking draft', { statusCode: 422 });
+        }
+        const replayBookings = await replayBookingsForIdempotency({
+            serviceRepository,
+            idempotencyKey,
+            requestHash,
+            transaction
+        });
+        if (replayBookings) {
+            await transaction.commit();
+            const serializedBookings = replayBookings.map(serializeBooking);
+            return ok({
+                bookings: serializedBookings,
+                booking: serializedBookings.length === 1 ? serializedBookings[0] : null,
+                account_action: null,
+                ...batchPaymentResponse(replayBookings),
+                idempotency: {
+                    outcome: 'idempotent_replay',
+                    idempotent_replay: true
+                }
+            });
+        }
+        const pendingRequests = [];
+        const createdBookings = [];
+        const paymentRows = [];
+        let sharedAccountResolution = null;
+        let accountAction = null;
+
+        for (let index = 0; index < bookingDrafts.length; index += 1) {
+            const draft = bookingDrafts[index] || {};
+            try {
+                const created = await createServiceBookingRecord({
+                    serviceRepository,
+                    payload: {
+                        customer_name: payload.customer_name,
+                        customer_email: payload.customer_email,
+                        customer_phone: payload.customer_phone,
+                        payment_timing: payload.payment_timing,
+                        location_id: payload.location_id,
+                        ...draft
+                    },
+                    source,
+                    storeCustomer,
+                    transaction,
+                    pendingRequests,
+                    accountResolution: sharedAccountResolution,
+                    idempotencyKey,
+                    requestHash
+                });
+                pendingRequests.push(created.capacityFootprint);
+                createdBookings.push(created.booking);
+                paymentRows.push(bookingPaymentResponse(created.booking, {
+                    paymentTiming: created.paymentTiming,
+                    paymentStatus: created.paymentHandoff.payment_status,
+                    checkoutUrl: created.paymentHandoff.payment_checkout_url
+                }));
+                if (!sharedAccountResolution) sharedAccountResolution = created.accountResolution;
+                if (!accountAction) accountAction = created.accountResolution.accountAction;
+            } catch (error) {
+                const mapped = mapError(error, 'Failed to create service booking');
+                throw new DomainError(mapped.code, mapped.message, {
+                    statusCode: mapped.statusCode,
+                    details: {
+                        ...(isPlainObject(mapped.details) ? mapped.details : {}),
+                        booking_index: index
+                    }
+                });
+            }
+        }
+
+        await transaction.commit();
+        return ok({
+            bookings: createdBookings.map(serializeBooking),
+            booking: createdBookings.length === 1 ? serializeBooking(createdBookings[0]) : null,
+            account_action: accountAction,
+            ...batchPaymentResponse(createdBookings, paymentRows)
+        });
+    } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        return fail(mapError(error, 'Failed to create service booking batch'));
     }
 };
 
@@ -1205,7 +2180,7 @@ export const buildListServiceClientsUseCase = ({ serviceRepository }) => async (
                 current.last_service_name = booking.serviceItem?.name || null;
             }
             if (booking.payment_status === 'paid' || booking.status === 'completed') {
-                current.total_spend += Number(booking.serviceItem?.default_sale_price || 0);
+                current.total_spend += bookingLineAmount(booking);
             }
             clients.set(key, current);
         });
