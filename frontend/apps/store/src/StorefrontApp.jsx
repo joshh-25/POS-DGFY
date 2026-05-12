@@ -42,6 +42,7 @@ import {
   getInventoryDisplayLabel
 } from './customerAccess.js';
 import { renderBusinessModePinSvg } from './businessModePins.js';
+import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -594,44 +595,6 @@ const normalizeStorefrontReviewSummary = (value) => {
   };
 };
 
-const createStorePopupNode = (store = {}) => {
-  const container = document.createElement('div');
-  container.style.display = 'grid';
-  container.style.gap = '4px';
-
-  const row = document.createElement('div');
-  row.style.display = 'flex';
-  row.style.alignItems = 'center';
-  row.style.gap = '8px';
-
-  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
-  if (profileImageUrl) {
-    const img = document.createElement('img');
-    img.setAttribute('src', profileImageUrl);
-    img.setAttribute('alt', '');
-    img.style.width = '28px';
-    img.style.height = '28px';
-    img.style.borderRadius = '999px';
-    img.style.objectFit = 'cover';
-    img.style.border = '1px solid #d1d5db';
-    img.onerror = () => {
-      img.remove();
-    };
-    row.appendChild(img);
-  }
-
-  const title = document.createElement('strong');
-  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
-  row.appendChild(title);
-  container.appendChild(row);
-
-  const address = document.createElement('div');
-  address.textContent = String(store?.address_line || '');
-  container.appendChild(address);
-
-  return container;
-};
-
 const normalizeProfileLocations = (profile = {}) => (
   (Array.isArray(profile?.active_location_snapshot) ? profile.active_location_snapshot : [])
     .map((location) => ({
@@ -919,12 +882,13 @@ const makeUserLocationElement = () => {
   return el;
 };
 
-function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) {
+function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null, userLocation = null }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const maplibreRef = useRef(null);
   const markersRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const activePopupRef = useRef(null);
   const [mapReadyTick, setMapReadyTick] = useState(0);
 
   useEffect(() => {
@@ -955,6 +919,10 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
 
     return () => {
       cancelled = true;
+      if (activePopupRef.current) {
+        activePopupRef.current.remove();
+        activePopupRef.current = null;
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -970,6 +938,10 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
 
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
+    if (activePopupRef.current) {
+      activePopupRef.current.remove();
+      activePopupRef.current = null;
+    }
 
     const rows = Array.isArray(stores) ? stores : [];
     const bounds = [];
@@ -984,11 +956,94 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
         ? markerKey === String(selectedKey)
         : store.is_primary_storefront === true;
       const el = makePinElement(store.workflow_mode || store.business_mode, highlighted);
-      el.addEventListener('click', () => onSelectStore(store));
-      const popup = new maplibregl.Popup({ offset: 25 }).setDOMContent(createStorePopupNode(store));
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', `Preview ${store?.tenant_name || 'storefront'} at ${store?.location_name || store?.branch_label || 'location'}`);
+      let closeTimer = null;
+      let persistent = false;
+      let pointerInsidePopup = false;
+      const popup = new maplibregl.Popup({
+        offset: 25,
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '320px'
+      });
+      const popupNode = createStoreMarkerPreviewNode(store, {
+        resolveAssetUrl: withAssetOrigin,
+        onAction: typeof onPreviewAction === 'function'
+          ? (selectedStore) => {
+            popup.remove();
+            if (activePopupRef.current === popup) activePopupRef.current = null;
+            onPreviewAction(selectedStore);
+          }
+          : null
+      });
+      popupNode.addEventListener('pointerenter', () => {
+        pointerInsidePopup = true;
+        if (closeTimer) window.clearTimeout(closeTimer);
+      });
+      popupNode.addEventListener('pointerleave', () => {
+        pointerInsidePopup = false;
+        if (!persistent) {
+          closeTimer = window.setTimeout(() => {
+            if (!pointerInsidePopup) popup.remove();
+          }, 180);
+        }
+      });
+      popupNode.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          persistent = false;
+          popup.remove();
+          if (activePopupRef.current === popup) activePopupRef.current = null;
+          el.focus();
+        }
+      });
+      popup.setDOMContent(popupNode);
+      const openPopup = ({ keepOpen = false } = {}) => {
+        if (closeTimer) window.clearTimeout(closeTimer);
+        persistent = persistent || keepOpen;
+        if (activePopupRef.current && activePopupRef.current !== popup) {
+          activePopupRef.current.remove();
+        }
+        activePopupRef.current = popup;
+        popup.setLngLat([lng, lat]).addTo(map);
+      };
+      const scheduleClose = () => {
+        if (persistent) return;
+        if (closeTimer) window.clearTimeout(closeTimer);
+        closeTimer = window.setTimeout(() => {
+          if (!pointerInsidePopup) {
+            popup.remove();
+            if (activePopupRef.current === popup) activePopupRef.current = null;
+          }
+        }, 180);
+      };
+      el.addEventListener('pointerenter', () => openPopup());
+      el.addEventListener('pointerleave', scheduleClose);
+      el.addEventListener('focus', () => openPopup());
+      el.addEventListener('blur', scheduleClose);
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openPopup({ keepOpen: true });
+        }
+        if (event.key === 'Escape') {
+          persistent = false;
+          popup.remove();
+          if (activePopupRef.current === popup) activePopupRef.current = null;
+        }
+      });
+      el.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (typeof onPreviewAction === 'function') {
+          openPopup({ keepOpen: true });
+          return;
+        }
+        if (typeof onSelectStore === 'function') onSelectStore(store);
+        openPopup({ keepOpen: true });
+      });
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
-        .setPopup(popup)
         .addTo(map);
       markersRef.current.push(marker);
       bounds.push([lng, lat]);
@@ -1020,7 +1075,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
         { padding: 24, maxZoom: 14 }
       );
     }
-  }, [stores, selectedKey, onSelectStore, userLocation, mapReadyTick]);
+  }, [stores, selectedKey, onSelectStore, onPreviewAction, userLocation, mapReadyTick]);
 
   return <div ref={ref} style={{ height: 360, border: '1px solid #d6e2e8', borderRadius: 14 }} />;
 }
@@ -3396,6 +3451,8 @@ export default function StorefrontApp() {
                       onSelectStore={(pin) => {
                         setHighlightedStoreSlug(pin.slug);
                         setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                      }}
+                      onPreviewAction={(pin) => {
                         goStore(pin.slug, pin.location_id ?? null);
                       }}
                     />
@@ -3553,6 +3610,8 @@ export default function StorefrontApp() {
                       onSelectStore={(pin) => {
                         setHighlightedStoreSlug(pin.slug);
                         setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                      }}
+                      onPreviewAction={(pin) => {
                         goStore(pin.slug, pin.location_id ?? null);
                       }}
                     />

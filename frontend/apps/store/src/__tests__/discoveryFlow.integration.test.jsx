@@ -7,24 +7,49 @@ import { App } from '../main.jsx';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
-    return {
-    setDOMContent: vi.fn().mockReturnThis(),
-    setHTML: vi.fn().mockReturnThis(),
-    setLngLat: vi.fn().mockReturnThis(),
-    addTo: vi.fn().mockReturnThis()
+    const api = {
+      node: null,
+      html: '',
+      setDOMContent: vi.fn((node) => {
+        api.node = node;
+        return api;
+      }),
+      setHTML: vi.fn((html) => {
+        api.html = html;
+        return api;
+      }),
+      setLngLat: vi.fn(() => api),
+      addTo: vi.fn(() => {
+        if (api.node && !api.node.isConnected) document.body.appendChild(api.node);
+        return api;
+      }),
+      remove: vi.fn(() => {
+        if (api.node?.isConnected) api.node.remove();
+        return api;
+      })
     };
+    return api;
   }
-  function MarkerApi() {
-    return {
-    setLngLat: vi.fn().mockReturnThis(),
-    addTo: vi.fn().mockReturnThis(),
-    remove: vi.fn().mockReturnThis(),
-    setPopup: vi.fn().mockReturnThis(),
-    getElement: vi.fn(() => document.createElement('div'))
+  function MarkerApi(options = {}) {
+    const element = options.element || document.createElement('div');
+    const api = {
+      setLngLat: vi.fn(() => api),
+      addTo: vi.fn((map) => {
+        if (map?.container && !element.isConnected) map.container.appendChild(element);
+        return api;
+      }),
+      remove: vi.fn(() => {
+        if (element.isConnected) element.remove();
+        return api;
+      }),
+      setPopup: vi.fn(() => api),
+      getElement: vi.fn(() => element)
     };
+    return api;
   }
-  function MapApi() {
+  function MapApi(options = {}) {
     return {
+      container: options.container,
       on: vi.fn().mockReturnThis(),
       off: vi.fn().mockReturnThis(),
       flyTo: vi.fn().mockReturnThis(),
@@ -233,6 +258,88 @@ describe('storefront discovery integration flow', () => {
     });
     expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
     expect(screen.getByAltText(/Alpha Foods cover/i)).toBeTruthy();
+    await waitFor(() => {
+      const catalogCalls = fetchMock.mock.calls
+        .map(([requestUrl]) => String(requestUrl))
+        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+  });
+
+  it('opens a marker preview first and routes the card action with the pinned location id', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              matching_item_sample: ['Calamansi Juice'],
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'in_stock_only',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0]);
+    await waitFor(() => expect(screen.getAllByText('Branch').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Branch Road').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Open storefront' }));
+    await waitFor(() => {
+      expect(screen.getByText('Tenant page: alpha')).toBeTruthy();
+    });
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
