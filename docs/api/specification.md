@@ -2793,7 +2793,10 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/store/services/catalog` | Public | List bookable storefront-visible service rows with service metadata and normalized intake form schema |
+| `GET` | `/store/services/availability` | Public | Return no-store, capacity-aware service slots for a service/date/location/resource/provider/quantity selection |
+| `POST` | `/store/services/holds` | Optional Store JWT | Create a short-lived service booking hold for a selected service schedule and capacity scope |
 | `POST` | `/store/services/bookings` | Optional Store JWT | Create a service booking/ticket with payment timing, intake responses, and guest/account claim behavior |
+| `POST` | `/store/services/bookings/batch` | Optional Store JWT | Create multiple service bookings in one all-or-nothing storefront checkout |
 | `GET` | `/store/services/bookings` | Store JWT | List authenticated customer's service bookings |
 | `GET` | `/store/services/bookings/:public_reference` | Public limited lookup | Read redacted public ticket/booking status by reference |
 | `POST` | `/store/services/bookings/:public_reference/claim` | Store JWT | Claim a booking into the authenticated customer account using a valid short-lived claim token |
@@ -2807,6 +2810,14 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 - Guests whose email has no existing StoreCustomer account receive a short-lived claim token plus image download.
 - Guests whose email already belongs to a StoreCustomer account are not prompted to register/sign in from the receipt prompt; image download remains available.
 - Required `intake_form_schema` fields must be answered before booking is accepted.
+- `GET /store/services/availability` accepts `service_item_id`, `date` (`YYYY-MM-DD`), optional `location_id`, optional `resource_id`, optional `provider_user_id`, `quantity` (`1+`), and `slot_interval_minutes`. It returns only slots that pass service bookability, positive sale price readiness, lead time, active assignment/resource matching, resource weekly availability, blackout dates, overlapping booking quantity capacity, and active unexpired hold quantity capacity. The response also includes `diagnostics.blocked_counts`, `diagnostics.dominant_blocker`, `diagnostics.setup_warnings`, and `diagnostics.guidance` so storefronts can explain missing slots without exposing private booking details. The response is customer guidance; booking creation still revalidates under the booking mutation.
+- `POST /store/services/holds` accepts `service_item_id`, `start_at`, optional `end_at` or `duration_minutes`, `quantity`, optional `location_id`/`resource_id`/`provider_user_id`, required `idempotency_key`, and optional `replace_hold_token`. Active unexpired holds reserve capacity briefly, can be replaced by an edited draft without self-blocking, and must be passed as `hold_token` to the final booking mutation to be consumed.
+- Public hold and booking mutations require `idempotency_key` (`8..120` chars). Matching retries replay the existing hold/booking response; reuse with a different request payload returns conflict.
+- `quantity` is accepted on service bookings and defaults to `1`; totals and capacity checks multiply by quantity. Quantity above `1` requires a capacity anchor, currently an active assigned service resource. Provider-only and location-only bookings remain effective capacity `1`.
+- Single and batch booking payloads may include `hold_token`; the backend revalidates the hold, schedule, quantity, and capacity under transaction and marks a valid consumed hold as `consumed`.
+- Batch booking payloads contain shared customer fields and `bookings[]`; each draft carries its own `service_item_id`, `quantity`, schedule, location/resource/provider fields, optional `hold_token`, payment timing, intake responses, and notes. If `resource_id` is omitted, the backend may auto-select an assigned resource with enough compatible capacity.
+- Batch booking is all-or-nothing. If any draft fails availability, capacity, payment-policy, intake, or access validation, no booking is created and the error details include `booking_index`.
+- Batch booking responses include `bookings[]`, `payments[]`, and a summary `payment` object. Frontends must render every `payments[].checkout_url` for multi-booking prepaid/deposit batches.
 - `payment_timing=postpaid` creates an unpaid booking/ticket for POS collection later; `payment_timing=prepaid` depends on the configured commerce adapter and remains separate from fiscal/non-fiscal receipt issuance.
 
 ## Services Admin Endpoints

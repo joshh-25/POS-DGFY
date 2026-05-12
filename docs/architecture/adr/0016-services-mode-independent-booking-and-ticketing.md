@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-02
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-12
 classification: authoritative
 ---
 
@@ -48,7 +48,9 @@ This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDA
 - Services Mode IMS must be service-business first, not manufacturing-with-renamed-labels. Its primary surfaces are Today, Calendar, Services, Team & Resources, Waitlist, and Clients.
 - Services Mode may use inventory for sellable service items and supplies, but the default operator workflow must avoid job-order, dispatch-order, production, and stock-movement language.
 - Staff/resource assignment, resource capacity, waitlist, client history, and service payment policy are core Services Mode contracts, not optional UI-only concepts.
-- Storefront booking controls must honor each service's payment policy and prevent ambiguous multi-quantity service bookings unless a package/class model is explicitly introduced.
+- Storefront booking controls must honor each service's payment policy. Service booking quantity is explicit: `service_bookings.quantity` is the number of service units, seats, or sessions reserved in the same schedule window, and it must be validated against resource capacity before acceptance.
+- Storefront customers may keep multiple service booking drafts and submit them in one all-or-nothing booking checkout. Separate drafts remain the contract for different schedules, resources, or intake answers; a customer must not be blocked from booking another valid service merely because a previous booking is still active.
+- Storefront service booking drafts may create short-lived holds in `service_booking_holds`. Active, unexpired holds count against availability/capacity, can be replaced by a newer hold for the same draft, and must be consumed by the final booking mutation through `hold_token`.
 - Future modes should follow the same implementation pattern: define mode-specific source-of-truth capability registry, route guards, mode-native data contracts, mode-native IMS/POS/Storefront surfaces, tests, and documentation before claiming readiness.
 - Future modes that add tenant-local tables must also define their tenant provisioning graph before implementation starts. A mode is not ready if a fresh tenant approval cannot create its schema cleanly.
 
@@ -89,3 +91,16 @@ Services Mode separates service pricing from physical inventory costing:
 - `cost_per_unit` on a pure service row is optional internal service-cost tracking. IMS hides it by default and shows it only when the operator opts into internal service cost or the row already has a stored service cost.
 - Physical add-ons/products and supplies in Services Mode are stock-bearing inventory rows. They show cost in IMS, and they require `default_sale_price > 0` only when enabled for POS or Storefront.
 - POS and Storefront service sales must use explicit `default_sale_price`; they must not treat `cost_per_unit` as a fallback customer price.
+
+## Storefront Multiplicity Addendum (2026-05-11)
+
+Storefront booking and checkout multiplicity is mode-wide:
+
+- Any transaction-capable mode must allow customers to submit quantity `1+` and repeated orders/bookings when POS-equivalent readiness passes for that mode.
+- POS-equivalent readiness means active item, explicit positive sale price, customer-access permission, storefront visibility, stock/location/FIFO gates for stock-bearing rows, and service bookability/capacity gates for service rows. Storefront visibility remains independent from POS visibility.
+- Services Mode stores `quantity` on each booking. Capacity checks sum overlapping active booking quantities, including drafts submitted in the same batch. Resource-backed services may accept `quantity > 1` up to `service_resources.capacity`; provider-only and location-only bookings remain effective capacity `1` until a later ADR introduces provider/location capacity. When a storefront request omits `resource_id`, the backend may auto-select an active, assigned resource that matches the requested location, schedule rules, and capacity.
+- Public Storefront service availability is exposed through a read-only, no-store endpoint before booking submission. It returns slots only when the selected service, date, location/resource/provider scope, quantity, lead time, resource weekly availability, blackout dates, active booking quantities, and active unexpired hold quantities leave enough capacity. It may return customer-safe diagnostics for blocked slots and resource setup gaps. This endpoint improves customer guidance but does not replace the booking mutation's locked validation.
+- Public service booking holds require an idempotency key, store request hashes, expire quickly, and may be replaced with `replace_hold_token` so edited drafts do not block themselves. Public single and batch booking mutations require an idempotency key so customer retries do not create duplicate bookings.
+- Public service booking batch checkout is all-or-nothing: if one draft fails validation, no booking in the batch is created and the response identifies the failed draft index.
+- Batch booking responses return per-booking payment handoffs. The legacy singular `payment` field is only a summary; customers must be shown every `payments[]` checkout URL when multiple prepaid or deposit bookings are created.
+- Future modes may restrict quantity or repeated checkout only through an accepted ADR that explains the mode-native reason and the replacement customer flow.
