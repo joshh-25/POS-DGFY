@@ -902,9 +902,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
           style: TILING_SERVER,
           transformRequest: tileTransformRequest,
           center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-          zoom: 11,
-          bearing: 60,
-          pitch: 60,
+          zoom: 11
         });
         maplibreRef.current = maplibregl;
         mapRef.current = map;
