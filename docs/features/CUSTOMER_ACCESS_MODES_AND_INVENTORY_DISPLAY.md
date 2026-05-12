@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-12
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -86,6 +86,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
+- Discovery map pins use preview-first marker cards. Hover, keyboard focus, or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected.
 - Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
@@ -106,6 +107,12 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - "Next to use" is calculated within each location. The all-location view keeps global totals visible but does not present a single cross-location FIFO batch as the global next batch.
 - Service-only rows stay stock-exempt and do not show misleading FIFO, average-cost, location-cost, on-hand value, or stock-movement controls. Mixed Services Mode transactions must represent physical add-ons, retail products, consumables, kits, or supplies as separate stock-bearing lines so those lines still use location-scoped FIFO.
 - IMS item financial fields follow the mode preset: sellable services, F&B menu items, packaged beverages, food-manufacturing finished products, and MSME sellable rows show Selling Price; stock-bearing inventory rows show Cost; POS/Storefront-enabled rows require a positive Selling Price.
+
+7. Storefront location pins
+- Settings > Storefront can add, edit, set primary, deactivate/reactivate, and permanently delete tenant location pins.
+- Permanent delete is allowed only for unused location rows with no POS transaction, terminal shift/transition/audit, inventory stock, FIFO batch, stock movement, user-location grant, service resource, provider assignment, booking, or booking-hold references. Referenced locations must be deactivated instead so historical records remain intact.
+- Successful location create, update, deactivate, reactivate, and delete actions refresh Storefront discovery so public map/profile rows do not carry stale primary-pin state.
+- Business Mode selectors hide the legacy `manufacturing` alias from new choices. Existing `manufacturing` data still normalizes to `food_manufacturing`; a distinct future Manufacturing mode requires its own governed mode pass before it becomes selectable.
 
 ## Registration And Compliance Rules
 Use declared onboarding registration status as the v1 merchant-stage signal, with compliance/payment state as stronger runtime evidence when available.
@@ -164,6 +171,13 @@ Validated on 2026-05-11 for bulk Catalog Setup hardening:
 - Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed.
 
 Operational readiness rating after the bulk Catalog Setup hardening pass: **8.8/10**. Remaining risk is browser-level multipart smoke evidence against a real tenant with sample images, plus broader frontend interaction tests for the Catalog Setup modal.
+
+Validated on 2026-05-12 for Storefront marker preview cards:
+- Frontend storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__` passed 14 files and 65 tests, covering marker preview models, preview-first marker routing, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
+- Storefront build gate: `npm --prefix frontend run build:store` passed with MapLibre still isolated in the existing lazy-loaded vendor chunk.
+- Governance gate: `npm run check:architecture` passed.
+
+Operational readiness rating after the marker preview pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
 
 ## Assumptions
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.
