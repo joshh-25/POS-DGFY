@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import maplibregl from 'maplibre-gl';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -63,6 +62,11 @@ const tileTransformRequest = import.meta.env.DEV
     return { url };
   }
   : undefined;
+
+const loadMapLibre = async () => {
+  const module = await import('maplibre-gl');
+  return module.default || module;
+};
 
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
@@ -192,6 +196,12 @@ const combineDateAndTimeParts = (datePart, timePart) => {
   if (!datePart || !timePart) return '';
   return `${datePart}T${timePart}`;
 };
+const combineDateWithEmptyTime = (datePart) => (datePart ? `${datePart}T` : '');
+const formatLocalDateTimeInputValue = (value) => {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${formatLocalDateInputValue(parsed)}T${pad2(parsed.getHours())}:${pad2(parsed.getMinutes())}`;
+};
 const normalizeSlotClockValue = (value) => {
   const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
   if (!match) return '';
@@ -293,10 +303,43 @@ const buildServiceTimeSlotOptions = (serviceItem, dateString) => {
   });
   return [...new Set(values)].map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'availability' }));
 };
-const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '') => {
-  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString);
-  if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
-  return availableSlots[0]?.value || '09:00';
+const buildServiceAvailabilitySlotOptions = (slots = []) => (
+  (Array.isArray(slots) ? slots : [])
+    .map((slot) => {
+      const appointmentAt = formatLocalDateTimeInputValue(slot?.start_at);
+      const value = getTimePartFromAppointment(appointmentAt);
+      if (!appointmentAt || !value) return null;
+      const availableCapacity = Number(slot?.available_capacity || 0);
+      const resourceLabel = slot?.resource_name ? ` - ${slot.resource_name}` : '';
+      const capacityLabel = availableCapacity > 1 ? ` (${availableCapacity} units left)` : ' (1 unit left)';
+      return {
+        value,
+        label: `${formatTimeSlotLabel(value)}${capacityLabel}${resourceLabel}`,
+        source: 'availability_api',
+        appointmentAt,
+        availableCapacity
+      };
+    })
+    .filter(Boolean)
+);
+const SERVICE_AVAILABILITY_REASON_LABELS = {
+  requested_quantity_exceeds_capacity_anchor: 'This quantity needs a service resource with more capacity.',
+  overlapping_booking_capacity_full: 'Matching service capacity is already booked for those slots.',
+  resource_blackout_date: 'The selected service resource is blocked out for that date.',
+  outside_weekly_availability: 'The selected date is outside the service schedule.',
+  outside_weekly_availability_or_lead_time: 'The selected date has no slots after lead-time and schedule rules.',
+  no_matching_capacity_anchor: 'No matching service resource or provider is available for this selection.',
+  positive_sale_price_required: 'This service needs a sale price before online booking.',
+  service_not_bookable: 'This service is not currently bookable.'
+};
+const serviceAvailabilityMessage = ({ loading, error, matches, unavailableReason, diagnostics, slots }) => {
+  if (loading) return 'Checking live availability';
+  if (error) return error;
+  if (!matches) return 'Checking store schedule';
+  if (Array.isArray(slots) && slots.length > 0) return 'Live capacity checked';
+  const guidance = String(diagnostics?.guidance || diagnostics?.setup_warnings?.[0] || '').trim();
+  if (guidance) return guidance;
+  return SERVICE_AVAILABILITY_REASON_LABELS[unavailableReason] || 'No available slots for this date and quantity';
 };
 const normalizePathBase = (value, fallback = '/tenant-store') => {
   const raw = String(value || '').trim() || fallback;
@@ -442,7 +485,6 @@ const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BAS
 const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
 const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
 const assetOrigin = configuredAssetOrigin || apiOrigin;
-const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const withApiOrigin = (url) => {
@@ -535,43 +577,6 @@ const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
   .filter(Boolean)
   .slice(0, 12);
 
-const normalizeStorefrontGallery = (value) => parseOptionalArray(value)
-  .map((entry, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const url = String(entry.url || '').trim();
-    const path = String(entry.path || '').trim();
-    if (!url && !path) return null;
-    return {
-      url: withAssetOrigin(url) || '',
-      path: withAssetOrigin(path) || '',
-      caption: String(entry.caption || '').trim(),
-      alt: String(entry.alt || '').trim(),
-      sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
-    };
-  })
-  .filter(Boolean)
-  .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
-  .slice(0, 24);
-
-const normalizeStorefrontDeliveryPartners = (value) => parseOptionalArray(value)
-  .map((entry) => {
-    if (typeof entry === 'string') {
-      const partner = String(entry || '').trim().toLowerCase();
-      if (!partner) return null;
-      return { partner, label: partner, url: '' };
-    }
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const partner = String(entry.partner || '').trim().toLowerCase();
-    if (!partner) return null;
-    return {
-      partner,
-      label: String(entry.label || '').trim() || partner,
-      url: sanitizeExternalLink(entry.url)
-    };
-  })
-  .filter(Boolean)
-  .slice(0, 8);
-
 const normalizeStorefrontReviewSummary = (value) => {
   const raw = parseOptionalObject(value);
   if (!raw) return null;
@@ -587,17 +592,6 @@ const normalizeStorefrontReviewSummary = (value) => {
     total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null,
     star_distribution: starDistribution
   };
-};
-
-const sanitizeExternalLink = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  try {
-    const parsed = new URL(raw, window.location.origin);
-    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
-  } catch {
-    return '';
-  }
 };
 
 const createStorePopupNode = (store = {}) => {
@@ -677,7 +671,7 @@ const readStoreAuthToken = () => {
   return '';
 };
 
-const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '' } = {}) => {
+const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', signal } = {}) => {
   let response;
   try {
     const token = String(authToken || '').trim();
@@ -688,9 +682,13 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
         ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
+      signal,
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (networkError) {
+    if (networkError?.name === 'AbortError') {
+      throw networkError;
+    }
     throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
       isNetworkError: true,
       cause: networkError
@@ -707,6 +705,28 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
     });
   }
   return payload?.data ?? payload;
+};
+
+const createStorefrontIdempotencyKey = (prefix = 'store') => {
+  const generated = window.crypto?.randomUUID?.();
+  return generated || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const SERVICE_HOLD_REFRESH_BUFFER_MS = 45 * 1000;
+const hasFreshServiceHold = (line) => {
+  const token = String(line?.service_hold_token || '').trim();
+  const expiresAt = line?.service_hold_expires_at ? new Date(line.service_hold_expires_at).getTime() : Number.NaN;
+  return Boolean(token) && Number.isFinite(expiresAt) && expiresAt > Date.now() + SERVICE_HOLD_REFRESH_BUFFER_MS;
+};
+
+const serviceBatchFailureMessage = (error, serviceCartLines = []) => {
+  const index = Number(error?.details?.booking_index);
+  const baseMessage = normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
+  if (!Number.isInteger(index) || index < 0) return baseMessage;
+  const line = serviceCartLines[index];
+  const label = line?.variantName || line?.name || `booking ${index + 1}`;
+  const schedule = line?.service_schedule_at ? ` at ${formatServiceAppointmentSummary(line.service_schedule_at)}` : '';
+  return `${baseMessage} Affected draft: ${label}${schedule}.`;
 };
 
 const extractStockViolation = (error) => {
@@ -804,7 +824,7 @@ const loadImage = (src) => new Promise((resolve, reject) => {
 });
 
 const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
-  const booking = result.booking || null;
+  const booking = result.booking || (Array.isArray(result.bookings) ? result.bookings[0] : null) || null;
   const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
   const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
   const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
@@ -902,36 +922,51 @@ const makeUserLocationElement = () => {
 function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
+  const maplibreRef = useRef(null);
   const markersRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const [mapReadyTick, setMapReadyTick] = useState(0);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container: ref.current,
-      style: TILING_SERVER,
-      transformRequest: tileTransformRequest,
-      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-      zoom: 11,
-      bearing: 60,
-      pitch: 60,
-    });
-    mapRef.current = map;
+    let cancelled = false;
+    loadMapLibre()
+      .then((maplibregl) => {
+        if (cancelled || !ref.current || mapRef.current) return;
+        const map = new maplibregl.Map({
+          container: ref.current,
+          style: TILING_SERVER,
+          transformRequest: tileTransformRequest,
+          center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+          zoom: 11,
+          bearing: 60,
+          pitch: 60,
+        });
+        maplibreRef.current = maplibregl;
+        mapRef.current = map;
 
-    map.on('error', (e) => console.error('[MapLibre error]', e));
-    map.on('style.load', () => console.log('[MapLibre] style loaded'));
-    map.on('sourcedata', (e) => console.log('[MapLibre] sourcedata', e.sourceId, e.isSourceLoaded));
-    map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+        map.on('error', (e) => console.error('[MapLibre error]', e));
+        map.on('style.load', () => console.log('[MapLibre] style loaded'));
+        map.on('sourcedata', (e) => console.log('[MapLibre] sourcedata', e.sourceId, e.isSourceLoaded));
+        map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+        setMapReadyTick((current) => current + 1);
+      })
+      .catch((error) => console.error('[MapLibre load error]', error));
 
     return () => {
-      map.remove();
-      mapRef.current = null;
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      maplibreRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const maplibregl = maplibreRef.current;
+    if (!map || !maplibregl) return;
 
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
@@ -985,7 +1020,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
         { padding: 24, maxZoom: 14 }
       );
     }
-  }, [stores, selectedKey, onSelectStore, userLocation]);
+  }, [stores, selectedKey, onSelectStore, userLocation, mapReadyTick]);
 
   return <div ref={ref} style={{ height: 360, border: '1px solid #d6e2e8', borderRadius: 14 }} />;
 }
@@ -993,6 +1028,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, userLocation = null }) 
 function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
+  const maplibreRef = useRef(null);
   const markerRef = useRef(null);
 
   // useEffect(() => {
@@ -1016,7 +1052,8 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const maplibregl = maplibreRef.current;
+    if (!map || !maplibregl) return;
 
     if (markerRef.current) {
       markerRef.current.remove();
@@ -1072,14 +1109,18 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   );
 }
 
-function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRefreshTenantPage }) {
+function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', message = '', guidance = '', onRefreshTenantPage }) {
   const normalizedMode = String(mode || 'setup_pending').trim().toLowerCase();
-  const title = normalizedMode === 'search_on_empty'
-    ? 'No items are available to search yet'
-    : 'Storefront items are not set up yet';
-  const description = normalizedMode === 'search_on_empty'
-    ? `No catalog is published for this tenant yet, so search for "${searchQuery}" cannot return results.`
-    : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
+  const title = normalizedMode === 'error'
+    ? 'Storefront catalog could not load'
+    : normalizedMode === 'search_on_empty'
+      ? 'No items are available to search yet'
+      : 'Storefront items are not set up yet';
+  const description = normalizedMode === 'error'
+    ? (message || 'The storefront catalog is temporarily unavailable.')
+    : normalizedMode === 'search_on_empty'
+      ? `No catalog is published for this tenant yet, so search for "${searchQuery}" cannot return results.`
+      : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
 
   return (
     <div
@@ -1093,8 +1134,15 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
     >
       <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{title}</div>
       <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{description}</p>
+      {normalizedMode === 'error' && guidance && (
+        <div style={{ marginTop: 10, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
+          {guidance}
+        </div>
+      )}
       <div style={{ marginTop: 10, fontSize: 13, color: '#0f766e', fontWeight: 700 }}>
-        Customer checkout will be available once at least one storefront item is enabled.
+        {normalizedMode === 'error'
+          ? 'Checkout stays unavailable until the catalog is loaded again.'
+          : 'Customer checkout will be available once at least one storefront item is enabled.'}
       </div>
       <div style={{ marginTop: 12 }}>
         <button
@@ -1299,7 +1347,6 @@ export default function StorefrontApp() {
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
-  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
@@ -1308,6 +1355,17 @@ export default function StorefrontApp() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerPin, setCustomerPin] = useState(null);
   const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
+  const [serviceHoldLoading, setServiceHoldLoading] = useState(false);
+  const [serviceAvailabilityState, setServiceAvailabilityState] = useState({
+    serviceItemId: null,
+    date: '',
+    quantity: 1,
+    loading: false,
+    error: '',
+    unavailableReason: null,
+    diagnostics: null,
+    slots: []
+  });
   const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
   const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
   const [fnbReservationForm, setFnbReservationForm] = useState({
@@ -1652,10 +1710,6 @@ export default function StorefrontApp() {
       cancelled = true;
     };
   }, [isStorePage, selectedStore?.slug, selectedLocationId]);
-
-  useEffect(() => {
-    setCatalogImageErrors(new Set());
-  }, [catalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2109,7 +2163,7 @@ export default function StorefrontApp() {
         email ? { label: 'Email', href: `mailto:${email}` } : null
       ].filter(Boolean),
       mapStores,
-      mapSelectedKey: selectedLocation?.location_id != null ? `loc-${selectedLocation.location_id}` : null,
+      mapSelectedKey: selectedLocation?.location_id != null ? String(selectedLocation.location_id) : null,
       addressLine,
       facebookLink,
       directionsUrl,
@@ -2172,6 +2226,25 @@ export default function StorefrontApp() {
       return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
     })
   ), [selectedServiceIntakeFields, serviceIntakeResponses]);
+  const serviceCartValidationIssues = useMemo(() => (
+    serviceCartLines.flatMap((line, index) => {
+      const fields = normalizeServiceFormFields(line?.service_detail?.intake_form_schema);
+      const missingField = fields.find((field) => {
+        if (!field.required) return false;
+        const value = line?.intake_responses?.[field.id];
+        return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
+      });
+      const issues = [];
+      if (!line?.service_schedule_at) {
+        issues.push({ index, line, message: `Choose an appointment date and time for ${line?.name || 'this service'}.` });
+      }
+      if (missingField) {
+        issues.push({ index, line, message: `Complete required intake question for ${line?.name || 'this service'}: ${missingField.label}` });
+      }
+      return issues;
+    })
+  ), [serviceCartLines]);
+  const firstServiceCartIssue = serviceCartValidationIssues[0] || null;
   const servicePaymentOptions = useMemo(() => {
     return buildServicePaymentOptions(servicePaymentPolicy);
   }, [servicePaymentPolicy]);
@@ -2222,7 +2295,7 @@ export default function StorefrontApp() {
     accessCapabilities,
     quoteResult,
     quoteNeedsRefresh
-  }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
+  }) && !hasMixedServiceCart && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const activeBookingService = firstServiceLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
@@ -2230,12 +2303,47 @@ export default function StorefrontApp() {
   const selectedServiceDatePart = getDatePartFromAppointment(serviceAppointmentAt);
   const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
   const bookingDateOptions = useMemo(() => buildServiceDateOptions(activeBookingService), [activeBookingService]);
-  const bookingTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
+  const bookingFallbackTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
+  const bookingAvailabilitySlotOptions = useMemo(
+    () => buildServiceAvailabilitySlotOptions(serviceAvailabilityState.slots),
+    [serviceAvailabilityState.slots]
+  );
+  const bookingAvailabilityMatches = Number(serviceAvailabilityState.serviceItemId) === Number(activeBookingService?.item_id || 0)
+    && serviceAvailabilityState.date === selectedServiceDatePart
+    && Number(serviceAvailabilityState.quantity || 1) === Math.max(1, Number(serviceDraftQuantity || 1));
+  const bookingAvailabilityMessage = serviceAvailabilityMessage({
+    loading: serviceAvailabilityState.loading,
+    error: serviceAvailabilityState.error,
+    matches: bookingAvailabilityMatches,
+    unavailableReason: serviceAvailabilityState.unavailableReason,
+    diagnostics: serviceAvailabilityState.diagnostics,
+    slots: bookingAvailabilitySlotOptions
+  });
+  const bookingTimeSlotOptions = useMemo(() => {
+    if (!selectedServiceDatePart) return [];
+    if (bookingAvailabilityMatches) {
+      return serviceAvailabilityState.loading || serviceAvailabilityState.error
+        ? []
+        : bookingAvailabilitySlotOptions;
+    }
+    return bookingFallbackTimeSlotOptions;
+  }, [
+    selectedServiceDatePart,
+    bookingAvailabilityMatches,
+    serviceAvailabilityState.loading,
+    serviceAvailabilityState.error,
+    bookingAvailabilitySlotOptions,
+    bookingFallbackTimeSlotOptions
+  ]);
   const scheduleStepComplete = Boolean(selectedServiceDatePart && selectedServiceTimePart);
   const requirementsStepComplete = bookingPageMissingRequiredIntake.length === 0;
   const customerStepComplete = String(customerName || '').trim().length > 0 && String(customerPhone || '').trim().length > 0;
-  const serviceBookingSummaryTitle = activeBookingService?.variantName || activeBookingService?.name || 'Service booking';
-  const serviceBookingSummarySchedule = formatServiceAppointmentSummary(serviceAppointmentAt);
+  const serviceBookingSummaryTitle = hasServiceCart && serviceCartLines.length > 1
+    ? `${serviceCartLines.length} service bookings`
+    : (activeBookingService?.variantName || activeBookingService?.name || 'Service booking');
+  const serviceBookingSummarySchedule = hasServiceCart && serviceCartLines.length > 1
+    ? 'Multiple schedules'
+    : formatServiceAppointmentSummary(firstServiceLine?.service_schedule_at || serviceAppointmentAt);
   const openPreferredBookingDatePicker = useCallback(() => {
     const input = bookingPreferredDateInputRef.current;
     if (!input) return;
@@ -2283,6 +2391,107 @@ export default function StorefrontApp() {
     setQuoteNeedsRefresh(true);
   }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, isStorePage]);
   useEffect(() => {
+    const shouldCheckAvailability = (isBookingSubpage || isServiceDetailsSubpage)
+      && activeBookingService?.item_id
+      && selectedServiceDatePart
+      && selectedStore?.slug;
+    const quantity = Math.max(1, Number(serviceDraftQuantity || 1));
+    if (!shouldCheckAvailability) {
+      setServiceAvailabilityState((previous) => ({
+        ...previous,
+        serviceItemId: activeBookingService?.item_id || null,
+        date: selectedServiceDatePart || '',
+        quantity,
+        loading: false,
+        error: '',
+        unavailableReason: null,
+        diagnostics: null,
+        slots: []
+      }));
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      service_item_id: String(activeBookingService.item_id),
+      date: selectedServiceDatePart,
+      quantity: String(quantity),
+      slot_interval_minutes: '30'
+    });
+    const resolvedLocationId = selectedLocationId ?? selectedStore?.location_id;
+    if (resolvedLocationId) params.set('location_id', String(resolvedLocationId));
+    if (activeBookingService.resource_id || activeBookingService.service_detail?.resource_id) {
+      params.set('resource_id', String(activeBookingService.resource_id || activeBookingService.service_detail.resource_id));
+    }
+
+    setServiceAvailabilityState({
+      serviceItemId: activeBookingService.item_id,
+      date: selectedServiceDatePart,
+      quantity,
+      loading: true,
+      error: '',
+      unavailableReason: null,
+      diagnostics: null,
+      slots: []
+    });
+    requestJson(`/api/v1/store/services/availability?${params.toString()}`, {
+      storeSlug: selectedStore.slug,
+      signal: controller.signal
+    })
+      .then((data) => {
+        setServiceAvailabilityState({
+          serviceItemId: activeBookingService.item_id,
+          date: selectedServiceDatePart,
+          quantity,
+          loading: false,
+          error: '',
+          unavailableReason: data?.unavailable_reason || null,
+          diagnostics: data?.diagnostics || null,
+          slots: Array.isArray(data?.slots) ? data.slots : []
+        });
+      })
+      .catch((error) => {
+        if (error?.name === 'AbortError') return;
+        setServiceAvailabilityState({
+          serviceItemId: activeBookingService.item_id,
+          date: selectedServiceDatePart,
+          quantity,
+          loading: false,
+          error: normalizeStorefrontErrorMessage(error, 'Unable to load service availability.'),
+          unavailableReason: null,
+          diagnostics: null,
+          slots: []
+        });
+      });
+    return () => controller.abort();
+  }, [
+    isBookingSubpage,
+    isServiceDetailsSubpage,
+    activeBookingService?.item_id,
+    activeBookingService?.resource_id,
+    activeBookingService?.service_detail?.resource_id,
+    selectedServiceDatePart,
+    serviceDraftQuantity,
+    selectedLocationId,
+    selectedStore?.location_id,
+    selectedStore?.slug
+  ]);
+  useEffect(() => {
+    if (!selectedServiceDatePart || !selectedServiceTimePart) return;
+    if (!bookingAvailabilityMatches || serviceAvailabilityState.loading) return;
+    if (serviceAvailabilityState.error) return;
+    const selectedSlot = bookingAvailabilitySlotOptions.find((slot) => slot.value === selectedServiceTimePart);
+    if (selectedSlot) return;
+    setServiceAppointmentAt(combineDateWithEmptyTime(selectedServiceDatePart));
+  }, [
+    selectedServiceDatePart,
+    selectedServiceTimePart,
+    bookingAvailabilityMatches,
+    serviceAvailabilityState.loading,
+    serviceAvailabilityState.error,
+    bookingAvailabilitySlotOptions
+  ]);
+  useEffect(() => {
     setServicePage(1);
   }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
   useEffect(() => {
@@ -2299,6 +2508,13 @@ export default function StorefrontApp() {
   }, [selectedServiceDetail, selectedServicePaymentOptions, servicePaymentTiming]);
   useEffect(() => {
     if (!selectedServiceDetail) return;
+    if (selectedServiceDetail.cart_line_id) {
+      setServiceDraftQuantity(Math.max(1, Number(selectedServiceDetail.quantity || 1)));
+      setServiceDraftNotes(String(selectedServiceDetail.service_notes || ''));
+      setServiceAppointmentAt(selectedServiceDetail.service_schedule_at || '');
+      setServiceIntakeResponses(selectedServiceDetail.intake_responses || {});
+      return;
+    }
     const matchesCurrentService = Number(selectedServiceDetail.item_id) === Number(firstServiceLine?.item_id);
     setServiceDraftQuantity(matchesCurrentService ? Math.max(1, Number(firstServiceLine?.quantity || 1)) : 1);
     setServiceDraftNotes(matchesCurrentService ? String(firstServiceLine?.service_notes || '') : '');
@@ -2308,9 +2524,11 @@ export default function StorefrontApp() {
     }
   }, [selectedServiceDetail, firstServiceLine]);
   useEffect(() => {
+    if (selectedServiceDetail?.cart_line_id) return;
     setServiceIntakeResponses({});
-  }, [firstServiceLine?.item_id]);
+  }, [firstServiceLine?.item_id, selectedServiceDetail?.cart_line_id]);
   useEffect(() => {
+    if (selectedServiceDetail?.cart_line_id) return;
     if (!hasServiceCart || !firstServiceLine) {
       setServiceDraftQuantity(1);
       setServiceDraftNotes('');
@@ -2329,7 +2547,7 @@ export default function StorefrontApp() {
       setServiceBookingStep(3);
       return;
     }
-    if (activeBookingService) {
+    if (activeBookingService?.item_id) {
       setServiceBookingStep(1);
     }
   }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
@@ -2337,7 +2555,7 @@ export default function StorefrontApp() {
     if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
     const firstDate = bookingDateOptions[0]?.value || '';
     if (!firstDate) return;
-    setServiceAppointmentAt(combineDateAndTimeParts(firstDate, getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart)));
+    setServiceAppointmentAt(combineDateWithEmptyTime(firstDate));
   }, [isBookingSubpage, activeBookingService, bookingDateOptions, selectedServiceDatePart, selectedServiceTimePart]);
   useEffect(() => {
     if (!isServiceDetailsSubpage) return;
@@ -2384,15 +2602,12 @@ export default function StorefrontApp() {
       });
     }
     setCart((prev) => {
-      const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
-      const lineModifiers = isServiceCatalogItem(item) ? [] : getDefaultFnbLineModifiers(item);
+      const isServiceItem = isServiceCatalogItem(item);
+      const found = isServiceItem ? null : prev.find((l) => Number(l.item_id) === Number(item.item_id));
+      const lineModifiers = isServiceItem ? [] : getDefaultFnbLineModifiers(item);
       const price = round4(Number(item.default_sale_price ?? 0) + getFnbLineModifierDelta(lineModifiers));
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       if (found) {
-        if (isServiceCatalogItem(item)) {
-          stockWarning = 'This service is already in your booking cart.';
-          return prev;
-        }
         const requestedQty = Number(found.quantity) + 1;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
         if (requestedQty > maxStock) {
@@ -2408,11 +2623,12 @@ export default function StorefrontApp() {
           : line);
       }
       return [...prev, {
+        cart_line_id: isServiceItem ? `svc-${item.item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : `item-${item.item_id}`,
         item_id: item.item_id,
         name: item.name,
-        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        category: isServiceItem ? 'service' : String(item.category || '').trim().toLowerCase(),
         service_detail: item.service_detail || null,
-        quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? 1 : 0),
+        quantity: isServiceItem ? 1 : (maxStock > 0 ? 1 : 0),
         price,
         line_modifiers: lineModifiers,
         image_url: withAssetOrigin(item.image_url) || null,
@@ -2440,7 +2656,43 @@ export default function StorefrontApp() {
     }
     openServiceBookingPanel('review');
   };
-  const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
+  const createServiceBookingHold = async (serviceLine, { replaceHoldToken = null } = {}) => {
+    if (!selectedStore || !serviceLine?.item_id || !serviceLine?.service_schedule_at) {
+      throw buildRequestError('Choose a service time before reserving this booking.');
+    }
+    const authToken = readStoreAuthToken();
+    const hold = await requestJson('/api/v1/store/services/holds', {
+      method: 'POST',
+      storeSlug: selectedStore.slug,
+      authToken,
+      body: {
+        service_item_id: Number(serviceLine.item_id),
+        quantity: Math.max(1, Number(serviceLine.quantity || 1)),
+        start_at: new Date(serviceLine.service_schedule_at).toISOString(),
+        location_id: selectedLocationId ?? selectedStore?.location_id,
+        ...(serviceLine.resource_id ? { resource_id: Number(serviceLine.resource_id) } : {}),
+        ...(replaceHoldToken ? { replace_hold_token: replaceHoldToken } : {}),
+        idempotency_key: createStorefrontIdempotencyKey('service-hold')
+      }
+    });
+    const reservedHold = hold?.hold || null;
+    if (!reservedHold?.hold_token) {
+      throw buildRequestError('Unable to reserve this service time.');
+    }
+    return reservedHold;
+  };
+  const ensureServiceBookingHold = async (serviceLine) => {
+    if (hasFreshServiceHold(serviceLine)) {
+      return {
+        hold_token: serviceLine.service_hold_token,
+        expires_at: serviceLine.service_hold_expires_at
+      };
+    }
+    return createServiceBookingHold(serviceLine, {
+      replaceHoldToken: serviceLine?.service_hold_token || null
+    });
+  };
+  const saveServiceBookingDraft = async (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (!bookingPermitted || accessCapabilities.booking === false) {
       const message = 'This storefront is not accepting service bookings right now.';
@@ -2466,54 +2718,86 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
-    const replacingDifferentService = hasServiceCart && Number(firstServiceLine?.item_id) !== Number(serviceItem.item_id);
-    setCart([{
-      item_id: serviceItem.item_id,
-      name: serviceItem.name,
-      variantName: serviceItem.variantName || '',
-      category: 'service',
-      service_detail: serviceItem.service_detail || null,
-      quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
-      price: Number(serviceItem.default_sale_price ?? 0),
-      image_url: withAssetOrigin(serviceItem.image_url) || null,
-      unit_of_measure: serviceItem.unit_of_measure || '',
-      max_stock: Number.POSITIVE_INFINITY,
-      service_notes: String(serviceDraftNotes || '').trim(),
-      service_schedule_at: serviceAppointmentAt,
-      payment_timing: servicePaymentTiming,
-      intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null
-    }]);
-    setCheckoutError('');
-    setQuoteError('');
-    setQuoteResult(null);
-    setQuoteNeedsRefresh(true);
-    setSelectedServiceDetail(null);
-    if (isServicesMode) {
-      goStoreBookingPage();
-    } else {
-      openServiceBookingPanel(nextTab);
+    setServiceHoldLoading(true);
+    const editingCartLineId = serviceItem.cart_line_id || null;
+    try {
+      const draftLine = {
+        cart_line_id: editingCartLineId || `svc-${serviceItem.item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        item_id: serviceItem.item_id,
+        name: serviceItem.name,
+        variantName: serviceItem.variantName || '',
+        category: 'service',
+        service_detail: serviceItem.service_detail || null,
+        resource_id: serviceItem.resource_id || serviceItem.service_detail?.resource_id || null,
+        quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
+        price: Number(serviceItem.default_sale_price ?? 0),
+        image_url: withAssetOrigin(serviceItem.image_url) || null,
+        unit_of_measure: serviceItem.unit_of_measure || '',
+        max_stock: Number.POSITIVE_INFINITY,
+        service_notes: String(serviceDraftNotes || '').trim(),
+        service_schedule_at: serviceAppointmentAt,
+        payment_timing: servicePaymentTiming,
+        intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null,
+        service_hold_token: serviceItem.service_hold_token || null,
+        service_hold_expires_at: serviceItem.service_hold_expires_at || null
+      };
+      const hold = await createServiceBookingHold(draftLine, {
+        replaceHoldToken: draftLine.service_hold_token || null
+      });
+      const nextServiceLine = {
+        ...draftLine,
+        service_hold_token: hold?.hold_token || null,
+        service_hold_expires_at: hold?.expires_at || null
+      };
+      setCart((prev) => {
+        if (editingCartLineId) {
+          return prev.map((line) => line.cart_line_id === editingCartLineId ? nextServiceLine : line);
+        }
+        return [...prev, nextServiceLine];
+      });
+      setCheckoutError('');
+      setQuoteError('');
+      setQuoteResult(null);
+      setQuoteNeedsRefresh(true);
+      setSelectedServiceDetail(null);
+      if (isServicesMode) {
+        goStoreBookingPage();
+      } else {
+        openServiceBookingPanel(nextTab);
+      }
+      toast.success(editingCartLineId ? 'Booking draft reserved and updated.' : 'Service time reserved in your booking summary.');
+    } catch (error) {
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to reserve this service time.');
+      setCheckoutError(message);
+      toast.error(message);
+    } finally {
+      setServiceHoldLoading(false);
     }
-    toast.success(replacingDifferentService ? 'Booking summary updated.' : 'Service added to your booking summary.');
   };
-  const openServiceCartEditor = () => {
-    if (!firstServiceLine) return;
-    setSelectedServiceDetail(firstServiceLine);
+  const openServiceCartEditor = (line = firstServiceLine) => {
+    if (!line) return;
+    setSelectedServiceDetail(line);
+    setServiceAppointmentAt(line.service_schedule_at || '');
+    setServicePaymentTiming(line.payment_timing || 'postpaid');
+    setServiceDraftQuantity(Math.max(1, Number(line.quantity || 1)));
+    setServiceDraftNotes(String(line.service_notes || ''));
+    setServiceIntakeResponses(line.intake_responses || {});
   };
 
-  const removeCartItem = (itemId) => {
-    setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(itemId)));
+  const removeCartItem = (lineKey) => {
+    setCart((prev) => prev.filter((line) => String(line.cart_line_id || line.item_id) !== String(lineKey)));
   };
 
-  const updateQty = (itemId, qty) => {
+  const updateQty = (lineKey, qty) => {
     const parsed = Number(qty);
     if (!Number.isFinite(parsed)) return;
     if (parsed <= 0) {
-      setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(itemId)));
+      setCart((prev) => prev.filter((line) => String(line.cart_line_id || line.item_id) !== String(lineKey)));
       return;
     }
     let stockWarning = '';
     setCart((prev) => prev.map((line) => {
-      if (Number(line.item_id) !== Number(itemId)) return line;
+      if (String(line.cart_line_id || line.item_id) !== String(lineKey)) return line;
       const maxStock = Number.isFinite(Number(line.max_stock)) ? Number(line.max_stock) : Number.POSITIVE_INFINITY;
       const safeQty = Math.min(parsed, maxStock);
       if (parsed > maxStock) {
@@ -2711,6 +2995,7 @@ export default function StorefrontApp() {
           variantName: activeBookingService.variantName || '',
           category: 'service',
           service_detail: activeBookingService.service_detail || null,
+          resource_id: activeBookingService.resource_id || activeBookingService.service_detail?.resource_id || null,
           quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
           price: Number(activeBookingService.default_sale_price ?? 0),
           image_url: withAssetOrigin(activeBookingService.image_url) || null,
@@ -2752,14 +3037,20 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
-    if ((hasServiceCart || (isServicesMode && activeBookingService)) && !serviceAppointmentAt) {
+    if (hasServiceCart && firstServiceCartIssue) {
+      const message = firstServiceCartIssue.message;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!hasServiceCart && isServicesMode && activeBookingService && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if ((hasServiceCart && missingRequiredIntake.length > 0) || (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0)) {
-      const firstMissingField = hasServiceCart ? missingRequiredIntake[0] : bookingPageMissingRequiredIntake[0];
+    if (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0) {
+      const firstMissingField = bookingPageMissingRequiredIntake[0];
       const message = `Complete required intake question: ${firstMissingField.label}`;
       setCheckoutError(message);
       toast.error(message);
@@ -2768,24 +3059,68 @@ export default function StorefrontApp() {
     setCheckoutLoading(true);
     try {
       const authToken = readStoreAuthToken();
-      const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
-        ? await requestJson('/api/v1/store/services/bookings', {
+      const heldServiceCartLines = hasServiceCart
+        ? await Promise.all(serviceCartLines.map(async (line) => {
+          const hold = await ensureServiceBookingHold(line);
+          return {
+            ...line,
+            service_hold_token: hold?.hold_token || line.service_hold_token || null,
+            service_hold_expires_at: hold?.expires_at || line.service_hold_expires_at || null
+          };
+        }))
+        : [];
+      const heldServiceBookingLine = (!hasServiceCart && isServicesMode && serviceBookingLine)
+        ? { ...serviceBookingLine }
+        : null;
+      if (heldServiceBookingLine) {
+        const hold = await ensureServiceBookingHold(heldServiceBookingLine);
+        heldServiceBookingLine.service_hold_token = hold?.hold_token || null;
+        heldServiceBookingLine.service_hold_expires_at = hold?.expires_at || null;
+      }
+      const data = hasServiceCart
+        ? await requestJson('/api/v1/store/services/bookings/batch', {
           method: 'POST',
           storeSlug: selectedStore.slug,
           authToken,
           body: {
-            service_item_id: Number(serviceBookingLine.item_id),
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            idempotency_key: createStorefrontIdempotencyKey('service-batch'),
+            location_id: selectedLocationId ?? selectedStore?.location_id,
+            payment_timing: servicePaymentTiming,
+            bookings: heldServiceCartLines.map((line) => ({
+              service_item_id: Number(line.item_id),
+              quantity: Math.max(1, Number(line.quantity || 1)),
+              start_at: new Date(line.service_schedule_at).toISOString(),
+              location_id: selectedLocationId ?? selectedStore?.location_id,
+              ...(line.resource_id ? { resource_id: Number(line.resource_id) } : {}),
+              ...(line.service_hold_token ? { hold_token: line.service_hold_token } : {}),
+              payment_timing: line.payment_timing || servicePaymentTiming,
+              intake_responses: line.intake_responses || null,
+              notes: String(line.service_notes || '').trim()
+            }))
+          }
+        })
+        : (isServicesMode && heldServiceBookingLine)
+          ? await requestJson('/api/v1/store/services/bookings', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            service_item_id: Number(heldServiceBookingLine.item_id),
+            quantity: Math.max(1, Number(heldServiceBookingLine.quantity || 1)),
             start_at: new Date(serviceAppointmentAt).toISOString(),
             customer_name: customerName,
             customer_email: customerEmail,
             customer_phone: customerPhone,
+            idempotency_key: createStorefrontIdempotencyKey('service-booking'),
             location_id: selectedLocationId ?? selectedStore?.location_id,
+            ...(heldServiceBookingLine.resource_id ? { resource_id: Number(heldServiceBookingLine.resource_id) } : {}),
+            ...(heldServiceBookingLine.service_hold_token ? { hold_token: heldServiceBookingLine.service_hold_token } : {}),
             payment_timing: servicePaymentTiming,
             intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
-            notes: [
-              Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
-              String(serviceBookingLine.service_notes || serviceDraftNotes || '').trim()
-            ].filter(Boolean).join('\n')
+            notes: String(heldServiceBookingLine.service_notes || serviceDraftNotes || '').trim()
           }
         })
         : await requestJson('/api/v1/store/checkout', {
@@ -2794,15 +3129,15 @@ export default function StorefrontApp() {
           authToken,
           body: {
             ...checkoutPayload(),
-            idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+            idempotency_key: createStorefrontIdempotencyKey('store'),
             payment_type: 'cash'
           }
         });
       setCheckoutResult({
         ...data,
         cart_lines: hasServiceCart
-          ? cart
-          : (serviceBookingLine ? [serviceBookingLine] : []),
+          ? heldServiceCartLines
+          : (heldServiceBookingLine ? [heldServiceBookingLine] : []),
         totals: totalsForDisplay
       });
       if (data?.tracking_pin) {
@@ -2812,6 +3147,9 @@ export default function StorefrontApp() {
       if (data?.booking?.public_reference) {
         setTrackingPinInput(data.booking.public_reference);
       }
+      if (Array.isArray(data?.bookings) && data.bookings[0]?.public_reference) {
+        setTrackingPinInput(data.bookings[0].public_reference);
+      }
       setCart([]);
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
@@ -2819,7 +3157,7 @@ export default function StorefrontApp() {
       setServiceDraftQuantity(1);
       setServiceDraftNotes('');
       setServiceIntakeResponses({});
-      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
+      toast.success(hasServiceCart ? 'Bookings created.' : 'Checkout completed.');
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -2828,7 +3166,9 @@ export default function StorefrontApp() {
         toast.error(message);
         return;
       }
-      const message = normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
+      const message = hasServiceCart
+        ? serviceBatchFailureMessage(error, serviceCartLines)
+        : normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
     } finally {
@@ -2872,7 +3212,8 @@ export default function StorefrontApp() {
   const handleDownloadCheckoutImage = async () => {
     if (!checkoutResult) return;
     try {
-      const reference = checkoutResult.booking?.public_reference || checkoutResult.tracking_pin || checkoutResult.order?.tracking_pin || 'ticket';
+      const firstBatchBooking = Array.isArray(checkoutResult.bookings) ? checkoutResult.bookings[0] : null;
+      const reference = checkoutResult.booking?.public_reference || firstBatchBooking?.public_reference || checkoutResult.tracking_pin || checkoutResult.order?.tracking_pin || 'ticket';
       const dataUrl = await buildTicketImage({
         result: checkoutResult,
         storeName: selectedStore?.tenant_name || routeSlug || DGFY_BRAND_NAME,
@@ -2959,7 +3300,10 @@ export default function StorefrontApp() {
       }}>
         {!isStorePage && (
           <>
-            <h1 style={{ margin: '0 0 10px 0', fontSize: isMobileViewport ? 30 : 44, letterSpacing: '-0.02em' }}>{DGFY_BRAND_NAME} General Store</h1>
+            <h1 style={{ margin: '0 0 10px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: isMobileViewport ? 6 : 10, fontSize: isMobileViewport ? 30 : 44, letterSpacing: 0 }}>
+              <span>{DGFY_BRAND_NAME}</span>
+              <span style={{ fontSize: isMobileViewport ? 13 : 16, fontWeight: 700, color: '#475569' }}>(powered by SKUpervisor)</span>
+            </h1>
             <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: isMobileViewport ? 15 : 20 }}>Discover nearby stores, browse menus, and place online orders.</p>
 
             <section style={{ background: '#fff', border: '1px solid #d6e2e8', borderRadius: 18, padding: isMobileViewport ? 12 : 16, boxShadow: '0 12px 28px rgba(15,23,42,.06)' }}>
@@ -3463,8 +3807,8 @@ export default function StorefrontApp() {
                                 <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
                                   Cancel
                                 </GhostButton>
-                                <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
-                                  Add to Booking
+                                <PrimaryButton disabled={serviceHoldLoading} style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
+                                  {serviceHoldLoading ? 'Reserving...' : 'Add to Booking'}
                                 </PrimaryButton>
                               </div>
                             </div>
@@ -3723,8 +4067,8 @@ export default function StorefrontApp() {
                                     <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
                                       Cancel
                                     </GhostButton>
-                                    <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
-                                      Add to Booking
+                                    <PrimaryButton disabled={serviceHoldLoading} style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
+                                      {serviceHoldLoading ? 'Reserving...' : 'Add to Booking'}
                                     </PrimaryButton>
                                   </div>
                                 </div>
@@ -4422,8 +4766,15 @@ export default function StorefrontApp() {
                     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact & Location</h3>
                     <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', height: 160 }}>
                       <StoresMap
-                        stores={[{ ...selectedStore, location_id: selectedLocationId }]}
-                        selectedKey={selectedLocationId}
+                        stores={[{
+                          ...selectedStore,
+                          ...(selectedLocation || {}),
+                          tenant_name: selectedStore?.tenant_name,
+                          workflow_mode: selectedStore?.workflow_mode,
+                          business_mode: selectedStore?.business_mode,
+                          location_id: selectedLocationId ?? selectedStore?.location_id
+                        }]}
+                        selectedKey={selectedLocationId != null ? String(selectedLocationId) : null}
                         onSelectStore={() => { }}
                       />
                     </div>
@@ -4490,7 +4841,7 @@ export default function StorefrontApp() {
                   <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                     Back to Discovery
                   </GhostButton>
-                  <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
+                  <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug}{' // '}{selectedStore?.tenant_name}</div>
                 </section>
                 <div style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
                   Tenant page: {routeSlug}
@@ -4580,7 +4931,7 @@ export default function StorefrontApp() {
               <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
                 <StoresMap
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
-                  selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
+                  selectedKey={selectedLocationId != null ? String(selectedLocationId) : null}
                   onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
                 />
               </section>
@@ -4648,7 +4999,6 @@ export default function StorefrontApp() {
                 const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
                 const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
                 const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
                 const servicesSectionTitle = isLeadGenLayout
                   ? 'Service Highlights'
                   : isBookingHeavyLayout
@@ -4831,11 +5181,20 @@ export default function StorefrontApp() {
                 if (isBookingSubpage) {
                   const currentStep = hasServiceCart ? 3 : serviceBookingStep;
                   const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
-                  const bookingConfirmation = checkoutResult?.booking || null;
+                  const bookingConfirmations = Array.isArray(checkoutResult?.bookings)
+                    ? checkoutResult.bookings
+                    : (checkoutResult?.booking ? [checkoutResult.booking] : []);
+                  const bookingConfirmation = bookingConfirmations[0] || null;
                   const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
-                  const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
-                  const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
-                  const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
+                  const confirmationReference = bookingConfirmations.length > 1
+                    ? `${bookingConfirmations.length} bookings`
+                    : String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
+                  const confirmationServiceName = bookingConfirmations.length > 1
+                    ? serviceBookingSummaryTitle
+                    : (confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle);
+                  const confirmationAmount = bookingConfirmations.length > 1
+                    ? bookingConfirmations.reduce((sum, booking) => sum + Number(booking?.total_amount || 0), 0)
+                    : (bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1))));
                   return (
                     <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
                       <div style={{
@@ -4975,6 +5334,26 @@ export default function StorefrontApp() {
                                   <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{money(confirmationAmount)}</div>
                                 </div>
                               </div>
+                              {bookingConfirmations.length > 1 && (
+                                <div style={{ display: 'grid', gap: 8, border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', padding: 14 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 900, color: '#0f172a' }}>Booking references</div>
+                                  {bookingConfirmations.map((booking, index) => (
+                                    <div key={booking.public_reference || booking.booking_id || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                      <span>{checkoutResult.cart_lines?.[index]?.variantName || checkoutResult.cart_lines?.[index]?.name || `Booking ${index + 1}`}</span>
+                                      <strong>{booking.public_reference || 'Pending'}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {Array.isArray(checkoutResult?.payments) && checkoutResult.payments.some((payment) => payment.checkout_url) && (
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  {checkoutResult.payments.filter((payment) => payment.checkout_url).map((payment, index) => (
+                                    <a key={payment.public_reference || payment.checkout_url} href={payment.checkout_url} target="_blank" rel="noreferrer" style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none', fontSize: 12 }}>
+                                      Pay {payment.public_reference || `Booking ${index + 1}`}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
                               <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
                                 <div>Keep your booking reference for status checks or follow-up.</div>
                                 <div>You can return to the services page to browse or book another service.</div>
@@ -5111,7 +5490,7 @@ export default function StorefrontApp() {
                                               type="date"
                                               value={selectedServiceDatePart}
                                               min={bookingDateOptions[0]?.value || undefined}
-                                              onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
+                                              onChange={(event) => setServiceAppointmentAt(combineDateWithEmptyTime(event.target.value))}
                                               aria-hidden="true"
                                               tabIndex={-1}
                                               style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
@@ -5123,24 +5502,27 @@ export default function StorefrontApp() {
                                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                             <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred time slot</div>
                                             {selectedServiceDatePart ? (
-                                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                                {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
-                                                  ? 'Available from service schedule'
-                                                  : 'Suggested times based on service duration'}
+                                              <div style={{ fontSize: 12, color: bookingAvailabilityMatches && bookingTimeSlotOptions.length === 0 && !serviceAvailabilityState.loading ? '#b45309' : '#64748b', maxWidth: 320, textAlign: isMobileViewport ? 'left' : 'right' }}>
+                                                {bookingAvailabilityMessage}
                                               </div>
                                             ) : null}
                                           </div>
                                           <select
                                             value={selectedServiceTimePart}
                                             disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
-                                            onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, event.target.value))}
+                                            onChange={(event) => {
+                                              const selectedSlot = bookingTimeSlotOptions.find((slot) => slot.value === event.target.value);
+                                              setServiceAppointmentAt(selectedSlot?.appointmentAt || combineDateAndTimeParts(selectedServiceDatePart, event.target.value));
+                                            }}
                                             style={{ ...BOOKING_FIELD_STYLE, minHeight: 52, color: !selectedServiceDatePart || bookingTimeSlotOptions.length === 0 ? '#94a3b8' : STYLES.colors.dark }}
                                           >
                                             <option value="">
                                               {!selectedServiceDatePart
                                                 ? 'Choose a date first'
                                                 : bookingTimeSlotOptions.length === 0
-                                                  ? 'No suggested time slots available'
+                                                  ? serviceAvailabilityState.loading
+                                                    ? 'Checking available slots'
+                                                    : bookingAvailabilityMessage
                                                   : 'Select a time slot'}
                                             </option>
                                             {bookingTimeSlotOptions.map((slot) => (
@@ -5149,6 +5531,11 @@ export default function StorefrontApp() {
                                               </option>
                                             ))}
                                           </select>
+                                          {selectedServiceDatePart && bookingAvailabilityMatches && !serviceAvailabilityState.loading && bookingTimeSlotOptions.length === 0 && (
+                                            <div style={{ fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '9px 10px' }}>
+                                              {bookingAvailabilityMessage}
+                                            </div>
+                                          )}
                                         </label>
                                       </div>
 
@@ -5329,6 +5716,18 @@ export default function StorefrontApp() {
                                       <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: 46 }}>Back</GhostButton>
                                       <PrimaryButton
                                         onClick={() => {
+                                          if (hasServiceCart) {
+                                            if (firstServiceCartIssue) {
+                                              toast.error(firstServiceCartIssue.message);
+                                              return;
+                                            }
+                                            if (!customerStepComplete) {
+                                              toast.error('Add your full name and contact number before submitting your booking.');
+                                              return;
+                                            }
+                                            handleCheckout();
+                                            return;
+                                          }
                                           if (!scheduleStepComplete) {
                                             toast.error('Select the preferred date and time slot before submitting your booking.');
                                             return;
@@ -5359,7 +5758,7 @@ export default function StorefrontApp() {
                                 <div>
                                   <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
                                   <div style={{ marginTop: 6, fontSize: 32, fontWeight: 900, color: STYLES.colors.dark }}>
-                                    {money((Number(activeBookingService?.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
+                                    {money(hasServiceCart ? cartTotal : ((Number(activeBookingService?.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1))))}
                                   </div>
                                 </div>
                                 <div style={{ display: 'grid', gap: 10 }}>
@@ -5373,7 +5772,7 @@ export default function StorefrontApp() {
                                   </div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
                                     <span>Units</span>
-                                    <strong>{Math.max(1, Number(serviceDraftQuantity || 1))}</strong>
+                                    <strong>{hasServiceCart ? cartCount : Math.max(1, Number(serviceDraftQuantity || 1))}</strong>
                                   </div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
                                     <span>Payment</span>
@@ -6414,6 +6813,14 @@ return (
           </div>
         )}
 
+        {catalogState === 'error' && (
+          <StoreCatalogEmptyState
+            mode="error"
+            message={catalogError}
+            guidance={catalogErrorGuidance}
+            onRefreshTenantPage={() => openStoreBySlug(routeSlug)}
+          />
+        )}
         {(catalogState === 'empty_setup' || catalogState === 'empty_search_on_zero') && (
           <StoreCatalogEmptyState
             mode={catalogState === 'empty_search_on_zero' ? 'search_on_empty' : 'setup_pending'}
@@ -6756,15 +7163,15 @@ return (
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       <div>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
-                        <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Bookings</div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm each service, schedule, and booking instruction before you continue.</div>
                       </div>
                       <button
                         type="button"
                         onClick={openServiceCartEditor}
                         style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
                       >
-                        Edit service
+                        Edit first service
                       </button>
                     </div>
 
@@ -6835,20 +7242,48 @@ return (
                         </div>
                       </div>
 
-                      {serviceIntakeFields.length > 0 && (
+                      {serviceCartLines.length > 1 && (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>All booking drafts</div>
+                          {serviceCartLines.map((line, index) => (
+                            <div key={line.cart_line_id || `${line.item_id}-${index}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr auto auto', gap: 10, alignItems: 'center', padding: 12, border: '1px solid #edf2f7', borderRadius: 14, background: '#fff' }}>
+                              <div>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{line.variantName || line.name}</div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>{formatServiceAppointmentSummary(line.service_schedule_at)} - Qty {line.quantity || 1}</div>
+                              </div>
+                              <button type="button" onClick={() => openServiceCartEditor(line)} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 10px', fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                              <button type="button" onClick={() => removeCartItem(line.cart_line_id || line.item_id)} style={{ borderRadius: 10, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '8px 10px', fontWeight: 700, cursor: 'pointer' }}>Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {serviceCartLines.some((line) => normalizeServiceFormFields(line?.service_detail?.intake_form_schema).length > 0) && (
                         <div style={{ display: 'grid', gap: 10 }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
-                          <div style={{ display: 'grid', gap: 8 }}>
-                            {serviceIntakeFields.map((field) => (
-                              <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
-                                <div style={{ fontSize: 13, color: '#334155' }}>
-                                  {field.type === 'checkbox'
-                                    ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
-                                    : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            {serviceCartLines.map((line, lineIndex) => {
+                              const fields = normalizeServiceFormFields(line?.service_detail?.intake_form_schema);
+                              if (fields.length === 0) return null;
+                              const responses = line?.intake_responses || {};
+                              return (
+                                <div key={`requirements-${line.cart_line_id || line.item_id || lineIndex}`} style={{ display: 'grid', gap: 6, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+                                    {line.variantName || line.name || `Booking ${lineIndex + 1}`}
+                                  </div>
+                                  {fields.map((field) => (
+                                    <div key={`${line.cart_line_id || line.item_id}-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
+                                      <div style={{ fontSize: 13, color: '#334155' }}>
+                                        {field.type === 'checkbox'
+                                          ? (responses[field.id] === true ? 'Confirmed' : 'Not confirmed')
+                                          : (String(responses[field.id] || '').trim() || 'Not provided')}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -6881,11 +7316,11 @@ return (
                       </button>
                       <button
                         type="button"
-                        onClick={() => removeCartItem(firstServiceLine.item_id)}
+                        onClick={() => removeCartItem(firstServiceLine.cart_line_id || firstServiceLine.item_id)}
                         style={{ borderRadius: 14, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                       >
                         <Trash2 size={16} />
-                        Remove Service
+                        Remove First Service
                       </button>
                     </div>
                   </div>
@@ -7086,7 +7521,7 @@ return (
                     <div style={{ maxHeight: isDesktopCheckout ? 320 : 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 16, padding: 10, marginTop: 12, background: '#fbfeff' }}>
                       {cart.length === 0 && <p style={{ margin: 0, color: '#64748b' }}>Cart is empty.</p>}
                       {cart.map((line) => (
-                        <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
+                        <div key={line.cart_line_id || line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
                           <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
                               <img
@@ -7117,13 +7552,13 @@ return (
                             </div>
                             <button
                               type="button"
-                              onClick={() => removeCartItem(line.item_id)}
+                              onClick={() => removeCartItem(line.cart_line_id || line.item_id)}
                               style={{ marginTop: 6, border: 'none', background: 'transparent', padding: 0, color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                             >
                               Remove
                             </button>
                           </div>
-                          <input type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateQty(line.item_id, e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 10px', background: '#fff', fontWeight: 700 }} />
+                          <input type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateQty(line.cart_line_id || line.item_id, e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 10px', background: '#fff', fontWeight: 700 }} />
                           <span style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{money(line.quantity * line.price)}</span>
                         </div>
                       ))}
@@ -7209,17 +7644,41 @@ return (
                       </p>
                     )}
                     {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                    {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
+                    {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference || (Array.isArray(checkoutResult?.bookings) && checkoutResult.bookings[0]?.public_reference)) && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
                         <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
-                          {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
+                          {checkoutResult?.booking || checkoutResult?.bookings ? `${Array.isArray(checkoutResult.bookings) && checkoutResult.bookings.length > 1 ? 'Bookings' : 'Booking'} created.` : 'Order placed.'}
+                          {' '}
+                          {Array.isArray(checkoutResult.bookings) && checkoutResult.bookings.length > 1
+                            ? `${checkoutResult.bookings.length} references:`
+                            : 'Reference:'}
                         </p>
+                        {Array.isArray(checkoutResult.bookings) && checkoutResult.bookings.length > 1 ? (
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            {checkoutResult.bookings.map((booking, index) => (
+                              <div key={booking.public_reference || booking.booking_id || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, color: '#0f766e' }}>
+                                <span>{checkoutResult.cart_lines?.[index]?.variantName || checkoutResult.cart_lines?.[index]?.name || `Booking ${index + 1}`}</span>
+                                <strong>{booking.public_reference}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <strong style={{ fontSize: 13, color: '#0f766e' }}>{checkoutResult.booking?.public_reference || checkoutResult.bookings?.[0]?.public_reference || checkoutResult.tracking_pin}</strong>
+                        )}
                         {checkoutResult?.account_action?.show_signup === true && (
                           <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
                             You can sign in or register to save this latest transaction to your account.
                           </p>
                         )}
-                        {checkoutResult?.payment?.checkout_url && (
+                        {Array.isArray(checkoutResult?.payments) && checkoutResult.payments.some((payment) => payment.checkout_url) ? (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {checkoutResult.payments.filter((payment) => payment.checkout_url).map((payment, index) => (
+                              <a key={payment.public_reference || payment.checkout_url} href={payment.checkout_url} target="_blank" rel="noreferrer" style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none', fontSize: 12 }}>
+                                Pay {payment.public_reference || `Booking ${index + 1}`}
+                              </a>
+                            ))}
+                          </div>
+                        ) : checkoutResult?.payment?.checkout_url && (
                           <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
                             Pay Now
                           </a>

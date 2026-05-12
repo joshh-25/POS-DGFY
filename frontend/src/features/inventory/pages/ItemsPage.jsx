@@ -56,7 +56,8 @@ import {
   updateBulkPosCatalogOverrides,
   uploadPosCatalogImage,
   uploadBulkPosCatalogImages,
-  deletePosCatalogImage
+  deletePosCatalogImage,
+  POS_READINESS_INCOMPLETE
 } from '@/services/posCatalogService.js';
 import {
   getStorefrontCatalogOverrides,

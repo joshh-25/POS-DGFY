@@ -53,6 +53,20 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/store'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    // MapLibre is lazy-loaded; keep chunk warnings focused on initial app/vendor regressions.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('maplibre-gl')) return 'vendor-maplibre';
+          if (id.includes('qrcode')) return 'vendor-qrcode';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
+          return 'vendor';
+        }
+      }
+    }
   }
 });

@@ -1,6 +1,6 @@
 import api from './api.js';
 
-const POS_READINESS_INCOMPLETE = 'POS_READINESS_INCOMPLETE';
+export const POS_READINESS_INCOMPLETE = 'POS_READINESS_INCOMPLETE';
 
 const normalizePosCatalogOverrideError = (error) => {
   const details = error?.response?.data?.errors;
