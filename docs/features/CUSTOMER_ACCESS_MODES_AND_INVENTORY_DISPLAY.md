@@ -173,11 +173,12 @@ Validated on 2026-05-11 for bulk Catalog Setup hardening:
 Operational readiness rating after the bulk Catalog Setup hardening pass: **8.8/10**. Remaining risk is browser-level multipart smoke evidence against a real tenant with sample images, plus broader frontend interaction tests for the Catalog Setup modal.
 
 Validated on 2026-05-12 for Storefront marker preview cards:
-- Frontend storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__` passed 14 files and 65 tests, covering marker preview models, preview-first marker routing, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
-- Storefront build gate: `npm --prefix frontend run build:store` passed with MapLibre still isolated in the existing lazy-loaded vendor chunk.
-- Governance gate: `npm run check:architecture` passed.
+- Frontend storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__ --pool=threads` passed 14 files and 66 tests after the default Vitest fork pool timed out starting workers. Coverage includes marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
+- Targeted marker suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed 14 tests.
+- Storefront build gate: `npm --prefix frontend run build:store` passed with MapLibre still isolated in the existing lazy-loaded vendor chunk and marker preview styling moved into Storefront CSS classes.
+- Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed. Browser plugin tooling and a local Playwright binary were not available in this session, so rendered hover/tap screenshots remain the only uncollected evidence.
 
-Operational readiness rating after the marker preview pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
+Operational readiness rating after the marker preview remediation pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
 
 ## Assumptions
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.

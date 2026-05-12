@@ -7,9 +7,19 @@ import { App } from '../main.jsx';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
+    const handlers = {};
     const api = {
       node: null,
       html: '',
+      on: vi.fn((eventName, handler) => {
+        handlers[eventName] = handlers[eventName] || [];
+        handlers[eventName].push(handler);
+        return api;
+      }),
+      off: vi.fn((eventName, handler) => {
+        handlers[eventName] = (handlers[eventName] || []).filter((entry) => entry !== handler);
+        return api;
+      }),
       setDOMContent: vi.fn((node) => {
         api.node = node;
         return api;
@@ -25,6 +35,7 @@ vi.mock('maplibre-gl', () => {
       }),
       remove: vi.fn(() => {
         if (api.node?.isConnected) api.node.remove();
+        (handlers.close || []).forEach((handler) => handler());
         return api;
       })
     };
@@ -346,6 +357,74 @@ describe('storefront discovery integration flow', () => {
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
     });
+  });
+
+  it('keeps the marker preview available when keyboard focus moves into the card action', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'in_stock_only',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    marker.focus();
+    fireEvent.focus(marker);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+
+    const action = screen.getByRole('button', { name: 'Open storefront' });
+    fireEvent.blur(marker, { relatedTarget: action });
+    fireEvent.focusIn(action);
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+    expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: /Alpha Foods location preview/i }), { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
+    expect(document.activeElement).toBe(marker);
   });
 
   it('falls back to ICON placeholder when storefront profile image fails to load', async () => {

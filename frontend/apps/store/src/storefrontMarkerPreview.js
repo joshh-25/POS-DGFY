@@ -19,11 +19,12 @@ const appendText = (parent, tagName, text, style = {}) => {
   return node;
 };
 
-const appendImage = (parent, { src, alt, style = {}, onMissing }) => {
+const appendImage = (parent, { src, alt, className = '', style = {}, onMissing }) => {
   if (!src) return null;
   const image = document.createElement('img');
   image.src = src;
   image.alt = alt || '';
+  if (className) image.className = className;
   Object.assign(image.style, style);
   image.onerror = () => {
     image.remove();
@@ -32,6 +33,8 @@ const appendImage = (parent, { src, alt, style = {}, onMissing }) => {
   parent.appendChild(image);
   return image;
 };
+
+const joinContextLabels = (labels) => labels.filter(Boolean).join(' | ');
 
 export const formatMarkerDistance = (distanceKm) => {
   const distance = toNumberOrNull(distanceKm);
@@ -75,106 +78,66 @@ export const createStoreMarkerPreviewNode = (store = {}, {
 } = {}) => {
   const model = buildStoreMarkerPreviewModel(store, { resolveAssetUrl });
   const card = document.createElement('article');
+  card.setAttribute('role', 'dialog');
   card.setAttribute('aria-label', `${model.tenantName} location preview`);
-  card.style.cssText = [
-    'width:280px',
-    'overflow:hidden',
-    'border-radius:14px',
-    'background:#ffffff',
-    'box-shadow:0 18px 42px rgba(15,23,42,.24)',
-    'border:1px solid #dbe5ee',
-    'font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-    'color:#0f172a'
-  ].join(';');
+  card.className = 'store-marker-preview-card';
 
   const cover = document.createElement('div');
-  cover.style.cssText = 'height:96px;background:linear-gradient(135deg,#dbeafe,#ecfeff 70%,#f8fafc);position:relative;overflow:hidden;';
+  cover.className = 'store-marker-preview-cover';
   appendImage(cover, {
     src: model.coverImageUrl,
     alt: `${model.tenantName} cover`,
-    style: {
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-      display: 'block'
-    }
+    className: 'store-marker-preview-coverImage'
   });
   const coverOverlay = document.createElement('div');
-  coverOverlay.style.cssText = 'position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,23,42,.05),rgba(15,23,42,.50));';
+  coverOverlay.className = 'store-marker-preview-coverOverlay';
   cover.appendChild(coverOverlay);
   const status = document.createElement('span');
   status.textContent = model.statusLabel;
-  status.style.cssText = `position:absolute;left:10px;top:10px;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;color:#fff;background:${model.isOpen ? '#16a34a' : '#b45309'};`;
+  status.className = `store-marker-preview-status ${model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
   cover.appendChild(status);
   card.appendChild(cover);
 
   const body = document.createElement('div');
-  body.style.cssText = 'padding:12px;display:grid;gap:9px;';
+  body.className = 'store-marker-preview-body';
 
   const identity = document.createElement('div');
-  identity.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
+  identity.className = 'store-marker-preview-identity';
   const avatar = document.createElement('div');
-  avatar.style.cssText = 'width:42px;height:42px;border-radius:999px;overflow:hidden;border:2px solid #ffffff;background:#f8fafc;box-shadow:0 4px 12px rgba(15,23,42,.18);display:grid;place-items:center;flex:0 0 auto;margin-top:-28px;position:relative;';
+  avatar.className = 'store-marker-preview-avatar';
   const fallbackInitial = trimText(model.tenantName).charAt(0).toUpperCase() || 'S';
   const fallback = document.createElement('span');
   fallback.textContent = fallbackInitial;
-  fallback.style.cssText = 'font-size:14px;font-weight:900;color:#475569;';
+  fallback.className = 'store-marker-preview-avatarInitial';
   avatar.appendChild(fallback);
   appendImage(avatar, {
     src: model.profileImageUrl,
     alt: `${model.tenantName} profile`,
-    style: {
-      position: 'absolute',
-      inset: '0',
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover'
-    }
+    className: 'store-marker-preview-avatarImage'
   });
   identity.appendChild(avatar);
 
   const titleWrap = document.createElement('div');
-  titleWrap.style.cssText = 'display:grid;gap:2px;min-width:0;';
-  appendText(titleWrap, 'strong', model.tenantName, {
-    fontSize: '15px',
-    lineHeight: '1.2',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  });
-  appendText(titleWrap, 'span', model.branchName, {
-    fontSize: '12px',
-    color: '#475569',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  });
+  titleWrap.className = 'store-marker-preview-titleWrap';
+  appendText(titleWrap, 'strong', model.tenantName).className = 'store-marker-preview-title';
+  appendText(titleWrap, 'span', model.branchName).className = 'store-marker-preview-branch';
   identity.appendChild(titleWrap);
   body.appendChild(identity);
 
-  appendText(body, 'div', model.address, {
-    fontSize: '12px',
-    color: '#334155',
-    lineHeight: '1.35'
-  });
+  appendText(body, 'div', model.address).className = 'store-marker-preview-address';
 
   const context = [model.branchLabel, model.distanceLabel, model.catalogLabel, model.matchingLabel].filter(Boolean);
   if (context.length > 0) {
-    appendText(body, 'div', context.join(' · '), {
-      fontSize: '11px',
-      color: '#0f766e',
-      fontWeight: '700',
-      lineHeight: '1.35'
-    });
+    appendText(body, 'div', joinContextLabels(context)).className = 'store-marker-preview-context';
   }
 
   if (model.matchBadges.length > 0) {
     const badges = document.createElement('div');
-    badges.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;';
+    badges.className = 'store-marker-preview-badges';
     model.matchBadges.slice(0, 2).forEach((badge) => {
       const chip = document.createElement('span');
       chip.textContent = badge.label;
-      chip.style.cssText = 'border-radius:999px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-size:10px;font-weight:800;padding:3px 7px;';
+      chip.className = 'store-marker-preview-badge';
       badges.appendChild(chip);
     });
     body.appendChild(badges);
@@ -184,7 +147,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
     const action = document.createElement('button');
     action.type = 'button';
     action.textContent = model.actionLabel;
-    action.style.cssText = 'min-height:38px;border:none;border-radius:10px;background:#1d4ed8;color:#fff;font-size:13px;font-weight:800;cursor:pointer;';
+    action.className = 'store-marker-preview-action';
     action.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
