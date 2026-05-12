@@ -59,7 +59,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes('commonjsHelpers.js')) return 'vendor-react';
           if (!id.includes('node_modules')) return undefined;
+          if (id.includes('scheduler')) return 'vendor-react';
           if (id.includes('maplibre-gl')) return 'vendor-maplibre';
           if (id.includes('qrcode')) return 'vendor-qrcode';
           if (id.includes('lucide-react')) return 'vendor-icons';
