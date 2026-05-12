@@ -31,7 +31,7 @@ import { trackProductUsageFromResult } from '../../../services/productUsageTelem
 import { paymentsEnabled, paymentsDisabledMessage } from '../../../config/paymentsFeature.js';
 import { invalidateTenantLookupCache } from '../../../middleware/tenantHandler.js';
 
-const hasSubscriptionFlowRequest = ({ plan, subscriptionId }) => {
+const hasSubscriptionFlowRequest = ({ subscriptionId }) => {
     return Boolean(subscriptionId);
 };
 
@@ -49,7 +49,6 @@ const sendPaymentsDisabled = (res) => (
  */
 export const registerCompanyRequest = async (req, res) => {
     const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
-        plan: req.body?.plan,
         subscriptionId: req.body?.subscriptionId
     });
 
@@ -139,7 +138,6 @@ export const rejectTenant = async (req, res) => {
  */
 export const provisionNewTenant = async (req, res) => {
     const requestsSubscriptionFlow = hasSubscriptionFlowRequest({
-        plan: req.body?.plan,
         subscriptionId: req.body?.subscriptionId
     });
 

@@ -1,6 +1,9 @@
 import {
     buildCreateServiceBookingUseCase,
+    buildCreateServiceBookingBatchUseCase,
+    buildCreateServiceBookingHoldUseCase,
     buildCreateServiceAssignmentUseCase,
+    buildGetServiceAvailabilityUseCase,
     buildCreateServiceWaitlistEntryUseCase,
     buildGetServiceBookingByReferenceUseCase,
     buildListServiceCatalogUseCase,
@@ -194,7 +197,8 @@ describe('Services Mode use cases', () => {
                 resource_id: 7,
                 start_at: '2026-06-01T09:00:00Z',
                 customer_name: 'Guest',
-                customer_email: 'guest@example.com'
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-blackout-1'
             },
             source: 'storefront'
         });
@@ -233,13 +237,757 @@ describe('Services Mode use cases', () => {
                 service_item_id: 10,
                 start_at: '2026-06-01T09:00:00Z',
                 customer_name: 'Guest',
-                customer_email: 'guest@example.com'
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-access-1'
             },
             source: 'storefront'
         });
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('CUSTOMER_ACCESS_MODE_BLOCKED');
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('accepts service booking quantity when resource capacity allows', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 11, ...payload }));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    capacity: 3,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [{
+                    booking_id: 10,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'confirmed'
+                }]),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-QTY123',
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    quantity: 2,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                quantity: 2,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-capacity-ok-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.booking.quantity).toBe(2);
+        expect(result.data.booking.total_amount).toBe(1500);
+        expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ quantity: 2 }), expect.any(Object));
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('returns public service availability only when resource capacity can satisfy quantity', async () => {
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 3,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                findAvailabilityConflicts: jest.fn(async () => [{
+                    booking_id: 44,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00'),
+                    end_at: new Date('2026-06-01T10:00:00'),
+                    status: 'confirmed'
+                }])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: '2026-06-01',
+                location_id: 1,
+                quantity: 2,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        expect(result.data.slots.length).toBeGreaterThan(0);
+        expect(result.data.slots[0]).toEqual(expect.objectContaining({
+            resource_id: 7,
+            capacity_anchor: 'resource',
+            available_capacity: 2
+        }));
+        expect(result.data.diagnostics.conflict_query_strategy).toBe('window_prefetch');
+        expect(result.data.diagnostics.max_candidate_capacity).toBe(3);
+    });
+
+    it('returns no public service availability when quantity exceeds location-only capacity', async () => {
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: '2026-06-01',
+                location_id: 1,
+                quantity: 2,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(false);
+        expect(result.data.unavailable_reason).toBe('requested_quantity_exceeds_capacity_anchor');
+        expect(result.data.slots).toHaveLength(0);
+        expect(result.data.capacity_contract.location_capacity).toBe(1);
+        expect(result.data.diagnostics.guidance).toContain('Quantity above 1 requires');
+    });
+
+    it('builds public service availability from resource weekly windows, not only fallback hours', async () => {
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Evening Room',
+                    location_id: 1,
+                    capacity: 2,
+                    is_active: true,
+                    weekly_availability: { monday: [{ start: '18:00', end: '20:00' }] },
+                    blackout_dates: []
+                })),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: '2026-06-01',
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        expect(new Date(result.data.slots[0].start_at).getHours()).toBe(18);
+        expect(result.data.slots.every((slot) => new Date(slot.start_at).getHours() >= 18)).toBe(true);
+    });
+
+    it('returns availability diagnostics for fully booked generated slots', async () => {
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 1,
+                    is_active: true,
+                    weekly_availability: { monday: [{ start: '09:00', end: '11:00' }] },
+                    blackout_dates: []
+                })),
+                findAvailabilityConflicts: jest.fn(async () => [{
+                    booking_id: 44,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00'),
+                    end_at: new Date('2026-06-01T11:00:00'),
+                    status: 'confirmed'
+                }])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: '2026-06-01',
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(false);
+        expect(result.data.unavailable_reason).toBe('overlapping_booking_capacity_full');
+        expect(result.data.diagnostics.guidance).toContain('already booked');
+        expect(result.data.diagnostics.conflict_query_strategy).toBe('window_prefetch');
+    });
+
+    it('creates a short-lived booking hold that consumes resource capacity', async () => {
+        const tx = transaction();
+        const createBookingHold = jest.fn(async (payload) => ({ hold_id: 1, ...payload }));
+        const useCase = buildCreateServiceBookingHoldUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => []),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 2,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findConflictingBookings: jest.fn(async () => []),
+                findConflictingHolds: jest.fn(async () => []),
+                findHoldsByIdempotencyKey: jest.fn(async () => []),
+                createBookingHold
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                location_id: 1,
+                quantity: 2,
+                start_at: '2026-06-01T09:00:00',
+                idempotency_key: 'svc-hold-create-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.hold.hold_token).toMatch(/^hold_/);
+        expect(result.data.hold.quantity).toBe(2);
+        expect(createBookingHold).toHaveBeenCalledWith(expect.objectContaining({
+            service_item_id: 10,
+            resource_id: 7,
+            quantity: 2,
+            status: 'active'
+        }), expect.any(Object));
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('replaces a previous active hold without blocking itself on capacity-one resources', async () => {
+        const tx = transaction();
+        const createBookingHold = jest.fn(async (payload) => ({ hold_id: 9, ...payload }));
+        const updateHoldById = jest.fn(async () => null);
+        const findConflictingHolds = jest.fn(async ({ excludeHoldId }) => (
+            excludeHoldId === 4 ? [] : [{
+                hold_id: 4,
+                resource_id: 7,
+                quantity: 1,
+                start_at: new Date('2026-06-01T09:00:00'),
+                end_at: new Date('2026-06-01T10:00:00'),
+                status: 'active'
+            }]
+        ));
+        const useCase = buildCreateServiceBookingHoldUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => []),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findActiveHoldByToken: jest.fn(async () => ({
+                    hold_id: 4,
+                    hold_token: 'hold_existing',
+                    service_item_id: 10,
+                    resource_id: 7,
+                    location_id: 1,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00'),
+                    end_at: new Date('2026-06-01T10:00:00'),
+                    status: 'active',
+                    source: 'storefront',
+                    expires_at: new Date(Date.now() + 600000)
+                })),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 1,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findConflictingBookings: jest.fn(async () => []),
+                findConflictingHolds,
+                findHoldsByIdempotencyKey: jest.fn(async () => []),
+                createBookingHold,
+                updateHoldById
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                location_id: 1,
+                quantity: 1,
+                start_at: '2026-06-01T09:00:00',
+                replace_hold_token: 'hold_existing',
+                idempotency_key: 'svc-hold-replace-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(findConflictingHolds).toHaveBeenCalledWith(expect.objectContaining({ excludeHoldId: 4 }), expect.any(Object));
+        expect(updateHoldById).toHaveBeenCalledWith(4, { status: 'cancelled' }, expect.any(Object));
+        expect(createBookingHold).toHaveBeenCalled();
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('consumes a matching active booking hold when creating the final booking', async () => {
+        const tx = transaction();
+        const updateHoldById = jest.fn(async () => null);
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 88, ...payload }));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findActiveHoldByToken: jest.fn(async () => ({
+                    hold_id: 5,
+                    hold_token: 'hold_matching',
+                    service_item_id: 10,
+                    resource_id: 7,
+                    location_id: 1,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00'),
+                    end_at: new Date('2026-06-01T10:00:00'),
+                    status: 'active',
+                    expires_at: new Date(Date.now() + 600000)
+                })),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 1,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findConflictingBookings: jest.fn(async () => []),
+                findConflictingHolds: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                updateHoldById,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-HOLD1',
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    location_id: 1,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00'),
+                    end_at: new Date('2026-06-01T10:00:00'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                location_id: 1,
+                quantity: 1,
+                start_at: '2026-06-01T09:00:00',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-hold-consume-1',
+                hold_token: 'hold_matching'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(updateHoldById).toHaveBeenCalledWith(5, { status: 'consumed' }, expect.any(Object));
+        expect(createBooking).toHaveBeenCalled();
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('rejects storefront service booking when sale price is not positive', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn();
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => ({ ...serviceItem, default_sale_price: 0 })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                createBooking,
+                getBookingById: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                quantity: 1,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-price-block-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.message).toContain('positive sale price');
+        expect(createBooking).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('auto-selects an assigned resource for storefront quantity when capacity allows', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 12, ...payload }));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    location_id: 1,
+                    capacity: 3,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (id) => ({
+                    booking_id: id,
+                    public_reference: 'SV-AUTO1',
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    location_id: 1,
+                    quantity: 2,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                quantity: 2,
+                location_id: 1,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-auto-capacity-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ resource_id: 7, quantity: 2 }), expect.any(Object));
+        expect(result.data.booking.resource_id).toBe(7);
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('rejects location-only service quantity without a capacity anchor', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn();
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                createBooking,
+                getBookingById: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                quantity: 2,
+                location_id: 1,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-location-only-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(createBooking).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('rejects service booking quantity that exceeds overlapping resource capacity', async () => {
+        const tx = transaction();
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    capacity: 2,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [{
+                    booking_id: 10,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'confirmed'
+                }]),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking: jest.fn()
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                quantity: 2,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-capacity-block-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('creates multiple service bookings in an all-or-nothing batch', async () => {
+        const tx = transaction();
+        let bookingId = 20;
+        const createBooking = jest.fn(async (payload) => ({ booking_id: bookingId += 1, ...payload }));
+        const useCase = buildCreateServiceBookingBatchUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async (resourceId) => ({
+                    resource_id: resourceId,
+                    name: `Room ${resourceId}`,
+                    capacity: 4,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (id) => ({
+                    booking_id: id,
+                    public_reference: `SV-BATCH${id}`,
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: id === 21 ? 7 : 8,
+                    quantity: id === 21 ? 2 : 1,
+                    start_at: new Date(id === 21 ? '2026-06-01T09:00:00Z' : '2026-06-01T11:00:00Z'),
+                    end_at: new Date(id === 21 ? '2026-06-01T10:00:00Z' : '2026-06-01T12:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-batch-ok-1',
+                bookings: [
+                    { service_item_id: 10, resource_id: 7, quantity: 2, start_at: '2026-06-01T09:00:00Z' },
+                    { service_item_id: 10, resource_id: 8, quantity: 1, start_at: '2026-06-01T11:00:00Z' }
+                ]
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.bookings).toHaveLength(2);
+        expect(result.data.payments).toHaveLength(2);
+        expect(result.data.payment.payments_count).toBe(2);
+        expect(createBooking).toHaveBeenCalledTimes(2);
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('replays storefront service booking when idempotency key and request match', async () => {
+        const bookingsByKey = new Map();
+        let bookingId = 40;
+        const beginTransaction = jest.fn(async () => transaction());
+        const createBooking = jest.fn(async (payload) => {
+            const row = { booking_id: bookingId += 1, public_reference: `SV-IDEM${bookingId}`, ...payload, serviceItem };
+            const existing = bookingsByKey.get(payload.idempotency_key) || [];
+            bookingsByKey.set(payload.idempotency_key, [...existing, row]);
+            return row;
+        });
+        const getBookingById = jest.fn(async (id) => {
+            const rows = [...bookingsByKey.values()].flat();
+            return rows.find((row) => row.booking_id === id);
+        });
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction,
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findBookingsByIdempotencyKey: jest.fn(async (key) => bookingsByKey.get(key) || []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById
+            }
+        });
+        const request = {
+            payload: {
+                service_item_id: 10,
+                quantity: 1,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-idempotent-1'
+            },
+            source: 'storefront'
+        };
+
+        const first = await useCase(request);
+        const replay = await useCase(request);
+
+        expect(first.success).toBe(true);
+        expect(replay.success).toBe(true);
+        expect(replay.data.idempotency.idempotent_replay).toBe(true);
+        expect(createBooking).toHaveBeenCalledTimes(1);
+        expect(replay.data.booking.public_reference).toBe(first.data.booking.public_reference);
+    });
+
+    it('rolls back a service booking batch when one draft fails', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 31, ...payload }));
+        const useCase = buildCreateServiceBookingBatchUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    capacity: 2,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (id) => ({
+                    booking_id: id,
+                    public_reference: `SV-BATCH${id}`,
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    quantity: 2,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-batch-rollback-1',
+                bookings: [
+                    { service_item_id: 10, resource_id: 7, quantity: 2, start_at: '2026-06-01T09:00:00Z' },
+                    { service_item_id: 10, resource_id: 7, quantity: 1, start_at: '2026-06-01T09:30:00Z' }
+                ]
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.details.booking_index).toBe(1);
+        expect(createBooking).toHaveBeenCalledTimes(1);
         expect(tx.rollback).toHaveBeenCalled();
     });
 
