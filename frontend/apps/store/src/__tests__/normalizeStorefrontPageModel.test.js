@@ -59,6 +59,31 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(false);
   });
 
+  it('derives food and beverage menu metadata from catalog data', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_categories: ['Rice Meals'],
+        storefront_tagline: 'Fresh meals and drinks all day.'
+      },
+      catalog: [
+        {
+          item_id: 1,
+          category: 'product',
+          name: 'Iced Mocha',
+          unit_of_measure: 'cup',
+          default_sale_price: 145,
+          description: 'Cold coffee beverage'
+        }
+      ]
+    });
+
+    expect(model.isFnbMode).toBe(true);
+    expect(model.fnbViewModel.totalItems).toBe(1);
+    expect(model.hero.primaryCategoryLabel).toBe('Rice Meals');
+    expect(model.sections.categories.isVisible).toBe(true);
+  });
+
   it('resolves short storefront slugs to canonical discovery slugs', () => {
     expect(findCanonicalStorefrontSlug('abeezee', [
       { slug: 'abeezee-bb983b', tenant_name: 'ABeeZee' }

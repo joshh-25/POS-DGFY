@@ -69,6 +69,7 @@ htdocs/.htaccess
 .deploy-state/
 /dist-apps/
 /frontend/apps/store/src/scratch/
+/frontend/apps/store/.tmp-store-build/
 
 nul
 

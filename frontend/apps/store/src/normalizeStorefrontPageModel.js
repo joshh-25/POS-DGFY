@@ -1,4 +1,5 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
+import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js';
 
 const trimText = (value) => String(value || '').trim();
@@ -67,7 +68,10 @@ export const normalizeStorefrontPageModel = ({
 } = {}) => {
   const modeAdapter = getStorefrontModeAdapter(selectedStore);
   const servicesViewModel = getServicesStorefrontViewModel(catalog);
+  const fnbViewModel = getFoodBeverageStorefrontViewModel(catalog);
   const isServicesMode = modeAdapter.isServicesMode === true;
+  const isFnbMode = modeAdapter.isFnbMode === true;
+  const isSimpleMode = modeAdapter.isSimpleMode === true;
   const socialLinks = normalizeLinkMap(selectedStore?.storefront_social_links);
   const promo = normalizeLinkMap(selectedStore?.storefront_promo);
   const reviewSummary = normalizeReviewSummary(selectedStore?.storefront_review_summary);
@@ -83,23 +87,29 @@ export const normalizeStorefrontPageModel = ({
   const phone = trimText(selectedStore?.storefront_phone);
   const email = trimText(selectedStore?.storefront_email);
   const messengerLink = trimText(socialLinks.messenger);
+  const facebookLink = trimText(socialLinks.facebook);
+  const preferredSupportLink = messengerLink || facebookLink;
+  const preferredSupportLabel = messengerLink ? 'Messenger' : (facebookLink ? 'Facebook' : '');
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
   const hours = trimText(selectedStore?.storefront_hours);
   
   const contactRows = [];
   if (phone) contactRows.push({ label: 'Call', value: phone, href: `tel:${phone}` });
-  if (socialLinks.facebook) {
+  if (preferredSupportLink) {
     contactRows.push({
-      label: 'Facebook',
-      value: trimText(selectedStore?.tenant_name) || 'Facebook',
-      href: socialLinks.facebook
+      label: preferredSupportLabel,
+      value: preferredSupportLabel,
+      href: preferredSupportLink
     });
   }
   if (hours) contactRows.push({ label: 'Hours', value: hours, href: '' });
 
   const derivedServiceCategoryLabels = servicesViewModel.serviceGroups
     .map((group) => trimText(group?.categoryMeta?.label || group?.categoryKey))
+    .filter(Boolean);
+  const derivedMenuSectionLabels = fnbViewModel.menuSections
+    .map((section) => trimText(section?.sectionLabel || section?.sectionKey))
     .filter(Boolean);
 
   const primaryCategoryLabel = isServicesMode
@@ -108,13 +118,22 @@ export const normalizeStorefrontPageModel = ({
         || (derivedServiceCategoryLabels.length > 0 ? derivedServiceCategoryLabels.slice(0, 2).join(' & ') : '')
         || modeAdapter.heroEyebrow
       )
+    : isFnbMode
+      ? (
+          categories[0]
+          || (derivedMenuSectionLabels.length > 0 ? derivedMenuSectionLabels.slice(0, 2).join(' & ') : '')
+          || modeAdapter.heroEyebrow
+        )
     : categories[0] || modeAdapter.heroEyebrow;
 
   return {
     mode: modeAdapter.mode,
     modeAdapter,
     isServicesMode,
+    isFnbMode,
+    isSimpleMode,
     servicesViewModel,
+    fnbViewModel,
     servicesLayoutMode: servicesViewModel?.servicesLayoutMode || 'directory',
     hero: {
       name: trimText(selectedStore?.tenant_name) || 'Storefront',
@@ -133,7 +152,7 @@ export const normalizeStorefrontPageModel = ({
       phone,
       email,
       hours,
-      messengerLink,
+      messengerLink: preferredSupportLink,
       socialLinks,
       contactRows,
       whyChooseUs,
@@ -189,7 +208,9 @@ export const normalizeStorefrontPageModel = ({
         hasWhyChooseUs: whyChooseUs.length > 0
       },
       categories: {
-        isVisible: categories.length > 0 || (isServicesMode && servicesViewModel.serviceGroups.length > 0)
+        isVisible: categories.length > 0
+          || (isServicesMode && servicesViewModel.serviceGroups.length > 0)
+          || (isFnbMode && fnbViewModel.menuSections.length > 0)
       },
       supporting: {
         hasReviews: reviewHighlights.length > 0 || Boolean(reviewSummary),

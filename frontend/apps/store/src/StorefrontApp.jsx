@@ -2,23 +2,44 @@
 import QRCode from 'qrcode';
 import maplibregl from 'maplibre-gl';
 import { toast } from 'sonner';
+import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
+import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
 import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
   Clock3,
   FileText,
+  ClipboardList,
+  Fish,
+  HeartHandshake,
   Mail,
   MapPin,
   MessageCircle,
   MousePointer2,
   Phone,
+  Plus,
+  Pizza,
   Search,
   ShoppingBag,
   ShoppingCart,
   SlidersHorizontal,
   Sparkles,
   Star,
+  Shirt,
+  Snowflake,
+  Scissors,
+  SprayCan,
+  Droplets,
+  Wrench,
+  CupSoda,
+  Coffee,
+  Sandwich,
+  Drumstick,
+  Soup,
+  UtensilsCrossed,
+  ChevronDown,
+  Share2,
   Trash2,
   X
 } from 'lucide-react';
@@ -42,6 +63,7 @@ import {
   getAccessCapabilities,
   getInventoryDisplayLabel
 } from './customerAccess.js';
+import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { renderBusinessModePinSvg } from './businessModePins.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -68,6 +90,18 @@ const ORDER_METHOD_OPTIONS = [
   { value: 'dine_in', label: 'Dine In' },
   { value: 'takeout', label: 'Takeout' }
 ];
+const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
+  aircon: Snowflake,
+  laundry: Shirt,
+  pressing: Scissors,
+  addon: Sparkles,
+  repair: Wrench,
+  cleaning: SprayCan,
+  consultation: ClipboardList,
+  grooming: HeartHandshake,
+  wellness: Droplets,
+  service: Sparkles
+});
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_ACRONYM = 'Discover Goods For You';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
@@ -116,6 +150,67 @@ const buildServicePaymentOptions = (servicePaymentPolicy) => {
     { value: 'prepaid', label: 'Pay Now' }
   ];
 };
+const normalizeBookingFieldText = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const getBookingFieldSearchText = (field) => normalizeBookingFieldText(`${field?.id || ''} ${field?.label || ''}`);
+const bookingFieldMatchesAny = (field, tokens) => {
+  const haystack = ` ${getBookingFieldSearchText(field)} `;
+  return tokens.some((token) => haystack.includes(` ${normalizeBookingFieldText(token)} `));
+};
+const isServiceAreaOnSite = (serviceItem) => {
+  const value = normalizeBookingFieldText(serviceItem?.serviceAreaLabel || serviceItem?.service_detail?.service_area_type || '');
+  return value.includes('home') || value.includes('on site') || value.includes('onsite') || value.includes('customer location');
+};
+const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
+  const usedIds = new Set();
+  const takeField = (predicate) => {
+    const match = fields.find((field) => !usedIds.has(field.id) && predicate(field));
+    if (match) usedIds.add(match.id);
+    return match || null;
+  };
+
+  const customerNameField = takeField((field) => (
+    bookingFieldMatchesAny(field, ['customer name', 'full name', 'client name', 'contact person', 'name'])
+    && !bookingFieldMatchesAny(field, ['business name', 'branch name', 'service name'])
+  ));
+  const contactNumberField = takeField((field) => bookingFieldMatchesAny(field, ['contact number', 'phone number', 'mobile number', 'contact no', 'telephone', 'phone']));
+  const emailField = takeField((field) => bookingFieldMatchesAny(field, ['email', 'email address']));
+  const addressField = takeField((field) => bookingFieldMatchesAny(field, ['full service address', 'service address', 'full address', 'address', 'pickup address', 'location']));
+  const preferredDateField = takeField((field) => (
+    field.type === 'date'
+    || bookingFieldMatchesAny(field, ['preferred schedule', 'schedule', 'appointment date', 'booking date', 'preferred date', 'service date', 'date'])
+  ));
+  const preferredTimeField = takeField((field) => bookingFieldMatchesAny(field, ['preferred time slot', 'time slot', 'preferred time', 'time window', 'appointment time', 'service time']));
+  const unitTypeField = takeField((field) => bookingFieldMatchesAny(field, ['unit type', 'service type', 'appliance type', 'unit variant']));
+  const unitCountField = takeField((field) => (
+    field.type === 'number'
+      ? bookingFieldMatchesAny(field, ['number of units', 'unit count', 'units', 'quantity', 'qty'])
+      : bookingFieldMatchesAny(field, ['number of units', 'unit count', 'quantity', 'qty'])
+  ));
+  const instructionField = takeField((field) => bookingFieldMatchesAny(field, ['special instructions', 'special instruction', 'instructions', 'instruction', 'notes', 'message', 'additional details']));
+
+  const remainingFields = fields.filter((field) => !usedIds.has(field.id));
+  return {
+    customerNameField,
+    contactNumberField,
+    emailField,
+    addressField,
+    preferredDateField,
+    preferredTimeField,
+    unitTypeField,
+    unitCountField,
+    instructionField,
+    remainingFields,
+    requiresAddress: Boolean(addressField) || isServiceAreaOnSite(serviceItem)
+  };
+};
+const isBookingFieldComplete = (field, value) => {
+  if (!field?.required) return true;
+  return field.type === 'checkbox' ? value === true : String(value || '').trim().length > 0;
+};
+const formatBookingReviewValue = (field, value) => {
+  if (field?.type === 'checkbox') return value === true ? 'Confirmed' : 'Not confirmed';
+  return String(value || '').trim() || 'Not provided';
+};
 const BOOKING_FIELD_STYLE = {
   width: '100%',
   maxWidth: '100%',
@@ -129,6 +224,205 @@ const BOOKING_FIELD_STYLE = {
   outline: 'none',
   transition: 'border-color 0.2s'
 };
+const DROPDOWN_MENU_BASE_STYLE = {
+  position: 'absolute',
+  top: 'calc(100% + 10px)',
+  left: 0,
+  right: 0,
+  zIndex: 2400,
+  border: '1px solid #dbe5ee',
+  borderRadius: 18,
+  background: '#ffffff',
+  boxShadow: '0 20px 48px rgba(15,23,42,0.14)',
+  padding: 8,
+  display: 'grid',
+  gap: 6,
+  maxHeight: 280,
+  overflowY: 'auto'
+};
+function StorefrontDropdown({
+  value,
+  options,
+  onChange,
+  placeholder = 'Select',
+  disabled = false,
+  label = '',
+  leading = null,
+  trailingMeta = null,
+  triggerStyle = {},
+  containerStyle = {},
+  menuStyle = {},
+  optionStyle = {},
+  selectedLabelStyle = {},
+  labelStyle = {},
+  compactLabel = false
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const selectedOption = useMemo(
+    () => options.find((option) => String(option.value) === String(value)) || null,
+    [options, value]
+  );
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', minWidth: 0, ...containerStyle }}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => {
+          if (disabled) return;
+          setIsOpen((previous) => !previous);
+        }}
+        style={{
+          width: '100%',
+          minHeight: 44,
+          borderRadius: 18,
+          border: '1px solid #dbe5ee',
+          background: disabled ? '#f8fafc' : '#ffffff',
+          color: disabled ? '#94a3b8' : '#0f172a',
+          padding: compactLabel ? '10px 52px 10px 16px' : '11px 52px 11px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          boxSizing: 'border-box',
+          position: 'relative',
+          outline: 'none',
+          transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
+          ...triggerStyle
+        }}
+      >
+        {leading ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexShrink: 0 }}>
+            {leading}
+          </span>
+        ) : null}
+        {!leading && selectedOption?.icon ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexShrink: 0 }}>
+            {React.createElement(selectedOption.icon, { size: 16 })}
+          </span>
+        ) : null}
+        <span style={{ display: 'grid', gap: label ? 3 : 0, minWidth: 0, flex: 1 }}>
+          {label ? (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: '#64748b',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                lineHeight: 1.1,
+                ...labelStyle
+              }}
+            >
+              {label}
+            </span>
+          ) : null}
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: disabled ? '#94a3b8' : '#0f172a',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: 1.25,
+              ...selectedLabelStyle
+            }}
+          >
+            {selectedOption?.label || placeholder}
+          </span>
+        </span>
+        {trailingMeta ? (
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b', flexShrink: 0 }}>
+            {trailingMeta}
+          </span>
+        ) : null}
+        <ChevronDown
+          size={18}
+          color={disabled ? '#cbd5e1' : '#475569'}
+          style={{
+            position: 'absolute',
+            right: 16,
+            top: '50%',
+            transform: `translateY(-50%) rotate(${isOpen ? 180 : 0}deg)`,
+            transition: 'transform 0.2s',
+            pointerEvents: 'none'
+          }}
+        />
+      </button>
+
+      {isOpen && !disabled ? (
+        <div role="listbox" style={{ ...DROPDOWN_MENU_BASE_STYLE, ...menuStyle }}>
+          {options.map((option) => {
+            const isSelected = String(option.value) === String(value);
+            return (
+              <button
+                key={`${option.value}`}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  borderRadius: 14,
+                  border: isSelected ? '1px solid #fed7aa' : '1px solid transparent',
+                  background: isSelected ? '#fff7ed' : '#ffffff',
+                  color: '#0f172a',
+                  padding: option.description ? '10px 14px' : '11px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gap: option.description ? 4 : 0,
+                  boxSizing: 'border-box',
+                  ...optionStyle
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  {option.icon ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0 }}>
+                      {React.createElement(option.icon, { size: 16 })}
+                    </span>
+                  ) : null}
+                  <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0 }}>
+                    {option.label}
+                  </span>
+                </span>
+                {option.description ? (
+                  <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.35 }}>
+                    {option.description}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 const formatServiceAppointmentSummary = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
   if (!raw) return 'Schedule needed';
@@ -298,6 +592,7 @@ const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '
 };
 const TENANT_STORE_BASE_PATH = '/tenant-store';
 const STORE_BOOKING_SUBPAGE = 'book';
+const STORE_ORDER_SUBPAGE = 'order';
 const STORE_SERVICE_SUBPAGE = 'service';
 const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
 const toNumberOrNull = (value) => {
@@ -374,8 +669,13 @@ const buildRequestError = (message, meta = {}) => {
 const inferRuntimeApiOrigin = () => {
   if (typeof window === 'undefined') return '';
   const { hostname, port, protocol } = window.location;
-  const isLocalStorePort = port === '5175' || port === '4175';
-  if (!isLocalStorePort) return '';
+  const numericPort = Number(port);
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  const isLikelyViteStorePort = Number.isInteger(numericPort) && (
+    (numericPort >= 5173 && numericPort <= 5185)
+    || (numericPort >= 4173 && numericPort <= 4185)
+  );
+  if (!isLocalHost || !isLikelyViteStorePort) return '';
   return `${protocol}//${hostname}:5000`;
 };
 
@@ -394,6 +694,8 @@ const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BAS
 const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
 const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
 const assetOrigin = configuredAssetOrigin || apiOrigin;
+const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
+const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
 const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
@@ -419,6 +721,11 @@ const withAssetOrigin = (url) => {
   } catch {
     return '';
   }
+};
+const buildPublicStorefrontUrl = (slug) => {
+  const normalizedSlug = toSlug(slug);
+  if (!normalizedSlug) return '';
+  return `${publicStorefrontOrigin}${storePath(normalizedSlug)}`;
 };
 
 const parseOptionalArray = (value) => {
@@ -1105,6 +1412,1373 @@ const GhostButton = ({ children, onClick, disabled, style }) => (
   </button>
 );
 
+const HERO_CANVAS_MAX_WIDTH = 1320;
+const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
+const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
+
+const StorefrontHeroShell = ({
+  fullBleed = false,
+  sectionStyle = {},
+  backgroundChildren = null,
+  children,
+  outerStyle = {}
+}) => (
+  <div
+    style={{
+      position: 'relative',
+      ...(fullBleed
+        ? { width: '100vw', marginLeft: 'calc(50% - 50vw)' }
+        : { width: '100%' }),
+      ...outerStyle
+    }}
+  >
+    <section
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        ...sectionStyle
+      }}
+    >
+      {backgroundChildren}
+      {children}
+    </section>
+  </div>
+);
+
+const StorefrontShareQr = ({
+  storeUrl,
+  isMobileViewport,
+  accentColor = '#f97316'
+}) => {
+  const [qrImageUrl, setQrImageUrl] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!storeUrl) {
+      setQrImageUrl('');
+      return undefined;
+    }
+    QRCode.toDataURL(storeUrl, {
+      margin: 1,
+      width: isMobileViewport ? 88 : 112,
+      errorCorrectionLevel: 'H',
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    })
+      .then((url) => {
+        if (active) setQrImageUrl(url);
+      })
+      .catch(() => {
+        if (active) setQrImageUrl('');
+      });
+    return () => {
+      active = false;
+    };
+  }, [isMobileViewport, storeUrl]);
+
+  const copyStoreUrl = useCallback(async () => {
+    if (!storeUrl) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(storeUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+      throw new Error('Clipboard unavailable');
+    } catch {
+      toast.info(storeUrl);
+    }
+  }, [storeUrl]);
+
+  const shareStoreUrl = useCallback(async () => {
+    if (!storeUrl) return;
+    const payload = {
+      title: 'Storefront',
+      text: 'Open this storefront',
+      url: storeUrl
+    };
+    try {
+      if (navigator?.share) {
+        await navigator.share(payload);
+        return;
+      }
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(storeUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+      throw new Error('Share unavailable');
+    } catch {
+      if (navigator?.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(storeUrl);
+          toast.success('Storefront link copied.');
+          return;
+        } catch {
+          // Fall through.
+        }
+      }
+      toast.info(storeUrl);
+    }
+  }, [storeUrl]);
+
+  if (!qrImageUrl) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: isMobileViewport ? 48 : 22,
+        left: isMobileViewport ? '50%' : 'auto',
+        right: isMobileViewport ? 'auto' : `max(41px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 41px))`,
+        transform: isMobileViewport ? 'translateX(-50%)' : 'none',
+        zIndex: 14,
+        display: 'grid',
+        gap: 8
+      }}
+    >
+      <button
+        type="button"
+        onClick={copyStoreUrl}
+        style={{
+          position: 'relative',
+          width: isMobileViewport ? 90 : 116,
+          height: isMobileViewport ? 90 : 116,
+          borderRadius: 22,
+          border: '1px solid rgba(255,255,255,0.24)',
+          background: 'rgba(255,255,255,0.96)',
+          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.18)',
+          backdropFilter: 'blur(10px)',
+          padding: 10,
+          cursor: 'pointer'
+        }}
+        aria-label="Copy storefront link"
+        title="Copy storefront link"
+      >
+        <img
+          src={qrImageUrl}
+          alt="Storefront QR code"
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', borderRadius: 14 }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            pointerEvents: 'none'
+          }}
+        >
+          <div
+            style={{
+              width: isMobileViewport ? 24 : 30,
+              height: isMobileViewport ? 24 : 30,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid rgba(15,23,42,0.08)',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow: '0 8px 16px rgba(15, 23, 42, 0.12)'
+            }}
+          >
+            <img
+              src={DGFY_LOGO_ICON_URL}
+              alt=""
+              style={{ width: isMobileViewport ? 16 : 20, height: isMobileViewport ? 16 : 20, objectFit: 'contain', opacity: 0.96 }}
+            />
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={shareStoreUrl}
+        style={{
+          position: 'absolute',
+          right: -6,
+          bottom: -6,
+          width: isMobileViewport ? 32 : 36,
+          height: isMobileViewport ? 32 : 36,
+          borderRadius: 999,
+          border: 'none',
+          background: accentColor,
+          color: '#ffffff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 10px 24px rgba(15, 23, 42, 0.24)',
+          cursor: 'pointer'
+        }}
+        aria-label="Share storefront"
+        title="Share storefront"
+      >
+        <Share2 size={16} />
+      </button>
+    </div>
+  );
+};
+
+const DefaultStorefrontHero = ({
+  modeAdapter,
+  selectedStore,
+  isMobileViewport,
+  handleShareAction,
+  setIsCheckoutOpen
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  return (
+    <StorefrontHeroShell
+      sectionStyle={{
+        background: STYLES.colors.dark,
+        borderRadius: STYLES.radius.card,
+        padding: isMobileViewport ? 24 : 48,
+        marginBottom: 24,
+        color: '#fff',
+        boxShadow: STYLES.shadow.lg
+      }}
+      backgroundChildren={<div style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', background: `linear-gradient(225deg, ${STYLES.colors.brand}22, transparent)`, pointerEvents: 'none' }} />}
+    >
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 800 }}>
+        <Badge style={{ marginBottom: 16 }}>{modeAdapter.heroEyebrow}</Badge>
+        <h1 style={{ margin: 0, fontSize: isMobileViewport ? 32 : 56, fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', fontFamily: heroTheme.displayFont }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
+        <p style={{ margin: '16px 0 0 0', fontSize: isMobileViewport ? 16 : 20, opacity: 0.8, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+        <div style={{ marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <PrimaryButton onClick={() => setIsCheckoutOpen(true)}>{modeAdapter.primaryActionLabel}</PrimaryButton>
+          <GhostButton style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }} onClick={handleShareAction}>Share Storefront</GhostButton>
+        </div>
+      </div>
+    </StorefrontHeroShell>
+  );
+};
+
+const buildFnbFallbackReasons = ({ fnbViewModel = null, categories = [] } = {}) => {
+  const reasons = [];
+  if (Array.isArray(categories) && categories.length > 0) {
+    reasons.push(...categories.slice(0, 2));
+  }
+  const menuSections = Array.isArray(fnbViewModel?.menuSections) ? fnbViewModel.menuSections : [];
+  menuSections.slice(0, 2).forEach((section) => {
+    const count = Number(section?.items?.length || 0);
+    if (count > 0) {
+      reasons.push(`${section.sectionLabel || 'Menu'} favorites (${count})`);
+    }
+  });
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  if (beverageCount > 0) {
+    reasons.push(`${beverageCount} drinks ready to serve`);
+  }
+  const readyNowCount = Number(fnbViewModel?.readyNowCount || 0);
+  if (readyNowCount > 0) {
+    reasons.push(`${readyNowCount} items available now`);
+  }
+  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
+const FnbHero = ({
+  modeAdapter,
+  heroSectionModel,
+  fnbViewModel,
+  selectedStore,
+  isMobileViewport,
+  cartCount,
+  setIsCheckoutOpen,
+  goDiscovery,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  openStorefrontActionLink,
+  openTrackPanel,
+  openAccountPanel
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
+  const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
+  const aboutText = String(heroSectionModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
+    ? heroSectionModel.whyChooseUs
+    : buildFnbFallbackReasons({
+        fnbViewModel,
+        categories: [heroSectionModel.primaryCategoryLabel, heroSectionModel.locationSummary]
+      });
+  const hasWhyChooseUs = whyChooseUs.length > 0;
+  const hasContactRows = heroSectionModel.contactRows.length > 0
+    || Boolean(heroSectionModel.facebookLink)
+    || Boolean(heroSectionModel.hours)
+    || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const searchPlaceholder = modeAdapter.catalogSearchPlaceholder || 'Search meals, drinks, desserts, or combo items...';
+  const orderLabel = cartCount > 0 ? 'Open Cart' : (heroSectionModel.actions?.orderLabel || 'Browse Menu');
+  const profileImageKey = `hero-profile:${selectedStore.slug}`;
+  const mapStores = storeLocations.length > 0
+    ? storeLocations.map((location) => ({
+        ...location,
+        tenant_name: selectedStore?.tenant_name
+      }))
+    : [selectedStore];
+  const mapSelectedKey = selectedLocationId != null ? `loc-${selectedLocationId}` : `tenant-${selectedStore?.tenant_id || selectedStore?.slug || 'store'}`;
+  const storefrontShareUrl = useMemo(() => {
+    if (!selectedStore?.slug) return '';
+    return buildPublicStorefrontUrl(selectedStore.slug);
+  }, [selectedStore?.slug]);
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder={searchPlaceholder}
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text, fontFamily: heroTheme.bodyFont }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: heroTheme.accent || STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: heroTheme.bodyFont, minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px',
+                    fontFamily: heroTheme.bodyFont
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+            <button
+              type="button"
+              onClick={openTrackPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <FileText size={16} />
+              Track
+            </button>
+            <button
+              type="button"
+              onClick={openAccountPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <HeartHandshake size={16} />
+              Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${heroSectionModel.coverImageUrl}) center/cover`
+            : `linear-gradient(135deg, ${heroTheme.surface || '#172033'} 0%, #22324b 50%, #40516c 100%)`,
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={heroSectionModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={heroTheme.accent || '#f97316'}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{heroSectionModel.statusLabel}</Badge>
+              {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', fontFamily: heroTheme.bodyFont }}>
+                  Starts at {money(fnbViewModel.startingPrice)}
+                </span>
+              )}
+              {heroSectionModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{heroSectionModel.name}</h1>
+              {heroSectionModel.tagline ? (
+                <p style={{ margin: 0, color: '#fbbf24', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#fbbf24" color="#fbbf24" />{heroSectionModel.ratingLabel || 'Fresh menu'}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{heroSectionModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{heroSectionModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {heroSectionModel.actions?.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (cartCount > 0) {
+                setIsCheckoutOpen(true);
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#f97316', color: '#000', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
+              <MousePointer2 size={18} />
+              {orderLabel}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {heroSectionModel.profileImageUrl && !isBrandingImageBlocked(profileImageKey) ? (
+            <img
+              src={heroSectionModel.profileImageUrl}
+              alt={`${heroSectionModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(profileImageKey)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: heroTheme.accentDark || STYLES.colors.brandDark, fontFamily: heroTheme.displayFont }}>{heroSectionModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: '-webkit-box',
+              WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
+              WebkitBoxOrient: 'vertical',
+              overflow: hasAboutToggle ? 'hidden' : 'visible',
+              fontFamily: heroTheme.bodyFont
+            }}>
+              {aboutText || 'This menu storefront is connected to live SKUpervisor product data and the food and beverage backend.'}
+            </p>
+          </div>
+
+          {galleryImages.length > 0 && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+                {galleryImages.slice(0, 4).map((url, index) => (
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {heroSectionModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {heroSectionModel.hours && !heroSectionModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{heroSectionModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                      <div style={{ color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {selectedStore?.latitude && selectedStore?.longitude && (
+                      <button type="button" onClick={() => openStorefrontActionLink(buildGoogleMapsDirectionsUrl({ latitude: selectedLocation?.latitude ?? selectedStore?.latitude, longitude: selectedLocation?.longitude ?? selectedStore?.longitude, addressLine: addressText }))} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Why Choose Us</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: heroTheme.accentSoft || '#fff7ed', color: heroTheme.accent || '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+const FnbProductCard = ({
+  item,
+  imageUrl,
+  available,
+  modeAdapter,
+  addToCart,
+  isMobileViewport
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const sectionVisualMeta = item.sectionVisualMeta || {};
+  const accent = heroTheme.accent || '#c96a2b';
+  const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
+  const accentDeep = heroTheme.accentDark || '#7c2d12';
+  const cardSurface = '#ffffff';
+  const cardSurfaceInset = heroTheme.surfaceMuted || '#fff8f0';
+  const cardBorder = heroTheme.borderSoft || '#edd4bc';
+  const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
+  const cardTextMuted = heroTheme.textMuted || '#7c6757';
+  const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
+  const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDetailsHovered, setIsDetailsHovered] = useState(false);
+  const [isCartHovered, setIsCartHovered] = useState(false);
+  const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
+  const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
+  const cardTitleFont = heroTheme.menuTitleFont || heroTheme.displayFont || "'Palatino Linotype', 'Book Antiqua', Palatino, serif";
+  const cardTitleFontSize = isMobileViewport ? 19 : 22;
+  const imageHeight = isMobileViewport ? 190 : 214;
+  const actionHeight = isMobileViewport ? 44 : 46;
+  const cartButtonWidth = isMobileViewport ? 62 : 70;
+  const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
+  const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
+  const descriptionLineClamp = isMobileViewport ? 2 : 3;
+
+  return (
+    <article
+      style={{
+        background: cardSurface,
+        borderRadius: 28,
+        padding: 0,
+        boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
+        border: `1px solid ${cardBorder}`,
+        overflow: 'hidden',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        transform: isHovered ? 'translateY(-3px)' : 'translateY(0)',
+        transition: 'all 0.2s ease'
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: '0 0 22px 22px' }}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            color: accentDeep,
+            fontWeight: 800,
+            fontFamily: cardUiFont,
+            background: `radial-gradient(circle at top, ${accentSoft} 0%, ${cardSurfaceInset} 58%, #f8e3cf 100%)`
+          }}>
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                background: '#ffffffd9',
+                color: accent,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 12px 24px rgba(73,38,20,0.08)'
+              }}>
+                <CategoryIcon size={28} />
+              </div>
+              <div style={{ fontSize: 14, letterSpacing: '-0.01em' }}>{item.sectionLabel || item.productKind || 'Menu Item'}</div>
+            </div>
+          </div>
+        )}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.18) 100%)', pointerEvents: 'none' }} />
+        <div style={{
+          position: 'absolute',
+          right: 16,
+          bottom: 16,
+          background: accent,
+          color: buttonTextOnAccent,
+          padding: isMobileViewport ? '8px 14px' : '9px 16px',
+          borderRadius: 999,
+          fontSize: isMobileViewport ? 14 : 15,
+          fontWeight: 900,
+          boxShadow: isHovered ? '0 12px 26px rgba(217,119,6,0.32)' : '0 10px 22px rgba(217,119,6,0.24)',
+          transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+          transition: 'all 0.2s ease',
+          fontFamily: cardUiFont,
+          lineHeight: 1
+        }}>
+          {money(item.default_sale_price ?? 0).replace('PHP ', '₱')}
+        </div>
+      </div>
+      <div style={{ padding: isMobileViewport ? '15px 14px 14px' : '18px 18px 16px', flex: 1, display: 'grid', gap: 14 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.1, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em' }}>{item.name}</h4>
+          <p style={{
+            margin: 0,
+            fontSize: isMobileViewport ? 13 : 14,
+            lineHeight: 1.5,
+            color: cardTextMuted,
+            fontFamily: cardUiFont,
+            display: '-webkit-box',
+            WebkitLineClamp: descriptionLineClamp,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }}>
+            {detailsCopy}
+          </p>
+        </div>
+        <div style={{
+          marginTop: 'auto',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 12,
+          alignItems: 'center'
+        }}>
+          <button
+            type="button"
+            onClick={() => toast('Product details page is the next F&B storefront step.')}
+            onMouseEnter={() => setIsDetailsHovered(true)}
+            onMouseLeave={() => setIsDetailsHovered(false)}
+            style={{
+              minHeight: actionHeight,
+              height: actionHeight,
+              borderRadius: 18,
+              border: `1px solid ${cardBorder}`,
+              background: cardSurfaceInset,
+              fontSize: isMobileViewport ? 14 : 15,
+              fontWeight: 700,
+              color: cardTextMuted,
+              cursor: 'pointer',
+              fontFamily: cardUiFont,
+              transform: isDetailsHovered ? 'translateY(-2px)' : 'translateY(0)',
+              transition: 'all 0.2s ease',
+              padding: '0 18px',
+              boxShadow: isDetailsHovered ? '0 10px 22px rgba(73,38,20,0.08)' : 'none'
+            }}
+          >
+            View Details
+          </button>
+          <button
+            type="button"
+            onClick={() => addToCart(item)}
+            disabled={!available}
+            onMouseEnter={() => available && setIsCartHovered(true)}
+            onMouseLeave={() => setIsCartHovered(false)}
+            style={{
+              width: cartButtonWidth,
+              minHeight: actionHeight,
+              height: actionHeight,
+              borderRadius: 18,
+              border: 'none',
+              background: available ? accent : '#e5e7eb',
+              color: buttonTextOnAccent,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor: available ? 'pointer' : 'not-allowed',
+              boxShadow: available ? (isCartHovered ? '0 12px 26px rgba(217,119,6,0.28)' : '0 10px 20px rgba(217,119,6,0.22)') : 'none',
+              transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
+              transition: 'all 0.2s ease',
+              padding: '0 14px',
+              fontFamily: cardUiFont,
+              fontSize: 14,
+              fontWeight: 800
+            }}
+          >
+            <span style={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShoppingCart size={20} strokeWidth={2.2} />
+              <span style={{
+                position: 'absolute',
+                top: -3,
+                right: -4,
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                background: '#ffffff',
+                color: available ? '#f59e0b' : '#94a3b8',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: available ? '0 2px 8px rgba(255,255,255,0.45)' : 'none'
+              }}>
+                <Plus size={10} strokeWidth={3} />
+              </span>
+            </span>
+          </button>
+        </div>
+        {!available && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#be123c', fontFamily: cardUiFont }}>
+            {item.availabilityMeta?.label || 'Currently unavailable'}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+};
+
+const SimpleProductCard = ({
+  item,
+  imageUrl,
+  available,
+  modeAdapter,
+  addToCart
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const accentDark = heroTheme.accentDark || '#134e4a';
+  const accentSoft = heroTheme.accentSoft || '#ecfeff';
+  const categoryLabel = item.folder_name || item.category || 'Product';
+  const availabilityLabel = item?.inventory_display?.label || (available ? 'Available' : 'Not available');
+
+  return (
+    <article style={{
+      background: '#fff',
+      borderRadius: 18,
+      border: '1px solid #dbe5ee',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: '0 12px 26px rgba(15, 23, 42, 0.06)'
+    }}>
+      <div style={{ width: '100%', height: 184, background: '#f8fafc', position: 'relative', overflow: 'hidden' }}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 700 }}>
+            No image yet
+          </div>
+        )}
+        <div style={{ position: 'absolute', top: 10, left: 10 }}>
+          <Badge background={accentSoft} color={accentDark} border="#bfe8e4">{categoryLabel}</Badge>
+        </div>
+      </div>
+      <div style={{ padding: 14, display: 'grid', gap: 10, flex: 1 }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>{item.name}</h4>
+          <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {item.description || 'Simple mode product ready for quick ordering.'}
+          </p>
+        </div>
+        <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <strong style={{ fontSize: 19, color: accentDark }}>{money(item.default_sale_price ?? 0)}</strong>
+            <span style={{ fontSize: 12, fontWeight: 700, color: available ? '#047857' : '#be123c' }}>{availabilityLabel}</span>
+          </div>
+          <PrimaryButton
+            style={{ minHeight: 40, padding: '8px 12px' }}
+            onClick={() => addToCart(item)}
+            disabled={!available}
+          >
+            {available ? 'Add to Order' : 'Unavailable'}
+          </PrimaryButton>
+        </div>
+      </div>
+    </article>
+  );
+};
+
+const FNB_CATEGORY_ICON_MAP = Object.freeze({
+  coffee: Coffee,
+  drink: CupSoda,
+  dessert: Sparkles,
+  burger: Sandwich,
+  chicken: Drumstick,
+  pizza: Pizza,
+  seafood: Fish,
+  meal: UtensilsCrossed,
+  snack: Soup,
+  menu: Sparkles
+});
+
+const ServicesHero = ({
+  serviceHeroModel,
+  selectedStore,
+  isMobileViewport,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  goDiscovery,
+  hasServiceCart,
+  goStoreBookingPage,
+  cartCount,
+  modeAdapter,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  isAboutExpanded,
+  setIsAboutExpanded,
+  isServiceGalleryExpanded,
+  setIsServiceGalleryExpanded,
+  openStorefrontActionLink
+}) => {
+  const addressText = String(serviceHeroModel.addressLine || serviceHeroModel.locationLabel || '').trim();
+  const galleryImages = Array.isArray(serviceHeroModel.galleryImages) ? serviceHeroModel.galleryImages.filter(Boolean) : [];
+  const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
+  const aboutText = String(serviceHeroModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) && serviceHeroModel.whyChooseUs.length > 0;
+  const hasContactRows = serviceHeroModel.contactRows.length > 0
+    || Boolean(serviceHeroModel.facebookLink)
+    || Boolean(serviceHeroModel.hours)
+    || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
+  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
+  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
+  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
+  const servicesHighlight = '#f59e0b';
+  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
+  const storefrontShareUrl = useMemo(() => {
+    if (!selectedStore?.slug) return '';
+    return buildPublicStorefrontUrl(selectedStore.slug);
+  }, [selectedStore?.slug]);
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder="Search Products or Services"
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px'
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
+            : 'linear-gradient(135deg,#172033 0%,#22324b 50%,#40516c 100%)',
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={serviceHeroModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={servicesPrimary}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
+              {serviceHeroModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: servicesDisplayFont }}>{serviceHeroModel.name}</h1>
+              {serviceHeroModel.tagline ? (
+                <p style={{ margin: 0, color: '#ccfbf1', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{serviceHeroModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{serviceHeroModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {serviceHeroModel.actions.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: servicesBodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (hasServiceCart) {
+                goStoreBookingPage();
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${servicesPrimaryShadow}`, border: 'none', fontWeight: 900, fontFamily: servicesBodyFont }}>
+              <MousePointer2 size={18} />
+              {hasServiceCart ? 'Continue Booking' : 'Order Now'}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
+            <img
+              src={serviceHeroModel.profileImageUrl}
+              alt={`${serviceHeroModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: servicesPrimaryDark, fontFamily: servicesDisplayFont }}>{serviceHeroModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: isAboutExpanded ? 'block' : '-webkit-box',
+              WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}>
+              {aboutText || 'Business details will appear soon.'}
+            </p>
+            {hasAboutToggle && (
+              <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                {isAboutExpanded ? 'See less' : 'See more'}
+              </button>
+            )}
+          </div>
+
+          {galleryImages.length > 0 && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+                {previewImages.map((url, index) => (
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+              {galleryImages.length > 4 && (
+                <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                  {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {serviceHeroModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {serviceHeroModel.hours && !serviceHeroModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{serviceHeroModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {serviceHeroModel.directionsUrl && (
+                      <button type="button" onClick={() => openStorefrontActionLink(serviceHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Choose Us</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {serviceHeroModel.whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
 const buildGoogleMapsDirectionsUrl = ({ latitude, longitude, addressLine }) => {
   const lat = Number(latitude);
   const lng = Number(longitude);
@@ -1135,6 +2809,97 @@ const formatRatingSummary = (reviewSummary = null) => {
     : score.toFixed(1);
 };
 
+const getPreferredSocialContact = ({ messengerLink = '', facebookLink = '' } = {}) => {
+  const normalizedMessengerLink = String(messengerLink || '').trim();
+  const normalizedFacebookLink = String(facebookLink || '').trim();
+  if (normalizedMessengerLink) {
+    return { label: 'Messenger', value: 'Messenger', href: normalizedMessengerLink };
+  }
+  if (normalizedFacebookLink) {
+    return { label: 'Facebook', value: 'Facebook', href: normalizedFacebookLink };
+  }
+  return null;
+};
+
+const maskReviewerName = (value) => {
+  const name = String(value || '').trim();
+  if (!name) return 'Anonymous';
+  const words = name.split(/\s+/).filter(Boolean);
+  return words
+    .map((word) => {
+      if (word.length <= 2) return `${word.charAt(0)}*`;
+      return `${word.slice(0, 2)}${'*'.repeat(Math.max(2, word.length - 2))}`;
+    })
+    .join(' ');
+};
+
+const deriveStorefrontRegistrationYear = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return String(date.getFullYear());
+};
+
+const FooterSocialIcon = ({ label }) => {
+  const iconColor = '#e2e8f0';
+  if (label === 'Facebook') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M13.5 22V13.2H16.4L16.9 9.8H13.5V7.64C13.5 6.66 13.78 5.98 15.18 5.98H17V2.94C16.11 2.84 15.22 2.79 14.32 2.8C11.66 2.8 9.84 4.42 9.84 7.4V9.8H7V13.2H9.84V22H13.5Z" fill={iconColor} />
+      </svg>
+    );
+  }
+  if (label === 'Instagram') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke={iconColor} strokeWidth="1.8" />
+        <circle cx="12" cy="12" r="4.1" stroke={iconColor} strokeWidth="1.8" />
+        <circle cx="17.3" cy="6.8" r="1.2" fill={iconColor} />
+      </svg>
+    );
+  }
+  if (label === 'Messenger') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 3.5C7.03 3.5 3 7.24 3 11.86C3 14.5 4.32 16.86 6.39 18.41V21l2.51-1.39c.95.26 1.99.4 3.1.4 4.97 0 9-3.74 9-8.35S16.97 3.5 12 3.5Z" stroke={iconColor} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M8.35 13.33l2.6-2.76 2.15 1.74 2.56-2.76-2.56 3.88-2.2-1.74-2.55 1.64Z" fill={iconColor} />
+      </svg>
+    );
+  }
+  return null;
+};
+
+const STOREFRONT_FOOTER_SOCIAL_LABELS = ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'];
+const STOREFRONT_FOOTER_CONTACT_LABELS = ['Call', 'Email'];
+
+const getStorefrontSocialFooterLinks = (links = []) => (
+  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_SOCIAL_LABELS.includes(link?.label))
+);
+
+const getStorefrontContactFooterLinks = (links = []) => (
+  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_CONTACT_LABELS.includes(link?.label))
+);
+
+const buildSimpleFallbackReasons = ({ categories = [], catalog = [] } = {}) => {
+  const reasons = [];
+  if (Array.isArray(categories) && categories.length > 0) {
+    reasons.push(...categories.slice(0, 2));
+  }
+  const normalizedCatalog = Array.isArray(catalog) ? catalog : [];
+  const productCount = normalizedCatalog.length;
+  if (productCount > 0) {
+    reasons.push(`${productCount} products currently available`);
+  }
+  const uniqueGroups = [...new Set(normalizedCatalog
+    .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
+    .filter(Boolean))];
+  if (uniqueGroups.length > 0) {
+    reasons.push(...uniqueGroups.slice(0, 2).map((label) => `${label} selections ready`));
+  }
+  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
 const buildServiceFallbackReasons = ({ serviceGroups = [], servicesViewModel = null, categories = [] } = {}) => {
   const reasons = [];
   if (Array.isArray(categories) && categories.length > 0) {
@@ -1153,6 +2918,386 @@ const buildServiceFallbackReasons = ({ serviceGroups = [], servicesViewModel = n
     reasons.push(`${totalServices} services currently listed`);
   }
   return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
+const SimpleHero = ({
+  simpleHeroModel,
+  selectedStore,
+  isMobileViewport,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  goDiscovery,
+  cartCount,
+  setIsCheckoutOpen,
+  modeAdapter,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  openStorefrontActionLink,
+  openTrackPanel,
+  openAccountPanel
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
+  const aboutText = String(simpleHeroModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) && simpleHeroModel.whyChooseUs.length > 0;
+  const hasContactRows = simpleHeroModel.contactRows.length > 0 || Boolean(simpleHeroModel.hours) || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const storefrontShareUrl = useMemo(() => {
+    if (!selectedStore?.slug) return '';
+    return buildPublicStorefrontUrl(selectedStore.slug);
+  }, [selectedStore?.slug]);
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder={modeAdapter.catalogSearchPlaceholder || 'Search products in this store'}
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text, fontFamily: heroTheme.bodyFont }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: heroTheme.accent || STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: heroTheme.bodyFont, minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px',
+                    fontFamily: heroTheme.bodyFont
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+            <button
+              type="button"
+              onClick={openTrackPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <FileText size={16} />
+              Track
+            </button>
+            <button
+              type="button"
+              onClick={openAccountPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <HeartHandshake size={16} />
+              Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${simpleHeroModel.coverImageUrl}) center/cover`
+            : `linear-gradient(135deg, ${heroTheme.surface || '#0f172a'} 0%, ${heroTheme.accentDark || '#134e4a'} 52%, ${heroTheme.accent || '#0f766e'} 100%)`,
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={simpleHeroModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={heroTheme.accent || '#0f766e'}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.statusLabel}</Badge>
+              {simpleHeroModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name}</h1>
+              {simpleHeroModel.tagline ? (
+                <p style={{ margin: 0, color: '#ccfbf1', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{simpleHeroModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{simpleHeroModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {simpleHeroModel.actions.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (cartCount > 0) {
+                setIsCheckoutOpen(true);
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(15,118,110,0.28)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
+              <MousePointer2 size={18} />
+              {cartCount > 0 ? 'Open Cart' : (modeAdapter.primaryActionLabel || 'Start Ordering')}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {simpleHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
+            <img
+              src={simpleHeroModel.profileImageUrl}
+              alt={`${simpleHeroModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: '-webkit-box',
+              WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}>
+              {aboutText || 'Business details will appear soon.'}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {simpleHeroModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {simpleHeroModel.hours && !simpleHeroModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                    <div style={{ color: heroTheme.accent || STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{simpleHeroModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {simpleHeroModel.directionsUrl && (
+                      <button type="button" onClick={() => openStorefrontActionLink(simpleHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start' }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Shop Here</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {simpleHeroModel.whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 };
 
 export default function StorefrontApp() {
@@ -1179,11 +3324,19 @@ export default function StorefrontApp() {
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
+  const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
   const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
   const [serviceDraftNotes, setServiceDraftNotes] = useState('');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState({
+    name: '',
+    anonymous: false,
+    rating: 0,
+    message: ''
+  });
   const openServiceDetail = (service) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
@@ -1211,6 +3364,14 @@ export default function StorefrontApp() {
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
   const [servicePage, setServicePage] = useState(1);
   const [servicePageSize, setServicePageSize] = useState(8);
+  const [fnbPage, setFnbPage] = useState(1);
+  const [fnbPageSize, setFnbPageSize] = useState(8);
+  const [fnbSortOption, setFnbSortOption] = useState('name_asc');
+  const [fnbOrderStep, setFnbOrderStep] = useState(1);
+  const [fnbPaymentType, setFnbPaymentType] = useState('cash');
+  const [fnbScheduledFor, setFnbScheduledFor] = useState('');
+  const [fnbSpecialInstructions, setFnbSpecialInstructions] = useState('');
+  const [isFnbCategoryDropdownOpen, setIsFnbCategoryDropdownOpen] = useState(false);
   const [isAboutExpanded, setIsAboutExpanded] = useState(false);
   const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
   const [discoveryCoords, setDiscoveryCoords] = useState(null);
@@ -1221,6 +3382,8 @@ export default function StorefrontApp() {
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
   const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
+  const fnbCategoryDropdownRef = useRef(null);
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -1236,10 +3399,21 @@ export default function StorefrontApp() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [serviceUnitType, setServiceUnitType] = useState('');
   const [customerPin, setCustomerPin] = useState(null);
   const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
   const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
+  const [servicePaymentPreviewMethod, setServicePaymentPreviewMethod] = useState('qr');
+  const [servicePaymentPreviewCard, setServicePaymentPreviewCard] = useState({
+    cardholder: '',
+    cardNumber: '',
+    expiry: '',
+    cvv: ''
+  });
+  const [servicePaymentPreviewReceiptName, setServicePaymentPreviewReceiptName] = useState('');
   const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
+  const bookingFieldRefs = useRef({});
+  const [pendingBookingFocusKey, setPendingBookingFocusKey] = useState('');
   const [pinLocationLoading, setPinLocationLoading] = useState(false);
   const [pinLocationError, setPinLocationError] = useState('');
   const [quoteResult, setQuoteResult] = useState(null);
@@ -1288,7 +3462,19 @@ export default function StorefrontApp() {
       catalog
     })
   ), [selectedStore, catalog]);
-  const { isServicesMode, modeAdapter, servicesViewModel, servicesLayoutMode, hero: heroSectionModel, overview: overviewSectionModel, supporting: supportingSectionModel } = pageModel;
+  const {
+    isServicesMode,
+    isFnbMode,
+    isSimpleMode,
+    modeAdapter,
+    servicesViewModel,
+    fnbViewModel,
+    servicesLayoutMode,
+    hero: heroSectionModel,
+    overview: overviewSectionModel,
+    supporting: supportingSectionModel
+  } = pageModel;
+  const isFnbOrderSubpage = isFnbMode && isOrderSubpage;
   const promoSectionModel = useMemo(() => {
     const rawPromo = supportingSectionModel?.promo && typeof supportingSectionModel.promo === 'object'
       ? supportingSectionModel.promo
@@ -1323,6 +3509,16 @@ export default function StorefrontApp() {
     }
     return promoItems.slice(0, 3);
   }, [supportingSectionModel?.promo]);
+  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
+  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
+  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
+  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
+  const servicesPrimaryBorder = `${servicesPrimary}33`;
+  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
+  const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
+  const servicesHighlight = '#f59e0b';
+  const servicesHighlightSoft = '#fffbeb';
 
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
@@ -1412,6 +3608,8 @@ export default function StorefrontApp() {
       if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
         const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
           ? storePath(profile.slug, STORE_BOOKING_SUBPAGE)
+          : routeSubpage === STORE_ORDER_SUBPAGE
+            ? storePath(profile.slug, STORE_ORDER_SUBPAGE)
           : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
             ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
             : storePath(profile.slug);
@@ -1533,6 +3731,15 @@ export default function StorefrontApp() {
     const currentRouteSlug = routeSlug;
     if (previousRouteSlug && currentRouteSlug && previousRouteSlug !== currentRouteSlug) {
       setCatalogSearch('');
+      setActiveServiceTab(null);
+      setServiceSortOption('recommended');
+      setServiceAvailabilityFilter('all');
+      setServiceAreaFilter('all');
+      setServiceDurationFilter('all');
+      setServicePage(1);
+      setIsServiceFilterOpen(false);
+      setFnbSortOption('name_asc');
+      setFnbPage(1);
     }
     previousRouteSlugRef.current = currentRouteSlug;
   }, [routeSlug]);
@@ -1622,6 +3829,11 @@ export default function StorefrontApp() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+  useEffect(() => {
+    if (!isFnbOrderSubpage) return;
+    setCheckoutTab('checkout');
+    setIsCheckoutOpen(false);
+  }, [isFnbOrderSubpage]);
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -1700,6 +3912,20 @@ export default function StorefrontApp() {
     }
     setIsCheckoutOpen(false);
   };
+  const goStoreOrderPage = () => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_ORDER_SUBPAGE);
+    setRouteServiceItemId(null);
+    setFnbOrderStep(checkoutResult ? 4 : 1);
+    setCheckoutTab('checkout');
+    setIsCheckoutOpen(false);
+  };
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
@@ -1710,6 +3936,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(null);
     setRouteServiceItemId(null);
+    setFnbOrderStep(1);
   };
 
   const goDiscovery = () => {
@@ -1721,6 +3948,7 @@ export default function StorefrontApp() {
     setStoreLocations([]);
     setPrimaryLocationId(null);
     setSelectedLocationId(null);
+    setHasSelectedBranchFromMenu(false);
     setPreferredStoreLocationSelection(null);
     setCatalog([]);
     setCatalogError('');
@@ -1728,6 +3956,12 @@ export default function StorefrontApp() {
     setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
   };
+
+  const handleBranchMenuSelection = useCallback((nextValue) => {
+    const nextLocationId = nextValue ? Number(nextValue) : null;
+    setSelectedLocationId(nextLocationId);
+    setHasSelectedBranchFromMenu(true);
+  }, []);
 
   const cartTotal = useMemo(() => cart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.price)), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [cart]);
@@ -1941,10 +4175,17 @@ export default function StorefrontApp() {
     const instagramLink = String(socialLinks.instagram || '').trim();
     const tiktokLink = String(socialLinks.tiktok || '').trim();
     const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
-    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || facebookLink || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const preferredSocialContact = getPreferredSocialContact({ messengerLink, facebookLink });
     const email = String(heroSectionModel?.email || '').trim();
     const phone = String(heroSectionModel?.phone || '').trim();
     const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
     const directionsUrl = buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
@@ -2004,9 +4245,9 @@ export default function StorefrontApp() {
       postpaidServiceCount: Number(servicesViewModel?.postpaidServiceCount || 0),
       hours,
       contactRows: [
-        phone ? { icon: null, label: 'Call', value: phone, href: `tel:` } : null,
-        messengerLink ? { icon: null, label: 'Message', value: 'Messenger', href: messengerLink } : null,
-        email ? { icon: null, label: 'Email', value: email, href: `mailto:` } : null
+        phone ? { icon: null, label: 'Call', value: phone, href: `tel:${phone}` } : null,
+        preferredSocialContact ? { icon: null, label: preferredSocialContact.label, value: preferredSocialContact.value, href: preferredSocialContact.href } : null,
+        email ? { icon: null, label: 'Email', value: email, href: `mailto:${email}` } : null
       ].filter(Boolean),
       actions: {
         canCall: Boolean(phone),
@@ -2030,7 +4271,8 @@ export default function StorefrontApp() {
       addressLine,
       facebookLink,
       directionsUrl,
-      serviceGroups
+      serviceGroups,
+      registrationYear
     };
   }, [
     selectedStore,
@@ -2052,7 +4294,178 @@ export default function StorefrontApp() {
     setIsAboutExpanded(false);
     setIsServiceGalleryExpanded(false);
   }, [selectedStore?.slug, selectedLocationId]);
+  useEffect(() => {
+    setIsReviewModalOpen(false);
+    resetReviewDraft();
+  }, [selectedStore?.slug]);
+  useEffect(() => {
+    setHasSelectedBranchFromMenu(false);
+  }, [selectedStore?.slug]);
   const filteredCatalog = useMemo(() => filterCatalogItems(catalog, catalogSearch), [catalog, catalogSearch]);
+  const baseFilteredFnbViewModel = useMemo(() => getFoodBeverageStorefrontViewModel(filteredCatalog), [filteredCatalog]);
+  const filteredFnbCatalog = useMemo(() => (
+    Array.isArray(baseFilteredFnbViewModel?.menuItems) ? baseFilteredFnbViewModel.menuItems : []
+  ), [baseFilteredFnbViewModel]);
+  const filteredFnbViewModel = useMemo(() => getFoodBeverageStorefrontViewModel(filteredFnbCatalog), [filteredFnbCatalog]);
+  const fnbCommunityModel = useMemo(() => {
+    if (!selectedStore) return null;
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    const rawReviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
+    const reviewSummary = normalizeStorefrontReviewSummary(rawReviewSummary);
+    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
+      ? supportingSectionModel.reviewHighlights.filter(Boolean)
+      : [];
+    const menuCategories = Array.isArray(filteredFnbViewModel?.menuSections)
+      ? filteredFnbViewModel.menuSections.map((section) => ({
+        key: section.sectionKey,
+        label: section.sectionLabel,
+        count: Number(section?.items?.length || 0)
+      }))
+      : [];
+    return {
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
+      locationLabel: addressLine || locationName || 'Location details coming soon',
+      hours,
+      reviewSummary,
+      reviewHighlights,
+      menuCategories,
+      registrationYear,
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean)
+    };
+  }, [
+    selectedStore,
+    heroSectionModel,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    filteredFnbViewModel,
+    modeAdapter.heroDescription
+  ]);
+  const simpleStorefrontModel = useMemo(() => {
+    if (!selectedStore || !isSimpleMode) return null;
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const preferredSocialContact = getPreferredSocialContact({ messengerLink, facebookLink });
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
+    const reviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
+    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
+      ? supportingSectionModel.reviewHighlights.filter(Boolean)
+      : [];
+    const productGroups = [...new Set(
+      (Array.isArray(catalog) ? catalog : [])
+        .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
+        .filter(Boolean)
+    )].slice(0, 5);
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    const mapStores = storeLocations.length > 0
+      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+      : [selectedStore];
+    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
+      ? overviewSectionModel.whyChooseUs.slice(0, 4)
+      : buildSimpleFallbackReasons({
+          categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
+          catalog
+        });
+    const directionsUrl = buildGoogleMapsDirectionsUrl({
+      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+      addressLine
+    });
+    return {
+      coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
+      profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
+      ratingLabel: formatRatingSummary(reviewSummary),
+      modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
+      locationLabel: addressLine || locationName || 'Location details coming soon',
+      addressLine,
+      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
+      whyChooseUs,
+      hours,
+      reviewSummary,
+      reviewHighlights,
+      productGroups,
+      registrationYear,
+      directionsUrl,
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      contactRows: [
+        phone ? { icon: null, label: 'Call', value: phone, href: `tel:${phone}` } : null,
+        preferredSocialContact ? { icon: null, label: preferredSocialContact.label, value: preferredSocialContact.value, href: preferredSocialContact.href } : null,
+        email ? { icon: null, label: 'Email', value: email, href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      actions: {
+        canCall: Boolean(phone),
+        callHref: phone ? `tel:${phone}` : '',
+        canOrder: checkoutPermitted || productCartPermitted,
+        orderLabel: modeAdapter.primaryActionLabel || 'Start Ordering'
+      },
+      mapStores,
+      mapSelectedKey: selectedLocation?.location_id != null ? `loc-${selectedLocation.location_id}` : null
+    };
+  }, [
+    selectedStore,
+    isSimpleMode,
+    heroSectionModel,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    catalog,
+    storeLocations,
+    modeAdapter.heroDescription,
+    modeAdapter.heroEyebrow,
+    modeAdapter.primaryActionLabel,
+    checkoutPermitted,
+    productCartPermitted
+  ]);
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const catalogState = useMemo(() => {
     if (loadingCatalog) return 'loading';
@@ -2064,9 +4477,13 @@ export default function StorefrontApp() {
   }, [loadingCatalog, catalogError, catalog.length, hasCatalogSearchQuery, filteredCatalog.length]);
   const isDeliveryOrder = orderMethod === 'delivery';
   const serviceCartLines = useMemo(() => cart.filter((line) => line.category === 'service'), [cart]);
+  const productCartLines = useMemo(() => cart.filter((line) => line.category !== 'service'), [cart]);
+  const serviceCartCount = useMemo(() => serviceCartLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [serviceCartLines]);
+  const serviceCartTotal = useMemo(() => serviceCartLines.reduce((sum, line) => sum + (Number(line.quantity || 0) * Number(line.price || 0)), 0), [serviceCartLines]);
   const hasServiceCart = serviceCartLines.length > 0;
   const hasMixedServiceCart = hasServiceCart && serviceCartLines.length !== cart.length;
   const firstServiceLine = serviceCartLines[0] || null;
+  const isServicesCartDrawerMode = isServicesMode && !isBookingSubpage;
   const servicePaymentPolicy = firstServiceLine?.service_detail?.payment_policy || 'customer_choice';
   const selectedServicePaymentPolicy = selectedServiceDetail?.service_detail?.payment_policy || 'customer_choice';
   const serviceIntakeFields = useMemo(() => {
@@ -2117,6 +4534,7 @@ export default function StorefrontApp() {
       total_amount: totalAmount
     };
   }, [quoteResult, cartTotal]);
+  const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
   const isDesktopCheckout = isDesktopViewport;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
@@ -2140,19 +4558,81 @@ export default function StorefrontApp() {
     quoteResult,
     quoteNeedsRefresh
   }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
+  const fnbCartStatusLabel = useMemo(() => {
+    if (cartCount === 0) return 'Browse menu';
+    if (hasStockViolation) return 'Update quantities';
+    if (!quoteResult) return 'Quote required';
+    if (quoteNeedsRefresh) return 'Refresh quote';
+    if (checkoutAllowed) return 'Ready to checkout';
+    return 'Review order';
+  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
+  const fnbCartActionLabel = useMemo(() => {
+    if (cartCount === 0) return 'Browse menu';
+    if (isCheckoutOpen) return 'Close cart';
+    if (hasStockViolation) return 'Review cart';
+    if (!quoteResult || quoteNeedsRefresh) return 'Review and quote';
+    return isMobileViewport ? 'Checkout' : 'View cart and checkout';
+  }, [cartCount, hasStockViolation, isCheckoutOpen, isMobileViewport, quoteResult, quoteNeedsRefresh]);
+  const fnbDrawerSupportLabel = useMemo(() => {
+    if (cartCount === 0) return 'Add menu items to start an order.';
+    if (hasStockViolation) return 'Adjust quantities that exceed available stock before checkout.';
+    if (!quoteResult) return 'Review the cart, then request a fresh quote before checkout.';
+    if (quoteNeedsRefresh) return 'Cart changed. Refresh the quote to sync totals and enable checkout.';
+    return 'Everything is synced. You can continue through checkout.';
+  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh]);
   const activeBookingService = firstServiceLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
   const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
+  const bookingFieldPlan = useMemo(() => (
+    buildServiceBookingFieldPlan({
+      fields: bookingPageIntakeFields,
+      serviceItem: activeBookingService
+    })
+  ), [bookingPageIntakeFields, activeBookingService]);
+  const bookingStepOneAdditionalFields = useMemo(() => (
+    [bookingFieldPlan.instructionField, ...bookingFieldPlan.remainingFields].filter(Boolean)
+  ), [bookingFieldPlan.instructionField, bookingFieldPlan.remainingFields]);
   const selectedServiceDatePart = getDatePartFromAppointment(serviceAppointmentAt);
   const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
   const bookingDateOptions = useMemo(() => buildServiceDateOptions(activeBookingService), [activeBookingService]);
   const bookingTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
-  const scheduleStepComplete = Boolean(selectedServiceDatePart && selectedServiceTimePart);
-  const requirementsStepComplete = bookingPageMissingRequiredIntake.length === 0;
-  const customerStepComplete = String(customerName || '').trim().length > 0 && String(customerPhone || '').trim().length > 0;
+  const missingStepOneAdditionalFields = useMemo(() => (
+    bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
+  ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
+  const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
+  const missingCustomerInformation = useMemo(() => {
+    const missing = [];
+    if (!String(customerName || '').trim()) missing.push('Customer Name');
+    if (!String(customerPhone || '').trim()) missing.push('Contact Number');
+    if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
+    if (isAddressRequired && !String(customerAddress || '').trim()) missing.push('Full Address');
+    return missing;
+  }, [bookingFieldPlan.emailField?.required, customerAddress, customerEmail, customerName, customerPhone, isAddressRequired]);
+  const missingScheduleAndServiceInfo = useMemo(() => {
+    const missing = [];
+    if (!selectedServiceDatePart) missing.push('Preferred Date');
+    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
+    if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
+      missing.push(bookingFieldPlan.unitTypeField.label);
+    }
+    if (bookingFieldPlan.unitCountField && bookingFieldPlan.unitCountField.required && !(Number(serviceDraftQuantity || 0) > 0)) {
+      missing.push(bookingFieldPlan.unitCountField.label);
+    }
+    return missing;
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceUnitType]);
+  const stepOneComplete = missingCustomerInformation.length === 0
+    && missingScheduleAndServiceInfo.length === 0
+    && missingStepOneAdditionalFields.length === 0;
+  const paymentStepComplete = Boolean(servicePaymentTiming);
+  const reviewStepReady = stepOneComplete && paymentStepComplete;
   const serviceBookingSummaryTitle = activeBookingService?.variantName || activeBookingService?.name || 'Service booking';
   const serviceBookingSummarySchedule = formatServiceAppointmentSummary(serviceAppointmentAt);
+  const bookingSummaryUnitPrice = hasServiceCart
+    ? (Number(firstServiceLine?.price ?? 0) || 0)
+    : (Number(activeBookingService?.default_sale_price ?? 0) || 0);
+  const bookingSummaryQuantity = Math.max(1, Number(serviceDraftQuantity || 1));
+  const bookingSummaryAmount = bookingSummaryUnitPrice * bookingSummaryQuantity;
   const openPreferredBookingDatePicker = useCallback(() => {
     const input = bookingPreferredDateInputRef.current;
     if (!input) return;
@@ -2166,6 +4646,18 @@ export default function StorefrontApp() {
     }
     input.focus();
     input.click();
+  }, []);
+  const registerBookingFieldRef = useCallback((key) => (node) => {
+    if (!key) return;
+    if (node) {
+      bookingFieldRefs.current[key] = node;
+    } else {
+      delete bookingFieldRefs.current[key];
+    }
+  }, []);
+  const jumpToBookingField = useCallback((step, fieldKey) => {
+    setServiceBookingStep(step);
+    setPendingBookingFocusKey(fieldKey);
   }, []);
 
   useEffect(() => {
@@ -2202,6 +4694,22 @@ export default function StorefrontApp() {
     setServicePage(1);
   }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
   useEffect(() => {
+    setFnbPage(1);
+  }, [catalogSearch, activeServiceTab, fnbPageSize, routeSlug, selectedLocationId, fnbSortOption]);
+  useEffect(() => {
+    setIsFnbCategoryDropdownOpen(false);
+  }, [catalogSearch, activeServiceTab, routeSlug, selectedLocationId, fnbSortOption]);
+  useEffect(() => {
+    if (!isFnbCategoryDropdownOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (fnbCategoryDropdownRef.current && !fnbCategoryDropdownRef.current.contains(event.target)) {
+        setIsFnbCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isFnbCategoryDropdownOpen]);
+  useEffect(() => {
     if (!hasServiceCart) return;
     if (!servicePaymentOptions.some((option) => option.value === servicePaymentTiming)) {
       setServicePaymentTiming(servicePaymentOptions[0]?.value || 'postpaid');
@@ -2221,10 +4729,15 @@ export default function StorefrontApp() {
     if (!matchesCurrentService) {
       setServiceAppointmentAt('');
       setServiceIntakeResponses({});
+      setServiceUnitType('');
     }
   }, [selectedServiceDetail, firstServiceLine]);
   useEffect(() => {
     setServiceIntakeResponses({});
+    setServiceUnitType('');
+    setServicePaymentPreviewMethod('qr');
+    setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+    setServicePaymentPreviewReceiptName('');
   }, [firstServiceLine?.item_id]);
   useEffect(() => {
     if (!hasServiceCart || !firstServiceLine) {
@@ -2241,14 +4754,100 @@ export default function StorefrontApp() {
   }, [hasServiceCart, firstServiceLine, selectedServiceDetail]);
   useEffect(() => {
     if (!isBookingSubpage) return;
-    if (hasServiceCart) {
-      setServiceBookingStep(3);
-      return;
-    }
     if (activeBookingService) {
       setServiceBookingStep(1);
     }
   }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
+  useEffect(() => {
+    if (bookingFieldPlan.customerNameField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.customerNameField.id] === customerName
+          ? previous
+          : { ...previous, [bookingFieldPlan.customerNameField.id]: customerName }
+      ));
+    }
+    if (bookingFieldPlan.contactNumberField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.contactNumberField.id] === customerPhone
+          ? previous
+          : { ...previous, [bookingFieldPlan.contactNumberField.id]: customerPhone }
+      ));
+    }
+    if (bookingFieldPlan.emailField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.emailField.id] === customerEmail
+          ? previous
+          : { ...previous, [bookingFieldPlan.emailField.id]: customerEmail }
+      ));
+    }
+    if (bookingFieldPlan.addressField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.addressField.id] === customerAddress
+          ? previous
+          : { ...previous, [bookingFieldPlan.addressField.id]: customerAddress }
+      ));
+    }
+    if (bookingFieldPlan.preferredDateField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.preferredDateField.id] === selectedServiceDatePart
+          ? previous
+          : { ...previous, [bookingFieldPlan.preferredDateField.id]: selectedServiceDatePart }
+      ));
+    }
+    if (bookingFieldPlan.preferredTimeField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.preferredTimeField.id] === selectedServiceTimePart
+          ? previous
+          : { ...previous, [bookingFieldPlan.preferredTimeField.id]: selectedServiceTimePart }
+      ));
+    }
+    if (bookingFieldPlan.unitTypeField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.unitTypeField.id] === serviceUnitType
+          ? previous
+          : { ...previous, [bookingFieldPlan.unitTypeField.id]: serviceUnitType }
+      ));
+    }
+    if (bookingFieldPlan.unitCountField?.id) {
+      const nextQuantity = String(Math.max(1, Number(serviceDraftQuantity || 1)));
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.unitCountField.id] === nextQuantity
+          ? previous
+          : { ...previous, [bookingFieldPlan.unitCountField.id]: nextQuantity }
+      ));
+    }
+  }, [
+    bookingFieldPlan.addressField?.id,
+    bookingFieldPlan.contactNumberField?.id,
+    bookingFieldPlan.customerNameField?.id,
+    bookingFieldPlan.emailField?.id,
+    bookingFieldPlan.preferredDateField?.id,
+    bookingFieldPlan.preferredTimeField?.id,
+    bookingFieldPlan.unitCountField?.id,
+    bookingFieldPlan.unitTypeField?.id,
+    customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
+    selectedServiceDatePart,
+    selectedServiceTimePart,
+    serviceDraftQuantity,
+    serviceUnitType
+  ]);
+  useEffect(() => {
+    if (!pendingBookingFocusKey) return;
+    const node = bookingFieldRefs.current[pendingBookingFocusKey];
+    if (!node) return;
+    const timer = window.requestAnimationFrame(() => {
+      const focusTarget = typeof node.focus === 'function'
+        ? node
+        : node.querySelector?.('input, textarea, button, [tabindex]:not([tabindex="-1"])');
+      node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      focusTarget?.focus?.();
+      setPendingBookingFocusKey('');
+    });
+    return () => window.cancelAnimationFrame(timer);
+  }, [pendingBookingFocusKey, serviceBookingStep]);
   useEffect(() => {
     if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
     const firstDate = bookingDateOptions[0]?.value || '';
@@ -2284,6 +4883,45 @@ export default function StorefrontApp() {
     }
   }, [storeLocations, selectedLocationId, primaryLocationId]);
 
+  const playCartAddedSound = () => {
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+    try {
+      const audioContext = new AudioContextCtor();
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.connect(audioContext.destination);
+
+      const notes = [
+        { frequency: 523.25, start: 0, duration: 0.09 },
+        { frequency: 659.25, start: 0.1, duration: 0.12 }
+      ];
+
+      notes.forEach((note) => {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(note.frequency, audioContext.currentTime + note.start);
+        oscillator.connect(gainNode);
+        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime + note.start);
+        gainNode.gain.exponentialRampToValueAtTime(0.05, audioContext.currentTime + note.start + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + note.start + note.duration);
+        oscillator.start(audioContext.currentTime + note.start);
+        oscillator.stop(audioContext.currentTime + note.start + note.duration);
+      });
+
+      window.setTimeout(() => {
+        try {
+          audioContext.close();
+        } catch {
+          // Ignore close failures.
+        }
+      }, 320);
+    } catch {
+      // Ignore sound failures and keep cart interaction silent.
+    }
+  };
+
   const addToCart = (item) => {
     if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
       toast.error('This storefront is not accepting online checkout right now.');
@@ -2303,11 +4941,21 @@ export default function StorefrontApp() {
       const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
       const price = Number(item.default_sale_price ?? 0);
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+      const baseLine = {
+        item_id: item.item_id,
+        name: item.name,
+        variantName: item.variantName || '',
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: 1,
+        price,
+        image_url: withAssetOrigin(item.image_url) || null,
+        unit_of_measure: item.unit_of_measure || '',
+        max_stock: maxStock,
+        serviceAreaLabel: item.serviceAreaLabel || '',
+        durationLabel: item.durationLabel || ''
+      };
       if (found) {
-        if (isServiceCatalogItem(item)) {
-          stockWarning = 'This service is already in your booking cart.';
-          return prev;
-        }
         const requestedQty = Number(found.quantity) + 1;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
         if (requestedQty > maxStock) {
@@ -2322,25 +4970,55 @@ export default function StorefrontApp() {
           ? { ...line, quantity: safeQty, max_stock: maxStock }
           : line);
       }
+      if (isServiceCatalogItem(item)) {
+        const nextNonServiceLines = prev.filter((line) => line.category !== 'service');
+        const existingDifferentService = prev.find((line) => line.category === 'service');
+        if (existingDifferentService) {
+          stockWarning = 'Only one service booking at a time. The current service in cart was replaced.';
+        }
+        return [...nextNonServiceLines, baseLine];
+      }
       return [...prev, {
-        item_id: item.item_id,
-        name: item.name,
-        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
-        service_detail: item.service_detail || null,
-        quantity: isServiceCatalogItem(item) ? 1 : (maxStock > 0 ? 1 : 0),
-        price,
-        image_url: withAssetOrigin(item.image_url) || null,
-        unit_of_measure: item.unit_of_measure || '',
-        max_stock: maxStock
+        ...baseLine,
+        quantity: maxStock > 0 ? 1 : 0
       }];
     });
+    setCheckoutTab(isFnbMode ? 'cart' : 'review');
+    setIsCheckoutOpen(true);
+    playCartAddedSound();
+    toast.success(`${item?.variantName || item?.name || 'Item'} added successfully!`);
     if (stockWarning) {
       toast.error(stockWarning);
     }
   };
+  const handleServicesCartCheckout = () => {
+    if (cart.length === 0) {
+      toast.error('Your cart is empty.');
+      return;
+    }
+    if (hasMixedServiceCart) {
+      toast.error('Book services separately from regular product orders.');
+      return;
+    }
+    if (!hasServiceCart || !firstServiceLine) {
+      toast.error('Add a service to your cart first.');
+      return;
+    }
+    setIsCheckoutOpen(false);
+    goStoreBookingPage();
+  };
   const openServiceBookingPanel = (nextTab = 'review') => {
     setCheckoutTab(nextTab);
     setIsCheckoutOpen(true);
+  };
+  const openTrackPanel = () => {
+    setCheckoutTab('track');
+    setIsCheckoutOpen(true);
+  };
+  const openAccountPanel = () => {
+    setCheckoutTab('account');
+    setIsCheckoutOpen(true);
+    handleLoadAccountPanel();
   };
   const beginServiceBooking = (serviceItem) => {
     if (!serviceItem) return;
@@ -2454,6 +5132,8 @@ export default function StorefrontApp() {
     delivery_address: isDeliveryOrder ? customerAddress : '',
     delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
+    scheduled_for: fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
+    special_instructions: String(fnbSpecialInstructions || '').trim(),
     lines: cart.map((line) => ({ item_id: Number(line.item_id), quantity: Number(line.quantity) }))
   });
 
@@ -2575,6 +5255,33 @@ export default function StorefrontApp() {
     toast.info('Sharing is unavailable in this browser.');
   };
 
+  const resetReviewDraft = () => {
+    setReviewDraft({
+      name: '',
+      anonymous: false,
+      rating: 0,
+      message: ''
+    });
+  };
+
+  const handleReviewDraftSubmit = () => {
+    if (!String(reviewDraft.name || '').trim()) {
+      toast.error('Enter your name before sending a review.');
+      return;
+    }
+    if (!Number(reviewDraft.rating)) {
+      toast.error('Choose a star rating before sending a review.');
+      return;
+    }
+    if (!String(reviewDraft.message || '').trim()) {
+      toast.error('Write a short review message before sending.');
+      return;
+    }
+    toast.info('Review submission UI is ready. Backend publishing will be connected later.');
+    setIsReviewModalOpen(false);
+    resetReviewDraft();
+  };
+
   const handleQuote = async () => {
     if (!selectedStore) return;
     setQuoteError('');
@@ -2626,7 +5333,7 @@ export default function StorefrontApp() {
           image_url: withAssetOrigin(activeBookingService.image_url) || null,
           unit_of_measure: activeBookingService.unit_of_measure || '',
           max_stock: Number.POSITIVE_INFINITY,
-          service_notes: String(serviceDraftNotes || '').trim(),
+          service_notes: '',
           service_schedule_at: serviceAppointmentAt,
           payment_timing: servicePaymentTiming,
           intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null
@@ -2675,6 +5382,7 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
+    const cartSnapshot = cart.map((line) => ({ ...line }));
     setCheckoutLoading(true);
     try {
       const authToken = readStoreAuthToken();
@@ -2694,7 +5402,10 @@ export default function StorefrontApp() {
             intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
             notes: [
               Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
-              String(serviceBookingLine.service_notes || serviceDraftNotes || '').trim()
+              !bookingFieldPlan.addressField && String(customerAddress || '').trim()
+                ? `Service address: ${String(customerAddress || '').trim()}`
+                : '',
+              String(serviceBookingLine.service_notes || '').trim()
             ].filter(Boolean).join('\n')
           }
         })
@@ -2705,14 +5416,14 @@ export default function StorefrontApp() {
           body: {
             ...checkoutPayload(),
             idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
-            payment_type: 'cash'
+            payment_type: fnbPaymentType
           }
         });
       setCheckoutResult({
         ...data,
         cart_lines: hasServiceCart
-          ? cart
-          : (serviceBookingLine ? [serviceBookingLine] : []),
+          ? (serviceBookingLine ? [serviceBookingLine] : cart)
+          : cartSnapshot,
         totals: totalsForDisplay
       });
       if (data?.tracking_pin) {
@@ -2722,13 +5433,21 @@ export default function StorefrontApp() {
       if (data?.booking?.public_reference) {
         setTrackingPinInput(data.booking.public_reference);
       }
-      setCart([]);
+      if (hasServiceCart && serviceBookingLine) {
+        setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(serviceBookingLine.item_id)));
+      } else {
+        setCart([]);
+      }
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
       setServiceAppointmentAt('');
       setServiceDraftQuantity(1);
       setServiceDraftNotes('');
       setServiceIntakeResponses({});
+      setServicePaymentPreviewMethod('qr');
+      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+      setServicePaymentPreviewReceiptName('');
+      setFnbOrderStep(4);
       toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
     } catch (error) {
       const violation = extractStockViolation(error);
@@ -2823,16 +5542,20 @@ export default function StorefrontApp() {
       }
     );
   };
+  const fnbHasCustomerName = String(customerName || '').trim().length > 0;
+  const fnbHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
+  const fnbHasDeliveryAddress = !isDeliveryOrder || String(customerAddress || '').trim().length > 0;
+  const fnbCustomerStepComplete = fnbHasCustomerName && fnbHasPrimaryContact && fnbHasDeliveryAddress;
 
   return (
-    <main style={{ fontFamily: STYLES.fonts.body, background: 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)', minHeight: '100vh', color: '#0f172a' }}>
+    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)', minHeight: '100vh', color: '#0f172a', overflowX: isStorePage && (isFnbMode || isServicesMode) ? 'clip' : 'visible' }}>
       <div style={{
         maxWidth: 1320,
         margin: '0 auto',
-        paddingTop: isStorePage && isServicesMode ? 0 : (isMobileViewport ? 12 : 20),
-        paddingRight: isMobileViewport ? 12 : 20,
-        paddingLeft: isMobileViewport ? 12 : 20,
-        paddingBottom: isStorePage ? (isServicesMode ? 0 : (isMobileViewport ? 96 : 120)) : 24
+        paddingTop: isStorePage && (isServicesMode || isFnbMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingRight: isStorePage && (isServicesMode || isFnbMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && (isServicesMode || isFnbMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingBottom: isStorePage ? ((isServicesMode || isFnbMode) ? 0 : (isMobileViewport ? 96 : 120)) : 24
       }}>
         {!isStorePage && (
           <>
@@ -3701,459 +6424,31 @@ export default function StorefrontApp() {
         {isStorePage && (
           <>
             {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
-              <section style={{ marginBottom: 40 }}>
-                <div style={{
-                  background: '#ffffff',
-                  borderRadius: 0,
-                  borderBottom: '1px solid #e2e8f0',
-                  boxShadow: '0 6px 18px rgba(15,23,42,.05)',
-                  marginBottom: 0,
-                  width: '100vw',
-                  marginLeft: 'calc(50% - 50vw)'
-                }}>
-                  <div style={{
-                    maxWidth: 1320,
-                    margin: '0 auto',
-                    padding: isMobileViewport ? '12px 16px' : '14px 24px',
-                    display: 'flex',
-                    alignItems: isMobileViewport ? 'stretch' : 'center',
-                    gap: 16,
-                    flexDirection: isMobileViewport ? 'column' : 'row'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 280px' }}>
-                      <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <ArrowLeft size={18} />
-                      </button>
-                      <div style={{ width: 34, height: 34, borderRadius: 999, overflow: 'hidden', border: '1px solid #dbe5ee', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-                          <img
-                            src={serviceHeroModel.profileImageUrl}
-                            alt={`${serviceHeroModel.name} logo`}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 14, fontWeight: 800, color: STYLES.colors.brandDark }}>{serviceHeroModel.name.charAt(0)}</span>
-                        )}
-                      </div>
-                      <div style={{ minWidth: 0, fontSize: 16, fontWeight: 700, color: STYLES.colors.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{serviceHeroModel.name}</div>
-                    </div>
-
-                    {hasMultipleStoreBranches && (
-                      <div style={{ display: 'grid', gap: 4, minWidth: 0, width: isMobileViewport ? '100%' : 220, flex: '0 0 auto' }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Branch</span>
-                        <select
-                          value={selectedLocationId ?? ''}
-                          onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
-                          style={{ minHeight: 42, borderRadius: 12, border: '1px solid #dbe5ee', background: '#f8fafc', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none', width: '100%' }}
-                        >
-                          {storeLocations.map((location) => (
-                            <option key={location.location_id} value={location.location_id}>
-                              {location.name || location.address_line || `Branch ${location.location_id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
-                      <input
-                        value={catalogSearch}
-                        onChange={(event) => setCatalogSearch(event.target.value)}
-                        placeholder="Search Products or Services"
-                        style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text }}
-                      />
-                      <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Search size={16} />
-                      </span>
-                    </label>
-
-                    <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', gap: 16, flexWrap: 'nowrap', minWidth: 'max-content', whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 0 auto' }}>
-                      <button
-                        type="button"
-                        onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                        style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <ShoppingBag size={16} />
-                        Shop
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (hasServiceCart) {
-                            goStoreBookingPage();
-                            return;
-                          }
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }}
-                        style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <ShoppingCart size={16} />
-                        Cart ({cartCount})
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ position: 'relative', width: '100vw', marginLeft: 'calc(50% - 50vw)' }}>
-                  <section style={{
-                    position: 'relative',
-                    minHeight: isMobileViewport ? 290 : 316,
-                    borderRadius: 0,
-                    overflow: 'hidden',
-                    background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
-                      ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
-                      : 'linear-gradient(135deg,#172033 0%,#22324b 50%,#40516c 100%)',
-                    boxShadow: STYLES.shadow.lg
-                  }}>
-                    {serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-                      <img
-                        src={serviceHeroModel.coverImageUrl}
-                        alt=""
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
-                      />
-                    )}
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
-                    <div style={{
-                      position: 'absolute',
-                      left: isMobileViewport ? 20 : 'max(42px, calc((100vw - 1320px) / 2 + 42px))',
-                      right: isMobileViewport ? 20 : 'max(42px, calc((100vw - 1320px) / 2 + 42px))',
-                      bottom: isMobileViewport ? -45 : -25,
-                      zIndex: 10,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: isMobileViewport ? 16 : 28,
-                      paddingLeft: isMobileViewport ? 126 : 218
-                    }}>
-
-                      <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
-                          {serviceHeroModel.hours && (
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
-                          )}
-                        </div>
-                        <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                          <h1 style={{
-                            margin: 0,
-                            color: '#fff',
-                            fontSize: isMobileViewport ? 38 : 50,
-                            fontWeight: 900,
-                            lineHeight: 1.05,
-                            letterSpacing: '-0.03em'
-                          }}>{serviceHeroModel.name}</h1>
-                          {serviceHeroModel.tagline ? (
-                            <p style={{ margin: 0, color: '#fbbf24', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3 }}>{serviceHeroModel.tagline}</p>
-                          ) : (
-                            <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6 }}>{modeAdapter.heroDescription}</p>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#fbbf24" color="#fbbf24" />{serviceHeroModel.ratingLabel}</span>
-                          <span style={{ opacity: 0.5 }}>|</span>
-                          <span>{serviceHeroModel.modeLabel}</span>
-                          <span style={{ opacity: 0.5 }}>|</span>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{serviceHeroModel.locationLabel}</span>
-                        </div>
-                      </div>
-
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        flexDirection: isMobileViewport ? 'column' : 'row',
-                        flexShrink: 0,
-                        marginLeft: 'auto',
-                        marginBottom: isMobileViewport ? 8 : 35
-                      }}>
-                        {serviceHeroModel.actions.canCall && (
-                          <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 12 }}>
-                            <Phone size={18} />
-                            Call
-                          </GhostButton>
-                        )}
-                        <PrimaryButton onClick={() => {
-                          if (hasServiceCart) {
-                            goStoreBookingPage();
-                            return;
-                          }
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: '#f97316', color: '#000', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 900 }}>
-                          <MousePointer2 size={18} />
-                          {hasServiceCart ? 'Continue Booking' : 'Order Now'}
-                        </PrimaryButton>
-                      </div>
-                    </div>
-                  </section>
-
-                  <div style={{
-                    position: 'absolute',
-                    left: isMobileViewport ? '20px' : 'max(42px, calc((100vw - 1320px) / 2 + 42px))',
-                    bottom: isMobileViewport ? '-45px' : '-25px',
-                    transform: 'none',
-                    width: isMobileViewport ? 110 : 190,
-                    height: isMobileViewport ? 110 : 190,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    border: '3px solid #fff',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-                    overflow: 'hidden',
-                    zIndex: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-                      <img
-                        src={serviceHeroModel.profileImageUrl}
-                        alt={`${serviceHeroModel.name} profile`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
-                      />
-                    ) : (
-                      <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: STYLES.colors.brandDark }}>{serviceHeroModel.name.charAt(0)}</div>
-                    )}
-                  </div>
-                </div>
-
-                {(() => {
-                  const aboutText = String(serviceHeroModel.aboutText || '').trim();
-                  const galleryImages = Array.isArray(serviceHeroModel.galleryImages) ? serviceHeroModel.galleryImages.filter(Boolean) : [];
-                  const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
-                  const hasAboutToggle = aboutText.length > 180;
-                  const addressText = String(serviceHeroModel.addressLine || serviceHeroModel.locationLabel || '').trim();
-                  const hasAddress = Boolean(addressText);
-                  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-                    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
-                  const hasWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) && serviceHeroModel.whyChooseUs.length > 0;
-                  const hasContactRows = serviceHeroModel.contactRows.length > 0
-                    || Boolean(serviceHeroModel.facebookLink)
-                    || Boolean(serviceHeroModel.hours)
-                    || hasAddress;
-                  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
-
-                  return (
-                    <div style={{
-                      maxWidth: 1180,
-                      margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-                      padding: isMobileViewport ? 18 : 24,
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 18,
-                      boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
-                      display: 'grid',
-                      gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
-                      gap: isMobileViewport ? 24 : 24
-                    }}>
-                      <div style={{ display: 'grid', gap: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
-                        <div style={{ display: 'grid', gap: 10 }}>
-                          <p style={{
-                            fontSize: 13,
-                            lineHeight: 1.55,
-                            color: '#111827',
-                            margin: 0,
-                            display: isAboutExpanded ? 'block' : '-webkit-box',
-                            WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden'
-                          }}>
-                            {aboutText || 'Business details will appear soon.'}
-                          </p>
-                          {hasAboutToggle && (
-                            <button
-                              type="button"
-                              onClick={() => setIsAboutExpanded((previous) => !previous)}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#f97316',
-                                fontWeight: 700,
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                padding: 0,
-                                justifySelf: 'start'
-                              }}
-                            >
-                              {isAboutExpanded ? 'See less' : 'See more'}
-                            </button>
-                          )}
-                        </div>
-
-                        {galleryImages.length > 0 && (
-                          <div style={{ display: 'grid', gap: 10 }}>
-                            <div style={{
-                              display: isMobileViewport ? 'flex' : 'grid',
-                              gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)',
-                              gap: 8,
-                              marginTop: 2,
-                              overflowX: isMobileViewport ? 'auto' : 'visible',
-                              paddingBottom: isMobileViewport ? 4 : 0
-                            }}>
-                              {previewImages.map((url, index) => (
-                                <div
-                                  key={`${url}-${index}`}
-                                  style={{
-                                    width: isMobileViewport ? 84 : '100%',
-                                    minWidth: isMobileViewport ? 84 : 0,
-                                    height: 56,
-                                    borderRadius: 8,
-                                    overflow: 'hidden',
-                                    position: 'relative',
-                                    background: '#e2e8f0',
-                                    flexShrink: 0
-                                  }}
-                                >
-                                  <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                </div>
-                              ))}
-                            </div>
-                            {galleryImages.length > 4 && (
-                              <button
-                                type="button"
-                                onClick={() => setIsServiceGalleryExpanded((previous) => !previous)}
-                                style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  color: '#f97316',
-                                  fontWeight: 700,
-                                  fontSize: 12,
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  justifySelf: 'start'
-                                }}
-                              >
-                                {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr',
-                          gap: 18,
-                          alignItems: 'start'
-                        }}>
-                          {hasContactRows && (
-                            <div style={{ display: 'grid', gap: 10 }}>
-                              {serviceHeroModel.contactRows.map((row) => {
-                                const icon = row.label === 'Call' || row.label === 'Phone'
-                                  ? <Phone size={16} />
-                                  : row.label === 'Message'
-                                    ? <MessageCircle size={16} />
-                                    : row.label === 'Facebook'
-                                      ? <MessageCircle size={16} />
-                                      : row.label === 'Email'
-                                        ? <Mail size={16} />
-                                        : <Clock3 size={16} />;
-                                const content = (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                                    <div style={{ color: STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
-                                    </div>
-                                  </div>
-                                );
-                                return row.href ? (
-                                  <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
-                                    {content}
-                                  </button>
-                                ) : (
-                                  <div key={row.label}>{content}</div>
-                                );
-                              })}
-
-                              {serviceHeroModel.facebookLink && !serviceHeroModel.contactRows.some((row) => row.label === 'Facebook') && (
-                                <button type="button" onClick={() => openStorefrontActionLink(serviceHeroModel.facebookLink)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                                    <div style={{ color: '#2563eb', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <MessageCircle size={16} />
-                                    </div>
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>Message us</div>
-                                    </div>
-                                  </div>
-                                </button>
-                              )}
-
-                              {serviceHeroModel.hours && !serviceHeroModel.contactRows.some((row) => row.label === 'Hours') && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                                  <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <Clock3 size={16} />
-                                  </div>
-                                  <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{serviceHeroModel.hours}</div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {hasAddress && (
-                                <div style={{ display: 'grid', gap: 6 }}>
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
-                                    <div style={{ color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <MapPin size={16} />
-                                    </div>
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
-                                    </div>
-                                  </div>
-                                  {serviceHeroModel.directionsUrl && (
-                                    <button type="button" onClick={() => openStorefrontActionLink(serviceHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start' }}>
-                                      Get directions
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {hasMapData && (
-                            <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
-                              <StoresMap
-                                stores={serviceHeroModel.mapStores}
-                                selectedKey={serviceHeroModel.mapSelectedKey}
-                                onSelectStore={() => { }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {hasWhyChooseUs && (
-                        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-                          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Choose Us</div>
-                          <div style={{ display: 'grid', gap: 12 }}>
-                            {serviceHeroModel.whyChooseUs.map((item, index) => (
-                              <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
-                                <div style={{
-                                  width: 28,
-                                  height: 28,
-                                  borderRadius: 999,
-                                  background: '#fff7ed',
-                                  color: '#f97316',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                                }}>
-                                  <Sparkles size={14} />
-                                </div>
-                                <div>{item}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </section>
+              <ServicesHero
+                serviceHeroModel={serviceHeroModel}
+                selectedStore={selectedStore}
+                isMobileViewport={isMobileViewport}
+                hasMultipleStoreBranches={hasMultipleStoreBranches}
+                hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                selectedLocationId={selectedLocationId}
+                handleBranchMenuSelection={handleBranchMenuSelection}
+                storeLocations={storeLocations}
+                catalogSearch={catalogSearch}
+                setCatalogSearch={setCatalogSearch}
+                goDiscovery={goDiscovery}
+                hasServiceCart={hasServiceCart}
+                goStoreBookingPage={goStoreBookingPage}
+                cartCount={cartCount}
+                modeAdapter={modeAdapter}
+                isBrandingImageBlocked={isBrandingImageBlocked}
+                markBrandingImageError={markBrandingImageError}
+                selectedLocation={selectedLocation}
+                isAboutExpanded={isAboutExpanded}
+                setIsAboutExpanded={setIsAboutExpanded}
+                isServiceGalleryExpanded={isServiceGalleryExpanded}
+                setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
+                openStorefrontActionLink={openStorefrontActionLink}
+              />
             )}
             {false && isServicesMode && selectedStore && serviceHeroModel && (
               <section style={{ marginBottom: 40 }}>
@@ -4196,19 +6491,21 @@ export default function StorefrontApp() {
                     >
                       Shop
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (hasServiceCart) {
-                          goStoreBookingPage();
-                          return;
-                        }
-                        document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }}
-                      style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Cart ({cartCount})
-                    </button>
+                    {!isServicesMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (hasServiceCart) {
+                            goStoreBookingPage();
+                            return;
+                          }
+                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Cart ({cartCount})
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -4363,47 +6660,77 @@ export default function StorefrontApp() {
             {!isServicesMode && (
               <>
                 {/* ZONE 1: Navigation & Header */}
-                <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
-                    Back to Discovery
-                  </GhostButton>
-                  <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
-                </section>
+                {!isFnbMode && (
+                  <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                    <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
+                      Back to Discovery
+                    </GhostButton>
+                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
+                  </section>
+                )}
 
                 {/* ZONE 2: Hero Branding */}
-                <section style={{
-                  background: STYLES.colors.dark, borderRadius: STYLES.radius.card,
-                  padding: isMobileViewport ? 24 : 48, marginBottom: 24,
-                  position: 'relative', overflow: 'hidden', color: '#fff',
-                  boxShadow: STYLES.shadow.lg
-                }}>
-                  <div style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', background: `linear-gradient(225deg, ${STYLES.colors.brand}22, transparent)`, pointerEvents: 'none' }} />
-                  <div style={{ position: 'relative', zIndex: 1, maxWidth: 800 }}>
-                    <Badge style={{ marginBottom: 16 }}>{modeAdapter.heroEyebrow}</Badge>
-                    <h1 style={{ margin: 0, fontSize: isMobileViewport ? 32 : 56, fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em' }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
-                    <p style={{ margin: '16px 0 0 0', fontSize: isMobileViewport ? 16 : 20, opacity: 0.8, lineHeight: 1.5 }}>{modeAdapter.heroDescription}</p>
-
-                    <div style={{ marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <PrimaryButton onClick={() => {
-                        if (isServicesMode && hasServiceCart) {
-                          goStoreBookingPage();
-                          return;
-                        }
-                        if (isServicesMode) {
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          return;
-                        }
-                        setIsCheckoutOpen(true);
-                      }}>{modeAdapter.primaryActionLabel}</PrimaryButton>
-                      <GhostButton style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }} onClick={handleShareAction}>Share Storefront</GhostButton>
-                    </div>
-                  </div>
-                </section>
+                {isFnbMode && !isOrderSubpage ? (
+                  <FnbHero
+                    modeAdapter={modeAdapter}
+                    heroSectionModel={heroSectionModel}
+                    fnbViewModel={fnbViewModel}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    cartCount={cartCount}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                    goDiscovery={goDiscovery}
+                    hasMultipleStoreBranches={hasMultipleStoreBranches}
+                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                    selectedLocationId={selectedLocationId}
+                    handleBranchMenuSelection={handleBranchMenuSelection}
+                    storeLocations={storeLocations}
+                    catalogSearch={catalogSearch}
+                    setCatalogSearch={setCatalogSearch}
+                  isBrandingImageBlocked={isBrandingImageBlocked}
+                  markBrandingImageError={markBrandingImageError}
+                  selectedLocation={selectedLocation}
+                  openStorefrontActionLink={openStorefrontActionLink}
+                  openTrackPanel={openTrackPanel}
+                  openAccountPanel={openAccountPanel}
+                />
+                ) : isSimpleMode && simpleStorefrontModel ? (
+                  <SimpleHero
+                    simpleHeroModel={simpleStorefrontModel}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    hasMultipleStoreBranches={hasMultipleStoreBranches}
+                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                    selectedLocationId={selectedLocationId}
+                    handleBranchMenuSelection={handleBranchMenuSelection}
+                    storeLocations={storeLocations}
+                    catalogSearch={catalogSearch}
+                    setCatalogSearch={setCatalogSearch}
+                    goDiscovery={goDiscovery}
+                    cartCount={cartCount}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                    modeAdapter={modeAdapter}
+                    isBrandingImageBlocked={isBrandingImageBlocked}
+                    markBrandingImageError={markBrandingImageError}
+                    selectedLocation={selectedLocation}
+                    openStorefrontActionLink={openStorefrontActionLink}
+                    openTrackPanel={openTrackPanel}
+                    openAccountPanel={openAccountPanel}
+                  />
+                ) : !isFnbMode ? (
+                  <DefaultStorefrontHero
+                    modeAdapter={modeAdapter}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    handleShareAction={handleShareAction}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                  />
+                ) : null}
               </>
             )}
 
             {/* ZONE 3: Location Map Snapshot */}
-            {!isServicesMode && selectedStore && (
+            {!isServicesMode && !isFnbMode && !isSimpleMode && selectedStore && (
               <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
                 <StoresMap
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
@@ -4418,17 +6745,50 @@ export default function StorefrontApp() {
               // --- Service Tab logic ---
               const isMultiGroup = isServicesMode && servicesViewModel.serviceGroups.length > 1;
               const resolvedTab = isMultiGroup
-                ? (activeServiceTab && servicesViewModel.serviceGroups.some(g => g.categoryKey === activeServiceTab)
+                ? (activeServiceTab && servicesViewModel.serviceGroups.some((g) => g.categoryKey === activeServiceTab)
                   ? activeServiceTab
-                  : servicesViewModel.serviceGroups[0]?.categoryKey)
+                  : '')
+                : '';
+              const activeGroup = resolvedTab
+                ? (servicesViewModel.serviceGroups.find((g) => g.categoryKey === resolvedTab) || null)
                 : null;
-              const activeGroup = isMultiGroup
-                ? (servicesViewModel.serviceGroups.find(g => g.categoryKey === resolvedTab) || servicesViewModel.serviceGroups[0])
+              const fnbSections = isFnbMode ? filteredFnbViewModel.menuSections : [];
+              const isMultiFnbSection = isFnbMode && fnbSections.length > 1;
+              const resolvedFnbSection = isMultiFnbSection
+                ? (activeServiceTab && fnbSections.some((section) => section.sectionKey === activeServiceTab)
+                  ? activeServiceTab
+                  : fnbSections[0]?.sectionKey)
                 : null;
-              const itemsToRender = isServicesMode
-                ? (isMultiGroup ? (activeGroup?.items || []) : servicesViewModel.allServices)
-                : filteredCatalog;
+              const activeFnbSection = isMultiFnbSection
+                ? (fnbSections.find((section) => section.sectionKey === resolvedFnbSection) || fnbSections[0])
+                : null;
+              const rawItemsToRender = isServicesMode
+                ? (resolvedTab ? (activeGroup?.items || []) : servicesViewModel.allServices)
+                : isFnbMode
+                  ? (isMultiFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
+                  : filteredCatalog;
+              const itemsToRender = isFnbMode
+                ? [...rawItemsToRender].sort((left, right) => {
+                    if (fnbSortOption === 'price_asc') return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
+                    if (fnbSortOption === 'price_desc') return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
+                    if (fnbSortOption === 'name_asc') return String(left?.name || '').localeCompare(String(right?.name || ''));
+                    return String(left?.name || '').localeCompare(String(right?.name || ''));
+                  })
+                : rawItemsToRender;
+              const totalFnbPages = isFnbMode
+                ? Math.max(1, Math.ceil(itemsToRender.length / Math.max(1, Number(fnbPageSize || 8))))
+                : 1;
+              const resolvedFnbPage = isFnbMode
+                ? Math.min(Math.max(1, Number(fnbPage || 1)), totalFnbPages)
+                : 1;
+              const paginatedFnbItems = isFnbMode
+                ? itemsToRender.slice((resolvedFnbPage - 1) * fnbPageSize, resolvedFnbPage * fnbPageSize)
+                : itemsToRender;
+              const fnbPageStart = !isFnbMode || itemsToRender.length === 0 ? 0 : ((resolvedFnbPage - 1) * fnbPageSize) + 1;
+              const fnbPageEnd = !isFnbMode ? itemsToRender.length : Math.min(itemsToRender.length, resolvedFnbPage * fnbPageSize);
+              const catalogItemsToRender = isFnbMode ? paginatedFnbItems : itemsToRender;
               const activeGroupMeta = activeGroup?.categoryMeta;
+              const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
               if (isServicesMode) {
                 const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
@@ -4473,6 +6833,21 @@ export default function StorefrontApp() {
                 const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
                 const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
                 const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
+                const controlRadius = 999;
+                const serviceCategoryOptions = [
+                  {
+                    key: '',
+                    label: 'All Services',
+                    count: servicesViewModel.allServices.length,
+                    icon: Sparkles
+                  },
+                  ...servicesViewModel.serviceGroups.map((group) => ({
+                    key: group.categoryKey,
+                    label: group.categoryMeta?.label || group.categoryKey,
+                    count: group.items.length,
+                    icon: SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles
+                  }))
+                ];
                 const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
                 const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
                 const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
@@ -4600,8 +6975,8 @@ export default function StorefrontApp() {
                                       </div>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                                      <PrimaryButton style={{ minHeight: 46 }} onClick={() => beginServiceBooking(detailPageServiceItem)}>
-                                        Order Now
+                                      <PrimaryButton style={{ minHeight: 46 }} onClick={() => addToCart(detailPageServiceItem)}>
+                                        Add to Cart
                                       </PrimaryButton>
                                       <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
                                         Back to Services
@@ -4656,13 +7031,60 @@ export default function StorefrontApp() {
                   );
                 }
                 if (isBookingSubpage) {
-                  const currentStep = hasServiceCart ? 3 : serviceBookingStep;
+                  const currentStep = serviceBookingStep;
                   const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
                   const bookingConfirmation = checkoutResult?.booking || null;
                   const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
                   const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
                   const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
                   const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
+                  const bookingSteps = [
+                    { step: 1, label: 'Customer and service info', complete: stepOneComplete },
+                    { step: 2, label: 'Payment information', complete: paymentStepComplete && serviceBookingStep > 2 },
+                    { step: 3, label: 'Review and submit', complete: false }
+                  ];
+                  const reviewSections = [
+                    {
+                      title: 'Customer Information',
+                      step: 1,
+                      rows: [
+                        { label: 'Customer Name', value: customerName || 'Not provided', fieldKey: 'customer_name' },
+                        { label: 'Contact Number', value: customerPhone || 'Not provided', fieldKey: 'customer_phone' },
+                        { label: 'Email', value: customerEmail || 'Not provided', fieldKey: 'customer_email' },
+                        ...(bookingFieldPlan.requiresAddress ? [{ label: 'Full Address', value: customerAddress || 'Not provided', fieldKey: 'customer_address' }] : [])
+                      ]
+                    },
+                    {
+                      title: 'Schedule and Service Information',
+                      step: 1,
+                      rows: [
+                        { label: 'Preferred Date', value: selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Not selected', fieldKey: 'preferred_date' },
+                        { label: 'Preferred Time Slot', value: selectedServiceTimePart ? formatTimeSlotLabel(selectedServiceTimePart) : 'Not selected', fieldKey: 'preferred_time' },
+                        ...(bookingFieldPlan.unitTypeField ? [{ label: bookingFieldPlan.unitTypeField.label, value: serviceUnitType || 'Not provided', fieldKey: 'unit_type' }] : []),
+                        { label: bookingFieldPlan.unitCountField?.label || 'Number of Units', value: String(bookingSummaryQuantity), fieldKey: 'unit_count' }
+                      ]
+                    },
+                    ...(bookingStepOneAdditionalFields.length > 0 ? [{
+                      title: 'Additional Service Details',
+                      step: 1,
+                      rows: bookingStepOneAdditionalFields.map((field) => ({
+                        label: field.label,
+                        value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
+                        fieldKey: `intake_${field.id}`
+                      }))
+                    }] : []),
+                    {
+                      title: 'Payment Information',
+                      step: 2,
+                      rows: [
+                        {
+                          label: 'Payment Timing',
+                          value: bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending',
+                          fieldKey: 'payment_timing'
+                        }
+                      ]
+                    }
+                  ];
                   return (
                     <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
                       <div style={{
@@ -4685,7 +7107,7 @@ export default function StorefrontApp() {
                           alignItems: 'center',
                           gap: 16
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 16, minWidth: 0, flex: 1 }}>
                             <button
                               type="button"
                               onClick={goStoreCatalogPage}
@@ -4693,34 +7115,21 @@ export default function StorefrontApp() {
                             >
                               <ArrowLeft size={22} strokeWidth={2.5} />
                             </button>
-                            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                Step {currentStep} of 3
+                            {serviceHeroModel.profileImageUrl ? (
+                              <img
+                                src={serviceHeroModel.profileImageUrl}
+                                alt=""
+                                style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                              />
+                            ) : (
+                              <div style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
+                                <ShoppingBag size={18} color="#f97316" />
                               </div>
-                              <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {hasServiceCart ? 'Review and confirm your booking' : 'Complete your booking details'}
-                              </div>
+                            )}
+                            <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {serviceHeroModel.name}
                             </div>
                           </div>
-
-                          {!isMobileViewport && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                              {serviceHeroModel.profileImageUrl ? (
-                                <img
-                                  src={serviceHeroModel.profileImageUrl}
-                                  alt=""
-                                  style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-                                />
-                              ) : (
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                                  <ShoppingBag size={18} color="#f97316" />
-                                </div>
-                              )}
-                              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                                {serviceHeroModel.name}
-                              </div>
-                            </div>
-                          )}
 
                           <div style={{ display: 'flex', justifyContent: 'flex-end', flex: 1 }}>
                             {supportHref ? (
@@ -4756,10 +7165,10 @@ export default function StorefrontApp() {
                         <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
                           <div style={{ display: 'grid', gap: 18, marginBottom: 24 }}>
                             <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                              Complete Your Booking
+                              Complete Your Service Booking
                             </h1>
                             <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                              Review service details, select your preferred schedule, complete the required information, and submit the booking here.
+                              Share your details once, choose the schedule that works for you, review the booking, and submit it to the store team.
                             </p>
                           </div>
 
@@ -4779,13 +7188,13 @@ export default function StorefrontApp() {
                               <div style={{ display: 'grid', gap: 10 }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', color: '#15803d', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                   <CheckCircle2 size={16} />
-                                  Booking submitted
+                                  Booking confirmed
                                 </div>
                                 <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
-                                  Your booking has been received
+                                  Your service booking is confirmed
                                 </div>
                                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted, maxWidth: 680 }}>
-                                  The service request has been sent to the store. They will confirm the final schedule and next steps through your provided contact details.
+                                  The request has been sent to the store team. They will message you using the contact details you provided to confirm the schedule and assist with the next steps.
                                 </p>
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
@@ -4803,10 +7212,31 @@ export default function StorefrontApp() {
                                 </div>
                               </div>
                               <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
-                                <div>Keep your booking reference for status checks or follow-up.</div>
-                                <div>You can return to the services page to browse or book another service.</div>
+                                <div>Keep your booking reference in case you need to follow up with the team.</div>
+                                <div>You can return to the services page anytime to browse other services.</div>
                               </div>
                               <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12, flexWrap: 'wrap' }}>
+                                {checkoutResult?.payment?.checkout_url && (
+                                  <a
+                                    href={checkoutResult.payment.checkout_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      minHeight: 46,
+                                      borderRadius: 14,
+                                      background: '#0f766e',
+                                      color: '#fff',
+                                      padding: '0 18px',
+                                      fontWeight: 800,
+                                      textDecoration: 'none'
+                                    }}
+                                  >
+                                    Continue to Payment
+                                  </a>
+                                )}
                                 <PrimaryButton
                                   onClick={() => {
                                     setCheckoutResult(null);
@@ -4849,11 +7279,7 @@ export default function StorefrontApp() {
                           <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', alignItems: 'start' }}>
                             <div style={{ display: 'grid', gap: 18 }}>
                               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-                                {[
-                                  { step: 1, label: 'Schedule your service', complete: scheduleStepComplete },
-                                  { step: 2, label: 'Service requirements', complete: requirementsStepComplete },
-                                  { step: 3, label: 'Customer information', complete: customerStepComplete }
-                                ].map((item) => (
+                                {bookingSteps.map((item) => (
                                   <button
                                     key={`booking-step-${item.step}`}
                                     type="button"
@@ -4865,13 +7291,13 @@ export default function StorefrontApp() {
                                       gap: 12,
                                       padding: '14px 16px',
                                       borderRadius: 18,
-                                      border: `1px solid ${serviceBookingStep === item.step ? '#fdba74' : '#e2e8f0'}`,
-                                      background: serviceBookingStep === item.step ? '#fff7ed' : '#ffffff',
+                                      border: `1px solid ${serviceBookingStep === item.step ? servicesPrimaryBorder : '#e2e8f0'}`,
+                                      background: serviceBookingStep === item.step ? servicesPrimarySoft : '#ffffff',
                                       cursor: 'pointer'
                                     }}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                      <div style={{ width: 30, height: 30, borderRadius: 999, background: item.complete ? '#16a34a' : serviceBookingStep === item.step ? '#f97316' : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: 13 }}>
+                                      <div style={{ width: 30, height: 30, borderRadius: 999, background: item.complete ? '#16a34a' : serviceBookingStep === item.step ? servicesPrimary : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: 13 }}>
                                         {item.complete ? 'OK' : item.step}
                                       </div>
                                       <div style={{ textAlign: 'left' }}>
@@ -4888,7 +7314,7 @@ export default function StorefrontApp() {
                               <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 18 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                                   <div>
-                                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected service</div>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected service</div>
                                     <div style={{ marginTop: 4, fontSize: 26, fontWeight: 900, color: STYLES.colors.dark }}>{activeBookingService?.variantName || activeBookingService?.name}</div>
                                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                                       <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
@@ -4902,126 +7328,215 @@ export default function StorefrontApp() {
                                 </div>
 
                                 {serviceBookingStep === 1 && (
-                                  <div style={{ display: 'grid', gap: 18 }}>
+                                  <div style={{ display: 'grid', gap: 20 }}>
                                     <div>
-                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Step 1: Schedule Your Service</div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 1: Customer and Service Information</div>
                                       <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-                                        Choose a preferred date and time window. Final availability is confirmed by SKUpervisor after submission.
+                                        Capture contact details once, then choose the preferred schedule and service specifics for this booking.
                                       </div>
                                     </div>
-                                    <div style={{ display: 'grid', gap: 16 }}>
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-                                        <label style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-                                          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred date</div>
-                                          <div style={{ position: 'relative', minWidth: 0 }}>
-                                            <div
-                                              role="button"
-                                              tabIndex={0}
-                                              onMouseDown={(event) => {
-                                                event.preventDefault();
-                                                openPreferredBookingDatePicker();
-                                              }}
-                                              onClick={openPreferredBookingDatePicker}
-                                              onKeyDown={(event) => {
-                                                if (event.key === 'Enter' || event.key === ' ') {
+
+                                    <div style={{ display: 'grid', gap: 18 }}>
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Customer Information</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+                                          <label ref={registerBookingFieldRef('customer_name')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Customer Name *
+                                            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          <label ref={registerBookingFieldRef('customer_phone')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Contact Number *
+                                            <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          <label ref={registerBookingFieldRef('customer_email')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Email{bookingFieldPlan.emailField?.required ? ' *' : ''}
+                                            <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or booking updates" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          {bookingFieldPlan.requiresAddress && (
+                                            <label ref={registerBookingFieldRef('customer_address')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                              Full Address{isAddressRequired ? ' *' : ''}
+                                              <textarea
+                                                value={customerAddress}
+                                                onChange={(event) => setCustomerAddress(event.target.value)}
+                                                placeholder="Barangay, street, subdivision, city, and other address details"
+                                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }}
+                                              />
+                                              {!bookingFieldPlan.addressField && (
+                                                <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                                                  This address will be included with the booking notes for the service team.
+                                                </span>
+                                              )}
+                                            </label>
+                                          )}
+                                        </div>
+                                      </section>
+
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Schedule and Service Information</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                          <label ref={registerBookingFieldRef('preferred_date')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ fontSize: 12, color: '#475569' }}>Preferred Date *</div>
+                                            <div style={{ position: 'relative', minWidth: 0 }}>
+                                              <div
+                                                role="button"
+                                                tabIndex={0}
+                                                onMouseDown={(event) => {
                                                   event.preventDefault();
                                                   openPreferredBookingDatePicker();
-                                                }
-                                              }}
-                                              style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8', fontWeight: selectedServiceDatePart ? 700 : 500, cursor: 'pointer' }}
-                                            >
-                                              <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
-                                              <CalendarDays size={18} color="#f97316" />
-                                            </div>
-                                            <input
-                                              ref={bookingPreferredDateInputRef}
-                                              type="date"
-                                              value={selectedServiceDatePart}
-                                              min={bookingDateOptions[0]?.value || undefined}
-                                              onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
-                                              aria-hidden="true"
-                                              tabIndex={-1}
-                                              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
-                                            />
-                                          </div>
-                                        </label>
-
-                                        <label style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Preferred time slot</div>
-                                            {selectedServiceDatePart ? (
-                                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                                {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
-                                                  ? 'Available from service schedule'
-                                                  : 'Suggested times based on service duration'}
+                                                }}
+                                                onClick={openPreferredBookingDatePicker}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    openPreferredBookingDatePicker();
+                                                  }
+                                                }}
+                                                style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8', fontWeight: selectedServiceDatePart ? 700 : 500, cursor: 'pointer' }}
+                                              >
+                                                <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
+                                                <CalendarDays size={18} color={servicesPrimary} />
                                               </div>
-                                            ) : null}
-                                          </div>
-                                          <select
-                                            value={selectedServiceTimePart}
-                                            disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
-                                            onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, event.target.value))}
-                                            style={{ ...BOOKING_FIELD_STYLE, minHeight: 52, color: !selectedServiceDatePart || bookingTimeSlotOptions.length === 0 ? '#94a3b8' : STYLES.colors.dark }}
-                                          >
-                                            <option value="">
-                                              {!selectedServiceDatePart
-                                                ? 'Choose a date first'
-                                                : bookingTimeSlotOptions.length === 0
-                                                  ? 'No suggested time slots available'
-                                                  : 'Select a time slot'}
-                                            </option>
-                                            {bookingTimeSlotOptions.map((slot) => (
-                                              <option key={`booking-slot-${slot.value}`} value={slot.value}>
-                                                {slot.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </label>
-                                      </div>
+                                              <input
+                                                ref={bookingPreferredDateInputRef}
+                                                type="date"
+                                                value={selectedServiceDatePart}
+                                                min={bookingDateOptions[0]?.value || undefined}
+                                                onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
+                                                aria-hidden="true"
+                                                tabIndex={-1}
+                                                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
+                                              />
+                                            </div>
+                                          </label>
 
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                          Units / quantity
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={serviceDraftQuantity}
-                                            onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
-                                            style={BOOKING_FIELD_STYLE}
-                                          />
-                                        </label>
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                          Payment timing
-                                          <select
-                                            value={servicePaymentTiming}
-                                            onChange={(event) => setServicePaymentTiming(event.target.value)}
-                                            style={BOOKING_FIELD_STYLE}
-                                          >
-                                            {bookingPagePaymentOptions.map((option) => (
-                                              <option key={`booking-page-payment-${option.value}`} value={option.value}>{option.label}</option>
+                                          <label ref={registerBookingFieldRef('preferred_time')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                              <div style={{ fontSize: 12, color: '#475569' }}>Preferred Time Slot *</div>
+                                              {selectedServiceDatePart ? (
+                                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                                  {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
+                                                    ? 'Available from service schedule'
+                                                    : 'Suggested times based on service duration'}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                            <StorefrontDropdown
+                                              value={selectedServiceTimePart}
+                                              disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
+                                              onChange={(nextValue) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, nextValue))}
+                                              options={bookingTimeSlotOptions.map((slot) => ({
+                                                value: slot.value,
+                                                label: slot.label
+                                              }))}
+                                              placeholder={
+                                                !selectedServiceDatePart
+                                                  ? 'Choose a date first'
+                                                  : bookingTimeSlotOptions.length === 0
+                                                    ? 'No suggested time slots available'
+                                                    : 'Select a time slot'
+                                              }
+                                              triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, padding: '12px 48px 12px 13px' }}
+                                              menuStyle={{ borderRadius: 18 }}
+                                              selectedLabelStyle={{ fontWeight: selectedServiceDatePart && bookingTimeSlotOptions.length > 0 ? 700 : 500 }}
+                                            />
+                                          </label>
+
+                                          {bookingFieldPlan.unitTypeField ? (
+                                            <label ref={registerBookingFieldRef('unit_type')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                              {bookingFieldPlan.unitTypeField.label}{bookingFieldPlan.unitTypeField.required ? ' *' : ''}
+                                              {bookingFieldPlan.unitTypeField.type === 'select' ? (
+                                                <StorefrontDropdown
+                                                  value={serviceUnitType}
+                                                  onChange={setServiceUnitType}
+                                                  options={bookingFieldPlan.unitTypeField.options.map((option) => ({ value: option, label: option }))}
+                                                  placeholder="Select"
+                                                  triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                  menuStyle={{ borderRadius: 18 }}
+                                                />
+                                              ) : (
+                                                <input value={serviceUnitType} onChange={(event) => setServiceUnitType(event.target.value)} placeholder="Specify the unit type" style={BOOKING_FIELD_STYLE} />
+                                              )}
+                                            </label>
+                                          ) : <div />}
+
+                                          <label ref={registerBookingFieldRef('unit_count')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            {bookingFieldPlan.unitCountField?.label || 'Number of Units'} *
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              step="1"
+                                              value={serviceDraftQuantity}
+                                              onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                                              style={BOOKING_FIELD_STYLE}
+                                            />
+                                          </label>
+                                        </div>
+                                      </section>
+
+                                      {bookingStepOneAdditionalFields.length > 0 && (
+                                        <section style={{ display: 'grid', gap: 14 }}>
+                                          <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Service Details</div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                            {bookingStepOneAdditionalFields.map((field) => (
+                                              <label
+                                                ref={registerBookingFieldRef(`intake_${field.id}`)}
+                                                key={`booking-step-one-${field.id}`}
+                                                style={{
+                                                  display: 'block',
+                                                  fontSize: 12,
+                                                  color: '#475569',
+                                                  minWidth: 0,
+                                                  gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto'
+                                                }}
+                                              >
+                                                {field.label}{field.required ? ' *' : ''}
+                                                {field.type === 'textarea' ? (
+                                                  <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }} />
+                                                ) : field.type === 'select' ? (
+                                                  <StorefrontDropdown
+                                                    value={serviceIntakeResponses[field.id] || ''}
+                                                    onChange={(nextValue) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: nextValue }))}
+                                                    options={field.options.map((option) => ({ value: option, label: option }))}
+                                                    placeholder="Select"
+                                                    triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                    menuStyle={{ borderRadius: 18 }}
+                                                  />
+                                                ) : field.type === 'checkbox' ? (
+                                                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                                                    <input type="checkbox" checked={serviceIntakeResponses[field.id] === true} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))} />
+                                                    <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                                  </div>
+                                                ) : (
+                                                  <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />
+                                                )}
+                                              </label>
                                             ))}
-                                          </select>
-                                        </label>
-                                      </div>
+                                          </div>
+                                        </section>
+                                      )}
                                     </div>
-                                    {!scheduleStepComplete && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                        Select both a preferred date and a preferred time slot before continuing.
+
+                                    {(missingCustomerInformation.length > 0 || missingScheduleAndServiceInfo.length > 0 || missingStepOneAdditionalFields.length > 0) && (
+                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
+                                        Complete the required customer, schedule, and service details before continuing.
                                       </div>
                                     )}
                                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                                       <PrimaryButton
                                         onClick={() => {
-                                          if (!scheduleStepComplete) {
-                                            toast.error('Complete the preferred date and time slot before continuing.');
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before continuing.` : 'Complete the required booking details before continuing.');
                                             return;
                                           }
                                           setServiceBookingStep(2);
                                         }}
                                         style={{ minHeight: 46 }}
                                       >
-                                        Continue to Requirements
+                                        Continue to Payment
                                       </PrimaryButton>
                                     </div>
                                   </div>
@@ -5030,78 +7545,179 @@ export default function StorefrontApp() {
                                 {serviceBookingStep === 2 && (
                                   <div style={{ display: 'grid', gap: 18 }}>
                                     <div>
-                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Step 2: Service Requirements</div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 2: Payment Information</div>
                                       <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-                                        These fields come directly from the SKUpervisor intake schema for this service.
+                                        Choose how the service will be paid. The booking itself is still submitted through the current services contract.
                                       </div>
                                     </div>
-                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                      Additional details / Special instructions
-                                      <textarea
-                                        value={serviceDraftNotes}
-                                        onChange={(event) => setServiceDraftNotes(event.target.value)}
-                                        placeholder="Access notes, pickup preferences, unit details, or anything the service team should know."
-                                        style={{ ...BOOKING_FIELD_STYLE, minHeight: 96, resize: 'vertical' }}
-                                      />
-                                    </label>
-                                    {bookingPageIntakeFields.length > 0 ? (
-                                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
-                                        {bookingPageIntakeFields.map((field) => (
-                                          <label
-                                            key={`booking-step-two-${field.id}`}
-                                            style={{
-                                              display: 'block',
-                                              fontSize: 12,
-                                              color: '#475569',
-                                              minWidth: 0,
-                                              gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto'
-                                            }}
-                                          >
-                                            {field.label}{field.required ? ' *' : ''}
-                                            {field.type === 'textarea' ? (
-                                              <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }} />
-                                            ) : field.type === 'select' ? (
-                                              <select value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE}>
-                                                <option value="">Select</option>
-                                                {field.options.map((option) => (
-                                                  <option key={`${field.id}-${option}`} value={option}>{option}</option>
-                                                ))}
-                                              </select>
-                                            ) : field.type === 'checkbox' ? (
-                                              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
-                                                <input type="checkbox" checked={serviceIntakeResponses[field.id] === true} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))} />
-                                                <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      <label ref={registerBookingFieldRef('payment_timing')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, maxWidth: isMobileViewport ? '100%' : 360 }}>
+                                        Payment Timing
+                                        <StorefrontDropdown
+                                          value={servicePaymentTiming}
+                                          onChange={setServicePaymentTiming}
+                                          options={bookingPagePaymentOptions.map((option) => ({
+                                            value: option.value,
+                                            label: option.label
+                                          }))}
+                                          triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                          menuStyle={{ borderRadius: 18 }}
+                                        />
+                                      </label>
+
+                                      {servicePaymentTiming === 'prepaid' || servicePaymentTiming === 'deposit' ? (
+                                        <div style={{ display: 'grid', gap: 16 }}>
+                                          <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #fed7aa', background: '#fff7ed' }}>
+                                            <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>
+                                              {servicePaymentTiming === 'deposit' ? 'Deposit payment preview' : 'Pay now preview'}
+                                            </div>
+                                            <div style={{ fontSize: 13, lineHeight: 1.7, color: '#9a3412' }}>
+                                              This is a temporary storefront payment UI. The current services backend still completes the actual payment handoff after the booking is submitted and returns a secure checkout link.
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'grid', gap: 14, padding: isMobileViewport ? 16 : 18, borderRadius: 22, border: '1px solid #dbe5ee', background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', boxShadow: '0 14px 36px rgba(15, 23, 42, 0.06)' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                              {[
+                                                { value: 'qr', label: 'QR Payment' },
+                                                { value: 'card', label: 'Card Details' }
+                                              ].map((option) => {
+                                                const isActive = servicePaymentPreviewMethod === option.value;
+                                                return (
+                                                  <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setServicePaymentPreviewMethod(option.value)}
+                                                    style={{
+                                                      minHeight: 40,
+                                                      padding: '0 16px',
+                                                      borderRadius: 999,
+                                                      border: `1px solid ${isActive ? '#67e8f9' : '#dbe5ee'}`,
+                                                      background: isActive ? '#ecfeff' : '#fff',
+                                                      color: isActive ? '#155e75' : '#334155',
+                                                      fontSize: 13,
+                                                      fontWeight: 800,
+                                                      cursor: 'pointer',
+                                                      transition: 'all 0.2s ease'
+                                                    }}
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {servicePaymentPreviewMethod === 'qr' && (
+                                              <div style={{ display: 'grid', gap: 16 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'stretch' }}>
+                                                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 220, borderRadius: 22, background: 'radial-gradient(circle at top, #ecfeff 0%, #e0f2fe 52%, #ffffff 100%)', border: '1px dashed #67e8f9', padding: 18 }}>
+                                                    <div style={{ width: 160, height: 160, borderRadius: 20, background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'grid', placeItems: 'center', boxShadow: '0 18px 36px rgba(14, 165, 233, 0.18)' }}>
+                                                      <div style={{ width: 112, height: 112, borderRadius: 12, background: 'repeating-linear-gradient(90deg, #ffffff 0 10px, #0f172a 10px 20px), repeating-linear-gradient(0deg, #ffffff 0 10px, #0f172a 10px 20px)', backgroundBlendMode: 'screen' }} />
+                                                    </div>
+                                                  </div>
+                                                  <div style={{ display: 'grid', gap: 10 }}>
+                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>QR payment preview</div>
+                                                    <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
+                                                      Use this area later for bank transfer, e-wallet, or generated QR payment instructions. For now, the final payment link still appears only after the booking is submitted.
+                                                    </div>
+                                                    <div style={{ display: 'grid', gap: 8 }}>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Reference amount</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{money(bookingSummaryAmount)}</strong>
+                                                      </div>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Payment mode</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{servicePaymentTiming === 'deposit' ? 'Deposit' : 'Full payment'}</strong>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                <label style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
+                                                  Upload Receipt
+                                                  <div style={{ display: 'grid', gap: 10, padding: '18px 16px', borderRadius: 20, border: '1px dashed #94a3b8', background: '#fff' }}>
+                                                    <input
+                                                      type="file"
+                                                      accept="image/*,.pdf"
+                                                      onChange={(event) => setServicePaymentPreviewReceiptName(event.target.files?.[0]?.name || '')}
+                                                      style={{ fontSize: 13, color: '#334155' }}
+                                                    />
+                                                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                                                      {servicePaymentPreviewReceiptName
+                                                        ? `Selected file: ${servicePaymentPreviewReceiptName}`
+                                                        : 'Attach a screenshot or receipt file here for the future QR payment flow preview.'}
+                                                    </div>
+                                                  </div>
+                                                </label>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  This receipt upload is temporary UI only. The file is not sent anywhere in the current storefront booking contract.
+                                                </div>
                                               </div>
-                                            ) : (
-                                              <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />
                                             )}
-                                          </label>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div style={{ fontSize: 13, color: STYLES.colors.muted, border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: 14, padding: '12px 14px' }}>
-                                        No additional intake requirements are configured for this service.
-                                      </div>
-                                    )}
-                                    {bookingPageMissingRequiredIntake.length > 0 && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                        Complete all required service fields before continuing.
-                                      </div>
-                                    )}
+
+                                            {servicePaymentPreviewMethod === 'card' && (
+                                              <div style={{ display: 'grid', gap: 14 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Cardholder Name
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardholder}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardholder: event.target.value }))}
+                                                      placeholder="Name on card"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Card Number
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardNumber}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardNumber: event.target.value }))}
+                                                      placeholder="0000 0000 0000 0000"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    Expiry
+                                                    <input
+                                                      value={servicePaymentPreviewCard.expiry}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, expiry: event.target.value }))}
+                                                      placeholder="MM/YY"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    CVV
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cvv}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cvv: event.target.value }))}
+                                                      placeholder="123"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                </div>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  Temporary preview only. These card fields are not submitted to the backend and are here to simulate the future pay-now experience.
+                                                </div>
+                                              </div>
+                                            )}
+
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #dbeafe', background: '#eff6ff' }}>
+                                          <div style={{ fontSize: 14, fontWeight: 900, color: '#1d4ed8' }}>
+                                            Pay later selected
+                                          </div>
+                                          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>
+                                            No advance payment details are needed here. The store team will assist you with the next payment step after they review the booking.
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                       <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: 46 }}>Back</GhostButton>
-                                      <PrimaryButton
-                                        onClick={() => {
-                                          if (!requirementsStepComplete) {
-                                            const firstMissingField = bookingPageMissingRequiredIntake[0];
-                                            toast.error(firstMissingField ? `Complete "${firstMissingField.label}" before continuing.` : 'Complete the required service details before continuing.');
-                                            return;
-                                          }
-                                          setServiceBookingStep(3);
-                                        }}
-                                        style={{ minHeight: 46 }}
-                                      >
-                                        Continue to Customer Info
+                                      <PrimaryButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: 46 }}>
+                                        Continue to Review
                                       </PrimaryButton>
                                     </div>
                                   </div>
@@ -5110,36 +7726,37 @@ export default function StorefrontApp() {
                                 {serviceBookingStep === 3 && (
                                   <div style={{ display: 'grid', gap: 18 }}>
                                     <div>
-                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Step 3: Customer Information</div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 3: Review and Submit</div>
                                       <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-                                        Keep contact details separate from service requirements to make the booking flow easier to finish.
+                                        Check the booking details before submitting. Use the edit actions to jump straight back to the relevant step.
                                       </div>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
-                                      {storeLocations.length > 0 && (
-                                        <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                          Fulfillment location
-                                          <select value={selectedLocationId ?? ''} onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)} style={BOOKING_FIELD_STYLE}>
-                                            {storeLocations.map((location) => (
-                                              <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
-                                                {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
-                                              </option>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      {reviewSections.map((section) => (
+                                        <section key={section.title} style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                            <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>{section.title}</div>
+                                            <GhostButton onClick={() => jumpToBookingField(section.step, section.rows[0]?.fieldKey || '')} style={{ minHeight: 38, padding: '0 14px' }}>
+                                              Edit section
+                                            </GhostButton>
+                                          </div>
+                                          <div style={{ display: 'grid', gap: 10 }}>
+                                            {section.rows.map((row) => (
+                                              <div key={`${section.title}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(140px, 180px) minmax(0, 1fr) auto', gap: 10, alignItems: 'center', paddingTop: 10, borderTop: '1px solid #edf2f7' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{row.label}</div>
+                                                <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.55, wordBreak: 'break-word' }}>{row.value}</div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => jumpToBookingField(section.step, row.fieldKey)}
+                                                  style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 800, cursor: 'pointer', padding: 0, justifySelf: isMobileViewport ? 'start' : 'end' }}
+                                                >
+                                                  Edit
+                                                </button>
+                                              </div>
                                             ))}
-                                          </select>
-                                        </label>
-                                      )}
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                        Full name *
-                                        <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={BOOKING_FIELD_STYLE} />
-                                      </label>
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                        Contact number *
-                                        <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={BOOKING_FIELD_STYLE} />
-                                      </label>
-                                      <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                        Email address
-                                        <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or account linking" style={BOOKING_FIELD_STYLE} />
-                                      </label>
+                                          </div>
+                                        </section>
+                                      ))}
                                     </div>
                                     {selectedLocation?.is_open === false && (
                                       <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
@@ -5147,26 +7764,22 @@ export default function StorefrontApp() {
                                       </div>
                                     )}
                                     {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                                    {!customerStepComplete && (
-                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                        Add your full name and contact number before submitting your booking.
-                                      </div>
-                                    )}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                       <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: 46 }}>Back</GhostButton>
                                       <PrimaryButton
                                         onClick={() => {
-                                          if (!scheduleStepComplete) {
-                                            toast.error('Select the preferred date and time slot before submitting your booking.');
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before submitting the booking.` : 'Complete the required booking details before submitting.');
+                                            setServiceBookingStep(1);
                                             return;
                                           }
-                                          if (!requirementsStepComplete) {
-                                            const firstMissingField = bookingPageMissingRequiredIntake[0];
-                                            toast.error(firstMissingField ? `Complete "${firstMissingField.label}" before submitting your booking.` : 'Complete the required service details before submitting your booking.');
-                                            return;
-                                          }
-                                          if (!customerStepComplete) {
-                                            toast.error('Add your full name and contact number before submitting your booking.');
+                                          if (!paymentStepComplete) {
+                                            toast.error('Select a payment timing before submitting the booking.');
+                                            setServiceBookingStep(2);
                                             return;
                                           }
                                           handleCheckout();
@@ -5184,9 +7797,9 @@ export default function StorefrontApp() {
                             <aside style={{ display: 'grid', gap: 16, position: isMobileViewport ? 'static' : 'sticky', top: 100 }}>
                               <div style={{ border: '1px solid #dbe5ee', borderRadius: 28, background: '#fff', padding: 24, boxShadow: '0 22px 56px rgba(15, 23, 42, 0.12)', display: 'grid', gap: 16 }}>
                                 <div>
-                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
                                   <div style={{ marginTop: 6, fontSize: 32, fontWeight: 900, color: STYLES.colors.dark }}>
-                                    {money((Number(activeBookingService?.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
+                                    {money(bookingSummaryAmount)}
                                   </div>
                                 </div>
                                 <div style={{ display: 'grid', gap: 10 }}>
@@ -5200,7 +7813,7 @@ export default function StorefrontApp() {
                                   </div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
                                     <span>Units</span>
-                                    <strong>{Math.max(1, Number(serviceDraftQuantity || 1))}</strong>
+                                    <strong>{bookingSummaryQuantity}</strong>
                                   </div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
                                     <span>Payment</span>
@@ -5208,7 +7821,7 @@ export default function StorefrontApp() {
                                   </div>
                                 </div>
                                 <div style={{ display: 'grid', gap: 8, paddingTop: 4 }}>
-                                  {[{ label: 'Schedule selected', done: scheduleStepComplete }, { label: 'Service details completed', done: requirementsStepComplete }, { label: 'Customer info ready', done: customerStepComplete }].map((item) => (
+                                  {[{ label: 'Customer and service info ready', done: stepOneComplete }, { label: 'Payment choice selected', done: paymentStepComplete }, { label: 'Ready for final review', done: reviewStepReady }].map((item) => (
                                     <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: item.done ? '#15803d' : '#64748b' }}>
                                       <span style={{ width: 18, height: 18, borderRadius: 999, background: item.done ? '#16a34a' : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 900 }}>
                                         {item.done ? 'OK' : '-'}
@@ -5273,7 +7886,7 @@ export default function StorefrontApp() {
                               alignItems: 'center',
                               gap: 10,
                               border: '1px solid #e5e7eb',
-                              borderRadius: 999,
+                              borderRadius: controlRadius,
                               background: '#f8fafc',
                               padding: '0 12px 0 14px',
                               minHeight: 44,
@@ -5310,37 +7923,60 @@ export default function StorefrontApp() {
                               flexShrink: 0
                             }}
                           >
-                            <select
-                              value={serviceSortOption}
-                              onChange={(event) => setServiceSortOption(event.target.value)}
-                              style={{
+                            <StorefrontDropdown
+                              value={resolvedTab}
+                              onChange={setActiveServiceTab}
+                              options={serviceCategoryOptions.map((option) => ({
+                                value: option.key,
+                                label: `${option.label} (${option.count})`,
+                                icon: option.icon
+                              }))}
+                              triggerStyle={{
                                 minHeight: 44,
-                                borderRadius: 12,
-                                border: '1px solid #e5e7eb',
-                                background: '#ffffff',
-                                padding: '0 12px',
-                                fontSize: 14,
-                                color: STYLES.colors.dark,
-                                outline: 'none',
-                                width: isMobileViewport ? '100%' : 252,
+                                borderRadius: controlRadius,
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0,
+                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
+                              }}
+                              containerStyle={{
+                                width: isMobileViewport ? '100%' : 240,
                                 flexShrink: 0
                               }}
-                            >
-                              <option value="recommended">Recommended</option>
-                              <option value="price_asc">Price: Low to High</option>
-                              <option value="price_desc">Price: High to Low</option>
-                            </select>
+                              menuStyle={{ borderRadius: 20 }}
+                            />
+
+                            <StorefrontDropdown
+                              value={serviceSortOption}
+                              onChange={setServiceSortOption}
+                              options={[
+                                { value: 'recommended', label: 'Recommended' },
+                                { value: 'price_asc', label: 'Price: Low to High' },
+                                { value: 'price_desc', label: 'Price: High to Low' }
+                              ]}
+                              triggerStyle={{
+                                minHeight: 44,
+                                borderRadius: controlRadius,
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0,
+                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
+                              }}
+                              containerStyle={{
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0
+                              }}
+                              menuStyle={{ borderRadius: 20 }}
+                            />
 
                             <button
                               type="button"
                               onClick={() => setIsServiceFilterOpen((prev) => !prev)}
                               style={{
                                 minHeight: 44,
-                                borderRadius: 12,
-                                border: '1px solid #ff8a00',
-                                background: isServiceFilterOpen || hasActiveFilters ? '#ea580c' : '#ff8a00',
+                                borderRadius: controlRadius,
+                                border: `1px solid ${servicesPrimary}`,
+                                background: isServiceFilterOpen || hasActiveFilters ? servicesPrimaryDark : servicesPrimary,
                                 color: '#ffffff',
-                                padding: '0 16px',
+                                padding: '0 18px',
                                 fontSize: 14,
                                 fontWeight: 700,
                                 cursor: 'pointer',
@@ -5353,8 +7989,8 @@ export default function StorefrontApp() {
                                 flexShrink: 0,
                                 boxShadow:
                                   isServiceFilterOpen || hasActiveFilters
-                                    ? '0 10px 24px rgba(234,88,12,0.28)'
-                                    : '0 8px 20px rgba(255,138,0,0.22)'
+                                    ? `0 10px 24px ${servicesPrimaryShadowStrong}`
+                                    : `0 8px 20px ${servicesPrimaryShadow}`
                               }}
                             >
                               <SlidersHorizontal size={16} />
@@ -5367,52 +8003,11 @@ export default function StorefrontApp() {
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
+                            justifyContent: 'flex-end',
                             gap: 12,
                             flexWrap: 'wrap'
                           }}
                         >
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: 10,
-                              overflowX: 'auto',
-                              paddingBottom: 4,
-                              scrollbarWidth: 'none',
-                              flex: '1 1 420px'
-                            }}
-                          >
-                            {(isMultiGroup || isDirectoryLayout || isBookingHeavyLayout
-                              ? servicesViewModel.serviceGroups
-                              : []
-                            ).map((group) => {
-                              const isActive = resolvedTab === group.categoryKey;
-                              return (
-                                <button
-                                  key={group.categoryKey}
-                                  type="button"
-                                  onClick={() => setActiveServiceTab(group.categoryKey)}
-                                  style={{
-                                    padding: '10px 18px',
-                                    borderRadius: 999,
-                                    border: `1px solid ${isActive ? '#ff8a00' : '#e5e7eb'}`,
-                                    background: isActive ? '#ff8a00' : '#ffffff',
-                                    color: isActive ? '#ffffff' : STYLES.colors.dark,
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    flexShrink: 0
-                                  }}
-                                >
-                                  <span>{group.categoryMeta?.label || group.categoryKey}</span>
-                                  <span style={{ opacity: isActive ? 0.9 : 0.65 }}>({group.items.length})</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-
                           <div
                             style={{
                               display: 'flex',
@@ -5442,7 +8037,7 @@ export default function StorefrontApp() {
                                 style={{
                                   border: 'none',
                                   background: 'transparent',
-                                  color: '#ea580c',
+                                  color: servicesPrimary,
                                   fontSize: 13,
                                   fontWeight: 700,
                                   padding: 0,
@@ -5518,40 +8113,46 @@ export default function StorefrontApp() {
                               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Availability
-                                  <select
+                                  <StorefrontDropdown
                                     value={serviceAvailabilityFilter}
-                                    onChange={(event) => setServiceAvailabilityFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
-                                    <option value="all">All services</option>
-                                    <option value="available">Available now</option>
-                                    <option value="unavailable">Unavailable</option>
-                                  </select>
+                                    onChange={setServiceAvailabilityFilter}
+                                    options={[
+                                      { value: 'all', label: 'All services' },
+                                      { value: 'available', label: 'Available now' },
+                                      { value: 'unavailable', label: 'Unavailable' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
                                 </label>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Service area
-                                  <select
+                                  <StorefrontDropdown
                                     value={serviceAreaFilter}
-                                    onChange={(event) => setServiceAreaFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
-                                    <option value="all">All areas</option>
-                                    <option value="in_store">In-store</option>
-                                    <option value="customer_location">Home / on-site</option>
-                                  </select>
+                                    onChange={setServiceAreaFilter}
+                                    options={[
+                                      { value: 'all', label: 'All areas' },
+                                      { value: 'in_store', label: 'In-store' },
+                                      { value: 'customer_location', label: 'Home / on-site' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
                                 </label>
                                 <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                   Duration
-                                  <select
+                                  <StorefrontDropdown
                                     value={serviceDurationFilter}
-                                    onChange={(event) => setServiceDurationFilter(event.target.value)}
-                                    style={{ minHeight: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', padding: '0 12px', fontSize: 14, color: STYLES.colors.dark, outline: 'none' }}
-                                  >
-                                    <option value="all">Any duration</option>
-                                    <option value="short">Short under 1 hr</option>
-                                    <option value="standard">Standard 1-2 hrs</option>
-                                    <option value="extended">Extended 2+ hrs</option>
-                                  </select>
+                                    onChange={setServiceDurationFilter}
+                                    options={[
+                                      { value: 'all', label: 'Any duration' },
+                                      { value: 'short', label: 'Short under 1 hr' },
+                                      { value: 'standard', label: 'Standard 1-2 hrs' },
+                                      { value: 'extended', label: 'Extended 2+ hrs' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
                                 </label>
                               </div>
 
@@ -5578,6 +8179,7 @@ export default function StorefrontApp() {
                           {paginatedServices.map((item) => {
                             const imageUrl = withAssetOrigin(item.image_url);
                             const available = isItemAvailable(item);
+                            const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
                             return (
                               <div
                                 key={item.item_id}
@@ -5620,8 +8222,9 @@ export default function StorefrontApp() {
                                 </div>
                                 <div style={{ padding: 16, display: 'grid', gap: 10, flex: 1 }}>
                                   <div>
-                                    <div style={{ fontSize: 11, fontWeight: 800, color: STYLES.colors.brand, textTransform: 'uppercase', marginBottom: 4 }}>
-                                      {item.categoryMeta?.label || 'Service'}
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
+                                      <ServiceCategoryIcon size={13} />
+                                      <span>{item.categoryMeta?.label || 'Service'}</span>
                                     </div>
                                     <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, lineHeight: 1.25, color: STYLES.colors.dark }}>
                                       {item.variantName || item.name}
@@ -5651,13 +8254,13 @@ export default function StorefrontApp() {
                                   </div>
                                   <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
                                     <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Starting at</div>
-                                    <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.teal }}>{money(item.default_sale_price ?? 0)}</div>
+                                    <div style={{ fontSize: 18, fontWeight: 900, color: servicesPrimaryDark }}>{money(item.default_sale_price ?? 0)}</div>
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 8 }}>
                                       <GhostButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); openServiceDetail(item); }}>
                                         View Details
                                       </GhostButton>
-                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); beginServiceBooking(item); }} disabled={!available}>
-                                        Order Now
+                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item); }} disabled={!available}>
+                                        Add to Cart
                                       </PrimaryButton>
                                     </div>
                                   </div>
@@ -5691,17 +8294,15 @@ export default function StorefrontApp() {
                               </div>
                               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                                 Per page
-                                <select
+                                <StorefrontDropdown
                                   value={servicePageSize}
-                                  onChange={(event) => setServicePageSize(Number(event.target.value) || 8)}
-                                  style={{ minHeight: 36, borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', padding: '0 10px', fontSize: 13, color: STYLES.colors.dark, outline: 'none' }}
-                                >
-                                  {[4, 8, 12, 16].map((size) => (
-                                    <option key={`service-page-size-bottom-${size}`} value={size}>
-                                      {size}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onChange={(nextValue) => setServicePageSize(Number(nextValue) || 8)}
+                                  options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
+                                  triggerStyle={{ minHeight: 36, borderRadius: 14, minWidth: 88, padding: '8px 42px 8px 12px' }}
+                                  containerStyle={{ minWidth: 88 }}
+                                  menuStyle={{ borderRadius: 16 }}
+                                  selectedLabelStyle={{ fontSize: 13 }}
+                                />
                               </label>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -5723,8 +8324,8 @@ export default function StorefrontApp() {
                                       minWidth: 38,
                                       minHeight: 38,
                                       borderRadius: 10,
-                                      border: `1px solid ${pageNumber === resolvedServicePage ? '#f97316' : '#e5e7eb'}`,
-                                      background: pageNumber === resolvedServicePage ? '#f97316' : '#fff',
+                                      border: `1px solid ${pageNumber === resolvedServicePage ? servicesPrimary : '#e5e7eb'}`,
+                                      background: pageNumber === resolvedServicePage ? servicesPrimary : '#fff',
                                       color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
                                       fontWeight: 800,
                                       cursor: 'pointer'
@@ -5753,9 +8354,9 @@ export default function StorefrontApp() {
                           width: '100vw',
                           marginTop: isMobileViewport ? 20 : 28,
                           padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
-                          background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
-                          borderTop: '1px solid #fed7aa',
-                          borderBottom: '1px solid #ffedd5',
+                          background: 'linear-gradient(180deg, #f4fffd 0%, #ffffff 100%)',
+                          borderTop: `1px solid ${servicesPrimaryBorder}`,
+                          borderBottom: '1px solid #d8f3ef',
                           display: 'grid',
                           gap: 14
                         }}
@@ -5772,7 +8373,7 @@ export default function StorefrontApp() {
                           }}
                         >
                           <div style={{ display: 'grid', gap: 4 }}>
-                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>
                               Current Promos
                             </h2>
                             <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
@@ -5793,9 +8394,9 @@ export default function StorefrontApp() {
                                 style={{
                                   position: 'relative',
                                   borderRadius: 26,
-                                  border: '1px solid #fed7aa',
-                                  background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
-                                  boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                                  border: `1px solid ${servicesPrimaryBorder}`,
+                                  background: 'linear-gradient(135deg, #ffffff 0%, #f5fffd 58%, #ecfeff 100%)',
+                                  boxShadow: '0 14px 28px rgba(15, 118, 110, 0.10)',
                                   padding: isMobileViewport ? '18px 16px' : '18px 20px',
                                   display: 'grid',
                                   gap: 14,
@@ -5807,14 +8408,14 @@ export default function StorefrontApp() {
                                 onMouseEnter={(event) => {
                                   if (isMobileViewport) return;
                                   event.currentTarget.style.transform = 'translateY(-4px)';
-                                  event.currentTarget.style.boxShadow = '0 22px 36px rgba(249, 115, 22, 0.16)';
-                                  event.currentTarget.style.borderColor = '#fb923c';
+                                  event.currentTarget.style.boxShadow = '0 22px 36px rgba(15, 118, 110, 0.16)';
+                                  event.currentTarget.style.borderColor = servicesPrimary;
                                 }}
                                 onMouseLeave={(event) => {
                                   if (isMobileViewport) return;
                                   event.currentTarget.style.transform = 'translateY(0)';
-                                  event.currentTarget.style.boxShadow = '0 14px 28px rgba(249, 115, 22, 0.10)';
-                                  event.currentTarget.style.borderColor = '#fed7aa';
+                                  event.currentTarget.style.boxShadow = '0 14px 28px rgba(15, 118, 110, 0.10)';
+                                  event.currentTarget.style.borderColor = servicesPrimaryBorder;
                                 }}
                               >
                                 <div
@@ -5822,8 +8423,8 @@ export default function StorefrontApp() {
                                     position: 'absolute',
                                     inset: '0 auto 0 0',
                                     width: 4,
-                                    background: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)',
-                                    boxShadow: '0 0 22px rgba(249, 115, 22, 0.25)'
+                                    background: `linear-gradient(180deg, ${servicesPrimary} 0%, ${servicesPrimaryDark} 100%)`,
+                                    boxShadow: '0 0 22px rgba(15, 118, 110, 0.22)'
                                   }}
                                 />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -5832,9 +8433,9 @@ export default function StorefrontApp() {
                                       width: 34,
                                       height: 34,
                                       borderRadius: 999,
-                                      border: '1px solid #fdba74',
-                                      background: '#fff7ed',
-                                      color: '#f97316',
+                                      border: `1px solid ${servicesPrimaryBorder}`,
+                                      background: servicesPrimarySoft,
+                                      color: servicesPrimary,
                                       display: 'grid',
                                       placeItems: 'center',
                                       flexShrink: 0
@@ -5861,10 +8462,10 @@ export default function StorefrontApp() {
                                       alignContent: 'center',
                                       justifyItems: isMobileViewport ? 'start' : 'start',
                                       paddingRight: isMobileViewport ? 0 : 14,
-                                      borderRight: isMobileViewport ? 'none' : '1px solid #d4d4d8'
+                                      borderRight: isMobileViewport ? 'none' : '1px solid #d8f3ef'
                                     }}
                                   >
-                                    <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: '#f97316', letterSpacing: '-0.04em' }}>
+                                    <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: servicesPrimary, letterSpacing: '-0.04em' }}>
                                       {promoEntry.headline || promoEntry.badge || 'Promo'}
                                     </div>
                                   </div>
@@ -5930,39 +8531,51 @@ export default function StorefrontApp() {
                               Customer Reviews
                             </h2>
                             <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>
-                              See what customers say about this storefront.
+                              See what customers say about this storefront
                             </p>
                           </div>
-                          {hasReviewSummary && (
-                            <div
+                          <div style={{ display: 'grid', gap: 10, justifyItems: isMobileViewport ? 'stretch' : 'end', width: isMobileViewport ? '100%' : 'auto' }}>
+                            <PrimaryButton
+                              onClick={() => setIsReviewModalOpen(true)}
                               style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 14,
-                                padding: '14px 16px',
-                                border: '1px solid #dbe5ee',
-                                borderRadius: 16,
-                                background: '#fcfdff',
-                                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
+                                minHeight: 46,
+                                minWidth: isMobileViewport ? '100%' : 168,
+                                justifyContent: 'center'
                               }}
                             >
-                              <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
-                                {reviewScore.toFixed(1)}
-                              </div>
-                              <div style={{ display: 'grid', gap: 4 }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
-                                  {Array.from({ length: 5 }, (_, index) => (
-                                    <span key={`review-summary-star-${index}`} style={{ opacity: index < Math.round(reviewScore) ? 1 : 0.25 }}>
-                                      *
-                                    </span>
-                                  ))}
+                              Write a Review
+                            </PrimaryButton>
+                            {hasReviewSummary && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 12,
+                                  padding: '10px 14px',
+                                  border: '1px solid #dbe5ee',
+                                  borderRadius: 16,
+                                  background: '#fcfdff',
+                                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
+                                }}
+                              >
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
+                                  {reviewScore.toFixed(1)}
                                 </div>
-                                <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
-                                  from {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                                    {Array.from({ length: 5 }, (_, index) => (
+                                      <span key={`review-summary-star-${index}`} style={{ opacity: index < Math.round(reviewScore) ? 1 : 0.25 }}>
+                                        *
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
+                                    from {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
 
                         {reviewHighlights.length > 0 ? (
@@ -6022,6 +8635,159 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
+                    {isReviewModalOpen && (
+                      <div
+                        style={{
+                          position: 'fixed',
+                          inset: 0,
+                          zIndex: 2300,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: isMobileViewport ? 16 : 24
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(15,23,42,0.52)',
+                            backdropFilter: 'blur(5px)'
+                          }}
+                        />
+                        <section
+                          style={{
+                            position: 'relative',
+                            zIndex: 1,
+                            width: '100%',
+                            maxWidth: 640,
+                            maxHeight: 'min(90vh, 760px)',
+                            overflowY: 'auto',
+                            borderRadius: 28,
+                            border: '1px solid #dbe5ee',
+                            background: '#ffffff',
+                            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+                            padding: isMobileViewport ? 20 : 28,
+                            display: 'grid',
+                            gap: 20
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                Customer Review
+                              </div>
+                              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
+                                Share your experience
+                              </div>
+                              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsReviewModalOpen(false)}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 999,
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                color: '#0f172a',
+                                cursor: 'pointer',
+                                display: 'grid',
+                                placeItems: 'center',
+                                flexShrink: 0
+                              }}
+                              aria-label="Close review modal"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'grid', gap: 16 }}>
+                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+                              Your name
+                              <input
+                                value={reviewDraft.name}
+                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                                placeholder="How should we identify your review?"
+                                style={BOOKING_FIELD_STYLE}
+                              />
+                            </label>
+
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={reviewDraft.anonymous}
+                                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                                />
+                                Post this review anonymously
+                              </label>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                {Array.from({ length: 5 }, (_, index) => {
+                                  const starValue = index + 1;
+                                  const selected = reviewDraft.rating >= starValue;
+                                  return (
+                                    <button
+                                      key={`review-rating-${starValue}`}
+                                      type="button"
+                                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                                      style={{
+                                        width: 46,
+                                        height: 46,
+                                        borderRadius: 14,
+                                        border: `1px solid ${selected ? '#f59e0b' : '#dbe5ee'}`,
+                                        background: selected ? '#fff7ed' : '#ffffff',
+                                        color: selected ? '#f59e0b' : '#94a3b8',
+                                        cursor: 'pointer',
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        boxShadow: selected ? '0 10px 20px rgba(245,158,11,0.16)' : 'none'
+                                      }}
+                                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                                    >
+                                      <Star size={18} fill={selected ? '#f59e0b' : 'none'} color={selected ? '#f59e0b' : '#94a3b8'} />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+                              Your review
+                              <textarea
+                                value={reviewDraft.message}
+                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                                placeholder="Tell customers what stood out about the service, response time, or booking experience."
+                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+                              />
+                            </label>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+                            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+                              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+                            </div>
+                            <PrimaryButton
+                              onClick={handleReviewDraftSubmit}
+                              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+                            >
+                              Send Review
+                            </PrimaryButton>
+                          </div>
+                        </section>
+                      </div>
+                    )}
+
                     <footer
                       style={{
                         marginLeft: 'calc(50% - 50vw)',
@@ -6065,7 +8831,7 @@ export default function StorefrontApp() {
                                       href={link.href}
                                       target={String(link.href).startsWith('http') ? '_blank' : undefined}
                                       rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
-                                      style={{
+                                    style={{
                                         width: 42,
                                         height: 42,
                                         borderRadius: 12,
@@ -6080,7 +8846,7 @@ export default function StorefrontApp() {
                                       }}
                                       title={link.label}
                                     >
-                                      {link.label.charAt(0)}
+                                      <FooterSocialIcon label={link.label} />
                                     </a>
                                   ))}
                               </div>
@@ -6153,8 +8919,10 @@ export default function StorefrontApp() {
                             gap: 10
                           }}
                         >
-                          <div style={{ fontSize: 13, color: '#64748b' }}>{serviceHeroModel.name} storefront</div>
-                          <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor content</div>
+                          <div style={{ fontSize: 13, color: '#64748b' }}>
+                            {serviceHeroModel.name}{serviceHeroModel.registrationYear ? ` ${serviceHeroModel.registrationYear}` : ''}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
                         </div>
                       </div>
                     </footer>
@@ -6183,15 +8951,336 @@ return (
   }}>
     <div style={{ display: 'grid', gap: 24 }}>
       <section id="storefront-catalog-section" style={{
-        background: '#fff', border: `1px solid ${STYLES.colors.border}`,
-        borderRadius: STYLES.radius.card, padding: isMobileViewport ? 16 : 32,
-        boxShadow: STYLES.shadow.sm
+        display: 'grid',
+        gap: isFnbMode ? (isMobileViewport ? 18 : 24) : undefined,
+        marginTop: isFnbMode ? (isMobileViewport ? 20 : 34) : undefined,
+        background: '#fff',
+        border: isFnbMode ? 'none' : `1px solid ${STYLES.colors.border}`,
+        borderRadius: isFnbMode ? 0 : STYLES.radius.card,
+        padding: isFnbMode ? (isMobileViewport ? '24px 0 56px' : '34px 0 64px') : (isMobileViewport ? 16 : 32),
+        boxShadow: isFnbMode ? 'none' : STYLES.shadow.sm,
+        marginLeft: isFnbMode ? 'calc(50% - 50vw)' : undefined,
+        width: isFnbMode ? '100vw' : undefined
       }}>
+        {isFnbMode && (
+          <>
+            <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px', display: 'grid', gap: isMobileViewport ? 18 : 22 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: isMobileViewport ? 'flex-start' : 'flex-end',
+                justifyContent: 'space-between',
+                gap: 14,
+                flexDirection: isMobileViewport ? 'column' : 'row'
+              }}>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accentDark || '#6f3415', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
+                    Curated Menu
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 26 : 36, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
+                  <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720 }}>{modeAdapter.catalogSubtitle}</p>
+                </div>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  background: modeAdapter.heroTheme?.surfaceInset || '#fff3e8',
+                  border: `1px solid ${modeAdapter.heroTheme?.borderSoft || '#edd4bc'}`,
+                  color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark,
+                  fontSize: 13,
+                  fontWeight: 800
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
+                  {filteredFnbViewModel.totalItems || 0} menu item{Number(filteredFnbViewModel.totalItems || 0) === 1 ? '' : 's'} available
+                </div>
+              </div>
+
+              {(() => {
+                const fnbTheme = modeAdapter.heroTheme || {};
+                const toolbarAccent = fnbTheme.accent || '#c96a2b';
+                const toolbarAccentDark = fnbTheme.accentDark || '#6f3415';
+                const toolbarAccentSoft = fnbTheme.accentSoft || '#fff0e2';
+                const toolbarSurface = '#ffffff';
+                const toolbarSurfaceInset = fnbTheme.surfaceInset || '#fff3e8';
+                const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
+                const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
+                const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
+                const categoryOptions = [
+                  {
+                    key: '',
+                    label: 'All',
+                    count: filteredFnbViewModel.menuItems.length,
+                    iconToken: 'menu',
+                    glyph: 'A',
+                    accent: toolbarAccent,
+                    accentSoft: toolbarAccentSoft
+                  },
+                  ...fnbSections.map((section) => ({
+                    key: section.sectionKey,
+                    label: section.sectionLabel,
+                    count: section.items.length,
+                    iconToken: section.visualMeta?.iconToken || 'menu',
+                    glyph: section.visualMeta?.glyph || String(section.sectionLabel || '').charAt(0).toUpperCase(),
+                    accent: section.visualMeta?.accent || '#475569',
+                    accentSoft: section.visualMeta?.accentSoft || '#f1f5f9'
+                  }))
+                ];
+                const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
+                const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
+                const controlHeight = isMobileViewport ? 54 : 56;
+                const controlRadius = 999;
+
+                return (
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: isMobileViewport ? 'column' : 'row',
+                      alignItems: isMobileViewport ? 'stretch' : 'center',
+                      gap: 12,
+                      flexWrap: 'wrap'
+                    }}>
+                      <label style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        border: `1px solid ${toolbarBorder}`,
+                        borderRadius: controlRadius,
+                        background: '#fff',
+                        padding: '0 18px 0 42px',
+                        minHeight: controlHeight,
+                        flex: '1 1 320px',
+                        minWidth: 0,
+                        boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
+                      }}>
+                        <span style={{
+                          width: 2,
+                          position: 'absolute',
+                          left: 28,
+                          top: 12,
+                          bottom: 12,
+                          borderRadius: 999,
+                          background: toolbarAccent,
+                          opacity: 0.65,
+                          pointerEvents: 'none'
+                        }} />
+                        <input
+                          value={catalogSearch}
+                          onChange={(event) => setCatalogSearch(event.target.value)}
+                          placeholder={modeAdapter.catalogSearchPlaceholder}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: toolbarTextPrimary }}
+                        />
+                        <span style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 999,
+                          background: toolbarAccent,
+                          color: '#fff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 10px 20px rgba(201,106,43,0.24)',
+                          flexShrink: 0
+                        }}>
+                          <Search size={20} />
+                        </span>
+                      </label>
+
+                      <StorefrontDropdown
+                        value={fnbSortOption}
+                        onChange={(nextValue) => setFnbSortOption(String(nextValue))}
+                        options={[
+                          { value: 'name_asc', label: 'All Prices' },
+                          { value: 'price_asc', label: 'Price: Low to High' },
+                          { value: 'price_desc', label: 'Price: High to Low' }
+                        ]}
+                        leading={(
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}>
+                            <SlidersHorizontal size={18} />
+                            <span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: 'rgba(201,106,43,0.18)' }} />
+                          </span>
+                        )}
+                        containerStyle={{
+                          minWidth: isMobileViewport ? '100%' : 240,
+                          flex: isMobileViewport ? '1 1 100%' : '0 0 240px'
+                        }}
+                        triggerStyle={{
+                          minHeight: controlHeight,
+                          borderRadius: controlRadius,
+                          border: `1px solid ${toolbarBorder}`,
+                          background: '#fff',
+                          boxShadow: '0 14px 28px rgba(73,38,20,0.06)',
+                          padding: '0 44px 0 16px'
+                        }}
+                        selectedLabelStyle={{ color: toolbarTextPrimary, fontSize: 14, fontWeight: 700 }}
+                      />
+
+                      <div
+                        ref={fnbCategoryDropdownRef}
+                        style={{ position: 'relative', width: isMobileViewport ? '100%' : 290, flex: isMobileViewport ? '1 1 100%' : '0 0 290px' }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setIsFnbCategoryDropdownOpen((previous) => !previous)}
+                          style={{
+                            position: 'relative',
+                            width: '100%',
+                            minHeight: controlHeight,
+                            borderRadius: controlRadius,
+                            border: `1px solid ${toolbarBorder}`,
+                            background: '#fff',
+                            padding: '0 18px 0 20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            cursor: 'pointer',
+                            boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
+                          }}
+                        >
+                          <span style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 14,
+                            background: activeCategoryOption.accentSoft,
+                            color: activeCategoryOption.accent,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative',
+                            flexShrink: 0
+                          }}>
+                            {React.createElement(ActiveCategoryIcon, { size: 18 })}
+                            <span style={{
+                              position: 'absolute',
+                              right: -4,
+                              bottom: -4,
+                              width: 18,
+                              height: 18,
+                              borderRadius: 999,
+                              background: '#fff',
+                              border: `1px solid ${toolbarBorder}`,
+                              color: toolbarTextPrimary,
+                              fontSize: 10,
+                              fontWeight: 900,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {String(activeCategoryOption.glyph || 'A').slice(0, 1)}
+                            </span>
+                          </span>
+                        <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: toolbarAccentDark, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1 }}>Category</span>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: toolbarTextPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>
+                              {activeCategoryOption.label}
+                            </span>
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: toolbarTextMuted }}>{activeCategoryOption.count}</span>
+                          <ChevronDown size={18} color={toolbarTextMuted} />
+                        </button>
+
+                        {isFnbCategoryDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 10px)',
+                            left: 0,
+                            right: 0,
+                            zIndex: 40,
+                            padding: 10,
+                            borderRadius: 18,
+                            border: `1px solid ${toolbarBorder}`,
+                            background: toolbarSurface,
+                            boxShadow: '0 22px 48px rgba(15,23,42,0.14)',
+                            display: 'grid',
+                            gap: 8,
+                            maxHeight: 360,
+                            overflowY: 'auto'
+                          }}>
+                            {categoryOptions.map((option) => {
+                              const isActive = option.key === (resolvedFnbSection || '');
+                              const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
+                              return (
+                                <button
+                                  key={`fnb-category-dropdown-${option.key || 'all'}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveServiceTab(option.key);
+                                    setIsFnbCategoryDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    borderRadius: 16,
+                                    border: isActive ? '1px solid transparent' : `1px solid ${toolbarBorder}`,
+                                    background: isActive ? toolbarAccent : toolbarSurface,
+                                    color: isActive ? '#fff' : toolbarTextPrimary,
+                                    padding: '10px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 12,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <span style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 14,
+                                    background: isActive ? 'rgba(255,255,255,0.16)' : option.accentSoft,
+                                    color: isActive ? '#fff' : option.accent,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    position: 'relative',
+                                    flexShrink: 0
+                                  }}>
+                                    {React.createElement(OptionIcon, { size: 18 })}
+                                    <span style={{
+                                      position: 'absolute',
+                                      right: -4,
+                                      bottom: -4,
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: 999,
+                                      background: '#fff',
+                                      border: `1px solid ${isActive ? 'rgba(255,255,255,0.3)' : toolbarBorder}`,
+                                      color: toolbarTextPrimary,
+                                      fontSize: 10,
+                                      fontWeight: 900,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      {String(option.glyph || 'A').slice(0, 1)}
+                                    </span>
+                                  </span>
+                                  <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
+                                    <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15 }}>{option.label}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 700, opacity: isActive ? 0.82 : 0.6 }}>
+                                      {option.count} item{option.count === 1 ? '' : 's'}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </>
+        )}
+
         {/* Section header */}
-        <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
-          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
-          <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
-        </div>
+        {(!isFnbMode || isMultiGroup) && (
+          <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
+            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
+            <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
+          </div>
+        )}
 
         {/* Service Family Tabs (only shown when multiple groups exist) */}
         {isMultiGroup && (
@@ -6204,6 +9293,7 @@ return (
               {servicesViewModel.serviceGroups.map(group => {
                 const isActive = resolvedTab === group.categoryKey;
                 const meta = group.categoryMeta;
+                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[meta?.iconToken] || Sparkles;
                 return (
                   <button
                     key={group.categoryKey}
@@ -6224,7 +9314,9 @@ return (
                       boxShadow: isActive ? `0 4px 16px ${meta.accent}22` : 'none'
                     }}
                   >
-                    <span style={{ fontSize: 18, lineHeight: 1 }}>{meta.icon || meta.label.charAt(0)}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      <GroupIcon size={18} />
+                    </span>
                     <span>{meta.label}</span>
                     <span style={{
                       marginLeft: 4, padding: '2px 8px', borderRadius: 99,
@@ -6247,7 +9339,9 @@ return (
                 background: activeGroupMeta.accentBg || '#f0fdfa',
                 display: 'flex', alignItems: 'center', gap: 14
               }}>
-                <span style={{ fontSize: 28 }}>{activeGroupMeta.icon || activeGroupMeta.label.charAt(0)}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: activeGroupMeta.accent }}>
+                  <ActiveServiceGroupIcon size={26} />
+                </span>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 15, color: activeGroupMeta.accent }}>{activeGroupMeta.label}</div>
                   <div style={{ fontSize: 13, color: STYLES.colors.text, marginTop: 2 }}>{activeGroupMeta.description}</div>
@@ -6263,53 +9357,803 @@ return (
 
         {/* Catalog items grid */}
         {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
-            {itemsToRender.map((item) => {
-              const imageUrl = withAssetOrigin(item.image_url);
-              const available = isItemAvailable(item);
-              return (
-                <div key={item.item_id} style={{
-                  background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
-                  overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
-                  boxShadow: STYLES.shadow.sm, cursor: 'pointer'
-                }} onClick={() => openServiceDetail(item)}>
-                  <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
-                    {imageUrl ? (
-                      <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
-                    )}
-                    <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                      <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
-                    </div>
-                  </div>
-                  <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: STYLES.colors.brand, textTransform: 'uppercase', marginBottom: 4 }}>{item.categoryMeta?.label || 'General'}</div>
-                      <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {item.description || 'Expert service selection.'}
-                    </p>
-                    <div style={{ marginTop: 'auto' }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.teal, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
-                        <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
+          <div style={isFnbMode ? {
+            maxWidth: 1320,
+            margin: `${isMobileViewport ? 18 : 24}px auto 0`,
+            width: '100%',
+            padding: isMobileViewport ? '0 16px' : '0 24px'
+          } : undefined}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
+              {catalogItemsToRender.map((item) => {
+                const imageUrl = withAssetOrigin(item.image_url);
+                const available = isItemAvailable(item);
+                const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
+                return (
+                  isFnbMode ? (
+                    <FnbProductCard
+                      key={item.item_id}
+                      item={item}
+                      imageUrl={imageUrl}
+                      available={available}
+                      modeAdapter={modeAdapter}
+                      addToCart={addToCart}
+                      isMobileViewport={isMobileViewport}
+                    />
+                  ) : isSimpleMode ? (
+                    <SimpleProductCard
+                      key={item.item_id}
+                      item={item}
+                      imageUrl={imageUrl}
+                      available={available}
+                      modeAdapter={modeAdapter}
+                      addToCart={addToCart}
+                    />
+                  ) : (
+                    <div key={item.item_id} style={{
+                      background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
+                      overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
+                      boxShadow: STYLES.shadow.sm, cursor: 'pointer'
+                    }} onClick={() => openServiceDetail(item)}>
+                      <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
+                        {imageUrl ? (
+                          <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
+                        )}
+                        <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                          <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
+                        </div>
+                      </div>
+                      <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
+                            <ServiceCategoryIcon size={13} />
+                            <span>{item.categoryMeta?.label || 'General'}</span>
+                          </div>
+                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {item.description || 'Expert service selection.'}
+                        </p>
+                        <div style={{ marginTop: 'auto' }}>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: servicesPrimaryDark, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
+                            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )
+                );
+              })}
+              {catalogItemsToRender.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: STYLES.colors.muted }}>
+                  {isFnbMode
+                    ? 'No menu items match the current search or section yet.'
+                    : (isSimpleMode ? 'No simple-mode products match the current search yet.' : 'No products available in this category yet.')}
                 </div>
-              );
-            })}
-            {isServicesMode && itemsToRender.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: STYLES.colors.muted }}>
-                No services available in this category yet.
+              )}
+            </div>
+
+            {isFnbMode && itemsToRender.length > 0 && totalFnbPages > 1 && (
+              <div style={{
+                marginTop: isMobileViewport ? 24 : 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isMobileViewport ? 'center' : 'space-between',
+                gap: 14,
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+                    Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} menu items
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                    Per page
+                    <StorefrontDropdown
+                      value={fnbPageSize}
+                      onChange={(nextValue) => setFnbPageSize(Number(nextValue) || 8)}
+                      options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
+                      containerStyle={{ minWidth: 88 }}
+                      triggerStyle={{ minHeight: 38, borderRadius: 12, minWidth: 88, padding: '8px 42px 8px 12px' }}
+                      menuStyle={{ borderRadius: 14 }}
+                      selectedLabelStyle={{ fontSize: 13 }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <GhostButton
+                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === 1 ? 0.5 : 1 }}
+                    onClick={() => setFnbPage((previous) => Math.max(1, previous - 1))}
+                    disabled={resolvedFnbPage === 1}
+                  >
+                    Previous
+                  </GhostButton>
+                  {Array.from({ length: totalFnbPages }, (_, index) => index + 1)
+                    .slice(Math.max(0, resolvedFnbPage - 3), Math.max(0, resolvedFnbPage - 3) + 5)
+                    .map((pageNumber) => (
+                      <button
+                        key={`fnb-page-${pageNumber}`}
+                        type="button"
+                        onClick={() => setFnbPage(pageNumber)}
+                        style={{
+                          minWidth: 38,
+                          minHeight: 38,
+                          borderRadius: 12,
+                          border: `1px solid ${pageNumber === resolvedFnbPage ? '#f59e0b' : '#e5e7eb'}`,
+                          background: pageNumber === resolvedFnbPage ? '#f59e0b' : '#fff',
+                          color: pageNumber === resolvedFnbPage ? '#fff' : STYLES.colors.dark,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(245,158,11,0.22)' : 'none'
+                        }}
+                      >
+                        {pageNumber}
+                      </button>
+                    ))}
+                  <GhostButton
+                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === totalFnbPages ? 0.5 : 1 }}
+                    onClick={() => setFnbPage((previous) => Math.min(totalFnbPages, previous + 1))}
+                    disabled={resolvedFnbPage === totalFnbPages}
+                  >
+                    Next
+                  </GhostButton>
+                </div>
               </div>
             )}
           </div>
         )}
       </section>
+
+      {isSimpleMode && !isOrderSubpage && simpleStorefrontModel && (
+        <>
+          {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+            <section
+              style={{
+                marginLeft: 'calc(50% - 50vw)',
+                width: '100vw',
+                marginTop: isMobileViewport ? 20 : 28,
+                padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
+                borderTop: '1px solid #fed7aa',
+                borderBottom: '1px solid #ffedd5',
+                display: 'grid',
+                gap: 14
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: 1220,
+                  width: '100%',
+                  margin: '0 auto',
+                  paddingLeft: isMobileViewport ? 16 : 24,
+                  paddingRight: isMobileViewport ? 16 : 24,
+                  display: 'grid',
+                  gap: 14
+                }}
+              >
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Current Promos
+                  </h2>
+                  <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                    Limited-time offers available from this storefront.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                    gap: 18
+                  }}
+                >
+                  {promoSectionModel.map((promoEntry, index) => (
+                    <article
+                      key={`simple-promo-card-${index}`}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 26,
+                        border: '1px solid #fed7aa',
+                        background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
+                        boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                        padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                        display: 'grid',
+                        gap: 14,
+                        overflow: 'hidden',
+                        transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                        animation: 'promoCardFloatIn 420ms ease both',
+                        animationDelay: `${index * 90}ms`
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: '0 auto 0 0',
+                          width: 4,
+                          background: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)',
+                          boxShadow: '0 0 22px rgba(249, 115, 22, 0.25)'
+                        }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 999,
+                            border: '1px solid #fdba74',
+                            background: '#fff7ed',
+                            color: '#f97316',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Sparkles size={17} />
+                        </div>
+                        <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', lineHeight: 1.2 }}>
+                          {promoEntry.title || promoEntry.badge || 'Promo'}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(96px, 124px) minmax(0, 1fr)',
+                          gap: isMobileViewport ? 12 : 14,
+                          alignItems: 'stretch'
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'grid',
+                            alignContent: 'center',
+                            justifyItems: 'start',
+                            paddingRight: isMobileViewport ? 0 : 14,
+                            borderRight: isMobileViewport ? 'none' : '1px solid #d4d4d8'
+                          }}
+                        >
+                          <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: '#f97316', letterSpacing: '-0.04em' }}>
+                            {promoEntry.headline || promoEntry.badge || 'Promo'}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+                          <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.15 }}>
+                            {promoEntry.subtitle || 'Storefront offer'}
+                          </div>
+                          {promoEntry.supportingText && (
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                              {promoEntry.supportingText}
+                            </div>
+                          )}
+                          {promoEntry.validityText && (
+                            <div style={{ fontSize: 13, color: '#6b7280' }}>
+                              {promoEntry.validityText}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section
+            style={{
+              marginTop: 0,
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              padding: isMobileViewport ? '36px 0 30px' : '72px 0 42px',
+              background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'grid',
+              gap: 18
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                paddingLeft: isMobileViewport ? 16 : 24,
+                paddingRight: isMobileViewport ? 16 : 24,
+                display: 'grid',
+                gap: 18
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 16
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Customer Reviews
+                  </h2>
+                  <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>
+                    See what customers say about this storefront
+                  </p>
+                </div>
+                <PrimaryButton
+                  onClick={() => setIsReviewModalOpen(true)}
+                  style={{
+                    minHeight: 46,
+                    minWidth: isMobileViewport ? '100%' : 168,
+                    justifyContent: 'center'
+                  }}
+                >
+                  Write a Review
+                </PrimaryButton>
+              </div>
+
+              {simpleStorefrontModel.reviewHighlights.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: 18 }}>
+                  {simpleStorefrontModel.reviewHighlights.map((review, index) => {
+                    const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                    const rating = Number(review?.rating);
+                    const comment = String(review?.comment || '').trim();
+                    return (
+                      <article
+                        key={`simple-customer-review-${index}`}
+                        style={{
+                          background: '#fcfdff',
+                          border: '1px solid #dbe5ee',
+                          borderRadius: 18,
+                          padding: 18,
+                          boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                          display: 'grid',
+                          gap: 12,
+                          alignContent: 'start'
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                          {Number.isFinite(rating) && rating > 0 && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                              {Array.from({ length: 5 }, (_, starIndex) => (
+                                <span key={`simple-review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
+                                  *
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>{comment || 'Review comment will appear here once available in SKUpervisor.'}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#fcfdff',
+                    border: '1px solid #dbe5ee',
+                    borderRadius: 18,
+                    padding: isMobileViewport ? 20 : 24,
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                    fontSize: 14,
+                    color: STYLES.colors.muted
+                  }}
+                >
+                  Customer reviews will appear here once this storefront adds review data in SKUpervisor.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <footer
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              background: '#090b0f',
+              borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                display: 'grid',
+                gap: 28
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: isMobileViewport ? 24 : 36
+                }}
+              >
+                <div style={{ display: 'grid', gap: 18 }}>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>{simpleStorefrontModel.name}</div>
+                    <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
+                      {simpleStorefrontModel.tagline || simpleStorefrontModel.aboutText || 'Simple storefront powered by SKUpervisor content.'}
+                    </div>
+                  </div>
+
+                  {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                        <a
+                          key={`simple-footer-social-${link.label}`}
+                          href={link.href}
+                          target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                          rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                          style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 12,
+                            border: '1px solid rgba(148, 163, 184, 0.18)',
+                            background: 'rgba(15, 23, 42, 0.55)',
+                            color: '#e2e8f0',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            display: 'grid',
+                            placeItems: 'center',
+                            textDecoration: 'none'
+                          }}
+                          title={link.label}
+                        >
+                          <FooterSocialIcon label={link.label} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Products
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {simpleStorefrontModel.productGroups.map((group) => (
+                      <div key={`simple-footer-group-${group}`} style={{ fontSize: 15, color: '#cbd5e1' }}>
+                        {group}
+                      </div>
+                    ))}
+                    {simpleStorefrontModel.productGroups.length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No product categories yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Socials
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                      <a
+                        key={`simple-footer-social-link-${link.label}`}
+                        href={link.href}
+                        target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                        rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                        style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                      >
+                        {link.label}
+                      </a>
+                    ))}
+                    {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No social links yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Contact
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {getStorefrontContactFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                      <a key={`simple-footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                        {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
+                      </a>
+                    ))}
+                    {simpleStorefrontModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{simpleStorefrontModel.hours}</div>}
+                    <div style={{ fontSize: 15, color: '#cbd5e1' }}>{simpleStorefrontModel.locationLabel}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  paddingTop: 18,
+                  borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 10
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  {simpleStorefrontModel.name}{simpleStorefrontModel.registrationYear ? ` ${simpleStorefrontModel.registrationYear}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+
+      {isFnbMode && !isOrderSubpage && fnbCommunityModel && (
+        <>
+          {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+            <section
+              style={{
+                marginLeft: 'calc(50% - 50vw)',
+                width: '100vw',
+                marginTop: isMobileViewport ? 12 : 18,
+                padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
+                borderTop: '1px solid #fed7aa',
+                borderBottom: '1px solid #ffedd5',
+                display: 'grid',
+                gap: 14
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: 1220,
+                  width: '100%',
+                  margin: '0 auto',
+                  paddingLeft: isMobileViewport ? 16 : 24,
+                  paddingRight: isMobileViewport ? 16 : 24,
+                  display: 'grid',
+                  gap: 14
+                }}
+              >
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Current Promos
+                  </h2>
+                  <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                    Limited-time offers available from this storefront.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                    gap: 18
+                  }}
+                >
+                  {promoSectionModel.map((promoEntry, index) => (
+                    <article
+                      key={`fnb-promo-card-${index}`}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 26,
+                        border: '1px solid #fed7aa',
+                        background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
+                        boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                        padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                        display: 'grid',
+                        gap: 14
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 900, color: '#f97316', textTransform: 'uppercase' }}>
+                        {promoEntry.title || promoEntry.badge || 'Promo'}
+                      </div>
+                      <div style={{ fontSize: isMobileViewport ? 34 : 42, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 0.95 }}>
+                        {promoEntry.headline || promoEntry.badge || 'Promo'}
+                      </div>
+                      <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 800, color: '#111827' }}>
+                        {promoEntry.subtitle || 'Storefront offer'}
+                      </div>
+                      {promoEntry.supportingText && (
+                        <div style={{ fontSize: 14, color: '#374151' }}>{promoEntry.supportingText}</div>
+                      )}
+                      {promoEntry.validityText && (
+                        <div style={{ fontSize: 13, color: '#6b7280' }}>{promoEntry.validityText}</div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              padding: isMobileViewport ? '20px 0 24px' : '30px 0 34px',
+              background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'grid',
+              gap: 18
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                paddingLeft: isMobileViewport ? 16 : 24,
+                paddingRight: isMobileViewport ? 16 : 24,
+                display: 'grid',
+                gap: 18
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', flexDirection: isMobileViewport ? 'column' : 'row', gap: 14 }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: STYLES.colors.dark, fontFamily: modeAdapter.heroTheme?.displayFont }}>Customer Reviews</h2>
+                  <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>See what diners are saying about this menu storefront.</p>
+                </div>
+                <PrimaryButton
+                  style={{ minHeight: 44, minWidth: isMobileViewport ? '100%' : 170, justifyContent: 'center' }}
+                  onClick={() => setIsReviewModalOpen(true)}
+                >
+                  Write Review
+                </PrimaryButton>
+              </div>
+
+              {fnbCommunityModel.reviewHighlights.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: 18 }}>
+                  {fnbCommunityModel.reviewHighlights.map((review, index) => {
+                    const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                    const rating = Number(review?.rating);
+                    const comment = String(review?.comment || '').trim();
+                    return (
+                      <article
+                        key={`fnb-customer-review-${index}`}
+                        style={{
+                          borderRadius: 20,
+                          border: '1px solid #dbe5ee',
+                          background: '#ffffff',
+                          boxShadow: '0 14px 28px rgba(15,23,42,0.06)',
+                          padding: isMobileViewport ? 16 : 18,
+                          display: 'grid',
+                          gap: 10
+                        }}
+                      >
+                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                        {Number.isFinite(rating) && rating > 0 && (
+                          <div style={{ color: '#f59e0b', fontSize: 14 }}>
+                            {Array.from({ length: 5 }, (_, starIndex) => (
+                              <span key={`fnb-review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
+                                ★
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 14, lineHeight: 1.6, color: '#334155' }}>
+                          {comment || 'Review comment will appear here once available in SKUpervisor.'}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ borderRadius: 20, border: '1px dashed #cbd5e1', background: '#ffffff', padding: isMobileViewport ? 22 : 30, textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+                  Customer reviews will appear here once this storefront adds review data in SKUpervisor.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <footer
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              background: '#090b0f',
+              borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                display: 'grid',
+                gap: 28
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: isMobileViewport ? 24 : 36
+                }}
+              >
+                <div style={{ display: 'grid', gap: 18 }}>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{fnbCommunityModel.name}</div>
+                    <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
+                      {fnbCommunityModel.tagline || fnbCommunityModel.aboutText || 'Food and beverage storefront powered by SKUpervisor content.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Menu Categories
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.menuCategories.slice(0, 5).map((group) => (
+                      <div key={`fnb-footer-group-${group.key}`} style={{ fontSize: 15, color: '#cbd5e1' }}>
+                        {group.label}
+                      </div>
+                    ))}
+                    {fnbCommunityModel.menuCategories.length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No categories yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Socials
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.footerLinks
+                      .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
+                      .map((link) => (
+                        <a
+                          key={`fnb-footer-social-link-${link.label}`}
+                          href={link.href}
+                          target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                          rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                          style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                        >
+                          {link.label}
+                        </a>
+                      ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Contact
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.footerLinks
+                      .filter((link) => ['Call', 'Email'].includes(link.label))
+                      .map((link) => (
+                        <a key={`fnb-footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                          {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
+                        </a>
+                      ))}
+                    {fnbCommunityModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{fnbCommunityModel.hours}</div>}
+                    <div style={{ fontSize: 15, color: '#cbd5e1' }}>{fnbCommunityModel.locationLabel}</div>
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  paddingTop: 18,
+                  borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 10
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  {fnbCommunityModel.name}{fnbCommunityModel.registrationYear ? ` ${fnbCommunityModel.registrationYear}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
     </div>
 
     {/* ZONE 5: Sidebar (Desktop) */}
@@ -6327,25 +10171,31 @@ return (
           {isMultiGroup && (
             <div style={{ display: 'grid', gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
-              {servicesViewModel.serviceGroups.map(group => (
-                <button
-                  key={group.categoryKey}
-                  type="button"
-                  onClick={() => setActiveServiceTab(group.categoryKey)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 14px', borderRadius: 12,
-                    border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
-                    background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
-                    color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
-                    fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                    transition: 'all 0.16s ease'
-                  }}
-                >
-                  <span>{group.categoryMeta.icon} {group.categoryMeta.label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
-                </button>
-              ))}
+              {servicesViewModel.serviceGroups.map(group => {
+                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
+                return (
+                  <button
+                    key={group.categoryKey}
+                    type="button"
+                    onClick={() => setActiveServiceTab(group.categoryKey)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 14px', borderRadius: 12,
+                      border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
+                      background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
+                      color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
+                      fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.16s ease'
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <GroupIcon size={16} />
+                      <span>{group.categoryMeta.label}</span>
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -6365,6 +10215,307 @@ return (
           );
         })()}
       </aside>
+    )}
+
+    {isReviewModalOpen && isSimpleMode && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: isMobileViewport ? 16 : 24
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15,23,42,0.52)',
+            backdropFilter: 'blur(5px)'
+          }}
+        />
+        <section
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            maxWidth: 640,
+            maxHeight: 'min(90vh, 760px)',
+            overflowY: 'auto',
+            borderRadius: 28,
+            border: '1px solid #dbe5ee',
+            background: '#ffffff',
+            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+            padding: isMobileViewport ? 20 : 28,
+            display: 'grid',
+            gap: 20
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accent || '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Customer Review
+              </div>
+              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                Share your experience
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsReviewModalOpen(false)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0
+              }}
+              aria-label="Close review modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 16 }}>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your name
+              <input
+                value={reviewDraft.name}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                placeholder="How should we identify your review?"
+                style={BOOKING_FIELD_STYLE}
+              />
+            </label>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                <input
+                  type="checkbox"
+                  checked={reviewDraft.anonymous}
+                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                />
+                Post this review anonymously
+              </label>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {Array.from({ length: 5 }, (_, index) => {
+                  const starValue = index + 1;
+                  const selected = reviewDraft.rating >= starValue;
+                  return (
+                    <button
+                      key={`simple-review-rating-${starValue}`}
+                      type="button"
+                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 14,
+                        border: `1px solid ${selected ? '#14b8a6' : '#dbe5ee'}`,
+                        background: selected ? '#ecfeff' : '#ffffff',
+                        color: selected ? '#14b8a6' : '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        boxShadow: selected ? '0 10px 20px rgba(20,184,166,0.16)' : 'none'
+                      }}
+                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                    >
+                      <Star size={18} fill={selected ? '#14b8a6' : 'none'} color={selected ? '#14b8a6' : '#94a3b8'} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your review
+              <textarea
+                value={reviewDraft.message}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                placeholder="Tell customers what stood out about the product selection, ordering, or pickup experience."
+                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+            </div>
+            <PrimaryButton
+              onClick={handleReviewDraftSubmit}
+              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+            >
+              Send Review
+            </PrimaryButton>
+          </div>
+        </section>
+      </div>
+    )}
+
+    {isReviewModalOpen && isFnbMode && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: isMobileViewport ? 16 : 24
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15,23,42,0.52)',
+            backdropFilter: 'blur(5px)'
+          }}
+        />
+        <section
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            maxWidth: 640,
+            maxHeight: 'min(90vh, 760px)',
+            overflowY: 'auto',
+            borderRadius: 28,
+            border: '1px solid #dbe5ee',
+            background: '#ffffff',
+            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+            padding: isMobileViewport ? 20 : 28,
+            display: 'grid',
+            gap: 20
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Customer Review
+              </div>
+              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                Share your dining experience
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                Rate this menu storefront and leave a short message. Publishing connects once review backend submission is enabled.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsReviewModalOpen(false)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0
+              }}
+              aria-label="Close review modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gap: 16 }}>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your name
+              <input
+                value={reviewDraft.name}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                placeholder="How should we identify your review?"
+                style={BOOKING_FIELD_STYLE}
+              />
+            </label>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                <input
+                  type="checkbox"
+                  checked={reviewDraft.anonymous}
+                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                />
+                Post this review anonymously
+              </label>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {Array.from({ length: 5 }, (_, index) => {
+                  const starValue = index + 1;
+                  const selected = reviewDraft.rating >= starValue;
+                  return (
+                    <button
+                      key={`fnb-review-rating-${starValue}`}
+                      type="button"
+                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 14,
+                        border: `1px solid ${selected ? '#f59e0b' : '#dbe5ee'}`,
+                        background: selected ? '#fff7ed' : '#ffffff',
+                        color: selected ? '#f59e0b' : '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        boxShadow: selected ? '0 10px 20px rgba(245,158,11,0.16)' : 'none'
+                      }}
+                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                    >
+                      <Star size={18} fill={selected ? '#f59e0b' : 'none'} color={selected ? '#f59e0b' : '#94a3b8'} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your review
+              <textarea
+                value={reviewDraft.message}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                placeholder="Tell customers what stood out about the food, drinks, and overall order experience."
+                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+            </div>
+            <PrimaryButton
+              onClick={handleReviewDraftSubmit}
+              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+            >
+              Send Review
+            </PrimaryButton>
+          </div>
+        </section>
+      </div>
     )}
   </div>
   </>
@@ -6408,6 +10559,250 @@ return (
           </div>
         );
       })()}
+      {isServicesCartDrawerMode && (
+        <>
+          <button
+            type="button"
+            onClick={() => setIsCheckoutOpen((previous) => !previous)}
+            aria-label={isCheckoutOpen ? 'Close service cart' : 'Open service cart'}
+            style={{
+              position: 'fixed',
+              right: isMobileViewport ? 16 : 24,
+              bottom: isMobileViewport ? 16 : 24,
+              zIndex: 2100,
+              width: isMobileViewport ? 62 : 68,
+              height: isMobileViewport ? 62 : 68,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'linear-gradient(135deg,#ea580c,#f97316)',
+              color: '#fff',
+              boxShadow: '0 18px 38px rgba(234,88,12,.34)',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center'
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 900,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #fff'
+              }}
+            >
+              {serviceCartCount}
+            </span>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+          </button>
+
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 2095,
+              pointerEvents: isCheckoutOpen ? 'auto' : 'none'
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setIsCheckoutOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  setIsCheckoutOpen(false);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(15,23,42,.46)',
+                backdropFilter: 'blur(4px)',
+                opacity: isCheckoutOpen ? 1 : 0,
+                transition: 'opacity 180ms ease'
+              }}
+            />
+            <aside
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
+                background: '#ffffff',
+                borderLeft: '1px solid #dbe5ee',
+                boxShadow: '0 24px 60px rgba(15,23,42,.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
+                transition: 'transform 220ms ease'
+              }}
+            >
+              <div style={{ padding: isMobileViewport ? '18px 16px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service Cart</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added services</div>
+                    <div style={{ fontSize: 13, color: '#64748b' }}>Manage the service in cart, then continue to booking.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCheckoutOpen(false)}
+                    style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    x
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                    {serviceCartCount} item{serviceCartCount === 1 ? '' : 's'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    One service booking is submitted at a time.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                {serviceCartLines.length === 0 ? (
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', textAlign: 'center', display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No service added yet</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                      Add a service from the catalog to continue to booking.
+                    </div>
+                  </div>
+                ) : (
+                  serviceCartLines.map((line) => (
+                    <div key={`services-cart-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                            <img
+                              src={withAssetOrigin(line.image_url)}
+                              alt={line.variantName || line.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                const normalizedLineItemId = Number(line.item_id);
+                                if (!Number.isFinite(normalizedLineItemId)) return;
+                                setCartImageErrors((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(normalizedLineItemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                              <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {line.variantName || line.name}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                                {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${line.variantName || line.name}`}
+                                onClick={() => removeCartItem(line.item_id)}
+                                style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {!!line.serviceAreaLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.serviceAreaLabel}
+                              </span>
+                            )}
+                            {!!line.durationLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.durationLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                              {Math.max(1, Number(line.quantity || 1))}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {productCartLines.length > 0 && (
+                  <div style={{ border: '1px solid #fdba74', background: '#fff7ed', color: '#9a3412', borderRadius: 16, padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }}>
+                    Product items are not included in service booking. Continue with service booking only, or remove non-service items first.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(serviceCartTotal)}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                    {serviceCartCount} selected
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleServicesCartCheckout}
+                  disabled={!hasServiceCart || hasMixedServiceCart}
+                  style={{
+                    minHeight: 50,
+                    borderRadius: 16,
+                    border: 'none',
+                    background: !hasServiceCart || hasMixedServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    cursor: !hasServiceCart || hasMixedServiceCart ? 'not-allowed' : 'pointer',
+                    boxShadow: !hasServiceCart || hasMixedServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
+                  }}
+                >
+                  Order &amp; Purchase
+                </button>
+              </div>
+            </aside>
+          </div>
+        </>
+      )}
       <button
         type="button"
         onClick={() => {
@@ -6417,33 +10812,49 @@ return (
           }
           setIsCheckoutOpen((prev) => {
             const next = !prev;
-            if (next) setCheckoutTab(isServicesMode && hasServiceCart ? 'review' : 'checkout');
+            if (next) setCheckoutTab(isServicesMode && hasServiceCart ? 'review' : (isFnbMode ? 'cart' : 'checkout'));
             return next;
           });
         }}
         style={{
           position: 'fixed',
           zIndex: 2100,
-          border: isServicesMode && hasServiceCart ? '1px solid #dbe5ee' : 'none',
-          borderRadius: isMobileViewport ? 16 : 22,
-          background: isServicesMode && hasServiceCart ? '#ffffff' : 'linear-gradient(135deg,#ea580c,#f97316)',
-          color: isServicesMode && hasServiceCart ? '#0f172a' : '#fff',
-          boxShadow: isServicesMode && hasServiceCart ? '0 22px 48px rgba(15,23,42,.16)' : '0 14px 34px rgba(234,88,12,.38)',
-          padding: isServicesMode && hasServiceCart ? (isMobileViewport ? '12px 14px' : '16px 18px') : '12px 18px',
-          minWidth: isServicesMode && hasServiceCart ? (isMobileViewport ? 0 : 320) : (isMobileViewport ? 0 : 255),
+          border: isServicesMode && hasServiceCart
+            ? '1px solid #dbe5ee'
+            : (isFnbMode ? 'none' : 'none'),
+          borderRadius: isFnbMode ? 999 : (isMobileViewport ? 16 : 22),
+          background: isServicesMode && hasServiceCart
+            ? '#ffffff'
+            : (isFnbMode ? 'linear-gradient(135deg,#ea580c,#f97316)' : 'linear-gradient(135deg,#ea580c,#f97316)'),
+          color: isServicesMode && hasServiceCart
+            ? '#0f172a'
+            : '#fff',
+          boxShadow: isServicesMode && hasServiceCart
+            ? '0 22px 48px rgba(15,23,42,.16)'
+            : '0 14px 34px rgba(234,88,12,.38)',
+          padding: isServicesMode && hasServiceCart ? (isMobileViewport ? '12px 14px' : '16px 18px') : (isFnbMode ? 0 : '12px 18px'),
+          width: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
+          height: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
+          minWidth: isServicesMode && hasServiceCart ? (isMobileViewport ? 0 : 320) : (isFnbMode ? undefined : (isMobileViewport ? 0 : 255)),
           textAlign: 'left',
           cursor: 'pointer',
           right: isMobileViewport ? 10 : 18,
-          left: isMobileViewport ? 10 : 'auto',
+          left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
           bottom: isMobileViewport ? 10 : 18,
-          display: isServicesMode && isDesktopViewport ? 'none' : 'block'
+          display: isServicesCartDrawerMode
+            ? 'none'
+            : (
+              isServicesMode && isDesktopViewport
+                ? 'none'
+                : (isFnbOrderSubpage ? 'none' : 'block')
+            )
         }}
       >
         {isServicesMode && hasServiceCart ? (
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
                 <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
               </div>
               {!isMobileViewport && (
@@ -6454,11 +10865,11 @@ return (
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#475569' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CalendarDays size={14} color="#f97316" />
+                <CalendarDays size={14} color={servicesPrimary} />
                 {serviceBookingSummarySchedule}
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CheckCircle2 size={14} color="#f97316" />
+                <CheckCircle2 size={14} color={servicesPrimary} />
                 {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
               </span>
             </div>
@@ -6467,6 +10878,32 @@ return (
               <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
                 {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
               </div>
+            </div>
+          </div>
+        ) : isFnbMode ? (
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                border: '2px solid #fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11,
+                fontWeight: 900,
+                lineHeight: 1
+              }}
+            >
+              {cartCount}
             </div>
           </div>
         ) : (
@@ -6478,27 +10915,42 @@ return (
         )}
       </button>
 
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: isCheckoutOpen ? 'auto' : 'none' }}>
-        <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: isServicesCartDrawerMode ? 'none' : ((isCheckoutOpen || isFnbOrderSubpage) ? 'auto' : 'none'), display: isServicesCartDrawerMode ? 'none' : 'block' }}>
+        {!isFnbOrderSubpage && (
+          <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
+        )}
         <aside
           style={{
             position: 'absolute',
             zIndex: 2001,
-            background: 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
-            border: '1px solid #d6e2e8',
-            boxShadow: isDesktopCheckout ? '0 30px 80px rgba(15,23,42,.18)' : '0 -14px 34px rgba(15,23,42,.22)',
+            background: isFnbMode ? '#ffffff' : 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
+            border: isFnbMode ? 'none' : '1px solid #d6e2e8',
+            borderLeft: isDesktopCheckout && isFnbMode ? '1px solid #dbe5ee' : undefined,
+            boxShadow: isDesktopCheckout
+              ? (isFnbMode ? '0 24px 60px rgba(15,23,42,.18)' : '0 30px 80px rgba(15,23,42,.18)')
+              : '0 -14px 34px rgba(15,23,42,.22)',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             transition: 'transform 220ms ease, opacity 220ms ease',
-            opacity: isCheckoutOpen ? 1 : 0,
-            ...(isDesktopCheckout
+            opacity: (isCheckoutOpen || isFnbOrderSubpage) ? 1 : 0,
+            ...(isFnbOrderSubpage
               ? {
-                top: 24,
-                right: 24,
-                bottom: 24,
-                width: 'min(1080px, calc(100vw - 48px))',
-                borderRadius: 26,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                borderRadius: 0,
+                transform: 'translateX(0)'
+              }
+              : (isDesktopCheckout
+              ? {
+                top: isFnbMode ? 0 : 24,
+                right: 0,
+                bottom: 0,
+                width: isFnbMode ? 'min(520px, calc(100vw - 40px))' : 'min(1080px, calc(100vw - 48px))',
+                borderRadius: isFnbMode ? 0 : 26,
                 transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(32px)'
               }
               : {
@@ -6509,54 +10961,427 @@ return (
                 borderTopLeftRadius: 22,
                 borderTopRightRadius: 22,
                 transform: isCheckoutOpen ? 'translateY(0)' : 'translateY(105%)'
-              })
+              }))
           }}
         >
-          <div style={{ padding: isDesktopCheckout ? '16px 18px 12px 18px' : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,.88)' }}>
+          <div style={{ padding: isDesktopCheckout ? (isFnbMode ? '22px 20px 16px' : '16px 18px 12px 18px') : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: isFnbMode ? '#ffffff' : 'rgba(255,255,255,.88)' }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 20 }}>{isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
-              <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
-                  {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
-                </span>
-                {(!isServicesMode || !hasServiceCart) && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
-                    {ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout'}
+              {isFnbMode ? (
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Menu Cart</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Added items</div>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>{fnbDrawerSupportLabel}</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 20 }}>
+                    {isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
+                </>
+              )}
+              {!(isFnbMode && !isFnbOrderSubpage) && (
+                <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
+                    {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
                   </span>
-                )}
-                {isServicesMode && hasServiceCart && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
-                    {serviceBookingSummarySchedule}
-                  </span>
-                )}
-              </div>
+                  {(!isServicesMode || !hasServiceCart) && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                      {activeOrderMethodLabel}
+                    </span>
+                  )}
+                  {isFnbMode && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#7c2d12', background: '#ffedd5', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px' }}>
+                      {fnbCartStatusLabel}
+                    </span>
+                  )}
+                  {isServicesMode && hasServiceCart && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                      {serviceBookingSummarySchedule}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            <button type="button" onClick={() => setIsCheckoutOpen(false)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}>x</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isFnbOrderSubpage) {
+                  goStoreCatalogPage();
+                  return;
+                }
+                setIsCheckoutOpen(false);
+              }}
+              style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}
+            >
+              {isFnbOrderSubpage ? '<' : 'x'}
+            </button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-            {[
-              ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
-              { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
-              { id: 'track', label: 'Track' },
-              { id: 'account', label: 'Account' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setCheckoutTab(tab.id);
-                  if (tab.id === 'account') handleLoadAccountPanel();
-                }}
-                style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {!isFnbMode && (
+            <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
+              {[
+                ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
+                { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
+                ...(!isFnbMode ? [
+                  { id: 'track', label: 'Track' },
+                  { id: 'account', label: 'Account' }
+                ] : [])
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setCheckoutTab(tab.id);
+                    if (tab.id === 'account') handleLoadAccountPanel();
+                  }}
+                  style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div style={{ overflowY: 'auto', padding: isDesktopCheckout ? '12px 18px 18px 18px' : '8px 14px 16px 14px' }}>
+            {isFnbOrderSubpage && isFnbMode && (
+              <div style={{ display: 'grid', gap: 18, maxWidth: 980, margin: '0 auto', width: '100%', padding: isMobileViewport ? '4px 0 10px' : '6px 4px 14px' }}>
+                <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Page</div>
+                  <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>Complete your order</div>
+                  <div style={{ fontSize: 14, color: '#64748b' }}>Review cart, confirm delivery details, and submit payment in four quick steps.</div>
+                </section>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+                  {[
+                    { step: 1, label: 'Cart' },
+                    { step: 2, label: 'Fulfillment' },
+                    { step: 3, label: 'Customer' },
+                    { step: 4, label: 'Payment' }
+                  ].map((item) => {
+                    const isActive = fnbOrderStep === item.step;
+                    const done = fnbOrderStep > item.step;
+                    return (
+                      <button
+                        key={`fnb-order-step-${item.step}`}
+                        type="button"
+                        onClick={() => {
+                          if (item.step === 1) {
+                            setFnbOrderStep(1);
+                            return;
+                          }
+                          if (item.step === 2 && cart.length > 0) {
+                            setFnbOrderStep(2);
+                            return;
+                          }
+                          if (item.step === 3 && cart.length > 0) {
+                            setFnbOrderStep(3);
+                            return;
+                          }
+                          if (item.step === 4 && cart.length > 0 && fnbCustomerStepComplete) {
+                            setFnbOrderStep(4);
+                          }
+                        }}
+                        style={{
+                          borderRadius: 14,
+                          border: `1px solid ${isActive ? '#ea580c' : '#e2e8f0'}`,
+                          background: isActive ? '#fff7ed' : '#fff',
+                          color: isActive ? '#9a3412' : '#334155',
+                          minHeight: 42,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {done ? `OK ${item.label}` : `${item.step}. ${item.label}`}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {fnbOrderStep === 1 && (
+                  <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Menu Cart</div>
+                    {cart.length === 0 ? (
+                      <div style={{ border: '1px dashed #cbd5e1', borderRadius: 16, background: '#f8fafc', padding: '24px 16px', textAlign: 'center', color: '#64748b' }}>
+                        Add menu items first to continue.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gap: 10, maxHeight: isMobileViewport ? 300 : 360, overflowY: 'auto', paddingRight: 2 }}>
+                        {cart.map((line) => (
+                          <div key={`fnb-order-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                              <div style={{ fontWeight: 800, color: '#0f172a' }}>{line.name}</div>
+                              <div style={{ fontWeight: 800, color: '#0f172a' }}>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <button type="button" onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))} style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>-</button>
+                              <span style={{ fontWeight: 800, minWidth: 14, textAlign: 'center' }}>{Math.max(1, Number(line.quantity || 1))}</span>
+                              <button type="button" onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)} style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>+</button>
+                              <button type="button" onClick={() => removeCartItem(line.item_id)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Remove</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      <div style={{ fontSize: 14, color: '#64748b' }}>Subtotal</div>
+                      <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+                    </div>
+                    <button type="button" onClick={() => setFnbOrderStep(2)} disabled={cart.length === 0} style={{ minHeight: 46, borderRadius: 14, border: 'none', background: cart.length === 0 ? '#cbd5e1' : '#ea580c', color: '#fff', fontWeight: 800, cursor: cart.length === 0 ? 'not-allowed' : 'pointer' }}>
+                      Continue
+                    </button>
+                  </section>
+                )}
+
+                {fnbOrderStep === 2 && (
+                  <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Fulfillment</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                      <button type="button" onClick={() => setOrderMethod('delivery')} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${orderMethod === 'delivery' ? '#ea580c' : '#dbe5ee'}`, background: orderMethod === 'delivery' ? '#fff7ed' : '#fff', fontWeight: 800, cursor: 'pointer' }}>Delivery</button>
+                      <button type="button" onClick={() => setOrderMethod('pickup')} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${orderMethod === 'pickup' ? '#ea580c' : '#dbe5ee'}`, background: orderMethod === 'pickup' ? '#fff7ed' : '#fff', fontWeight: 800, cursor: 'pointer' }}>Pickup</button>
+                    </div>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                      Schedule time (optional)
+                      <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => setFnbScheduledFor(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <button type="button" onClick={() => setFnbOrderStep(1)} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                      <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Continue</button>
+                    </div>
+                  </section>
+                )}
+
+                {fnbOrderStep === 3 && (
+                  <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Customer Details</div>
+                    <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Provide one contact method: mobile number or email.</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        Customer Name *
+                        <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        Contact Number *
+                        <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                        Email (optional)
+                        <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      {isDeliveryOrder && (
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                          Delivery Address *
+                          <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                        </label>
+                      )}
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                        Special Instructions (optional)
+                        <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                      </label>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <button type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                      <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 42, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed' }}>Continue</button>
+                    </div>
+                    {!fnbCustomerStepComplete && (
+                      <div style={{ fontSize: 12, color: '#b45309' }}>
+                        Complete required fields to continue.
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {fnbOrderStep === 4 && !checkoutResult && (
+                  <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Payment and Submit</div>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                      Payment Type
+                      <StorefrontDropdown
+                        value={fnbPaymentType}
+                        onChange={(nextValue) => setFnbPaymentType(String(nextValue))}
+                        options={[
+                          { value: 'cash', label: 'Cash' },
+                          { value: 'online', label: 'Online' }
+                        ]}
+                        triggerStyle={{ minHeight: 44, borderRadius: 12 }}
+                      />
+                    </label>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#f8fafc', padding: 12, display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>Items subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>Delivery fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #dbe5ee', fontSize: 15, color: '#0f172a' }}><span style={{ fontWeight: 800 }}>Total due</span><strong style={{ fontWeight: 900 }}>{money(totalsForDisplay.total_amount)}</strong></div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
+                      <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
+                    </div>
+                    {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
+                    {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                    <button type="button" onClick={() => setFnbOrderStep(3)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                  </section>
+                )}
+
+                {fnbOrderStep === 4 && checkoutResult && (
+                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Order submitted successfully</div>
+                    <div style={{ display: 'grid', gap: 6, fontSize: 14, color: '#334155' }}>
+                      <div>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                      <div>Payment: <strong>{String(fnbPaymentType || 'cash').toUpperCase()}</strong></div>
+                      <div>Total: <strong>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</strong></div>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 2 }}>
+                      {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
+                        <div key={`fnb-confirm-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                          <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
+                          <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {checkoutResult?.payment?.checkout_url && (
+                        <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          Continue to Payment
+                        </a>
+                      )}
+                      <button type="button" onClick={handleDownloadCheckoutImage} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Download Confirmation</button>
+                      <button type="button" onClick={() => { setCheckoutResult(null); setFnbOrderStep(1); goStoreCatalogPage(); }} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back to Menu</button>
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
+
+            {checkoutTab === 'cart' && isFnbMode && !isFnbOrderSubpage && (
+              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                  {cart.length === 0 ? (
+                    <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', minHeight: isMobileViewport ? 240 : 320, textAlign: 'center', display: 'grid', alignContent: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No menu item added yet</div>
+                      <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                        Add food or beverage items from the catalog to continue to ordering.
+                      </div>
+                    </div>
+                  ) : (
+                    cart.map((line) => (
+                      <div
+                        key={`fnb-cart-line-${line.item_id}`}
+                        style={{
+                          borderBottom: '1px solid #e2e8f0',
+                          padding: isMobileViewport ? '10px 2px 8px' : '12px 4px 10px',
+                          display: 'grid',
+                          gap: 8
+                        }}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                          <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                              <img
+                                src={withAssetOrigin(line.image_url)}
+                                alt={line.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={() => {
+                                  const normalizedLineItemId = Number(line.item_id);
+                                  if (!Number.isFinite(normalizedLineItemId)) return;
+                                  setCartImageErrors((previous) => {
+                                    const next = new Set(previous);
+                                    next.add(normalizedLineItemId);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                              <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                                  {line.name}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                                {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${line.name}`}
+                                onClick={() => removeCartItem(line.item_id)}
+                                style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {activeOrderMethodLabel}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                Qty {Math.max(1, Number(line.quantity || 1))}
+                              </span>
+                            </div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                                style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                              >
+                                -
+                              </button>
+                              <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                                {Math.max(1, Number(line.quantity || 1))}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                                style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                      <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                      {cartCount} selected
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goStoreOrderPage}
+                    disabled={cart.length === 0}
+                    style={{
+                      minHeight: 50,
+                      borderRadius: 16,
+                      border: 'none',
+                      background: cart.length === 0 ? '#cbd5e1' : 'linear-gradient(135deg,#ea580c,#f97316)',
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: 900,
+                      cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
+                      boxShadow: cart.length === 0 ? 'none' : '0 14px 30px rgba(234,88,12,.24)'
+                    }}
+                  >
+                    Order &amp; Purchase
+                  </button>
+                </div>
+              </div>
+            )}
             {checkoutTab === 'review' && hasServiceCart && (
               <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
                 <section style={{ display: 'grid', gap: 14 }}>
@@ -6885,13 +11710,19 @@ return (
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 14, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Order Summary</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Keep the total visible while editing.</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{isFnbMode ? 'Cart Summary' : 'Order Summary'}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                          {isFnbMode ? 'Update quantities, then refresh the quote before checkout.' : 'Keep the total visible while editing.'}
+                        </div>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
                     </div>
                     <div style={{ maxHeight: isDesktopCheckout ? 320 : 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 16, padding: 10, marginTop: 12, background: '#fbfeff' }}>
-                      {cart.length === 0 && <p style={{ margin: 0, color: '#64748b' }}>Cart is empty.</p>}
+                      {cart.length === 0 && (
+                        <p style={{ margin: 0, color: '#64748b' }}>
+                          {isFnbMode ? 'Your menu cart is empty. Add items from Menu Highlights to start an order.' : 'Cart is empty.'}
+                        </p>
+                      )}
                       {cart.map((line) => (
                         <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
                           <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -6920,7 +11751,7 @@ return (
                               Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
                             </div>
                             <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
-                              {line.category === 'service' ? 'Bookable appointment' : 'Availability checked on quote/checkout'}
+                              {line.category === 'service' ? 'Bookable appointment' : `${activeOrderMethodLabel} order item`}
                             </div>
                             <button
                               type="button"
@@ -6979,9 +11810,9 @@ return (
                       </div>
                       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
-                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>Quote</button>
+                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
                         )}
-                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : 'Checkout')}</button>
+                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}</button>
                       </div>
                     </div>
                     {hasStockViolation && (

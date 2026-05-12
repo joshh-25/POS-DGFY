@@ -37,6 +37,7 @@ describe('servicesStorefrontViewModel', () => {
     expect(viewModel.totalServices).toBe(2);
     expect(viewModel.serviceFamilyCount).toBe(2);
     expect(viewModel.serviceGroups.map((group) => group.categoryMeta.label)).toEqual(['Laundry', 'Aircon Cleaning']);
+    expect(viewModel.serviceGroups.map((group) => group.categoryMeta.iconToken)).toEqual(['laundry', 'aircon']);
     expect(viewModel.serviceGroups[0].items[0].variantName).toBe('Wash & Fold');
     expect(viewModel.serviceGroups[0].items[0].requiredIntakeCount).toBe(1);
     expect(viewModel.serviceGroups[1].items[0].serviceAreaLabel).toBe('Home / on-site visit');
@@ -145,5 +146,39 @@ describe('servicesStorefrontViewModel', () => {
     ]);
 
     expect(viewModel.servicesLayoutMode).toBe('directory');
+  });
+
+  it('prefers SKU folder names over service_category for storefront service grouping', () => {
+    const viewModel = getServicesStorefrontViewModel([
+      {
+        item_id: 41,
+        name: 'Cassette Type',
+        category: 'service',
+        folder_id: 7,
+        folder_name: 'Wash',
+        service_detail: {
+          service_category: 'aircon_cleaning',
+          payment_policy: 'customer_choice',
+          service_area_type: 'customer_location'
+        }
+      },
+      {
+        item_id: 42,
+        name: 'Split Type',
+        category: 'service',
+        folder_id: 9,
+        folder_name: 'Add-ons',
+        service_detail: {
+          service_category: 'aircon_cleaning',
+          payment_policy: 'customer_choice',
+          service_area_type: 'customer_location'
+        }
+      }
+    ]);
+
+    expect(viewModel.serviceGroups.map((group) => group.categoryMeta.label)).toEqual(['Wash', 'Add Ons']);
+    expect(viewModel.serviceGroups[0].items[0].categoryKey).toBe('wash');
+    expect(viewModel.serviceGroups[1].items[0].categoryKey).toBe('add-ons');
+    expect(viewModel.serviceGroups.map((group) => group.categoryMeta.iconToken)).toEqual(['laundry', 'addon']);
   });
 });
