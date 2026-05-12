@@ -220,6 +220,7 @@ module.exports = {
         customer_name: { type: Sequelize.STRING(255), allowNull: false },
         customer_email: { type: Sequelize.STRING(255), allowNull: true },
         customer_phone: { type: Sequelize.STRING(50), allowNull: true },
+        quantity: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
         provider_user_id: {
           type: Sequelize.INTEGER,
           allowNull: true,
@@ -272,6 +273,8 @@ module.exports = {
           allowNull: false,
           defaultValue: 'storefront'
         },
+        idempotency_key: { type: Sequelize.STRING(120), allowNull: true },
+        request_hash: { type: Sequelize.STRING(64), allowNull: true },
         claim_token_hash: { type: Sequelize.STRING(128), allowNull: true },
         claim_token_expires_at: { type: Sequelize.DATE, allowNull: true },
         notes: { type: Sequelize.TEXT, allowNull: true },
@@ -287,6 +290,7 @@ module.exports = {
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['status'], { name: 'idx_service_bookings_status' });
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['start_at'], { name: 'idx_service_bookings_start_at' });
       await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['payment_status'], { name: 'idx_service_bookings_payment_status' });
+      await addIndexSafe(queryInterface, TABLES.SERVICE_BOOKINGS, ['idempotency_key'], { name: 'idx_service_bookings_idempotency' });
     }
 
     if (!(await tableExists(queryInterface, TABLES.SERVICE_WAITLIST_ENTRIES))) {

@@ -36,6 +36,11 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     type: DataTypes.STRING(50),
     allowNull: true
   },
+  quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1
+  },
   provider_user_id: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -88,6 +93,14 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     allowNull: false,
     defaultValue: 'storefront'
   },
+  idempotency_key: {
+    type: DataTypes.STRING(120),
+    allowNull: true
+  },
+  request_hash: {
+    type: DataTypes.STRING(64),
+    allowNull: true
+  },
   claim_token_hash: {
     type: DataTypes.STRING(128),
     allowNull: true
@@ -123,6 +136,7 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     { fields: ['status'] },
     { fields: ['start_at'] },
     { fields: ['payment_status'] },
+    { fields: ['idempotency_key'] },
     { fields: ['pos_transaction_id'] }
   ]
 });
