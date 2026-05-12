@@ -339,6 +339,42 @@ run_frontend_builds() {
     fi
 }
 
+ensure_nginx_upload_body_limit() {
+    local limit="${DEPLOY_NGINX_CLIENT_MAX_BODY_SIZE:-8m}"
+    local conf_dir="/etc/nginx/conf.d"
+    local conf_file="$conf_dir/skupervisor-client-body-size.conf"
+
+    if ! command -v nginx >/dev/null 2>&1; then
+        warn "nginx command not found; skipping storefront upload ingress size guard."
+        return 0
+    fi
+
+    if [[ ! -d "$conf_dir" || ! -w "$conf_dir" ]]; then
+        warn "Cannot write $conf_dir; skipping storefront upload ingress size guard."
+        return 0
+    fi
+
+    cat > "$conf_file" <<EOF
+# Managed by SKU Inventory Manager deploy.sh.
+# Backend storefront asset uploads allow 5 MiB files; this leaves room for multipart overhead.
+client_max_body_size $limit;
+EOF
+
+    if nginx -t; then
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl reload nginx
+        elif command -v service >/dev/null 2>&1; then
+            service nginx reload
+        else
+            nginx -s reload
+        fi
+        log "Nginx upload ingress size guard active: client_max_body_size=$limit."
+    else
+        rm -f "$conf_file"
+        fatal "Nginx config test failed after writing $conf_file; removed guard file."
+    fi
+}
+
 build_backend_health_candidates() {
     local explicit_url="${DEPLOY_BACKEND_HEALTH_URL:-}"
     local env_port="$1"
@@ -653,6 +689,8 @@ for var in "${REQUIRED_ENV_VARS[@]}"; do
     fi
 done
 log "Required env validation passed."
+
+run_step "Ensuring storefront upload ingress body limit..." ensure_nginx_upload_body_limit
 
 validate_paypal_env() {
     local paypal_mode

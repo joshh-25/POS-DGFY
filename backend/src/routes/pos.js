@@ -3,7 +3,7 @@ import * as posController from '../controllers/posController.js';
 import { authenticate, checkPermission, requirePremium } from '../middleware/auth.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogImageUpload } from '../config/uploadConfig.js';
+import { posCatalogBulkImageUpload, posCatalogImageUpload } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validatePosCatalogQuery,
@@ -37,6 +37,8 @@ router.use(posLimiter);
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
+router.patch('/catalog-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posController.updateBulkCatalogOverrides);
+router.post('/catalog-overrides/images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posCatalogBulkImageUpload.array('images', 50), posController.uploadBulkCatalogImages);
 router.patch('/catalog-overrides/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, validateUpdatePosCatalogOverride, posController.updateCatalogOverride);
 router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posCatalogImageUpload.single('image'), posController.uploadCatalogImage);
 router.delete('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posController.deleteCatalogImage);

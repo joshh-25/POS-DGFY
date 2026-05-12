@@ -269,8 +269,8 @@ export const provisionTenant = async (options) => {
     const isApproval = !!tenantId;
 
     let uuid, dbName, companyToken, passwordHash, tenantName, email;
-    let subscriptionStatus = 'inactive';
-    let currentPeriodEnd = null;
+    let subscriptionStatus;
+    let currentPeriodEnd;
     let normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
 
     if (isApproval) {

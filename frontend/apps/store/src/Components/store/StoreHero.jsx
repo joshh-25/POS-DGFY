@@ -40,7 +40,7 @@ export function StoreHeroDesktop({ store, onNavigate }) {
           <div className="w-36 h-36 bg-white rounded-2xl flex flex-col items-center justify-center shadow-lg">
             <span className="text-4xl mb-1">🔥</span>
             <div className="font-extrabold text-xl text-[#E8540A] leading-tight text-center">
-              KUYA DING'S<br/>BBQ
+              KUYA DING&apos;S<br/>BBQ
             </div>
             <div className="text-[9px] text-gray-500 mt-1 tracking-widest">EST. 2020</div>
           </div>
@@ -76,7 +76,10 @@ export function StoreHeroDesktop({ store, onNavigate }) {
           <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-white text-white font-semibold text-sm hover:bg-white/10 transition-colors">
             <PhoneIcon /> Call
           </button>
-          <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E8540A] border-2 border-[#E8540A] text-white font-semibold text-sm hover:bg-[#F26522] transition-colors">
+          <button
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E8540A] border-2 border-[#E8540A] text-white font-semibold text-sm hover:bg-[#F26522] transition-colors"
+            onClick={() => onNavigate?.('/tenant-store')}
+          >
             <BagIcon /> Order Now
           </button>
         </div>
@@ -106,7 +109,7 @@ export function StoreHeroMobile({ store, onNavigate }) {
       <div className="relative px-4 pb-4 bg-white">
         <div className="absolute -mt-12 left-4 w-24 h-24 rounded-full bg-[#1A1A1A] border-4 border-white shadow-lg flex flex-col items-center justify-center">
           <span className="text-3xl">🔥</span>
-          <div className="text-[10px] text-white font-bold leading-tight text-center">KUYA<br/>DING'S<br/>BBQ</div>
+          <div className="text-[10px] text-white font-bold leading-tight text-center">KUYA<br/>DING&apos;S<br/>BBQ</div>
         </div>
         <div className="pt-14">
           <div className="flex items-center gap-2 mb-1">

@@ -35,7 +35,7 @@ const BagIcon = () => (
 export function AboutSection({ about }) {
   return (
     <section className="bg-white rounded-2xl p-6 flex-1">
-      <h3 className="text-base font-bold text-[#1A1A1A] mb-3">About Kuya Ding's BBQ</h3>
+      <h3 className="text-base font-bold text-[#1A1A1A] mb-3">About Kuya Ding&apos;s BBQ</h3>
       <p className="text-sm text-gray-700 leading-relaxed mb-4">{about}</p>
       <button className="border border-[#E8540A] text-[#E8540A] bg-white px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer hover:bg-orange-50 transition-colors">
         Learn more about us →
@@ -97,7 +97,7 @@ export function CartBarDesktop({ cart, onViewCart }) {
 }
 
 // Mobile Bottom Action Bar
-export function BottomActionBarMobile({ cart, onNavigate }) {
+export function BottomActionBarMobile() {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex justify-between items-center z-50">
       <button className="flex flex-col items-center gap-1 bg-transparent border-none cursor-pointer p-2 text-gray-700">

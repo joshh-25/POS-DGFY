@@ -53,6 +53,7 @@ import ServiceItemDetail from './ServiceItemDetail.js';
 import ServiceResource from './ServiceResource.js';
 import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
+import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
@@ -344,6 +345,12 @@ ServiceBooking.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'locat
 ServiceBooking.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
 ServiceBooking.hasMany(ServiceReminderOutbox, { foreignKey: 'booking_id', as: 'reminders' });
 ServiceReminderOutbox.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingHold.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
+ServiceBookingHold.belongsTo(ServiceItemDetail, { foreignKey: 'service_detail_id', as: 'serviceDetail' });
+ServiceBookingHold.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+ServiceBookingHold.belongsTo(User, { foreignKey: 'provider_user_id', as: 'providerUser' });
+ServiceBookingHold.belongsTo(ServiceResource, { foreignKey: 'resource_id', as: 'resource' });
+ServiceBookingHold.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 Item.hasMany(ServiceBooking, { foreignKey: 'service_item_id', as: 'serviceBookings' });
 StoreCustomer.hasMany(ServiceBooking, { foreignKey: 'store_customer_id', as: 'serviceBookings' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
@@ -467,6 +474,7 @@ const db = {
   ServiceResource,
   ServiceProviderAssignment,
   ServiceBooking,
+  ServiceBookingHold,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,
@@ -555,6 +563,7 @@ export {
   ServiceResource,
   ServiceProviderAssignment,
   ServiceBooking,
+  ServiceBookingHold,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,

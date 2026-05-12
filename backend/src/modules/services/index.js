@@ -10,6 +10,9 @@ import {
     buildCreateServiceAssignmentUseCase,
     buildUpdateServiceAssignmentUseCase,
     buildCreateServiceBookingUseCase,
+    buildCreateServiceBookingBatchUseCase,
+    buildCreateServiceBookingHoldUseCase,
+    buildGetServiceAvailabilityUseCase,
     buildListServiceBookingsUseCase,
     buildUpdateServiceBookingStatusUseCase,
     buildGetServiceBookingByReferenceUseCase,
@@ -33,6 +36,9 @@ export const listServiceAssignmentsUseCase = buildListServiceAssignmentsUseCase(
 export const createServiceAssignmentUseCase = buildCreateServiceAssignmentUseCase({ serviceRepository });
 export const updateServiceAssignmentUseCase = buildUpdateServiceAssignmentUseCase({ serviceRepository });
 export const createServiceBookingUseCase = buildCreateServiceBookingUseCase({ serviceRepository });
+export const createServiceBookingBatchUseCase = buildCreateServiceBookingBatchUseCase({ serviceRepository });
+export const createServiceBookingHoldUseCase = buildCreateServiceBookingHoldUseCase({ serviceRepository });
+export const getServiceAvailabilityUseCase = buildGetServiceAvailabilityUseCase({ serviceRepository });
 export const listServiceBookingsUseCase = buildListServiceBookingsUseCase({ serviceRepository });
 export const updateServiceBookingStatusUseCase = buildUpdateServiceBookingStatusUseCase({ serviceRepository });
 export const getServiceBookingByReferenceUseCase = buildGetServiceBookingByReferenceUseCase({ serviceRepository });

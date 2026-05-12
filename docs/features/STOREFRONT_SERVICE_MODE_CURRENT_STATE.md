@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-12
 applies_to: storefront_services_mode
 topic: services_mode_storefront_current_state
 ---
@@ -26,8 +26,8 @@ This document records the current implementation state of the Storefront `servic
 ## Classification
 - Change class for the implemented UI work: `within-existing-boundary`
 - Layer: storefront frontend only
-- Backend/API changes introduced by this UI work: `none`
-- ADR update required for current UI state: `not needed`
+- Backend/API changes introduced by this UI work: `service_bookings.quantity`, `service_booking_holds`, service booking/hold idempotency and request hash storage, public service booking batch checkout, public service availability lookup, and public service hold creation
+- ADR update required for current UI state: ADR 0016 and ADR 0017 updated 2026-05-12
 
 ## Scope Covered Today
 The current services-mode storefront is implemented for service-oriented tenants using real storefront and catalog content from SKUpervisor-backed data. The current reference tenant for the visual and content model is `ABeeZee`.
@@ -187,6 +187,12 @@ Current booking UX includes:
 - dynamic intake fields from service schema
 - customer details fields
 - sticky booking summary on desktop
+- multiple service booking drafts in the cart
+- quantity `1+` per booking draft
+- live capacity-aware slot lookup for the selected service, date, location, and quantity
+- short-lived reservation holds for saved booking drafts and checkout submission
+- all-or-nothing submission for service booking batches
+- draft-specific review, backend draft-index error copy, and per-booking confirmation/payment links
 
 ## Backend And Contract Alignment
 
@@ -195,12 +201,33 @@ The current storefront keeps the existing service booking contract and does not 
 
 Current booking submission continues to rely on:
 - `service_item_id`
+- `quantity`
 - `start_at`
 - `location_id`
+- `resource_id` when the service line has a capacity-backed resource
 - `payment_timing`
+- `idempotency_key`
+- `hold_token` when a short-lived booking hold was created for the draft
 - `intake_responses`
 - customer details fields
 - notes
+
+For customers booking more than one service at once, the storefront submits `/api/v1/store/services/bookings/batch`. Each draft keeps its own service item, schedule, quantity, intake responses, payment timing, and notes. The backend creates every booking in the batch or rejects the whole batch with the failed draft index; customers are not required to wait for an active booking to complete before submitting another valid booking. Public service booking mutations send an idempotency key so a retry of the same request replays the existing booking response instead of creating duplicates.
+
+Service `quantity > 1` requires a capacity anchor. The current anchor is an active service resource assigned to the service and compatible with the requested location, schedule, blackout dates, and weekly availability. When the storefront does not send `resource_id`, the backend can auto-select a matching assigned resource with enough remaining capacity. Provider-only and location-only service bookings remain effective capacity `1`.
+
+Batch booking responses include every booking reference and every payment handoff. Storefront confirmation must render all references and all `payments[]` checkout links; the singular `payment` field is treated as summary/backward compatibility only.
+
+### Public Booking Hold Contract In Use
+The storefront creates short-lived holds through `POST /api/v1/store/services/holds` when a customer saves a service booking draft and again only when a draft hold is missing or close to expiry at checkout.
+
+Current hold behavior:
+- holds are persisted in `service_booking_holds`
+- hold payloads include service item, schedule, location/resource/provider scope when present, quantity, `idempotency_key`, and optional `replace_hold_token`
+- active unexpired holds count against availability and booking capacity
+- editing a draft can replace the previous active hold without the draft blocking itself on capacity-one resources
+- final single or batch booking passes `hold_token`; the backend revalidates the schedule/capacity under transaction and marks the hold `consumed`
+- expired or invalid holds fail closed, and the storefront asks the customer to reserve the time again
 
 ### Existing Service Metadata Already Used
 The current services storefront already uses:
@@ -212,19 +239,24 @@ The current services storefront already uses:
 - `service_resources.weekly_availability`
 - `service_resources.blackout_dates` when available for validation compatibility
 
-### Important Current Constraint
-The frontend does not currently have a dedicated public storefront API for:
-- real-time blocked slots
-- fully booked slots
-- provider-specific live availability
-- same-day cutoff enforcement surfaced as explicit slot state
+### Public Availability Contract In Use
+The storefront now calls `GET /api/v1/store/services/availability` before offering service time slots on the booking subpage.
 
-Because of that:
-- date and time UI is preference-based
-- weekly availability can guide the picker when present
-- final booking acceptance still depends on backend validation
+The availability response is no-store and capacity-aware. It evaluates:
+- selected service item
+- selected storefront location
+- selected resource/provider when present
+- selected date
+- requested quantity
+- service lead time and duration
+- resource weekly availability
+- resource blackout dates
+- active overlapping booking quantities
+- active unexpired service booking hold quantities
 
-This matches the current `services` contract and avoids overstating availability guarantees.
+When no slot can be offered, the backend returns structured diagnostics such as dominant blocker, blocked-count summary, setup warnings, and customer-safe guidance. The storefront uses that guidance to distinguish capacity/resource setup problems from generic no-slot states.
+
+Final booking acceptance still depends on the booking mutation, which revalidates under the authoritative backend booking use case. Availability reads include active holds, and saved drafts can create holds, but the final booking mutation remains the source of truth because holds can expire or be replaced.
 
 ## Content-Driven Behavior
 The current services storefront is designed to remain usable with incomplete content.
@@ -250,6 +282,9 @@ The current services-mode storefront is already strong in these areas:
 - dedicated booking subpage
 - dynamic service intake fields
 - existing contract alignment with Services Mode backend
+- public availability lookup before service slot selection
+- short-lived booking holds that are consumed by final booking
+- customer-safe no-slot guidance for capacity and setup blockers
 
 ## Current Known Limitations
 
@@ -262,16 +297,10 @@ This is acceptable for the current reference tenant, but broader service busines
 - more category presentation mappings, or
 - a more generic category presentation model
 
-### 2. Scheduling UX Is Not Yet Slot-Authority Driven
-The booking page offers a better calendar/time-slot experience than the old flow, but it is not yet powered by a dedicated real-time slot availability contract.
-
-### 3. Single-Service Booking Contract
-The backend contract still centers on one service booking request per submission. The storefront must not pretend it supports a more advanced multi-service scheduling cart unless the backend contract is expanded.
-
-### 4. Some Microcopy Is Still Generic
+### 2. Some Microcopy Is Still Generic
 Some empty-state and support copy is generic storefront copy rather than business-authored content.
 
-### 5. Address Map Pin Is Not Yet Supported By The Booking Contract
+### 3. Address Map Pin Is Not Yet Supported By The Booking Contract
 The current services booking storefront can render address-like intake fields cleanly, but it does not have backend support for a structured customer map pin / coordinate field in service bookings.
 
 Current state:
@@ -284,7 +313,7 @@ Future backend integration needed if map pin is desired:
 - persistence for customer-selected latitude/longitude
 - validation rules for optional or required service-location pins
 
-### 6. Storefront Cover Image Can Be Missing Even When Updated In SKUpervisor
+### 4. Storefront Cover Image Can Be Missing Even When Updated In SKUpervisor
 ABeeZee storefront verification showed that the customer-facing storefront hero correctly reads cover-image data from the public discovery payload, but the tenant currently has no persisted cover-image value in the storefront settings used by that payload.
 
 Verified current state for tenant `ABeeZee`:
@@ -305,24 +334,33 @@ Backend handoff:
   - `storefront_cover_image_path`
 - ensure the discovery-index rebuild path materializes the persisted cover image into the public storefront discovery payload
 
+May 11, 2026 ingress finding:
+- IMS Settings cover/profile uploads can fail before backend validation when production Nginx keeps the default 1 MiB request-body limit.
+- Backend storefront asset validation allows 5 MiB image files and persists `storefront_cover_image_url` / `storefront_cover_image_path` or `storefront_profile_image_url` / `storefront_profile_image_path`.
+- Production deploy now installs an Nginx guard with `client_max_body_size 8m;` so normal multipart image uploads reach the backend while backend validation remains authoritative.
+
 ## Current Standing
 Services mode storefront is currently in a solid `UI-refresh + contract-aligned` state for the reference tenant and existing backend.
 
 Operationally, this means:
 - the storefront is usable and significantly improved for services mode
 - the UI now reads as a service booking experience rather than a product-first storefront
-- the frontend remains inside current backend and SKUpervisor contracts
-- the main remaining limitations are contract breadth and service-family generalization, not basic usability
+- service slot selection is now backed by a public capacity-aware backend contract and a short-lived hold path
+- the main remaining limitations are service-family generalization, map-pin booking fields, and business-authored copy breadth
 
 ## Recommended Next Steps
 The current highest-value next steps are:
 1. Generalize service-family presentation beyond laundry and aircon cleaning.
 2. Normalize booking presentation data further so `StorefrontApp.jsx` depends less on raw service detail fields.
-3. Add a stronger availability contract only if backend work is explicitly approved and reclassified.
+3. Add a governed structured map-pin/address contract if customer-location services need coordinates.
 4. Extend the same content-driven pattern to additional business modes after services-mode stabilization.
 
 ## Validation Notes
-For UI and docs work in this phase, the relevant checks are:
-- `npm --prefix frontend run build:store`
-- targeted storefront frontend tests
-- `npm run lint:docs` when this document changes
+Validated on 2026-05-12 after adding booking multiplicity, public service availability, and short-lived booking holds:
+- `npm --prefix backend test -- servicesMode.usecases.test.js` passed 26 Services Mode use-case tests.
+- `npm --prefix frontend exec vitest run apps/store/src/__tests__/serviceBookingMultiplicity.contract.test.js` passed 5 storefront multiplicity/availability/hold contract tests.
+- `npm run lint:docs` passed.
+- `npm run check:architecture` passed.
+- `npm --prefix frontend run build:store` passed without chunk warnings after lazy-loading MapLibre and splitting store vendors. The initial store app chunk is 238.18 kB minified / 57.88 kB gzip; MapLibre remains a deferred map vendor chunk.
+- `git diff --check` passed.
+- A local browser smoke check at `/tenant-store` rendered the Storefront shell with no console errors.

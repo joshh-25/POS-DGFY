@@ -261,18 +261,20 @@ const normalizeExternalHttpUrl = (value, maxLength = 255) => {
     }
 };
 
-const buildDiscoveryProfileSettingsCacheKey = ({ tenantId = '', signature = '0:0' } = {}) => {
+const buildDiscoveryProfileSettingsCacheKey = ({ tenantId = '', version = 0, signature = '0:0' } = {}) => {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) return '';
-    return `storefront:discovery:profile-settings:v2:${signature}:${normalizedTenantId}`;
+    return `storefront:discovery:profile-settings:v3:${version}:${signature}:${normalizedTenantId}`;
 };
 
-const readStorefrontProfileSettings = async ({ tenantId, cacheSignature } = {}) => {
+const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSignature } = {}) => {
     if (!tenantId) return {};
     const normalizedTenantId = String(tenantId || '').trim();
+    const version = Number.isInteger(cacheVersion) ? cacheVersion : getStorefrontDiscoveryCacheVersion();
     const signature = String(cacheSignature || '').trim() || await getStorefrontDiscoverySharedSignature();
     const cacheKey = buildDiscoveryProfileSettingsCacheKey({
         tenantId: normalizedTenantId,
+        version,
         signature
     });
     const cached = await readRedisCacheEntry(cacheKey);
@@ -451,9 +453,9 @@ const buildDiscoveryQueryCacheKey = ({ query = {}, version = 0, signature = '0:0
     return `storefront:discovery:list:v3:${version}:${signature}:${digest}`;
 };
 
-const buildDiscoveryProfileCacheKey = ({ slug = '', signature = '0:0' } = {}) => {
+const buildDiscoveryProfileCacheKey = ({ slug = '', version = 0, signature = '0:0' } = {}) => {
     const normalizedSlug = normalizeSlug(slug);
-    return `storefront:discovery:profile:v2:${signature}:${normalizedSlug}`;
+    return `storefront:discovery:profile:v3:${version}:${signature}:${normalizedSlug}`;
 };
 
 const readRedisCacheEntry = async (key) => {
@@ -1018,9 +1020,11 @@ export const storefrontDiscoveryRepository = {
     async getStorefrontBySlug(slug) {
         const normalizedSlug = normalizeSlug(slug);
         if (!normalizedSlug) return null;
+        const version = getStorefrontDiscoveryCacheVersion();
         const signature = await getStorefrontDiscoverySharedSignature();
         const cacheKey = buildDiscoveryProfileCacheKey({
             slug: normalizedSlug,
+            version,
             signature
         });
         const cached = await readRedisCacheEntry(cacheKey);
@@ -1045,6 +1049,7 @@ export const storefrontDiscoveryRepository = {
         if (!Number.isFinite(entry.latitude) || !Number.isFinite(entry.longitude)) return null;
         let profileSettings = await readStorefrontProfileSettings({
             tenantId: entry.tenant_id,
+            cacheVersion: version,
             cacheSignature: signature
         });
         if (hasMaterializedProfileFields) {

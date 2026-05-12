@@ -8,6 +8,9 @@ import {
     createServiceAssignmentUseCase,
     updateServiceAssignmentUseCase,
     createServiceBookingUseCase,
+    createServiceBookingBatchUseCase,
+    createServiceBookingHoldUseCase,
+    getServiceAvailabilityUseCase,
     listServiceBookingsUseCase,
     updateServiceBookingStatusUseCase,
     getServiceBookingByReferenceUseCase,
@@ -284,6 +287,31 @@ export const listPublicCatalog = async (req, res, next) => {
     }
 };
 
+export const getPublicAvailability = async (req, res, next) => {
+    try {
+        const result = await getServiceAvailabilityUseCase({
+            query: req.validatedQuery || req.query,
+            storefrontOnly: true
+        });
+        return sendResult(req, res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createPublicBookingHold = async (req, res, next) => {
+    try {
+        const result = await createServiceBookingHoldUseCase({
+            payload: req.validatedData || req.body,
+            source: 'storefront',
+            storeCustomer: req.storeCustomer || null
+        });
+        return sendResult(req, res, result, { statusCode: 201, message: 'Service booking hold created successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const listPublicBookings = async (req, res, next) => {
     try {
         const customerId = req.storeCustomer?.customer_id || null;
@@ -307,6 +335,19 @@ export const createPublicBooking = async (req, res, next) => {
             storeCustomer: req.storeCustomer || null
         });
         return sendResult(req, res, result, { statusCode: 201, message: 'Service booking created successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createPublicBookingBatch = async (req, res, next) => {
+    try {
+        const result = await createServiceBookingBatchUseCase({
+            payload: req.validatedData || req.body,
+            source: 'storefront',
+            storeCustomer: req.storeCustomer || null
+        });
+        return sendResult(req, res, result, { statusCode: 201, message: 'Service bookings created successfully' });
     } catch (error) {
         next(error);
     }

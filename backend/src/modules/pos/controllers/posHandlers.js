@@ -10,7 +10,9 @@ import {
     incrementGovernedResetCounterUseCase,
     listPosCatalogOverridesUseCase,
     updatePosCatalogOverrideUseCase,
+    updateBulkPosCatalogOverridesUseCase,
     uploadPosCatalogImageUseCase,
+    uploadBulkPosCatalogImagesUseCase,
     deletePosCatalogImageUseCase,
     openTerminalShiftUseCase,
     switchTerminalShiftLocationUseCase,
@@ -556,6 +558,28 @@ export const updateCatalogOverride = async (req, res, next) => {
     }
 };
 
+export const updateBulkCatalogOverrides = async (req, res, next) => {
+    try {
+        const result = await updateBulkPosCatalogOverridesUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS catalog overrides updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const uploadCatalogImage = async (req, res, next) => {
     try {
         const result = await uploadPosCatalogImageUseCase({
@@ -570,6 +594,28 @@ export const uploadCatalogImage = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS catalog image uploaded successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const uploadBulkCatalogImages = async (req, res, next) => {
+    try {
+        const result = await uploadBulkPosCatalogImagesUseCase({
+            files: req.files,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS catalog images processed',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -613,7 +659,9 @@ export default {
     incrementGovernedResetCounter,
     listCatalogOverrides,
     updateCatalogOverride,
+    updateBulkCatalogOverrides,
     uploadCatalogImage,
+    uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
     openTerminalShift,

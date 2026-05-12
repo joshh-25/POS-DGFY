@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
 import { 
   Navbar, 
   MobileNavbar, 
@@ -17,7 +16,6 @@ import { STORE_DATA } from '../data/storeData.js';
 
 // Page wrapper with responsive handling
 export default function StorePage() {
-  const { slug } = useParams();
   const [cart, setCart] = useState(STORE_DATA.cart);
   const [isMobile, setIsMobile] = useState(false);
 

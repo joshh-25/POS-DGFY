@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-12
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -86,12 +86,20 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
+- Discovery map pins use preview-first marker cards. Hover, keyboard focus, or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected.
 - Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
 - F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
 - Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
+- The inventory Catalog Setup workflow covers both POS and Storefront setup. It shows mode-aware recommendations, POS readiness, missing blockers, visibility state, image state, SKU-filename bulk image previews, and bulk POS/Storefront visibility actions.
+- Bulk POS visibility uses `PATCH /api/v1/pos/catalog-overrides/bulk`; enabling requires POS readiness, while disabling is allowed for incomplete rows.
+- Bulk Storefront visibility uses `PATCH /api/v1/items/storefront-overrides/bulk`; enabling requires Storefront readiness and positive customer price, while disabling is allowed for incomplete rows and never mutates POS visibility.
+- Bulk POS images use `POST /api/v1/pos/catalog-overrides/images/bulk` with multipart field `images`. Bulk Storefront images use `POST /api/v1/items/storefront-images/bulk` with multipart field `images`. Both match files by SKU filename stem, preserve current visibility, return per-file partial-success results, and keep POS and Storefront image assets independent.
+- Visible/default-visible Storefront rows without a positive `default_sale_price` are blocked from Storefront bulk image upload. Hidden rows may store Storefront images for later setup.
+- Bulk image upload parsing is intentionally lenient enough for the use cases to return per-file validation results for unsupported MIME/signature and 5 MB readiness failures instead of rejecting the whole batch at the upload middleware. The transport cap remains 50 files per request and 6 MB per uploaded temp file; catalog use cases enforce the 5 MB image policy per result row. Production ingress is expected to stay above this backend temp cap; the current Nginx `client_max_body_size=8m` leaves transport headroom without accepting images above the product policy.
+- Onboarding `has_sellable_item` uses POS readiness rather than the legacy item `pos_visible` column. It evaluates effective POS override/default visibility, positive sale price, active status, non-negative stock, available stock for stock-bearing rows, and service stock exemption with service metadata.
 
 6. Inventory item detail UI
 - Stock-bearing item detail views group active FIFO batches by `location_id` and show location stock, batch quantity, weighted cost, and inventory value together.
@@ -99,6 +107,12 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - "Next to use" is calculated within each location. The all-location view keeps global totals visible but does not present a single cross-location FIFO batch as the global next batch.
 - Service-only rows stay stock-exempt and do not show misleading FIFO, average-cost, location-cost, on-hand value, or stock-movement controls. Mixed Services Mode transactions must represent physical add-ons, retail products, consumables, kits, or supplies as separate stock-bearing lines so those lines still use location-scoped FIFO.
 - IMS item financial fields follow the mode preset: sellable services, F&B menu items, packaged beverages, food-manufacturing finished products, and MSME sellable rows show Selling Price; stock-bearing inventory rows show Cost; POS/Storefront-enabled rows require a positive Selling Price.
+
+7. Storefront location pins
+- Settings > Storefront can add, edit, set primary, deactivate/reactivate, and permanently delete tenant location pins.
+- Permanent delete is allowed only for unused location rows with no POS transaction, terminal shift/transition/audit, inventory stock, FIFO batch, stock movement, user-location grant, service resource, provider assignment, booking, or booking-hold references. Referenced locations must be deactivated instead so historical records remain intact.
+- Successful location create, update, deactivate, reactivate, and delete actions refresh Storefront discovery so public map/profile rows do not carry stale primary-pin state.
+- Business Mode selectors hide the legacy `manufacturing` alias from new choices. Existing `manufacturing` data still normalizes to `food_manufacturing`; a distinct future Manufacturing mode requires its own governed mode pass before it becomes selectable.
 
 ## Registration And Compliance Rules
 Use declared onboarding registration status as the v1 merchant-stage signal, with compliance/payment state as stronger runtime evidence when available.
@@ -121,8 +135,10 @@ Runtime behavior:
 - Backend unit tests: mode normalization, rank comparison, stage-derived max mode, inventory display serialization, Settings validator coverage, legacy `visibility_mode` compatibility.
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
+- Backend bulk setup tests: POS readiness emits `STOCK_UNAVAILABLE` for stock-bearing out-of-stock rows, stock-exempt service rows remain ready without stock, onboarding sellable-item readiness uses POS readiness, bulk POS/Storefront visibility returns per-item `updated`, `blocked`, `not_found`, or `failed` results, and bulk image uploads cover matched, unmatched, duplicate filename, unsupported MIME, oversize, blocked readiness, and failed-write cleanup paths.
 - Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
+- Frontend Catalog Setup tests: recommendations, readiness blockers, visibility state, image state, Storefront controls hidden without `items:edit`, bulk action preview, and POS/Storefront image upload independence.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
 - Stock-bearing mode regression tests: checkout/fulfillment in every mode with physical items preserves location-scoped FIFO depletion, while truly service-only rows remain stock-exempt.
 
@@ -147,6 +163,22 @@ Validated on 2026-05-08 for the storefront UI merge:
 - Browser smoke: local `/tenant-store` rendered the Storefront shell with no console errors.
 
 Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
+
+Validated on 2026-05-11 for bulk Catalog Setup hardening:
+- Backend targeted suites: `npm test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js` passed 43 tests, covering POS `STOCK_UNAVAILABLE`, service stock exemption, bulk POS visibility mixed results, POS bulk image duplicate/unmatched per-file results, Storefront visibility price blockers, Storefront image preservation/cleanup, and Storefront bulk image price blockers.
+- Frontend targeted suite: `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemFinancialPolicy.test.js` passed.
+- SKUpervisor build: `npm --prefix frontend run build:skupervisor` passed.
+- Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed.
+
+Operational readiness rating after the bulk Catalog Setup hardening pass: **8.8/10**. Remaining risk is browser-level multipart smoke evidence against a real tenant with sample images, plus broader frontend interaction tests for the Catalog Setup modal.
+
+Validated on 2026-05-12 for Storefront marker preview cards:
+- Frontend storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__ --pool=threads` passed 14 files and 66 tests after the default Vitest fork pool timed out starting workers. Coverage includes marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
+- Targeted marker suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed 14 tests.
+- Storefront build gate: `npm --prefix frontend run build:store` passed with MapLibre still isolated in the existing lazy-loaded vendor chunk and marker preview styling moved into Storefront CSS classes.
+- Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed. Browser plugin tooling and a local Playwright binary were not available in this session, so rendered hover/tap screenshots remain the only uncollected evidence.
+
+Operational readiness rating after the marker preview remediation pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
 
 ## Assumptions
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.

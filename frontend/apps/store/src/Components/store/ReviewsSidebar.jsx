@@ -16,7 +16,7 @@ const renderStars = (count, size = 14) => {
   return stars;
 };
 
-const getInitials = (name, gender) => name.charAt(0);
+const getInitials = (name) => name.charAt(0);
 
 export function ReviewsSidebar({ reviews }) {
   const { average, total, breakdown, items } = reviews;

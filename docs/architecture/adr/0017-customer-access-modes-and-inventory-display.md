@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-03
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-12
 classification: authoritative
 ---
 
@@ -46,6 +46,7 @@ Inventory display modes:
 - Public Storefront catalog and checkout eligibility must read item-level storefront overrides when available. During additive rollout, a missing `storefront_catalog_overrides` table may fall back to the prior POS-derived policy with warning logging instead of returning `500`.
 - POS catalog responses and terminal eligibility must remain sourced from POS overrides only. Image upload/removal must not silently enable either POS or Storefront visibility.
 - Quote, checkout, and service booking public mutations must fail closed when the effective mode is not `transaction`.
+- When the effective mode is `transaction`, Storefront checkout/booking must allow repeated customer orders and quantity `1+` lines/drafts whenever POS-equivalent readiness passes. Customer Access Mode controls whether the action is allowed; it must not impose a one-active-order or one-active-booking limit.
 - Onboarding remains a soft reminder per ADR 0013, but its business classification step should become the first capture point for Customer Access Mode and Inventory Display preferences.
 - Settings > Storefront becomes the long-term source-of-truth surface for changing these controls after onboarding.
 - No architecture allowlist exception is required.
@@ -91,3 +92,31 @@ Storefront visibility does not make item cost public:
 - `storefront_catalog_overrides.storefront_visible=true` is a sale-readiness configuration. Enabling it on an item without a positive `default_sale_price` must surface a readiness blocker in IMS and must fail closed in Storefront checkout.
 - Storefront image upload must not create or preserve a visible Storefront override for a price-less row. Hidden rows may still store images for later setup, but visible rows must pass sale-price readiness first.
 - Inventory Display remains quantity/availability presentation only. It does not alter cost visibility and does not authorize public cost exposure.
+
+## Addendum: Storefront Checkout Multiplicity (2026-05-11)
+
+Storefront multiplicity is part of the transaction-mode contract:
+
+- Stock-bearing product, retail, F&B/menu, and future mode cart lines may use quantity `1+`, bounded by location stock and the FIFO/location contract from ADR 0009.
+- Service bookings may use quantity `1+` per booking and multiple booking drafts per all-or-nothing checkout, bounded by Services Mode resource/provider/location validation from ADR 0016. Quantity above `1` requires a capacity anchor, currently an active assigned service resource; provider-only and location-only service bookings remain effective capacity `1`.
+- Public service availability reads are allowed as catalog/customer-guidance reads, but they must be no-store and capacity-aware. They may show only slots that currently satisfy Services Mode capacity/readiness rules, including active unexpired hold quantities, and may return customer-safe diagnostics for no-slot/setup states; public booking mutations remain transaction-gated and revalidate under lock.
+- Public service booking holds are transaction-gated mutations. Active unexpired holds may reserve Services Mode capacity briefly, must require idempotency, must be counted by availability/booking capacity checks while active, and must be consumed or replaced by the final booking path.
+- Storefront readiness remains POS-equivalent, not POS-coupled: POS visibility is not a Storefront gate, but Storefront must enforce the same sale-readiness concepts for active status, price, stock, service bookability, and capacity.
+- Public checkout and booking mutations must be idempotent. Product checkout continues to use POS transaction idempotency; service booking checkout stores the idempotency key and request hash on created bookings and replays matching retries.
+
+## Addendum: Bulk Catalog Setup And Mode-Aware Readiness (2026-05-11)
+
+Bulk setup is now part of the item-level catalog contract:
+
+- POS and Storefront readiness use shared setup policy helpers so onboarding, single-item controls, bulk visibility APIs, and bulk image APIs report the same blocker vocabulary.
+- POS readiness requires active status, effective POS visibility, positive sale price, non-negative stock, and available stock for stock-bearing rows. Service and stock-exempt rows may be POS-ready without physical stock when the other blockers pass.
+- Onboarding `has_sellable_item` must count POS-ready items, not merely active or POS-visible rows.
+- Storefront readiness reports effective visibility, sale-price readiness, image state, active status, and blocker reasons. Visible Storefront rows without a positive `default_sale_price` remain blocked.
+- `PATCH /api/v1/pos/catalog-overrides/bulk` may enable POS visibility only for POS-ready rows. Disabling remains allowed for incomplete rows.
+- `PATCH /api/v1/items/storefront-overrides/bulk` may enable Storefront visibility only for Storefront-ready rows and must never mutate POS visibility. Disabling remains allowed for incomplete rows.
+- `POST /api/v1/pos/catalog-overrides/images/bulk` and `POST /api/v1/items/storefront-images/bulk` match files by SKU filename stem, preserve current visibility, return per-file partial-success results, and clean up failed stored/temp files.
+- Bulk image middleware accepts the batch for use-case validation so unsupported MIME/signature, duplicate filenames, unmatched SKU stems, readiness blockers, and 5 MB policy failures can be reported per file. The middleware still caps uploads at 50 files and 6 MB per temporary file, below the production Nginx `client_max_body_size=8m` ingress guard and above the 5 MB product image policy.
+- POS and Storefront bulk image uploads are separate asset paths. A POS bulk image upload must not set Storefront image fields, and a Storefront bulk image upload must not set POS image fields.
+- Onboarding readiness must not use the legacy `items.pos_visible` column as a shortcut. It must evaluate the same POS readiness policy as the catalog setup flow and page through item rows rather than assuming the first query window contains the sellable candidate.
+
+Mode-aware recommendations are advisory, not permission bypasses. Corrected taxonomy modes use their mode-native sellable/internal item presets. Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, and `education_institutions`) must continue using conservative finished-goods defaults until a governed mode pass defines their taxonomy, financial policy, POS policy, Storefront policy, import/export columns, onboarding expectations, bulk setup recommendations, and tests.

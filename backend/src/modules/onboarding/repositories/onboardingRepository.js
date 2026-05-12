@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertOnboardingRepositoryContract } from '../contracts/onboardingRepository.contract.js';
 import { buildBusinessClassificationSnapshot } from '../domain/businessClassification.js';
@@ -6,6 +7,9 @@ import {
   normalizeInventoryDisplayMode,
   normalizeLowStockDisplayThreshold
 } from '../../shared/utils/customerAccessPolicy.js';
+import {
+  buildPosReadiness
+} from '../../shared/utils/catalogSetupPolicy.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
@@ -117,8 +121,74 @@ const buildSellableItemWhere = (Item) => {
   if (modelHasColumn(Item, 'deleted_at')) where.deleted_at = null;
   if (modelHasColumn(Item, 'status')) where.status = 'active';
   if (modelHasColumn(Item, 'is_active')) where.is_active = true;
-  if (modelHasColumn(Item, 'pos_visible')) where.pos_visible = true;
   return where;
+};
+
+const toPlain = (value) => (
+  value && typeof value.toJSON === 'function'
+    ? value.toJSON()
+    : value
+);
+
+const countPosReadySellableItems = async ({ Item, PosCatalogOverride, ServiceItemDetail, transaction = null } = {}) => {
+  if (!Item) return 0;
+  const batchSize = 500;
+  let offset = 0;
+
+  while (true) {
+    const rows = await Item.findAll({
+      where: buildSellableItemWhere(Item),
+      attributes: [
+        'item_id',
+        'name',
+        'sku_code',
+        'category',
+        'product_type',
+        'mode_item_preset',
+        'status',
+        'default_sale_price',
+        'current_stock'
+      ],
+      include: ServiceItemDetail ? [{
+        model: ServiceItemDetail,
+        as: 'serviceDetail',
+        attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+        required: false
+      }] : [],
+      order: [['item_id', 'ASC']],
+      limit: batchSize,
+      offset,
+      ...(transaction ? { transaction } : {})
+    });
+    if (!rows.length) return 0;
+
+    const itemIds = rows.map((row) => toPlain(row)?.item_id).filter(Boolean);
+    const overrideMap = new Map();
+    if (PosCatalogOverride && itemIds.length > 0) {
+      const overrides = await PosCatalogOverride.findAll({
+        where: { item_id: { [Op.in]: itemIds } },
+        attributes: ['item_id', 'pos_visible', 'pos_image_path', 'pos_image_url'],
+        ...(transaction ? { transaction } : {})
+      });
+      overrides.forEach((row) => {
+        const payload = toPlain(row);
+        overrideMap.set(payload.item_id, payload);
+      });
+    }
+
+    if (rows.some((row) => {
+      const item = toPlain(row);
+      return buildPosReadiness({
+        item,
+        override: overrideMap.get(item.item_id) || null
+      }).ready === true;
+    })) {
+      return 1;
+    }
+
+    if (rows.length < batchSize) return 0;
+    offset += batchSize;
+  }
 };
 
 const getSettingRows = async (SystemSetting, keys = [], { transaction = null } = {}) => {
@@ -173,6 +243,8 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
 
   const TenantLocation = dbStore.get('TenantLocation');
   const Item = dbStore.get('Item');
+  const PosCatalogOverride = dbStore.get('PosCatalogOverride');
+  const ServiceItemDetail = dbStore.get('ServiceItemDetail');
   const SystemSetting = dbStore.get('SystemSetting');
 
   let fallbackBusinessName = '';
@@ -184,8 +256,6 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     fallbackBusinessName = String(row?.setting_value || '').trim();
   }
 
-  const sellableItemWhere = buildSellableItemWhere(Item);
-
   const [activeLocationCount, primaryActiveLocationCount, sellableItemCount] = await Promise.all([
     TenantLocation ? TenantLocation.count({
       where: { is_active: true },
@@ -195,10 +265,7 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
       where: { is_active: true, is_primary_storefront: true },
       ...(transaction ? { transaction } : {})
     }) : 0,
-    Item ? Item.count({
-      where: sellableItemWhere,
-      ...(transaction ? { transaction } : {})
-    }) : 0
+    countPosReadySellableItems({ Item, PosCatalogOverride, ServiceItemDetail, transaction })
   ]);
 
   const resolvedStoreName = baselineName || contextTenantName || fallbackBusinessName;

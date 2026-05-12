@@ -13,7 +13,9 @@ import {
   replaceItemSuppliersUseCase,
   listStorefrontCatalogOverridesUseCase,
   updateStorefrontCatalogOverrideUseCase,
+  updateBulkStorefrontCatalogOverridesUseCase,
   uploadStorefrontCatalogImageUseCase,
+  uploadBulkStorefrontCatalogImagesUseCase,
   deleteStorefrontCatalogImageUseCase,
   listItemBarcodesUseCase,
   attachItemBarcodeUseCase,
@@ -650,6 +652,31 @@ export const updateStorefrontCatalogOverride = async (req, res, next) => {
   }
 };
 
+export const updateBulkStorefrontCatalogOverrides = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => updateBulkStorefrontCatalogOverridesUseCase({
+        payload: req.validatedData || req.body || {},
+        user: req.user
+      }),
+      'Failed to update storefront catalog overrides in bulk'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog overrides updated',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadStorefrontCatalogImage = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -667,6 +694,31 @@ export const uploadStorefrontCatalogImage = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'Storefront catalog image uploaded successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => uploadBulkStorefrontCatalogImagesUseCase({
+        files: req.files,
+        user: req.user
+      }),
+      'Failed to upload storefront catalog images in bulk'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog images processed',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -861,7 +913,9 @@ export default {
   renderItemBarcodeLabel,
   listStorefrontCatalogOverrides,
   updateStorefrontCatalogOverride,
+  updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage,
   getFolders,
   createFolder,

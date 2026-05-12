@@ -401,6 +401,14 @@ If the browser shows `Blocked request. This host ("dgfy.ph") is not allowed. To 
 
 If DGFY browser logins show `404` for `/api/v1/...` while the frontend page itself loads, verify the DGFY Nginx virtual host is proxying `/api` and `/uploads` to the active backend port `127.0.0.1:5001`. A proxy target of `127.0.0.1:5000` can route to the wrong local service and return empty 404s for valid backend routes such as `/api/v1/auth/lookup` and `/api/v1/admin/login`.
 
+If IMS Settings storefront cover/profile uploads fail with `413 Payload Too Large`, verify the active Nginx config includes the deploy-managed upload guard:
+
+```bash
+nginx -T | grep -n "client_max_body_size"
+```
+
+The production deploy writes `/etc/nginx/conf.d/skupervisor-client-body-size.conf` with `client_max_body_size 8m;`. Backend storefront asset validation still enforces the 5 MiB image-file limit; the Nginx value is higher only to allow multipart overhead to reach the backend.
+
 ## Hosting Profile Verification
 After every deploy or rollback:
 1. Open `/health` or `/api/v1/health`.

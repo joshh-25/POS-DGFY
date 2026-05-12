@@ -70,6 +70,8 @@ const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
 const POS_CATALOG_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const BULK_CATALOG_MAX_ITEM_IDS = 500;
+const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
@@ -2672,6 +2674,130 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
     };
 };
 
+const normalizeBulkItemIds = (itemIds) => {
+    if (!Array.isArray(itemIds)) return null;
+    return [...new Set(itemIds.map((itemId) => parsePositiveInt(itemId)).filter(Boolean))];
+};
+
+const getSkuStem = (file = {}) => {
+    const originalName = String(file?.originalname || '').trim();
+    const lastDot = originalName.lastIndexOf('.');
+    const stem = lastDot > 0 ? originalName.slice(0, lastDot) : originalName;
+    return stem.trim();
+};
+
+const cleanupTempFile = async (file) => {
+    if (!file?.path) return;
+    try {
+        await fs.unlink(file.path);
+    } catch {
+        // Best-effort temp cleanup.
+    }
+};
+
+const createBulkImageSummary = () => ({
+    uploaded: 0,
+    failed: 0,
+    unmatched: 0,
+    duplicate_filename: 0,
+    blocked_readiness: 0
+});
+
+export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => {
+    return async ({ payload, user }) => {
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const itemIds = normalizeBulkItemIds(payload.item_ids);
+        if (!itemIds || itemIds.length === 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'item_ids must contain at least one positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (itemIds.length > BULK_CATALOG_MAX_ITEM_IDS) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `item_ids cannot exceed ${BULK_CATALOG_MAX_ITEM_IDS} entries`,
+                { statusCode: 400 }
+            ));
+        }
+        if (typeof payload.pos_visible !== 'boolean') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'pos_visible must be a boolean',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            if (!hasPermission(user, PERMISSION_EDIT_POS_CATALOG)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'You do not have permission to modify POS catalog overrides.',
+                    { statusCode: 403 }
+                );
+            }
+
+            const results = [];
+            for (const itemId of itemIds) {
+                try {
+                    const readinessEnvelope = await posRepository.getCatalogReadinessByItemId(itemId, {
+                        forcedPosVisible: payload.pos_visible === true ? true : null
+                    });
+                    if (!readinessEnvelope) {
+                        results.push({ item_id: itemId, status: 'not_found', errors: ['Item was not found'] });
+                        continue;
+                    }
+
+                    if (payload.pos_visible === true && readinessEnvelope.pos_readiness?.ready !== true) {
+                        results.push({
+                            item_id: itemId,
+                            status: 'blocked',
+                            errors: ['POS readiness is incomplete'],
+                            readiness_snapshot: readinessEnvelope.pos_readiness
+                        });
+                        continue;
+                    }
+
+                    const updated = await posRepository.upsertCatalogOverride(itemId, {
+                        pos_visible: payload.pos_visible
+                    });
+                    results.push({
+                        item_id: itemId,
+                        status: 'updated',
+                        data: toSerializable(updated)
+                    });
+                } catch (error) {
+                    results.push({
+                        item_id: itemId,
+                        status: 'failed',
+                        errors: [error?.message || 'Failed to update item']
+                    });
+                }
+            }
+
+            return ok({
+                summary: {
+                    updated: results.filter((entry) => entry.status === 'updated').length,
+                    blocked: results.filter((entry) => entry.status === 'blocked').length,
+                    not_found: results.filter((entry) => entry.status === 'not_found').length,
+                    failed: results.filter((entry) => entry.status === 'failed').length
+                },
+                results
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to update POS catalog overrides in bulk'));
+        }
+    };
+};
+
 export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage }) => {
     return async ({ itemId, file, user }) => {
         const normalizedItemId = parsePositiveInt(itemId);
@@ -2781,6 +2907,183 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                 }
             }
             return fail(mapPosUseCaseError(error, 'Failed to upload POS catalog image'));
+        }
+    };
+};
+
+export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageStorage }) => {
+    return async ({ files = [], user }) => {
+        const normalizedFiles = Array.isArray(files) ? files : [];
+        if (normalizedFiles.length === 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'images must contain at least one file',
+                { statusCode: 400 }
+            ));
+        }
+        if (normalizedFiles.length > BULK_CATALOG_MAX_IMAGE_FILES) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `images cannot exceed ${BULK_CATALOG_MAX_IMAGE_FILES} files`,
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            if (!hasPermission(user, PERMISSION_EDIT_POS_CATALOG)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'You do not have permission to upload POS catalog images.',
+                    { statusCode: 403 }
+                );
+            }
+
+            const duplicateStems = new Set();
+            const seenStems = new Set();
+            normalizedFiles.forEach((file) => {
+                const stem = getSkuStem(file).toUpperCase();
+                if (!stem) return;
+                if (seenStems.has(stem)) duplicateStems.add(stem);
+                seenStems.add(stem);
+            });
+
+            const skuCodes = [...seenStems].filter((stem) => !duplicateStems.has(stem));
+            const items = await posRepository.findItemsBySkuCodes(skuCodes);
+            const itemBySku = new Map((items || []).map((item) => {
+                const payload = toSerializable(item);
+                return [String(payload?.sku_code || '').trim().toUpperCase(), payload];
+            }));
+            const summary = createBulkImageSummary();
+            const results = [];
+
+            for (const file of normalizedFiles) {
+                const skuCode = getSkuStem(file);
+                const skuKey = skuCode.toUpperCase();
+                let stored = null;
+                let storedCommitted = false;
+                try {
+                    if (duplicateStems.has(skuKey)) {
+                        await cleanupTempFile(file);
+                        summary.duplicate_filename += 1;
+                        results.push({
+                            filename: file.originalname,
+                            sku_code: skuCode || null,
+                            item_id: null,
+                            surface: 'pos',
+                            status: 'duplicate_filename',
+                            image_url: null,
+                            errors: ['Duplicate SKU filename in upload batch'],
+                            readiness_snapshot: null
+                        });
+                        continue;
+                    }
+
+                    const item = itemBySku.get(skuKey);
+                    if (!item) {
+                        await cleanupTempFile(file);
+                        summary.unmatched += 1;
+                        results.push({
+                            filename: file.originalname,
+                            sku_code: skuCode || null,
+                            item_id: null,
+                            surface: 'pos',
+                            status: 'unmatched',
+                            image_url: null,
+                            errors: ['No item matched this SKU filename'],
+                            readiness_snapshot: null
+                        });
+                        continue;
+                    }
+
+                    const fileValidation = await validateImageUploadFile({
+                        file,
+                        allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
+                        maxBytes: POS_CATALOG_IMAGE_MAX_BYTES
+                    });
+                    if (!fileValidation.ok) {
+                        await cleanupTempFile(file);
+                        summary.failed += 1;
+                        results.push({
+                            filename: file.originalname,
+                            sku_code: skuCode,
+                            item_id: item.item_id,
+                            surface: 'pos',
+                            status: 'failed',
+                            image_url: null,
+                            errors: ['Only image files are allowed for POS catalog uploads.'],
+                            readiness_snapshot: null
+                        });
+                        continue;
+                    }
+
+                    const existing = await posRepository.findCatalogOverrideByItemId(item.item_id);
+                    const keepVisible = resolveCatalogVisibility({
+                        item,
+                        override: existing || null,
+                        surface: 'pos'
+                    }) !== false;
+                    const readinessEnvelope = await posRepository.getCatalogReadinessByItemId(item.item_id);
+
+                    stored = await imageStorage.store({
+                        itemId: item.item_id,
+                        originalName: file.originalname,
+                        tempPath: file.path
+                    });
+                    const updated = await posRepository.updateCatalogImage(item.item_id, {
+                        path: stored.path,
+                        url: stored.url
+                    }, {
+                        keepVisible
+                    });
+                    storedCommitted = true;
+
+                    if (existing?.pos_image_path && existing.pos_image_path !== stored.path) {
+                        try {
+                            await imageStorage.remove({ path: existing.pos_image_path });
+                        } catch {
+                            // Best-effort cleanup of replaced image.
+                        }
+                    }
+
+                    summary.uploaded += 1;
+                    results.push({
+                        filename: file.originalname,
+                        sku_code: skuCode,
+                        item_id: item.item_id,
+                        surface: 'pos',
+                        status: 'uploaded',
+                        image_url: stored.url,
+                        errors: [],
+                        readiness_snapshot: readinessEnvelope?.pos_readiness || null,
+                        data: toSerializable(updated)
+                    });
+                } catch (error) {
+                    if (stored && !storedCommitted) {
+                        try {
+                            await imageStorage.remove({ path: stored.path });
+                        } catch {
+                            // Best-effort cleanup.
+                        }
+                    }
+                    await cleanupTempFile(file);
+                    summary.failed += 1;
+                    results.push({
+                        filename: file.originalname,
+                        sku_code: skuCode || null,
+                        item_id: itemBySku.get(skuKey)?.item_id || null,
+                        surface: 'pos',
+                        status: 'failed',
+                        image_url: null,
+                        errors: [error?.message || 'Failed to upload image'],
+                        readiness_snapshot: null
+                    });
+                }
+            }
+
+            return ok({ summary, results });
+        } catch (error) {
+            await Promise.all(normalizedFiles.map((file) => cleanupTempFile(file)));
+            return fail(mapPosUseCaseError(error, 'Failed to upload POS catalog images in bulk'));
         }
     };
 };
