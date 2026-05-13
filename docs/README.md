@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-09
+last_reviewed: 2026-05-13
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -64,7 +64,7 @@ Start here for all planning and implementation work:
 - Compliance activation readiness browser E2E guidance is maintained in `docs/testing/README.md`.
 
 ## Current Behavior Notes
-1. Tenant workflow mode accepts 11 template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008, ADR 0014, ADR 0016, and ADR 0019. User-facing `manufacturing` is Food Manufacturing, `fnb` is Food & Beverage, and `manufacturing` remains a legacy alias.
+1. Tenant workflow mode accepts 11 persisted/normalized template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`) with backward-compatible family behavior (`manufacturing` vs `msme`) per ADR 0008, ADR 0014, ADR 0016, and ADR 0019. New Business Mode selectors hide the legacy `manufacturing` alias so operators see one Food Manufacturing choice; existing `manufacturing` data still normalizes to `food_manufacturing`. A distinct future Manufacturing mode requires its own governed mode pass before it can become selectable.
 2. POS setup is wizard-first; item cards no longer host single-item POS setup widgets.
 3. POS visibility enablement is readiness-gated with deterministic denial metadata for unresolved requirements.
 4. Final Review documentary readiness is tenant self-serve in Settings > Compliance; repo submission docs are reference artifacts, not tenant input.
@@ -95,6 +95,7 @@ Start here for all planning and implementation work:
 28. Tenant provisioning is mode-wide, not F&B-only. Fresh tenant schema creation now clones tenant-local models from the canonical model registry while excluding landlord-only models, and provisioning cleanup restores approval paths to retryable valid statuses instead of introducing invalid transient tenant states. Future modes that add tables or foreign keys must prove this with tenant model factory tests and disposable MySQL schema sync.
 29. Item CSV export is mode-aware for corrected modes. Food Manufacturing, MSME, Services, and Food & Beverage exports reuse their import-template headers, include template marker columns, preserve `mode_item_preset` and `default_sale_price`, and are expected to preview-import back into the same workflow mode. Legacy `type=items|products|master` category-split exports remain compatibility behavior for old callers.
 30. Storefront cover/profile image uploads from IMS Settings are production-ingress guarded. Backend validation allows 5 MiB image files, and VPS deploys install `/etc/nginx/conf.d/skupervisor-client-body-size.conf` with `client_max_body_size 8m;` so normal multipart photo uploads reach the backend before auth and image validation. Operational details are in `docs/ops/DEPLOYMENT_GUIDE.md`; the Storefront feature note is in `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md`.
+31. Settings > Storefront location pins support add, edit, primary, deactivate/reactivate, and permanent delete for inactive unused pins. Permanent delete is guarded by a tenant-local reference-source manifest, returns `409` with `reference_counts` for operational history, fails closed with `503` when reference inspection is unavailable, and refreshes Storefront discovery after successful deletion.
 
 ## Rules
 1. Use authoritative docs first.

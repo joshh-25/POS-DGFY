@@ -2588,6 +2588,59 @@ Remove tenant storefront branding image from IMS Settings.
 - `asset_type`
 - `deleted` (`true`)
 
+### Tenant Location Pin Endpoints
+Manage tenant-private storefront/POS/service location pins from IMS Settings.
+
+**Auth**: Private (`system:edit_settings`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/tenant-locations?include_inactive=true` | List active and inactive tenant location pins plus storefront sync metadata |
+| `POST` | `/tenant-locations` | Create a location pin |
+| `PUT` | `/tenant-locations/:id` | Update location details, active/open state, or primary storefront flag |
+| `DELETE` | `/tenant-locations/:id` | Deactivate a location while preserving history |
+| `DELETE` | `/tenant-locations/:id/permanent` | Permanently delete an unused pin only |
+
+**Permanent Delete Contract**
+- Use permanent delete only for pins with no inventory, POS, booking, service, or user-location history.
+- IMS Settings exposes permanent delete only after a location is inactive; active pins stay on the deactivate/reactivate path first.
+- The backend checks tenant-local operational references before deleting and refreshes Storefront discovery after successful deletion.
+- The reference guard fails closed. If any named tenant-local reference model is missing from the active tenant context or cannot count rows, permanent delete returns `503` with `error_code=SERVICE_UNAVAILABLE`; clients should not retry as a delete success or assume zero references.
+- A blocked delete returns `409` with `error_code=CONFLICT` and `errors.reference_counts`. Clients should surface those counts and keep deactivate as the safe fallback.
+- A database FK conflict raised by a concurrent dependent write is also returned as `409 CONFLICT`; clients should handle it the same as a reference-count block.
+
+**Blocked Delete Example**
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Location has operational history and cannot be permanently deleted. Deactivate it instead.",
+  "error_code": "CONFLICT",
+  "errors": {
+    "reference_counts": {
+      "posTransactions": 2,
+      "serviceBookings": 1,
+      "total": 3
+    }
+  }
+}
+```
+
+**Reference Guard Unavailable Example**
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Location reference guard is unavailable. Permanent delete is disabled until tenant schema/runtime is healthy.",
+  "error_code": "SERVICE_UNAVAILABLE",
+  "errors": {
+    "source_key": "serviceBookings",
+    "model_name": "ServiceBooking",
+    "reason": "model_missing_from_tenant_context"
+  }
+}
+```
+
 ### GET /storefront/discovery
 List publicly discoverable stores for list/grid/map storefront views.
 
@@ -2871,6 +2924,7 @@ Route mapping note:
 
 **Validation Note**
 - When requested quantity exceeds current stock, response is `422` with machine-readable stock violation details in `errors`.
+- Stock-bearing rows are validated by aggregate requested quantity per `item_id`, not by each submitted line alone. Duplicate product lines, F&B modifier-split lines, physical Services Mode add-ons, and future customized stock-bearing lines cannot exceed the selected location's available stock in one quote.
 - When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
 - Customer Access Mode block details include `requested_action`, `requested_mode`, `effective_mode`, `limitation_reason`, and `allowed_capabilities`.
 
@@ -2894,6 +2948,7 @@ Route mapping note:
 
 **Validation Note**
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
+- Checkout uses the same aggregate stock-bearing `item_id` quantity validation as quote before persisting lines. Separate submitted lines remain separate receipt/order lines, but their combined stock demand must fit available stock unless the selected location explicitly allows out-of-stock sales.
 - When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 

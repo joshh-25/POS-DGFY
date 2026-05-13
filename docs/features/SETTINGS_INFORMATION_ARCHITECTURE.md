@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-13
 applies_to: sku_pervisor_settings_surface
 topic: settings_information_architecture
 ---
@@ -36,8 +36,8 @@ Current top-level tabs:
 | Tab | Purpose | Examples |
 |---|---|---|
 | Profile | Current user's personal account details | Name, email, profile-level preferences |
-| Company | Tenant identity, team, and business mode | Company details, user management, workflow/business mode |
-| Storefront | Public DGFY storefront operations and presentation | Storefront slug, open status, fulfillment toggles, locations, logo/cover, customer access mode, inventory display, customer-facing content |
+| Company | Tenant identity, team, and business mode | Company details, user management, workflow/business mode selector with legacy manufacturing alias hidden from new choices |
+| Storefront | Public DGFY storefront operations and presentation | Storefront slug, open status, fulfillment toggles, locations, primary pin, inactive-pin permanent delete, logo/cover, customer access mode, inventory display, customer-facing content |
 | POS Setup | DGFY POS terminal, receipt, fiscal metadata, and cashier closeout behavior | Legal receipt metadata, TIN/PTU/MIN/accreditation, petty cash, terminal policy, DGFY fee policy, POS discounts |
 | Compliance | Compliance lifecycle, documentary readiness, artifacts, and final review | Mode readiness, final review uploads/URLs, compliance sign-off |
 | System | Technical and administrative system settings | Non-domain operational settings |
@@ -51,8 +51,9 @@ Current top-level tabs:
 5. Compliance lifecycle and documentary readiness belong in `Compliance`; these controls must not be mixed with Storefront media or general Company identity.
 6. User and invitation management belong in `Company` because they affect tenant administration, not POS/storefront runtime behavior directly.
 7. Customer Access Mode and Inventory Display belong in `Storefront` because they control public customer behavior and public stock presentation. They must not mutate workflow mode or compliance lifecycle state.
-8. Item-level `Show in Storefront` and storefront item images belong on inventory item setup surfaces because they are per-item catalog membership/media controls. They must not be modeled as tenant-wide Settings controls and must not mutate `Show in POS`.
-9. Storefront item controls are edit-gated. Inventory users without `items:edit` must not see disabled Storefront switches or image controls backed by inferred defaults, because the Storefront override read endpoint is also edit-gated.
+8. Tenant location pin management belongs in `Storefront` because it changes public map/profile location state and fulfillment/location selection. Permanent delete is exposed only for inactive unused pins; active pins stay on the deactivate/reactivate path first.
+9. Item-level `Show in Storefront` and storefront item images belong on inventory item setup surfaces because they are per-item catalog membership/media controls. They must not be modeled as tenant-wide Settings controls and must not mutate `Show in POS`.
+10. Storefront item controls are edit-gated. Inventory users without `items:edit` must not see disabled Storefront switches or image controls backed by inferred defaults, because the Storefront override read endpoint is also edit-gated.
 
 ## Deep-Link Contract
 

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-12
+last_reviewed: 2026-05-13
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -75,6 +75,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed when the rollout flag is enabled.
 - For `transaction`, quote/checkout/booking remain available subject to existing location, stock, compliance, and payment gates.
 - Public product catalog payloads continue to omit `current_stock` and `cost_per_unit`; `default_sale_price` is the customer price and `inventory_display.display_quantity` is the only public quantity field.
+- Public product quote and checkout aggregate requested quantity by stock-bearing `item_id` before stock validation. This applies across MSME/product, Food Manufacturing finished products, F&B menu or packaged rows with separate modifier lines, physical Services Mode add-ons, and future stock-bearing mode rows. Pure service rows remain stock-exempt here and use Services booking capacity/hold validation instead.
 - `/store/catalog` item membership and checkout item eligibility use `storefront_catalog_overrides.storefront_visible`. `pos_catalog_overrides.pos_visible` remains POS-only after backfill, with a temporary missing-table fallback for additive rollout safety.
 - Storefront catalog images use `storefront_catalog_overrides.storefront_image_url`. POS menu images remain independent and are used only when the Storefront override table itself is unavailable during rollout compatibility fallback.
 - When the Storefront override table exists but an individual item has no Storefront override row, public Storefront reads use the Storefront default policy rather than inheriting POS state. For products, finished goods default visible and non-finished goods default hidden; services follow service storefront metadata.
@@ -109,8 +110,9 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - IMS item financial fields follow the mode preset: sellable services, F&B menu items, packaged beverages, food-manufacturing finished products, and MSME sellable rows show Selling Price; stock-bearing inventory rows show Cost; POS/Storefront-enabled rows require a positive Selling Price.
 
 7. Storefront location pins
-- Settings > Storefront can add, edit, set primary, deactivate/reactivate, and permanently delete tenant location pins.
-- Permanent delete is allowed only for unused location rows with no POS transaction, terminal shift/transition/audit, inventory stock, FIFO batch, stock movement, user-location grant, service resource, provider assignment, booking, or booking-hold references. Referenced locations must be deactivated instead so historical records remain intact.
+- Settings > Storefront can add, edit, set primary, deactivate/reactivate, and permanently delete inactive tenant location pins. Active pins show deactivate as the first-line path before permanent delete is exposed.
+- Permanent delete is allowed only for unused location rows with no POS transaction, terminal shift/transition/audit, inventory stock, FIFO batch, stock movement, user-location grant, service resource, provider assignment, booking, or booking-hold references. The backend keeps this as a named reference-source manifest and test coverage compares it against direct `TenantLocation` model associations, exact foreign keys, and manifest where-clauses so future location references cannot silently bypass the guard.
+- Blocked permanent deletes return `409` with `reference_counts`; Settings must show the blocking categories and keep deactivate as the safe fallback instead of leaving the operator with only a failed delete toast. If the backend cannot inspect every named tenant-local reference model, permanent delete returns `503 SERVICE_UNAVAILABLE` and remains disabled until tenant schema/runtime health is restored. If a dependent row is created concurrently after the pre-delete count, database FK failure is also mapped to the same `409` conflict so permanent delete remains fail-closed.
 - Successful location create, update, deactivate, reactivate, and delete actions refresh Storefront discovery so public map/profile rows do not carry stale primary-pin state.
 - Business Mode selectors hide the legacy `manufacturing` alias from new choices. Existing `manufacturing` data still normalizes to `food_manufacturing`; a distinct future Manufacturing mode requires its own governed mode pass before it becomes selectable.
 
@@ -179,6 +181,15 @@ Validated on 2026-05-12 for Storefront marker preview cards:
 - Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed. Browser plugin tooling and a local Playwright binary were not available in this session, so rendered hover/tap screenshots remain the only uncollected evidence.
 
 Operational readiness rating after the marker preview remediation pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
+
+Validated on 2026-05-13 for Business Mode selector cleanup, tenant-location permanent delete, and Storefront aggregate stock validation:
+- Frontend targeted suites: `npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/settings/__tests__/workflowMode.services.test.js` passed 3 files and 26 tests. Coverage includes hidden legacy `manufacturing` selector choices, Settings reset controlled-input stability, inactive-pin delete UI, permanent-delete blocker display, terminal active-location assignment, and registration/admin selector parity.
+- Backend tenant-location suites: `npm --prefix backend test -- --runInBand tests/tenantLocationUsecases.applicationResult.test.js tests/tenantLocationReferenceSources.coverage.test.js tests/tenantLocationRepository.referenceGuard.test.js tests/workflowModes.crossLayer.contract.test.js` passed 4 files and 20 tests. Coverage includes unused-pin permanent delete, operational-reference `409` blockers, FK-race conflict mapping, tenant-reference guard `503` fail-closed behavior, manifest association/foreign-key coverage, and cross-layer workflow-mode alignment.
+- Backend Storefront suite: `npm --prefix backend test -- --runInBand tests/storeUsecases.applicationResult.test.js` passed 33 tests, including duplicate-line aggregate stock validation for Storefront quote/checkout.
+- Rendered smoke: local SKUpervisor Vite served `/settings?tab=locations` and unauthenticated routing landed on the login screen as expected; the authenticated Settings delete flow remains covered by component/integration tests.
+- Governance/build gates: `npm run check:architecture`, `npm run lint:docs`, `git diff --check`, `npm --prefix frontend run build:skupervisor`, and `npm --prefix frontend run build:store` passed.
+
+Operational readiness rating after this pass: **8.8/10** for controlled rollout. Remaining risk is live tenant/browser evidence for an authenticated Settings permanent-delete walkthrough and live MySQL concurrency proof; no known source-level implementation gap blocks review.
 
 ## Assumptions
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-09
+last_reviewed: 2026-05-13
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -37,11 +37,13 @@ Canonical planning entry:
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
 - POS/storefront source separation contract is maintained in `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md` with validation evidence in `docs/testing/pos-readiness-status.md`.
 - Expanded workflow-mode template behavior and backward-compatible family semantics are governed by ADR 0008 + ADR 0014 and current feature/testing docs.
+- New Business Mode selectors hide the legacy `manufacturing` alias while persisted legacy `manufacturing` values continue to normalize to Food Manufacturing until a separate governed Manufacturing mode exists.
 - Services Mode independence, booking/ticketing, mode-native IMS/POS/Storefront behavior, stock-exempt POS service sales, and the Food Manufacturing rename are governed by ADR 0016 and `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`.
 - POS offline replay hardening (durable queue statuses + Sync Queue operations console) is tracked in POS feature/testing docs and ADR 0014.
 - Storefront discovery/catalog cache-header contracts and route-level no-store behavior are tracked in API/testing docs and ADR 0014.
 - Tenant first-login onboarding advisory questionnaire classification is tracked in `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md` and API contracts in `docs/api/specification.md`.
 - Customer Access Modes and Inventory Display are implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and the tenant allowlist `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`. The feature contract is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by ADR 0017.
+- Storefront location pin management, including inactive-pin permanent delete, reference-count blockers, fail-closed tenant-reference inspection, and discovery refresh behavior, is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`, `docs/api/specification.md`, and ADR 0017.
 - Barcode Identity, Labels, and Scan Routing is tracked in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md` and governed by ADR 0018. It covers tenant-local manufacturer/internal barcodes, printable labels, IMS scan prefill, POS scan eligibility, Storefront QR, Services/tickets, offline replay revalidation, and conflict handling.
 - Food & Beverage Mode is tracked in `docs/features/FOOD_AND_BEVERAGE_MODE.md` and governed by ADR 0019. It covers restaurant menu modifiers, dining areas/tables, open checks, kitchen tickets, multi-table reservations/waitlist requests, restaurant service-charge snapshots, POS additive metadata, and lazy Storefront restaurant/map surfaces.
 - Mode-Aware RBAC and Role Presets is tracked in `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`, `docs/architecture/RBAC_DESIGN_PROPOSAL.md`, `docs/setup/ADMIN_SETUP.md`, `docs/api/specification.md`, and `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`. New mode work must declare role presets, permission groups, sensitive actions, route guards, location scope, tests, and docs before implementation is considered complete.
