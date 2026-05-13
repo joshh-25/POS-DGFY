@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildMarkerDisplayOffsets,
   buildStoreMarkerPreviewModel,
   createStoreMarkerPreviewNode,
   formatMarkerDistance
@@ -79,5 +80,20 @@ describe('storefront marker preview helpers', () => {
     expect(formatMarkerDistance(4.56)).toBe('4.6 km away');
     expect(formatMarkerDistance(12.4)).toBe('12 km away');
     expect(formatMarkerDistance(null)).toBe('');
+  });
+
+  it('spreads duplicate-coordinate markers without changing unique pins', () => {
+    const offsets = buildMarkerDisplayOffsets([
+      { marker_key: 'main', latitude: 10.72, longitude: 122.56 },
+      { marker_key: 'branch-a', latitude: 10.7200001, longitude: 122.5600001 },
+      { marker_key: 'branch-b', latitude: 10.7200002, longitude: 122.5600002 },
+      { marker_key: 'remote', latitude: 11.11, longitude: 123.45 }
+    ]);
+
+    expect(offsets.get('remote')).toEqual([0, 0]);
+    expect(offsets.get('main')).not.toEqual([0, 0]);
+    expect(offsets.get('branch-a')).not.toEqual([0, 0]);
+    expect(offsets.get('branch-b')).not.toEqual([0, 0]);
+    expect(new Set(['main', 'branch-a', 'branch-b'].map((key) => offsets.get(key).join(','))).size).toBe(3);
   });
 });

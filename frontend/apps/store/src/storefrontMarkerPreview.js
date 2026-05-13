@@ -36,6 +36,50 @@ const appendImage = (parent, { src, alt, className = '', style = {}, onMissing }
 
 const joinContextLabels = (labels) => labels.filter(Boolean).join(' | ');
 
+const coordinateBucketKey = (store) => {
+  const lat = Number(store?.latitude);
+  const lng = Number(store?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
+  return `${lat.toFixed(5)}:${lng.toFixed(5)}`;
+};
+
+const markerIdentityKey = (store, fallbackIndex) => String(
+  store?.marker_key || store?.slug || store?.location_id || fallbackIndex
+);
+
+export const buildMarkerDisplayOffsets = (stores = [], {
+  radius = 18,
+  coordinateKey = coordinateBucketKey
+} = {}) => {
+  const groups = new Map();
+  const offsets = new Map();
+
+  (Array.isArray(stores) ? stores : []).forEach((store, index) => {
+    const key = coordinateKey(store);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ store, index, identityKey: markerIdentityKey(store, index) });
+  });
+
+  groups.forEach((entries) => {
+    if (entries.length <= 1) {
+      offsets.set(entries[0].identityKey, [0, 0]);
+      return;
+    }
+
+    entries.forEach((entry, groupIndex) => {
+      const angle = (Math.PI * 2 * groupIndex) / entries.length - Math.PI / 2;
+      const ringRadius = radius + Math.max(0, entries.length - 4) * 2;
+      offsets.set(entry.identityKey, [
+        Math.round(Math.cos(angle) * ringRadius),
+        Math.round(Math.sin(angle) * ringRadius)
+      ]);
+    });
+  });
+
+  return offsets;
+};
+
 export const formatMarkerDistance = (distanceKm) => {
   const distance = toNumberOrNull(distanceKm);
   if (distance == null) return '';

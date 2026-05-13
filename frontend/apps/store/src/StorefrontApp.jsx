@@ -42,7 +42,7 @@ import {
   getInventoryDisplayLabel
 } from './customerAccess.js';
 import { renderBusinessModePinSvg } from './businessModePins.js';
-import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
+import { buildMarkerDisplayOffsets, createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -945,13 +945,16 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
 
     const rows = Array.isArray(stores) ? stores : [];
     const bounds = [];
+    const markerDisplayOffsets = buildMarkerDisplayOffsets(rows);
 
-    rows.forEach((store) => {
+    rows.forEach((store, storeIndex) => {
       if (!store) return;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const markerKey = String(store.marker_key || store.slug || store.location_id || `${lat}:${lng}`);
+      const markerIdentityKey = String(store.marker_key || store.slug || store.location_id || storeIndex);
+      const markerOffset = markerDisplayOffsets.get(markerIdentityKey) || [0, 0];
       const highlighted = selectedKey
         ? markerKey === String(selectedKey)
         : store.is_primary_storefront === true;
@@ -1072,7 +1075,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
         if (typeof onSelectStore === 'function') onSelectStore(store);
         openPopup({ keepOpen: true });
       });
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el, offset: markerOffset })
         .setLngLat([lng, lat])
         .addTo(map);
       markersRef.current.push(marker);
