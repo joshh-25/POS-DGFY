@@ -609,6 +609,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
 
     const preparedLines = [];
     let subtotalAmount = 0;
+    const requestedQuantityByItemId = new Map();
 
     for (const line of rawLines) {
         const item = itemMap.get(line.item_id);
@@ -631,17 +632,24 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
 
         const isServiceItem = isStockExemptServiceItem(item);
         const currentStock = Number(item.current_stock || 0);
-        if (!isServiceItem && !allowOutOfStockSales && currentStock + 0.000001 < quantity) {
+        const requestedItemQuantity = isServiceItem || allowOutOfStockSales
+            ? quantity
+            : round4((requestedQuantityByItemId.get(item.item_id) || 0) + quantity);
+        if (!isServiceItem && !allowOutOfStockSales) {
+            requestedQuantityByItemId.set(item.item_id, requestedItemQuantity);
+        }
+
+        if (!isServiceItem && !allowOutOfStockSales && currentStock + 0.000001 < requestedItemQuantity) {
             const stockViolation = {
                 item_id: item.item_id,
                 item_name: item.name,
                 available_stock: round4(currentStock),
-                requested_qty: round4(quantity),
+                requested_qty: round4(requestedItemQuantity),
                 unit_of_measure: item.unit_of_measure || null
             };
             throw new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
+                `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${requestedItemQuantity}`,
                 {
                     statusCode: 422,
                     details: {

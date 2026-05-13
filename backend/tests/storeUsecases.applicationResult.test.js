@@ -6,6 +6,7 @@ import {
     buildRegisterStoreCustomerUseCase,
     buildLoginStoreCustomerUseCase,
     buildStoreCartQuoteUseCase,
+    buildStoreCheckoutUseCase,
     buildTrackStoreOrderUseCase,
     buildCancelStoreOrderUseCase,
     buildGetStorefrontFollowStatusUseCase,
@@ -878,6 +879,166 @@ describe('store use-cases application result contract', () => {
         }));
         expect(Array.isArray(result.error.details?.stock_violations)).toBe(true);
         expect(result.error.details?.stock_violations).toHaveLength(1);
+    });
+
+    it('storeCartQuote aggregates duplicate stock-bearing lines before stock validation', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 10,
+                        name: 'F&B Menu Stock Item',
+                        current_stock: 3,
+                        default_sale_price: 85,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'serving',
+                        vat_type: 'vatable',
+                        fnb_modifier_groups: [
+                            {
+                                modifier_group_id: 1,
+                                is_active: true,
+                                options: [
+                                    {
+                                        modifier_option_id: 101,
+                                        is_active: true,
+                                        price_delta: 5,
+                                        option_name: 'Extra sauce'
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [
+                    {
+                        item_id: 10,
+                        quantity: 2,
+                        line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 101 }]
+                    },
+                    { item_id: 10, quantity: 2 }
+                ]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.details?.stock_violation).toEqual(expect.objectContaining({
+            item_id: 10,
+            item_name: 'F&B Menu Stock Item',
+            available_stock: 3,
+            requested_qty: 4,
+            unit_of_measure: 'serving'
+        }));
+    });
+
+    it('storeCheckout rejects duplicate stock-bearing lines before creating the order', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => {
+                transaction.finished = 'commit';
+            }),
+            rollback: jest.fn(async () => {
+                transaction.finished = 'rollback';
+            })
+        };
+        const createOnlineTransactionWithLines = jest.fn();
+        const findTransactionByIdempotencyKey = jest.fn();
+        const useCase = buildStoreCheckoutUseCase({
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 11,
+                        name: 'Packaged Beverage',
+                        current_stock: 1,
+                        default_sale_price: 65,
+                        cost_per_unit: 30,
+                        unit_of_measure: 'bottle',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ]),
+                findTransactionByIdempotencyKey,
+                createOnlineTransactionWithLines
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                idempotency_key: 'duplicate-lines-checkout',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [
+                    { item_id: 11, quantity: 1 },
+                    { item_id: 11, quantity: 1 }
+                ]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.details?.stock_violation).toEqual(expect.objectContaining({
+            item_id: 11,
+            item_name: 'Packaged Beverage',
+            available_stock: 1,
+            requested_qty: 2,
+            unit_of_measure: 'bottle'
+        }));
+        expect(findTransactionByIdempotencyKey).not.toHaveBeenCalled();
+        expect(createOnlineTransactionWithLines).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(transaction.commit).not.toHaveBeenCalled();
     });
 
     it('trackStoreOrder returns tracking payload for valid pin', async () => {
