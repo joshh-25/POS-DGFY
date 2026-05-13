@@ -43,6 +43,7 @@ vi.mock('maplibre-gl', () => {
   }
   function MarkerApi(options = {}) {
     const element = options.element || document.createElement('div');
+    element.dataset.markerOffset = JSON.stringify(options.offset || [0, 0]);
     const api = {
       setLngLat: vi.fn(() => api),
       addTo: vi.fn((map) => {
@@ -425,6 +426,74 @@ describe('storefront discovery integration flow', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
     expect(document.activeElement).toBe(marker);
+  });
+
+  it('applies display offsets to duplicate-coordinate map pins', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              matching_location_ids: [11, 22],
+              nearest_matching_location_id: 11
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Beta Foods',
+              slug: 'beta',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 1,
+              matching_location_ids: [33],
+              nearest_matching_location_id: 33
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'in_stock_only',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const slug = parsed.searchParams.get('slug');
+        return makeJsonResponse({
+          primary_location_id: slug === 'beta' ? 33 : 11,
+          locations: slug === 'beta'
+            ? [{ location_id: 33, name: 'Main Branch', address_line: 'Beta Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+            : [{ location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i })).toBeTruthy());
+
+    const alphaOffset = JSON.parse(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i }).dataset.markerOffset);
+    const betaOffset = JSON.parse(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i }).dataset.markerOffset);
+
+    expect(alphaOffset).not.toEqual([0, 0]);
+    expect(betaOffset).not.toEqual([0, 0]);
+    expect(alphaOffset).not.toEqual(betaOffset);
   });
 
   it('falls back to ICON placeholder when storefront profile image fails to load', async () => {
