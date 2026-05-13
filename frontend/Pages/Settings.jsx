@@ -24,6 +24,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -49,13 +57,27 @@ import {
   getWorkflowModeLabel,
   normalizeWorkflowMode,
   WORKFLOW_MODE_LABELS,
-  WORKFLOW_MODE_VALUES
+  WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
 const HASH_TARGET_ID_PATTERN = /^[A-Za-z][-A-Za-z0-9_:.]*$/;
+const LOCATION_REFERENCE_LABELS = {
+  itemLocationStocks: 'Item location stock',
+  fifoBatches: 'FIFO batches',
+  stockMovements: 'Stock movements',
+  posTransactions: 'POS transactions',
+  posTerminalShifts: 'POS terminal shifts',
+  posShiftLocationTransitions: 'POS shift location transitions',
+  posShiftLocationBackfillAudits: 'POS shift backfill audits',
+  userLocationGrants: 'User location grants',
+  serviceProviderAssignments: 'Service provider assignments',
+  serviceResources: 'Service resources',
+  serviceBookings: 'Service bookings',
+  serviceBookingHolds: 'Service booking holds'
+};
 
 const findElementByHashTarget = (target) => {
   const normalizedTarget = String(target || '').trim();
@@ -83,6 +105,84 @@ const toPositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
+
+const formatLocationDeleteErrors = (error) => {
+  const details = error?.response?.data?.errors || error?.response?.data?.details || {};
+  const counts = details?.reference_counts || {};
+  const blockers = Object.entries(counts)
+    .filter(([key, count]) => key !== 'total' && Number(count || 0) > 0)
+    .map(([key, count]) => `${LOCATION_REFERENCE_LABELS[key] || key}: ${count}`);
+
+  if (blockers.length > 0) {
+    return blockers;
+  }
+
+  return [
+    error?.response?.data?.message || 'This location has operational history. Deactivate it instead.'
+  ];
+};
+
+const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) => ({
+  defaultMinThreshold: 40,
+  defaultPurchaseAllowance: 20,
+  lowStockAlertEnabled: true,
+  surplusAlertEnabled: true,
+  procurementReminderDay: 1,
+  qualityThreshold: 3.5,
+  autoCalculateThresholds: true,
+  posBusinessName: '',
+  posTinBranch: '',
+  posAddress: '',
+  posPtuNumber: '',
+  posMinNumber: '',
+  posAccreditationNumber: '',
+  posReceiptFooterMessage: '',
+  posDiscountProfiles: [],
+  posTerminalRegistry: [],
+  posTerminalRegistryMode: 'warn',
+  posTerminalLocationBindingEnforced: false,
+  posPettyCashSymbol: 'PHP',
+  posPettyCashAmount: 0,
+  opsWorkflowMode: workflowMode,
+  storeDeliveryFee: 0,
+  storeTenantSlug: '',
+  storeIsVisible: true,
+  posOpenStatus: true,
+  posWaitTimeMinutes: 15,
+  customerAccessMode: 'catalog',
+  inventoryDisplayMode: 'availability',
+  inventoryLowStockDisplayThreshold: 5,
+  customerAccessRegistrationStage: 'informal',
+  customerAccessFlagStatus: 'backend-controlled',
+  storefrontTagline: '',
+  storefrontAbout: '',
+  storefrontPhone: '',
+  storefrontEmail: '',
+  storefrontHours: '',
+  storefrontWhyChooseUs: [''],
+  storefrontSocialMessenger: '',
+  storefrontSocialFacebook: '',
+  storefrontSocialInstagram: '',
+  storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
+  storefrontReviewSummaryScore: '',
+  storefrontReviewSummaryTotalCount: '',
+  storefrontReviewSummaryStar1: '',
+  storefrontReviewSummaryStar2: '',
+  storefrontReviewSummaryStar3: '',
+  storefrontReviewSummaryStar4: '',
+  storefrontReviewSummaryStar5: '',
+  storefrontPromoTitle: '',
+  storefrontPromoSubtitle: '',
+  storefrontPromoBadge: '',
+  storefrontPromoValidityText: '',
+  storefrontPromoActive: false,
+  storefrontUiV2Enabled: false,
+  storefrontCategories: [''],
+  storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
+  storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
+  storefrontFollowEnabled: false,
+  storefrontShareEnabled: false
+});
 
 const normalizeTerminalRegistry = (rawRegistry) => {
   let parsed = rawRegistry;
@@ -395,67 +495,7 @@ export default function Settings() {
   }), [location.hash, location.search, subscriptionFeaturesEnabled]);
   const currentTab = settingsDeepLink.tab;
 
-  const [settings, setSettings] = useState({
-    defaultMinThreshold: 40,
-    defaultPurchaseAllowance: 20,
-    lowStockAlertEnabled: true,
-    surplusAlertEnabled: true,
-    procurementReminderDay: 1,
-    qualityThreshold: 3.5,
-    autoCalculateThresholds: true,
-    posBusinessName: '',
-    posTinBranch: '',
-    posAddress: '',
-    posPtuNumber: '',
-    posMinNumber: '',
-    posAccreditationNumber: '',
-    posReceiptFooterMessage: '',
-    posDiscountProfiles: [],
-    posTerminalRegistry: [],
-    posTerminalRegistryMode: 'warn',
-    posTerminalLocationBindingEnforced: false,
-    posPettyCashSymbol: 'PHP',
-    posPettyCashAmount: 0,
-    opsWorkflowMode: DEFAULT_WORKFLOW_MODE,
-    storeDeliveryFee: 0,
-    storeTenantSlug: '',
-    storeIsVisible: true,
-    posOpenStatus: true,
-    posWaitTimeMinutes: 15,
-    customerAccessMode: 'catalog',
-    inventoryDisplayMode: 'availability',
-    inventoryLowStockDisplayThreshold: 5,
-    customerAccessRegistrationStage: 'informal',
-    customerAccessFlagStatus: 'backend-controlled',
-    storefrontTagline: '',
-    storefrontAbout: '',
-    storefrontPhone: '',
-    storefrontEmail: '',
-    storefrontHours: '',
-    storefrontWhyChooseUs: [''],
-    storefrontSocialMessenger: '',
-    storefrontSocialFacebook: '',
-    storefrontSocialInstagram: '',
-    storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
-    storefrontReviewSummaryScore: '',
-    storefrontReviewSummaryTotalCount: '',
-    storefrontReviewSummaryStar1: '',
-    storefrontReviewSummaryStar2: '',
-    storefrontReviewSummaryStar3: '',
-    storefrontReviewSummaryStar4: '',
-    storefrontReviewSummaryStar5: '',
-    storefrontPromoTitle: '',
-    storefrontPromoSubtitle: '',
-    storefrontPromoBadge: '',
-    storefrontPromoValidityText: '',
-    storefrontPromoActive: false,
-    storefrontUiV2Enabled: false,
-    storefrontCategories: [''],
-    storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
-    storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
-    storefrontFollowEnabled: false,
-    storefrontShareEnabled: false
-  });
+  const [settings, setSettings] = useState(() => createDefaultSettings());
 
   const [profileSettings, setProfileSettings] = useState({
     username: '',
@@ -485,6 +525,8 @@ export default function Settings() {
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationSaving, setLocationSaving] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState(null);
+  const [deleteLocationCandidate, setDeleteLocationCandidate] = useState(null);
+  const [deleteLocationErrors, setDeleteLocationErrors] = useState([]);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
   const [storefrontAssets, setStorefrontAssets] = useState({
     cover: '',
@@ -1161,8 +1203,8 @@ export default function Settings() {
     }
   };
 
-  const handleDeactivateLocation = async (locationId) => {
-    if (!window.confirm('Deactivate this location?')) {
+  const handleDeactivateLocation = async (locationId, { skipConfirm = false } = {}) => {
+    if (!skipConfirm && !window.confirm('Deactivate this location?')) {
       return;
     }
 
@@ -1174,8 +1216,53 @@ export default function Settings() {
       if (editingLocationId === locationId) {
         resetLocationForm();
       }
+      if (deleteLocationCandidate?.location_id === locationId) {
+        setDeleteLocationCandidate(null);
+        setDeleteLocationErrors([]);
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to deactivate tenant location');
+    } finally {
+      setLocationSaving(false);
+    }
+  };
+
+  const openDeleteLocationDialog = (location) => {
+    if (!location?.location_id) {
+      return;
+    }
+    setDeleteLocationCandidate(location);
+    setDeleteLocationErrors([]);
+  };
+
+  const closeDeleteLocationDialog = () => {
+    if (locationSaving) return;
+    setDeleteLocationCandidate(null);
+    setDeleteLocationErrors([]);
+  };
+
+  const handleConfirmDeleteLocation = async () => {
+    const locationId = deleteLocationCandidate?.location_id;
+    if (!locationId) return;
+
+    setLocationSaving(true);
+    setDeleteLocationErrors([]);
+    try {
+      await tenantLocationService.deleteTenantLocation(locationId);
+      toast.success('Tenant location pin deleted.');
+      await loadTenantLocations({ silent: true });
+      if (editingLocationId === locationId) {
+        resetLocationForm();
+      }
+      setDeleteLocationCandidate(null);
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 409) {
+        setDeleteLocationErrors(formatLocationDeleteErrors(error));
+        toast.error(error?.response?.data?.message || 'Location has operational history. Deactivate it instead.');
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to delete tenant location pin');
+      }
     } finally {
       setLocationSaving(false);
     }
@@ -1517,62 +1604,9 @@ export default function Settings() {
     }
 
     // Reset system settings
-    setSettings({
-      defaultMinThreshold: 40,
-      defaultPurchaseAllowance: 20,
-      lowStockAlertEnabled: true,
-      surplusAlertEnabled: true,
-      procurementReminderDay: 1,
-      qualityThreshold: 3.5,
-      autoCalculateThresholds: true,
-      posBusinessName: '',
-      posTinBranch: '',
-      posAddress: '',
-      posPtuNumber: '',
-      posMinNumber: '',
-      posAccreditationNumber: '',
-      posReceiptFooterMessage: '',
-      posDiscountProfiles: [],
-      posTerminalRegistry: [],
-      posTerminalRegistryMode: 'warn',
-      posTerminalLocationBindingEnforced: false,
-      posPettyCashSymbol: 'PHP',
-      posPettyCashAmount: 0,
-      opsWorkflowMode: currentUser?.is_master_admin === true ? persistedWorkflowMode : DEFAULT_WORKFLOW_MODE,
-      storeDeliveryFee: 0,
-      storeTenantSlug: '',
-      storeIsVisible: true,
-      posOpenStatus: true,
-      posWaitTimeMinutes: 15,
-      storefrontTagline: '',
-      storefrontAbout: '',
-      storefrontPhone: '',
-      storefrontEmail: '',
-      storefrontHours: '',
-      storefrontWhyChooseUs: [''],
-      storefrontSocialMessenger: '',
-      storefrontSocialFacebook: '',
-      storefrontSocialInstagram: '',
-      storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
-      storefrontReviewSummaryScore: '',
-      storefrontReviewSummaryTotalCount: '',
-      storefrontReviewSummaryStar1: '',
-      storefrontReviewSummaryStar2: '',
-      storefrontReviewSummaryStar3: '',
-      storefrontReviewSummaryStar4: '',
-      storefrontReviewSummaryStar5: '',
-      storefrontPromoTitle: '',
-      storefrontPromoSubtitle: '',
-      storefrontPromoBadge: '',
-      storefrontPromoValidityText: '',
-      storefrontPromoActive: false,
-      storefrontUiV2Enabled: false,
-      storefrontCategories: [''],
-      storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
-      storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
-      storefrontFollowEnabled: false,
-      storefrontShareEnabled: false
-    });
+    setSettings(createDefaultSettings({
+      workflowMode: currentUser?.is_master_admin === true ? persistedWorkflowMode : DEFAULT_WORKFLOW_MODE
+    }));
     setStorefrontAssets({
       cover: '',
       profile: ''
@@ -1972,7 +2006,7 @@ export default function Settings() {
                   onChange={(event) => handleChange('opsWorkflowMode', normalizeWorkflowMode(event.target.value))}
                   disabled={currentUser?.is_master_admin !== true}
                 >
-                  {WORKFLOW_MODE_VALUES.map((mode) => (
+                  {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
                     <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
                   ))}
                 </select>
@@ -2367,6 +2401,22 @@ export default function Settings() {
                             disabled={locationSaving}
                           >
                             Reactivate
+                          </Button>
+                        )}
+                        {location.is_active ? (
+                          <span className="self-center text-xs text-slate-500">
+                            Deactivate before permanent delete
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={() => openDeleteLocationDialog(location)}
+                            disabled={locationSaving}
+                          >
+                            Delete Pin
                           </Button>
                         )}
                       </div>
@@ -3280,6 +3330,65 @@ export default function Settings() {
           </div>
         )}
       </div>
+
+      <Dialog open={Boolean(deleteLocationCandidate)} onOpenChange={(open) => {
+        if (!open) {
+          closeDeleteLocationDialog();
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete Location Pin</DialogTitle>
+            <DialogDescription>
+              Permanently delete {deleteLocationCandidate?.name || 'this location'} only when it has no inventory,
+              POS, booking, service, or user-location history. Locations with history should be deactivated so
+              reports and operational records stay intact.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 pb-2 space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Delete removes the map/storefront pin row. It does not archive past records. If this location has ever
+              been used operationally, the backend will block deletion and return the blocking reference counts.
+            </div>
+            {deleteLocationErrors.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm font-medium text-red-800">Delete is blocked by existing references:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
+                  {deleteLocationErrors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={closeDeleteLocationDialog} disabled={locationSaving}>
+              Cancel
+            </Button>
+            {deleteLocationCandidate?.is_active === true && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleDeactivateLocation(deleteLocationCandidate.location_id, { skipConfirm: true })}
+                disabled={locationSaving}
+              >
+                Deactivate Instead
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleConfirmDeleteLocation}
+              disabled={locationSaving}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* User Management Modal */}
       {showUserManagement && (

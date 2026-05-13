@@ -28,6 +28,12 @@ router.put(
     tenantLocationController.updateTenantLocation
 );
 router.delete(
+    '/:id/permanent',
+    checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+    validateTenantLocationIdParam,
+    tenantLocationController.deleteTenantLocation
+);
+router.delete(
     '/:id',
     checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
     validateTenantLocationIdParam,

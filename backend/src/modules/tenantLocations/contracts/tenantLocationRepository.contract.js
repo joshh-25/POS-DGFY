@@ -9,7 +9,9 @@ export const TenantLocationRepositoryContract = Object.freeze([
     'setPrimaryFlagById',
     'create',
     'updateById',
-    'deactivateById'
+    'deactivateById',
+    'countOperationalReferences',
+    'deleteById'
 ]);
 
 export const assertTenantLocationRepositoryContract = (repository) => {

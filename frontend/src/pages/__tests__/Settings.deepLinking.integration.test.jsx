@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
     createTenantLocation: vi.fn(),
     updateTenantLocation: vi.fn(),
     deactivateTenantLocation: vi.fn(),
+    deleteTenantLocation: vi.fn(),
     reactivateTenantLocation: vi.fn()
   },
   toastMock: {
@@ -108,6 +109,7 @@ function renderSettings(initialEntry = '/settings?tab=profile') {
 describe('Settings deep-linking and action wiring', () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   beforeEach(() => {
@@ -150,13 +152,15 @@ describe('Settings deep-linking and action wiring', () => {
     mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValue({
       rows: [
         { location_id: 11, name: 'Main Branch', is_active: true, is_primary_storefront: true },
-        { location_id: 12, name: 'East Branch', is_active: true, is_primary_storefront: false }
+        { location_id: 12, name: 'East Branch', is_active: true, is_primary_storefront: false },
+        { location_id: 13, name: 'Old Popup Pin', is_active: false, is_primary_storefront: false }
       ],
       meta: {}
     });
     mocks.tenantLocationServiceMock.createTenantLocation.mockResolvedValue({});
     mocks.tenantLocationServiceMock.updateTenantLocation.mockResolvedValue({});
     mocks.tenantLocationServiceMock.deactivateTenantLocation.mockResolvedValue({});
+    mocks.tenantLocationServiceMock.deleteTenantLocation.mockResolvedValue({});
     mocks.tenantLocationServiceMock.reactivateTenantLocation.mockResolvedValue({});
 
     Object.defineProperty(window.navigator, 'clipboard', {
@@ -247,6 +251,52 @@ describe('Settings deep-linking and action wiring', () => {
     await waitFor(() => {
       expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalledTimes(1);
     });
+
+    await user.click(screen.getByRole('button', { name: /Delete Pin/i }));
+    expect(await screen.findByRole('heading', { name: /Delete Location Pin/i })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Delete Permanently/i }));
+    await waitFor(() => {
+      expect(mocks.tenantLocationServiceMock.deleteTenantLocation).toHaveBeenCalledWith(13);
+    });
+  });
+
+  it('keeps active locations on the deactivate path before permanent delete', async () => {
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Delete Pin/i });
+
+    expect(screen.getAllByText(/Deactivate before permanent delete/i)).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Deactivate/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Delete Pin/i })).toHaveLength(1);
+  });
+
+  it('surfaces location delete blockers for inactive pins without deleting', async () => {
+    const user = userEvent.setup();
+    mocks.tenantLocationServiceMock.deleteTenantLocation.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          message: 'Location has operational history and cannot be permanently deleted. Deactivate it instead.',
+          errors: {
+            reference_counts: {
+              posTransactions: 2,
+              serviceBookings: 1,
+              total: 3
+            }
+          }
+        }
+      }
+    });
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Delete Pin/i });
+
+    await user.click(screen.getByRole('button', { name: /Delete Pin/i }));
+    await user.click(await screen.findByRole('button', { name: /Delete Permanently/i }));
+
+    expect(await screen.findByText(/POS transactions: 2/i)).toBeTruthy();
+    expect(await screen.findByText(/Service bookings: 1/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Deactivate Instead/i })).toBeNull();
+    expect(mocks.tenantLocationServiceMock.deactivateTenantLocation).not.toHaveBeenCalled();
   });
 
   it('persists terminal registry location_id in save payload', async () => {
@@ -259,7 +309,7 @@ describe('Settings deep-linking and action wiring', () => {
     await user.type(screen.getByPlaceholderText('COUNTER-01'), 'COUNTER-01');
 
     const terminalLocationSelect = await screen.findByLabelText(/Terminal location/i);
-    await user.selectOptions(terminalLocationSelect, '12');
+    await user.selectOptions(terminalLocationSelect, '11');
 
     await user.click(screen.getByRole('button', { name: /Save Changes/i }));
 
@@ -272,7 +322,7 @@ describe('Settings deep-linking and action wiring', () => {
       expect.arrayContaining([
         expect.objectContaining({
           terminal_id: 'COUNTER-01',
-          location_id: 12
+          location_id: 11
         })
       ])
     );
@@ -352,6 +402,7 @@ describe('Settings deep-linking and action wiring', () => {
 
   it('reset clears local storefront media previews', async () => {
     const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     renderSettings('/settings?tab=storefront');
     await screen.findByRole('button', { name: /Save Changes/i });
     expect(screen.getByAltText('Storefront cover preview')).toBeTruthy();
@@ -363,6 +414,11 @@ describe('Settings deep-linking and action wiring', () => {
       expect(screen.getByText('No cover photo uploaded')).toBeTruthy();
       expect(screen.getByText('No icon')).toBeTruthy();
     });
+
+    expect(consoleErrorSpy.mock.calls.some((call) => (
+      call.some((part) => String(part).includes('A component is changing a controlled input to be uncontrolled'))
+    ))).toBe(false);
+    consoleErrorSpy.mockRestore();
   });
 
   it('shows feedback when clipboard copy fails', async () => {

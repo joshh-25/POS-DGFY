@@ -2,7 +2,8 @@ import { jest } from '@jest/globals';
 import {
     buildCreateTenantLocationUseCase,
     buildUpdateTenantLocationUseCase,
-    buildDeactivateTenantLocationUseCase
+    buildDeactivateTenantLocationUseCase,
+    buildDeleteTenantLocationUseCase
 } from '../src/modules/tenantLocations/usecases/tenantLocationUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
@@ -235,5 +236,141 @@ describe('tenantLocation use-cases primary storefront behavior', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
         expect(result.error.statusCode).toBe(409);
+    });
+
+    it('permanently deletes an unused location pin and promotes fallback primary', async () => {
+        const transaction = createTransactionMock();
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue({
+                location_id: 31,
+                is_active: true,
+                is_primary_storefront: true
+            }),
+            countOperationalReferences: jest.fn().mockResolvedValue({ total: 0 }),
+            deleteById: jest.fn().mockResolvedValue({
+                location_id: 31,
+                is_active: true,
+                is_primary_storefront: true
+            }),
+            findActivePrimary: jest.fn().mockResolvedValue(null),
+            findPrimaryFallbackCandidate: jest.fn().mockResolvedValue({
+                location_id: 32,
+                is_active: true
+            }),
+            clearPrimaryFlags: jest.fn().mockResolvedValue(undefined),
+            setPrimaryFlagById: jest.fn().mockResolvedValue({
+                location_id: 32,
+                is_primary_storefront: true
+            })
+        };
+
+        const useCase = buildDeleteTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({ locationId: 31 });
+
+        expect(result.success).toBe(true);
+        expect(repository.countOperationalReferences).toHaveBeenCalledWith(31, expect.any(Object));
+        expect(repository.deleteById).toHaveBeenCalledWith(31, expect.any(Object));
+        expect(repository.setPrimaryFlagById).toHaveBeenCalledWith(32, expect.any(Object));
+        expect(result.data).toMatchObject({ location_id: 31, deleted: true });
+    });
+
+    it('blocks permanent delete when the location has operational references', async () => {
+        const transaction = createTransactionMock();
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue({
+                location_id: 41,
+                is_active: false,
+                is_primary_storefront: false
+            }),
+            countOperationalReferences: jest.fn().mockResolvedValue({
+                posTransactions: 2,
+                total: 2
+            }),
+            deleteById: jest.fn()
+        };
+
+        const useCase = buildDeleteTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({ locationId: 41 });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.statusCode).toBe(409);
+        expect(repository.deleteById).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalled();
+    });
+
+    it('maps database foreign-key delete races to a conflict instead of a generic failure', async () => {
+        const transaction = createTransactionMock();
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue({
+                location_id: 51,
+                is_active: true,
+                is_primary_storefront: false
+            }),
+            countOperationalReferences: jest.fn().mockResolvedValue({ total: 0 }),
+            deleteById: jest.fn().mockRejectedValue(Object.assign(new Error('Cannot delete or update a parent row'), {
+                name: 'SequelizeForeignKeyConstraintError'
+            }))
+        };
+
+        const useCase = buildDeleteTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({ locationId: 51 });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.statusCode).toBe(409);
+        expect(transaction.rollback).toHaveBeenCalled();
+    });
+
+    it('fails closed when the permanent-delete reference guard cannot inspect tenant models', async () => {
+        const transaction = createTransactionMock();
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue({
+                location_id: 61,
+                is_active: false,
+                is_primary_storefront: false
+            }),
+            countOperationalReferences: jest.fn().mockRejectedValue(Object.assign(
+                new Error('Tenant location reference guard is unavailable for ServiceBooking'),
+                {
+                    name: 'TenantLocationReferenceGuardUnavailableError',
+                    code: 'TENANT_LOCATION_REFERENCE_GUARD_UNAVAILABLE',
+                    sourceKey: 'serviceBookings',
+                    modelName: 'ServiceBooking',
+                    reason: 'model_missing_from_tenant_context'
+                }
+            )),
+            deleteById: jest.fn()
+        };
+
+        const useCase = buildDeleteTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({ locationId: 61 });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.SERVICE_UNAVAILABLE);
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            source_key: 'serviceBookings',
+            model_name: 'ServiceBooking',
+            reason: 'model_missing_from_tenant_context'
+        }));
+        expect(repository.deleteById).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalled();
     });
 });

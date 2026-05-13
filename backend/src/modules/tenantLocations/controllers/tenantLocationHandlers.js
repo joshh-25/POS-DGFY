@@ -2,7 +2,8 @@ import {
     listTenantLocationsUseCase,
     createTenantLocationUseCase,
     updateTenantLocationUseCase,
-    deactivateTenantLocationUseCase
+    deactivateTenantLocationUseCase,
+    deleteTenantLocationUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import {
@@ -203,9 +204,54 @@ export const deactivateTenantLocation = async (req, res, next) => {
     }
 };
 
+export const deleteTenantLocation = async (req, res, next) => {
+    try {
+        const result = await deleteTenantLocationUseCase({
+            locationId: req.validatedParams?.id || req.params.id
+        });
+        if (result?.success && req.tenant?.id) {
+            syncStorefrontDiscoveryWithReliability({
+                tenantId: req.tenant.id,
+                source: 'tenant_locations_delete',
+                requestId: requestId(req, res)
+            }).then((syncResult) => {
+                if (syncResult?.ok) return;
+                logger.warn('[TenantLocationHandlers] Discovery index remained degraded after delete retries', {
+                    tenantId: req.tenant?.id || null,
+                    locationId: req.validatedParams?.id || req.params.id,
+                    requestId: requestId(req, res),
+                    attempts: syncResult?.attempts || 0,
+                    errors: syncResult?.errors || []
+                });
+            }).catch((error) => {
+                logger.warn('[TenantLocationHandlers] Discovery reliability runner failed after delete', {
+                    tenantId: req.tenant?.id || null,
+                    locationId: req.validatedParams?.id || req.params.id,
+                    requestId: requestId(req, res),
+                    error: error?.message || 'unknown_error'
+                });
+            });
+        }
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Tenant location deleted successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export default {
     listTenantLocations,
     createTenantLocation,
     updateTenantLocation,
-    deactivateTenantLocation
+    deactivateTenantLocation,
+    deleteTenantLocation
 };

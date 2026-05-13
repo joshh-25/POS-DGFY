@@ -312,3 +312,75 @@ export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository 
         }
     };
 };
+
+export const buildDeleteTenantLocationUseCase = ({ tenantLocationRepository }) => {
+    return async ({ locationId }) => {
+        const normalizedId = parsePositiveInt(locationId);
+        if (!normalizedId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'locationId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+
+        try {
+            const transaction = await tenantLocationRepository.beginTransaction();
+            try {
+                const existing = await tenantLocationRepository.findById(normalizedId, {
+                    transaction,
+                    lock: true
+                });
+                if (!existing) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        `Tenant location not found: ${normalizedId}`,
+                        { statusCode: 404 }
+                    );
+                }
+
+                const referenceCounts = await tenantLocationRepository.countOperationalReferences(normalizedId, {
+                    transaction
+                });
+                if (Number(referenceCounts?.total || 0) > 0) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Location has operational history and cannot be permanently deleted. Deactivate it instead.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reference_counts: referenceCounts
+                            }
+                        }
+                    );
+                }
+
+                const deleted = await tenantLocationRepository.deleteById(normalizedId, {
+                    transaction,
+                    lock: true
+                });
+
+                if (existing.is_primary_storefront === true) {
+                    await ensureSingleActivePrimary({
+                        repository: tenantLocationRepository,
+                        transaction
+                    });
+                }
+
+                await transaction.commit();
+                return ok({
+                    location_id: normalizedId,
+                    deleted: true,
+                    previous: deleted || existing
+                });
+            } catch (error) {
+                if (!transaction.finished) {
+                    await transaction.rollback();
+                }
+                throw error;
+            }
+        } catch (error) {
+            return fail(mapTenantLocationUseCaseError(error, 'Failed to delete tenant location'));
+        }
+    };
+};

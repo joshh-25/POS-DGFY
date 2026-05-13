@@ -28,6 +28,11 @@ export const deactivateTenantLocation = async (locationId) => {
   return response.data?.data;
 };
 
+export const deleteTenantLocation = async (locationId) => {
+  const response = await api.delete(`/tenant-locations/${locationId}/permanent`);
+  return response.data?.data;
+};
+
 export const reactivateTenantLocation = async (locationId) => {
   const response = await api.put(`/tenant-locations/${locationId}`, {
     is_active: true
@@ -41,5 +46,6 @@ export default {
   createTenantLocation,
   updateTenantLocation,
   deactivateTenantLocation,
+  deleteTenantLocation,
   reactivateTenantLocation
 };

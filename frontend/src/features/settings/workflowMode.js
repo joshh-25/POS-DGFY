@@ -12,6 +12,19 @@ export const WORKFLOW_MODE_VALUES = Object.freeze([
   'msme'
 ]);
 
+export const WORKFLOW_MODE_SELECT_VALUES = Object.freeze([
+  'retail',
+  'services',
+  'food_manufacturing',
+  'fnb',
+  'hospitality',
+  'healthcare',
+  'ticketing_transport',
+  'logistics_distribution',
+  'education_institutions',
+  'msme'
+]);
+
 export const DEFAULT_WORKFLOW_MODE = 'food_manufacturing';
 
 export const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';

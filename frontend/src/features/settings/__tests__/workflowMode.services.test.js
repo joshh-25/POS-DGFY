@@ -6,7 +6,8 @@ import {
   isWorkflowPageVisible,
   isWorkflowPathBlocked,
   modeHasCapability,
-  normalizeWorkflowMode
+  normalizeWorkflowMode,
+  WORKFLOW_MODE_SELECT_VALUES
 } from '../workflowMode.js';
 import {
   PLACEHOLDER_ITEM_TAXONOMY_MODES,
@@ -20,6 +21,12 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(DEFAULT_WORKFLOW_MODE).toBe('food_manufacturing');
     expect(normalizeWorkflowMode('manufacturing')).toBe('food_manufacturing');
     expect(getWorkflowModeLabel('manufacturing')).toBe('Food Manufacturing');
+  });
+
+  it('keeps the legacy manufacturing alias out of selectable business modes', () => {
+    expect(WORKFLOW_MODE_SELECT_VALUES).not.toContain('manufacturing');
+    expect(WORKFLOW_MODE_SELECT_VALUES).toContain('food_manufacturing');
+    expect(WORKFLOW_MODE_SELECT_VALUES).toContain('fnb');
   });
 
   it('keeps Services navigation independent from manufacturing workflows', () => {

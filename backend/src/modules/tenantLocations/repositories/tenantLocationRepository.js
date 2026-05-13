@@ -1,12 +1,41 @@
-import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertTenantLocationRepositoryContract } from '../contracts/tenantLocationRepository.contract.js';
+import { TENANT_LOCATION_REFERENCE_SOURCES } from './tenantLocationReferenceSources.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
 );
+
+const createReferenceGuardUnavailableError = (source, reason) => Object.assign(
+    new Error(`Tenant location reference guard is unavailable for ${source.modelName}`),
+    {
+        name: 'TenantLocationReferenceGuardUnavailableError',
+        code: 'TENANT_LOCATION_REFERENCE_GUARD_UNAVAILABLE',
+        sourceKey: source.key,
+        modelName: source.modelName,
+        reason
+    }
+);
+
+const resolveReferenceModel = (source) => {
+    const store = dbStore.getStore?.();
+    const Model = store?.[source.modelName];
+    if (!Model) {
+        throw createReferenceGuardUnavailableError(source, 'model_missing_from_tenant_context');
+    }
+    if (typeof Model.count !== 'function') {
+        throw createReferenceGuardUnavailableError(source, 'model_count_unavailable');
+    }
+    return Model;
+};
+
+const countModelRows = async (source, locationId, transaction = null) => {
+    const Model = resolveReferenceModel(source);
+    const where = source.where(locationId);
+    return Model.count({ where, transaction });
+};
 
 export const tenantLocationRepository = {
     async beginTransaction() {
@@ -161,6 +190,37 @@ export const tenantLocationRepository = {
             is_open: false,
             is_primary_storefront: false
         }, options);
+    },
+
+    async countOperationalReferences(locationId, { transaction = null } = {}) {
+        const entries = await Promise.all(
+            TENANT_LOCATION_REFERENCE_SOURCES.map(async (source) => {
+                const count = await countModelRows(source, locationId, transaction);
+                return [source.key, Number(count || 0)];
+            })
+        );
+
+        const counts = Object.fromEntries(entries);
+        counts.total = entries.reduce((sum, [, count]) => sum + count, 0);
+        return counts;
+    },
+
+    async deleteById(locationId, options = {}) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        const row = await TenantLocation.findByPk(locationId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction
+                ? options.transaction.LOCK.UPDATE
+                : undefined
+        });
+
+        if (!row) {
+            return null;
+        }
+
+        const plain = toPlain(row);
+        await row.destroy({ transaction: options.transaction });
+        return plain;
     }
 };
 

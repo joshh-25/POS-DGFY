@@ -93,6 +93,20 @@ describe('RegisterCompany login handoff', () => {
     expect(await screen.findByText('Dashboard screen')).toBeTruthy();
   });
 
+  it('does not expose the legacy manufacturing alias as a selectable registration mode', () => {
+    renderRegistrationFlow();
+
+    const options = Array.from(screen.getByLabelText('Business Mode').querySelectorAll('option'))
+      .map((option) => ({
+        value: option.value,
+        label: option.textContent
+      }));
+
+    expect(options.some((option) => option.value === 'manufacturing')).toBe(false);
+    expect(options.filter((option) => option.label === 'Food Manufacturing')).toHaveLength(1);
+    expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
+  });
+
   it('falls back to manual login when auto-login fails after active registration', async () => {
     apiMock.post.mockResolvedValue({
       data: {

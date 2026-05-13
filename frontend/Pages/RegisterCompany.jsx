@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, CheckCircle2, XCircle } from 'lucide-react';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_VALUES } from '../src/features/settings/workflowMode.js';
+import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
 
 export default function RegisterCompany() {
     const navigate = useNavigate();
@@ -249,7 +249,7 @@ export default function RegisterCompany() {
                                 disabled={isLoading}
                                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                             >
-                                {WORKFLOW_MODE_VALUES.map((mode) => (
+                                {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
                                     <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
                                 ))}
                             </select>
