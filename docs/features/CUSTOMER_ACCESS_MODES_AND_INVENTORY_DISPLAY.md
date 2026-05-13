@@ -87,7 +87,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
-- Discovery map pins use preview-first marker cards. Hover, keyboard focus, or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected.
+- Discovery map pins use preview-first marker cards. Hover, keyboard focus, or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected. When multiple pins share effectively the same coordinates, the Storefront applies display-only marker offsets so every pin remains targetable while the stored branch coordinates and routing `location_id` stay unchanged.
 - Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
@@ -181,6 +181,13 @@ Validated on 2026-05-12 for Storefront marker preview cards:
 - Governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check` passed. Browser plugin tooling and a local Playwright binary were not available in this session, so rendered hover/tap screenshots remain the only uncollected evidence.
 
 Operational readiness rating after the marker preview remediation pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
+
+Validated on 2026-05-13 for Storefront duplicate marker fanout:
+- Frontend Storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__ --pool=threads` passed 14 files and 68 tests. Coverage includes duplicate-coordinate display offsets, marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
+- Targeted marker suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed 16 tests.
+- Storefront build gate: `npm --prefix frontend run build:store` passed.
+
+Operational readiness rating after the duplicate marker fanout pass: **9.7/10** locally validated. Remaining risk is production browser confirmation after deploying the fanout commits; source-level overlap/targetability coverage is now in place.
 
 Validated on 2026-05-13 for Business Mode selector cleanup, tenant-location permanent delete, and Storefront aggregate stock validation:
 - Frontend targeted suites: `npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/settings/__tests__/workflowMode.services.test.js` passed 3 files and 26 tests. Coverage includes hidden legacy `manufacturing` selector choices, Settings reset controlled-input stability, inactive-pin delete UI, permanent-delete blocker display, terminal active-location assignment, and registration/admin selector parity.

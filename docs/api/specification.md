@@ -2666,7 +2666,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
 - `union` mode returns the union of store-field matches and eligible item matches.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
-- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location.
+- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients may apply display-only offsets when multiple pins share effectively identical coordinates; this must not mutate stored branch coordinates or the `location_id` used for catalog/quote/checkout/booking scope.
 - Storefront-visible item-search eligibility follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when Storefront override data is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`.
 - When `CUSTOMER_ACCESS_MODES_ENABLED=true`, or when a tenant is listed in `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`, tenants whose effective Customer Access Mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches.
 
@@ -2910,7 +2910,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 2. Includes `primary_location_id`.
 3. Discovery (`/storefront/discovery`) remains one row per tenant.
 4. Storefront UI may additionally resolve `/store/locations` per tenant and rank/map by nearest active branch pin while still opening the same tenant page.
-5. Storefront marker preview cards should use these location rows for branch name, address, status, coordinates, and the `location_id` passed into the tenant page route.
+5. Storefront marker preview cards should use these location rows for branch name, address, status, coordinates, and the `location_id` passed into the tenant page route. Any visual offset used to separate overlapping pins is presentation-only.
 
 ### POST /store/cart/quote
 Compute quote totals for guest or store-customer checkout.
