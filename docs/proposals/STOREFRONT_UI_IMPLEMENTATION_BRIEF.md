@@ -2,12 +2,25 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-14
 applies_to: storefront_ui_only_work
 topic: storefront_ui_implementation_brief
 ---
 
 # Storefront UI Implementation Brief
+
+## 0) Current Implementation Status
+
+As of the May 14, 2026 local production candidate, the storefront UI pilot has been merged into local `master` and is no longer only a future brief. Current implementation status is tracked in `docs/features/STOREFRONT_CURRENT_STANDING.md` and `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md`.
+
+Implemented standing:
+- Shared storefront mode presentation is now template-driven through the storefront mode/template registries.
+- Services Mode uses a service-specific storefront view model while preserving the current public availability, short-lived hold, batch booking, and per-booking payment handoff contracts.
+- F&B Mode uses a restaurant/menu storefront view model with grouping, default modifier selection, allergen presentation, and reservation entry.
+- Duplicate-coordinate storefront map pins are separated with render-only display offsets so each location remains targetable.
+- The May 14, 2026 storefront candidate passed `npm --prefix frontend exec vitest run apps/store/src/__tests__` with 15 files and 74 tests, plus `VITE_STORE_BASE_PATH=/tenant-store/ npm --prefix frontend run build:store`.
+
+This brief remains useful as a design reference for continuing storefront work, but current-state decisions should start from the governed feature docs above.
 
 ## 1) Scope
 

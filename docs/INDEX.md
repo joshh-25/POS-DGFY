@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-14
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -46,6 +46,7 @@ Canonical planning entry:
 - Storefront location pin management, including inactive-pin permanent delete, reference-count blockers, fail-closed tenant-reference inspection, and discovery refresh behavior, is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`, `docs/api/specification.md`, and ADR 0017.
 - Barcode Identity, Labels, and Scan Routing is tracked in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md` and governed by ADR 0018. It covers tenant-local manufacturer/internal barcodes, printable labels, IMS scan prefill, POS scan eligibility, Storefront QR, Services/tickets, offline replay revalidation, and conflict handling.
 - Food & Beverage Mode is tracked in `docs/features/FOOD_AND_BEVERAGE_MODE.md` and governed by ADR 0019. It covers restaurant menu modifiers, dining areas/tables, open checks, kitchen tickets, multi-table reservations/waitlist requests, restaurant service-charge snapshots, POS additive metadata, and lazy Storefront restaurant/map surfaces.
+- Storefront mode-presentation standing is tracked in `docs/features/STOREFRONT_CURRENT_STANDING.md`. It is the current status reference for the shared storefront template registry, Services storefront view model, F&B storefront view model, duplicate-coordinate marker fanout, and the latest storefront regression/build evidence.
 - Mode-Aware RBAC and Role Presets is tracked in `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`, `docs/architecture/RBAC_DESIGN_PROPOSAL.md`, `docs/setup/ADMIN_SETUP.md`, `docs/api/specification.md`, and `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`. New mode work must declare role presets, permission groups, sensitive actions, route guards, location scope, tests, and docs before implementation is considered complete.
 - Tenant provisioning/model-clone readiness for future modes is tracked in `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md` and ADR 0014/0016/0019/0020. New mode work that adds tenant-local tables or foreign keys must prove `tenantModelFactory` clone coverage, disposable schema sync, and retryable approval cleanup before readiness is claimed.
 - Mode-aware item CSV import/export for corrected modes is tracked in `docs/api/specification.md`, ADR 0014, `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`, `docs/features/SERVICES_MODE.md`, and `docs/features/FOOD_AND_BEVERAGE_MODE.md`. Food Manufacturing, MSME, Services, and F&B exports use the import-template headers as the canonical round-trip contract; legacy `type=items|products|master` exports remain compatibility behavior.

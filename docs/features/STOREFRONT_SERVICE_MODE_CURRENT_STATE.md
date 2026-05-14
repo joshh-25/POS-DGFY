@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-12
+last_reviewed: 2026-05-14
 applies_to: storefront_services_mode
 topic: services_mode_storefront_current_state
 ---
@@ -61,6 +61,7 @@ Current services-mode implementation is primarily concentrated in:
 - `frontend/apps/store/src/normalizeStorefrontPageModel.js`
 - `frontend/apps/store/src/servicesStorefrontViewModel.js`
 - `frontend/apps/store/src/modePresentationRegistry.js`
+- `frontend/apps/store/src/storefrontTemplateRegistry.js`
 
 ## Current User-Facing Features
 
@@ -193,6 +194,11 @@ Current booking UX includes:
 - short-lived reservation holds for saved booking drafts and checkout submission
 - all-or-nothing submission for service booking batches
 - draft-specific review, backend draft-index error copy, and per-booking confirmation/payment links
+
+Current merged-pilot standing:
+- Service storefront presentation is produced through the shared storefront template registry and the Services view model.
+- Service booking state still uses the existing availability/hold/batch contracts; the pilot UI work did not replace those backend contracts.
+- The May 14, 2026 storefront regression run passed all 74 storefront tests, including services view-model and booking multiplicity coverage.
 
 ## Backend And Contract Alignment
 

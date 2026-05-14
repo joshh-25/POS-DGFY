@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-14
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -46,6 +46,7 @@ Start here for all planning and implementation work:
 - Barcode Identity, Labels, and Scan Routing is governed by `docs/architecture/adr/0018-barcode-identity-labels-and-scan-routing.md` and described in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md`. It keeps barcode identities separate from `sku_code`, supports manufacturer/imported and tenant-generated internal codes, emits browser-print label contracts, and routes scans through existing IMS/POS/Storefront/Services rules instead of bypassing them.
 - Food & Beverage Mode is governed by `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md` and described in `docs/features/FOOD_AND_BEVERAGE_MODE.md`. It keeps `fnb` as the stable internal workflow code, labels it `Food & Beverage`, and adds restaurant-native tables/checks/modifiers/kitchen/reservation/service-charge contracts without reusing manufacturing job-order workflows.
 - Mode-Aware RBAC and Role Presets is governed by `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`. It keeps legacy `users.role`, `users.permissions`, and `is_master_admin` operational while adding `users.role_preset_key`, a backend mode role catalog, mode-native Services/F&B permissions, assigned-location role scope, and backend-driven User Management role catalogs.
+- Storefront mode presentation is tracked in `docs/features/STOREFRONT_CURRENT_STANDING.md` and `docs/proposals/STOREFRONT_UI_IMPLEMENTATION_BRIEF.md`. The current storefront app uses a shared template registry plus Services/F&B view models, preserves customer-access/inventory-display gates, and keeps mode-specific lazy surfaces such as service booking, F&B reservation, and map presentation outside the initial generic catalog shell where possible.
 - Tenant provisioning/model-clone hardening is part of the workflow-mode readiness contract. Future mode plans must include tenant-local table and foreign-key mapping, `tenantModelFactory` clone coverage, disposable schema sync evidence across `WORKFLOW_MODE_VALUES`, and retryable approval/auto-approval cleanup behavior.
 
 ## Repository Structure Snapshot
@@ -97,6 +98,7 @@ Start here for all planning and implementation work:
 30. Storefront cover/profile image uploads from IMS Settings are production-ingress guarded. Backend validation allows 5 MiB image files, and VPS deploys install `/etc/nginx/conf.d/skupervisor-client-body-size.conf` with `client_max_body_size 8m;` so normal multipart photo uploads reach the backend before auth and image validation. Operational details are in `docs/ops/DEPLOYMENT_GUIDE.md`; the Storefront feature note is in `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md`.
 31. Settings > Storefront location pins support add, edit, primary, deactivate/reactivate, and permanent delete for inactive unused pins. Permanent delete is guarded by a tenant-local reference-source manifest, returns `409` with `reference_counts` for operational history, fails closed with `503` when reference inspection is unavailable, and refreshes Storefront discovery after successful deletion.
 32. Storefront discovery map pins use preview-first branded marker cards. Duplicate-coordinate pins are separated with display-only marker offsets so each pin remains targetable without changing stored branch coordinates or location-scoped Storefront routing.
+33. Storefront mode presentation is template-driven. Services Mode uses service-specific view-model grouping, availability/hold-backed booking drafts, batch booking, and per-booking confirmation/payment rendering; F&B uses restaurant/menu grouping, default modifier selection, allergen presentation, and a reservation entry point; simple/MSME keeps a lightweight product storefront. The May 14, 2026 local production candidate passed 74 storefront app tests and a tenant-store build with a fresh vendor chunk, replacing the previously reported failing `vendor-BGNbcnYt.js` runtime path.
 
 ## Rules
 1. Use authoritative docs first.
