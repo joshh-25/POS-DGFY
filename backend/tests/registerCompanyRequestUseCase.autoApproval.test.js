@@ -8,6 +8,7 @@ import {
 const validBody = {
     name: 'Auto Accept Foods',
     adminEmail: 'owner@autoaccept.test',
+    adminPhone: '+63 912 345 6789',
     adminPassword: 'StrongPass1!',
     plan: 'standard',
     complianceMode: 'non_compliant',
@@ -80,6 +81,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
             status: 'pending',
             admin_email: validBody.adminEmail,
+            admin_phone: validBody.adminPhone,
             db_name: 'sku_tenant_autoacceptfoods_12345678',
             plan: 'premium'
         }));
@@ -114,6 +116,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             dbName: 'sku_tenant_autoacceptfoods_12345678',
             companyToken: 'token-autoacceptfoods-12345678',
             adminEmail: validBody.adminEmail,
+            adminPhone: validBody.adminPhone,
             adminPasswordHash: 'hashed-password',
             workflowMode: validBody.workflowMode
         }));

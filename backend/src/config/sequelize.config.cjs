@@ -15,7 +15,9 @@ module.exports = {
     test: {
         username: process.env.DB_USER || 'root',
         password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME + '_test' || 'sku_inventory_manager_test',
+        database: process.env.DB_NAME_TEST
+            || (process.env.CI ? process.env.DB_NAME : null)
+            || 'sku_test',
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 3306,
         dialect: 'mysql',

@@ -106,6 +106,7 @@ describe('Authentication API', () => {
       const userData = {
         username: 'testuser',
         email: 'test@example.com',
+        phone_number: '+63 912 345 6789',
         password: 'TestPassword123!'
       };
 
@@ -127,6 +128,7 @@ describe('Authentication API', () => {
       const userData = {
         username: 'ab', // Too short
         email: 'invalid-email',
+        phone_number: 'bad',
         password: 'weak'
       };
 
@@ -144,6 +146,7 @@ describe('Authentication API', () => {
       const userData = {
         username: 'testuser1',
         email: 'test@example.com',
+        phone_number: '+63 912 345 6789',
         password: 'TestPassword123!'
       };
 
@@ -173,6 +176,7 @@ describe('Authentication API', () => {
       const userData = {
         username: 'testuser',
         email: 'test@example.com',
+        phone_number: '+63 912 345 6789',
         password: 'TestPassword123!'
       };
       await request(app)
@@ -235,6 +239,7 @@ describe('Authentication API', () => {
         .send({
           username: 'testuser',
           email: 'test@example.com',
+          phone_number: '+63 912 345 6789',
           password: 'TestPassword123!'
         });
       const loginResp = await request(app)
@@ -281,6 +286,7 @@ describe('Authentication API', () => {
         .send({
           username: 'testuser',
           email: 'test@example.com',
+          phone_number: '+63 912 345 6789',
           password: 'TestPassword123!'
         });
 

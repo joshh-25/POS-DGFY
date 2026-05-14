@@ -14,6 +14,7 @@ const makeEmail = (label) => `${EMAIL_PREFIX}${label}-${ts}@example.com`;
 const baseData = (label) => ({
     name: `Lookup V2 Test Corp [${label}] ${ts}`,
     adminEmail: makeEmail(label),
+    adminPhone: '+63 912 345 6789',
     adminPassword: 'TestPassword123!',
     plan: 'standard',
     complianceMode: 'non_compliant',
@@ -129,6 +130,7 @@ describe('Company Token Lookup — full coverage', () => {
                 .send({
                     name: `Multi Corp A ${ts}`,
                     adminEmail: sharedEmail,
+                    adminPhone: '+63 912 345 6789',
                     adminPassword: 'TestPassword123!',
                     plan: 'standard',
                     complianceMode: 'non_compliant',
@@ -141,6 +143,7 @@ describe('Company Token Lookup — full coverage', () => {
                 .send({
                     name: `Multi Corp B ${ts}`,
                     adminEmail: sharedEmail,
+                    adminPhone: '+63 912 345 6789',
                     adminPassword: 'TestPassword123!',
                     plan: 'standard',
                     complianceMode: 'non_compliant',

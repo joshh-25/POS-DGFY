@@ -199,6 +199,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
                 .send({
                     name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
                     adminEmail: `auto-register-${testSuffix}@example.test`,
+                    adminPhone: '+63 912 345 6789',
                     adminPassword: 'StrongPass1!',
                     plan: 'premium',
                     complianceMode: 'non_compliant',
@@ -214,6 +215,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
                 name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
                 adminEmail: `auto-register-${testSuffix}@example.test`,
+                adminPhone: '+63 912 345 6789',
                 workflowMode: 'food_manufacturing'
             }));
         } finally {

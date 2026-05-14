@@ -1,5 +1,17 @@
 import Joi from 'joi';
 import { USER_ROLES } from '../config/userRoles.js';
+import { PHONE_NUMBER_PATTERN } from '../utils/phoneNumber.js';
+
+const phoneNumberSchema = Joi.string()
+  .trim()
+  .min(7)
+  .max(40)
+  .pattern(PHONE_NUMBER_PATTERN)
+  .messages({
+    'string.min': 'Phone number must be at least 7 characters',
+    'string.max': 'Phone number must not exceed 40 characters',
+    'string.pattern.base': 'Phone number may only contain digits, spaces, +, -, parentheses, and periods'
+  });
 
 // Schema for updating user profile (username, email)
 export const updateProfileSchema = Joi.object({
@@ -9,9 +21,12 @@ export const updateProfileSchema = Joi.object({
   }),
   email: Joi.string().email().optional().messages({
     'string.email': 'Please provide a valid email address'
+  }),
+  phone_number: phoneNumberSchema.optional().messages({
+    'string.empty': 'Phone number cannot be empty'
   })
 }).min(1).messages({
-  'object.min': 'At least one field (username or email) must be provided'
+  'object.min': 'At least one profile field must be provided'
 });
 
 // Schema for changing password

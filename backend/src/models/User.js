@@ -20,6 +20,10 @@ const User = sequelize.define('User', {
       isEmail: true
     }
   },
+  phone_number: {
+    type: DataTypes.STRING(40),
+    allowNull: true
+  },
   password_hash: {
     type: DataTypes.STRING(255),
     allowNull: false
@@ -121,4 +125,3 @@ const User = sequelize.define('User', {
 });
 
 export default User;
-

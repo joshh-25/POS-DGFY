@@ -58,7 +58,12 @@ describe('billing funnel telemetry hardening', () => {
             const failedEvent = trackEngagementEvent.mock.calls[1][0];
             expect(failedEvent.metadata.failure_code).toBe('validation_failed');
             expect(failedEvent.metadata.failure_reason).toBe('missing_required_fields');
-            expect(failedEvent.metadata.missing_fields).toEqual(['adminPassword']);
+            expect(failedEvent.metadata.missing_fields).toEqual([
+                'adminPhone',
+                'adminPassword',
+                'complianceMode',
+                'workflowMode'
+            ]);
         });
 
         it('emits a terminal failed event for duplicate company conflicts', async () => {
@@ -82,7 +87,10 @@ describe('billing funnel telemetry hardening', () => {
                 body: {
                     name: 'Acme',
                     adminEmail: 'owner@example.com',
-                    adminPassword: 'Password123!'
+                    adminPhone: '+63 912 345 6789',
+                    adminPassword: 'Password123!',
+                    complianceMode: 'non_compliant',
+                    workflowMode: 'msme'
                 },
                 correlationId: 'req-register-conflict'
             });
@@ -134,9 +142,12 @@ describe('billing funnel telemetry hardening', () => {
                 body: {
                     name: 'Premium Co',
                     adminEmail: 'paid@premium.test',
+                    adminPhone: '+63 912 345 6789',
                     adminPassword: 'Password123!',
                     plan: 'premium',
-                    subscriptionId: 'I-PREMIUM-001'
+                    subscriptionId: 'I-PREMIUM-001',
+                    complianceMode: 'non_compliant',
+                    workflowMode: 'food_manufacturing'
                 },
                 correlationId: 'req-register-provision-fail'
             });

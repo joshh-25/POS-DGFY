@@ -254,6 +254,7 @@ export const provisionTenant = async (options) => {
         // Option 1: Direct provisioning (legacy/manual)
         name,
         adminEmail,
+        adminPhone = null,
         adminPassword,
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
@@ -268,7 +269,7 @@ export const provisionTenant = async (options) => {
     // Determine if this is an approval (existing tenant) or new provisioning
     const isApproval = !!tenantId;
 
-    let uuid, dbName, companyToken, passwordHash, tenantName, email;
+    let uuid, dbName, companyToken, passwordHash, tenantName, email, phoneNumber;
     let subscriptionStatus;
     let currentPeriodEnd;
     let normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
@@ -284,6 +285,7 @@ export const provisionTenant = async (options) => {
         passwordHash = providedPasswordHash;
         tenantName = name;
         email = adminEmail || options.adminEmail;
+        phoneNumber = String(adminPhone || options.adminPhone || '').trim() || null;
 
         logger.info(`[Provisioning] Approving existing tenant: ${tenantId} (DB: ${dbName})`);
     } else {
@@ -307,6 +309,7 @@ export const provisionTenant = async (options) => {
         passwordHash = await bcrypt.hash(adminPassword, 10);
         tenantName = name;
         email = adminEmail;
+        phoneNumber = String(adminPhone || '').trim() || null;
 
         const effectivePlan = 'premium';
 
@@ -334,6 +337,7 @@ export const provisionTenant = async (options) => {
                 company_token: companyToken,
                 status: 'inactive', // Will be updated to active upon success
                 admin_email: email,
+                admin_phone: phoneNumber,
                 admin_password_hash: passwordHash,
                 plan: effectivePlan,
                 subscription_status: subscriptionStatus,
@@ -381,10 +385,10 @@ export const provisionTenant = async (options) => {
             logger.info(`[Provisioning] Seeding Admin User...`);
             const adminDefaultPermissions = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.admin || []);
             await tenantSequelize.query(
-                `INSERT INTO users (username, email, password_hash, role, is_active, is_master_admin, permissions, created_at, updated_at)
-                 VALUES (?, ?, ?, 'admin', 1, 1, ?, NOW(), NOW())`,
+                `INSERT INTO users (username, email, phone_number, password_hash, role, is_active, is_master_admin, permissions, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 'admin', 1, 1, ?, NOW(), NOW())`,
                 {
-                    replacements: ['Admin', email, passwordHash, adminDefaultPermissions]
+                    replacements: ['Admin', email, phoneNumber, passwordHash, adminDefaultPermissions]
                 }
             );
 

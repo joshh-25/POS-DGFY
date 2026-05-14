@@ -13,6 +13,7 @@ import {
     normalizeRequestedTenantPlan,
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
+import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
@@ -30,6 +31,7 @@ export const buildRegisterCompanyRequestUseCase = ({
         const {
             name,
             adminEmail,
+            adminPhone,
             adminPassword,
             plan = 'premium',
             subscriptionId,
@@ -71,10 +73,12 @@ export const buildRegisterCompanyRequestUseCase = ({
             await tracker.attempt();
 
             const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
-            if (!name || !adminEmail || !adminPassword || !complianceModeState || workflowModeMissing) {
+            const normalizedAdminPhone = normalizePhoneNumber(adminPhone);
+            if (!name || !adminEmail || !normalizedAdminPhone || !adminPassword || !complianceModeState || workflowModeMissing) {
                 const missingFields = [
                     !name ? 'name' : null,
                     !adminEmail ? 'adminEmail' : null,
+                    !normalizedAdminPhone ? 'adminPhone' : null,
                     !adminPassword ? 'adminPassword' : null,
                     !complianceModeState ? 'complianceMode' : null,
                     workflowModeMissing ? 'workflowMode' : null
@@ -91,7 +95,21 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword, complianceMode, workflowMode',
+                    'Missing required fields: name, adminEmail, adminPhone, adminPassword, complianceMode, workflowMode',
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (!isValidPhoneNumber(normalizedAdminPhone)) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'invalid_admin_phone',
+                    httpStatus: 400
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'adminPhone must be a valid phone number.',
                     { statusCode: 400 }
                 ));
             }
@@ -243,6 +261,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                 company_token: companyToken,
                 status: shouldProvisionImmediately ? 'pending' : initialStatus,
                 admin_email: adminEmail,
+                admin_phone: normalizedAdminPhone,
                 admin_password_hash: passwordHash,
                 plan: normalizedPlan,
                 subscription_status: subscriptionStatus,
@@ -281,6 +300,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                     dbName: tenant.db_name,
                     companyToken: tenant.company_token,
                     adminEmail: tenant.admin_email,
+                    adminPhone: tenant.admin_phone,
                     adminPasswordHash: tenant.admin_password_hash,
                     workflowMode: normalizedWorkflowMode
                 });

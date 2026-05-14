@@ -1,4 +1,16 @@
 import Joi from 'joi';
+import { PHONE_NUMBER_PATTERN } from '../utils/phoneNumber.js';
+
+const phoneNumberSchema = Joi.string()
+  .trim()
+  .min(7)
+  .max(40)
+  .pattern(PHONE_NUMBER_PATTERN)
+  .messages({
+    'string.min': 'Phone number must be at least 7 characters',
+    'string.max': 'Phone number must not exceed 40 characters',
+    'string.pattern.base': 'Phone number may only contain digits, spaces, +, -, parentheses, and periods'
+  });
 
 export const registerSchema = Joi.object({
   username: Joi.string().min(3).max(50).required().messages({
@@ -10,6 +22,9 @@ export const registerSchema = Joi.object({
   email: Joi.string().pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required().messages({
     'string.pattern.base': 'Please provide a valid email address',
     'any.required': 'Email is required'
+  }),
+  phone_number: phoneNumberSchema.required().messages({
+    'any.required': 'Phone number is required'
   }),
   password: Joi.string().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).+$/).required().messages({
     'string.min': 'Password must be at least 8 characters',
@@ -52,6 +67,9 @@ export const acceptInviteSchema = Joi.object({
     'string.min': 'Username must be at least 3 characters',
     'string.max': 'Username must not exceed 50 characters',
     'any.required': 'Username is required'
+  }),
+  phone_number: phoneNumberSchema.required().messages({
+    'any.required': 'Phone number is required'
   }),
   password: Joi.string().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).+$/).required().messages({
     'string.min': 'Password must be at least 8 characters',

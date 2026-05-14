@@ -50,6 +50,7 @@ export const buildApproveTenantUseCase = ({
                 dbName: tenant.db_name,
                 companyToken: tenant.company_token,
                 adminEmail: tenant.admin_email,
+                adminPhone: tenant.admin_phone,
                 adminPasswordHash: tenant.admin_password_hash,
                 workflowMode: extractWorkflowModeFromTenant(tenant)
             });

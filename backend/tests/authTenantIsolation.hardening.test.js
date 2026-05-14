@@ -207,6 +207,7 @@ describe('Auth tenant isolation hardening', () => {
       .send({
         token: 'a'.repeat(64),
         username: 'invited_user',
+        phone_number: '+63 912 345 6789',
         password: 'StrongPass123!'
       })
       .expect(400);

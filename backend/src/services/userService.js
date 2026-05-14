@@ -19,6 +19,7 @@ import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import logger from '../config/logger.js';
+import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
 
 const normalizePermissionArray = (rawPermissions) => {
   let normalized = rawPermissions;
@@ -93,6 +94,7 @@ const buildUserPayload = (user, workflowMode, extra = {}) => ({
   user_id: user.user_id,
   username: user.username,
   email: user.email,
+  phone_number: user.phone_number || null,
   role: user.role,
   role_preset_key: user.role_preset_key || null,
   ...serializeRolePresetMetadata(user, workflowMode),
@@ -169,7 +171,7 @@ const parsePositiveInt = (value) => {
 export const getCurrentUser = async (userId) => {
   const User = dbStore.get('User');
   const user = await findVisibleUserById(User, userId, {
-    attributes: ['user_id', 'username', 'email', 'role', 'role_preset_key', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
+    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
 
   if (!user) {
@@ -233,6 +235,26 @@ export const updateUserProfile = async (userId, updateData) => {
   delete updateData.role;
   delete updateData.is_active;
   delete updateData.password_hash;
+
+  if (Object.prototype.hasOwnProperty.call(updateData, 'phone_number')) {
+    updateData.phone_number = normalizePhoneNumber(updateData.phone_number);
+  }
+
+  const resultingPhoneNumber = Object.prototype.hasOwnProperty.call(updateData, 'phone_number')
+    ? updateData.phone_number
+    : normalizePhoneNumber(user.phone_number);
+
+  if (!resultingPhoneNumber) {
+    const error = new Error('Phone number is required');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  if (!isValidPhoneNumber(resultingPhoneNumber)) {
+    const error = new Error(PHONE_NUMBER_VALIDATION_MESSAGE);
+    error.statusCode = 422;
+    throw error;
+  }
 
   // Check email/username uniqueness if being updated
   if (updateData.email || updateData.username) {
@@ -298,6 +320,7 @@ export const updateUserProfile = async (userId, updateData) => {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
+    phone_number: user.phone_number || null,
     role: user.role,
     token: newToken
   };
@@ -344,6 +367,7 @@ export const getAllUsers = async (options = {}) => {
       'user_id',
       'username',
       'email',
+      'phone_number',
       'role',
       'role_preset_key',
       'is_active',
@@ -1210,7 +1234,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
  * @returns {Promise<Object>} User data with JWT token
  */
 export const acceptInvitation = async (token, userData) => {
-  const { username, password } = userData;
+  const { username, password, phone_number: phoneNumber } = userData;
 
   const User = dbStore.get('User');
   const tokenHash = hashInvitationToken(token);
@@ -1262,6 +1286,7 @@ export const acceptInvitation = async (token, userData) => {
   // Update user record
   await user.update({
     username,
+    phone_number: String(phoneNumber || '').trim(),
     password_hash,
     is_active: true,
     invitation_token: null,
@@ -1336,7 +1361,7 @@ export const validateInvitationToken = async (token) => {
       ],
       invitation_status: 'pending'
     },
-    attributes: ['user_id', 'email', 'role', 'role_preset_key', 'invitation_expires_at', 'invited_by']
+    attributes: ['user_id', 'email', 'phone_number', 'role', 'role_preset_key', 'invitation_expires_at', 'invited_by']
   });
 
   if (!user) {
@@ -1655,7 +1680,7 @@ export const getUsersForExport = async () => {
   const User = dbStore.get('User');
 
   const users = await User.findAll({
-    attributes: ['user_id', 'username', 'email', 'role', 'role_preset_key', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
+    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
     where: buildVisibleWhere({
       [Op.or]: [
         { invitation_status: null },
@@ -1669,6 +1694,7 @@ export const getUsersForExport = async () => {
     user_id: u.user_id,
     username: u.username,
     email: u.email,
+    phone_number: u.phone_number || '',
     role: u.role,
     role_preset_key: u.role_preset_key || '',
     is_active: u.is_active ? 'Yes' : 'No',

@@ -40,6 +40,7 @@ describe('Subscription integration hard-disable policy', () => {
             .send({
                 name: 'Disabled Premium Registration Co',
                 adminEmail: 'disabled-premium@test.local',
+                adminPhone: '+63 912 345 6789',
                 adminPassword: 'Password123!',
                 plan: 'premium',
                 subscriptionId: 'SUB-REGISTER-DISABLED'

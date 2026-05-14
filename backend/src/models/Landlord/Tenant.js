@@ -110,6 +110,10 @@ export default (sequelize) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        admin_phone: {
+            type: DataTypes.STRING(40),
+            allowNull: true
+        },
         admin_password_hash: {
             type: DataTypes.STRING,
             allowNull: true

@@ -297,8 +297,8 @@ export const validateInviteToken = async (req, res, next) => {
 
 export const acceptInvitation = async (req, res, next) => {
   try {
-    const { token, username, password } = req.validatedData;
-    const result = await acceptInvitationUseCase({ token, username, password });
+    const { token, username, password, phone_number: phoneNumber } = req.validatedData;
+    const result = await acceptInvitationUseCase({ token, username, password, phoneNumber });
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -309,6 +309,7 @@ export const acceptInvitation = async (req, res, next) => {
             user_id: result.data.user_id,
             username: result.data.username,
             email: result.data.email,
+            phone_number: result.data.phone_number || null,
             role: result.data.role,
             permissions: result.data.permissions || [],
             is_master_admin: result.data.is_master_admin || false

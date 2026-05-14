@@ -201,7 +201,7 @@ export const verifyRefreshToken = (token) => {
 
 export const registerUser = async (userData) => {
   await requireTenantAuthContext({ operation: 'auth.register' });
-  const { username, email, password } = userData;
+  const { username, email, password, phone_number: phoneNumber } = userData;
   // Always create new users as 'staff' - only admins can change roles via User Management
   const role = 'staff';
   const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[role] || [];
@@ -227,6 +227,7 @@ export const registerUser = async (userData) => {
   const user = await User.create({
     username,
     email,
+    phone_number: String(phoneNumber || '').trim(),
     password_hash,
     role,
     permissions: defaultPermissions,
@@ -250,6 +251,7 @@ export const registerUser = async (userData) => {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
+    phone_number: user.phone_number || null,
     role: user.role,
     permissions: resolveEffectivePermissionsForUser(user),
     is_master_admin: user.is_master_admin || false
@@ -325,6 +327,7 @@ export const loginUser = async (email, password) => {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
+    phone_number: user.phone_number || null,
     role: user.role,
     permissions: resolveEffectivePermissionsForUser(user),
     is_master_admin: user.is_master_admin || false,

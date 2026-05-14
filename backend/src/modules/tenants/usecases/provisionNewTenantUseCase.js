@@ -2,6 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
+import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 
 export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
     return async ({ body }) => {
@@ -9,6 +10,7 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
             const {
                 name,
                 adminEmail,
+                adminPhone,
                 adminPassword,
                 subscriptionId,
                 complianceMode,
@@ -22,13 +24,22 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
             if (
                 !name
                 || !adminEmail
+                || !normalizePhoneNumber(adminPhone)
                 || !adminPassword
                 || !['non_compliant', 'compliant'].includes(normalizedComplianceMode)
                 || !isWorkflowMode(workflowMode)
             ) {
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPassword, complianceMode, workflowMode',
+                    'Missing required fields: name, adminEmail, adminPhone, adminPassword, complianceMode, workflowMode',
+                    { statusCode: 400 }
+                ));
+            }
+            const normalizedAdminPhone = normalizePhoneNumber(adminPhone);
+            if (!isValidPhoneNumber(normalizedAdminPhone)) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'adminPhone must be a valid phone number.',
                     { statusCode: 400 }
                 ));
             }
@@ -36,6 +47,7 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
             const result = await provisionTenant({
                 name,
                 adminEmail,
+                adminPhone: normalizedAdminPhone,
                 adminPassword,
                 plan: resolveRegisteredTenantPlan(),
                 subscriptionId,

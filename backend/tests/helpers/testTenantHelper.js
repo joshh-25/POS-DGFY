@@ -22,6 +22,32 @@ import { getTenantModels } from '../../src/utils/tenantModelFactory.js';
 import tenantConnector from '../../src/utils/TenantConnector.js';
 import logger from '../../src/config/logger.js';
 
+const ensureColumn = async (tableName, columnName, definitionSql, afterColumnName) => {
+    const [rows] = await landlordSequelize.query(
+        `SELECT COUNT(*) AS count
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+           AND column_name = ?`,
+        { replacements: [tableName, columnName] }
+    );
+
+    if (Number(rows?.[0]?.count || 0) > 0) {
+        return;
+    }
+
+    const afterClause = afterColumnName ? ` AFTER \`${afterColumnName}\`` : '';
+    await landlordSequelize.query(
+        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definitionSql}${afterClause}`
+    );
+};
+
+const ensureAuthPhoneSchema = async () => {
+    if (process.env.NODE_ENV !== 'test') return;
+    await ensureColumn('tenants', 'admin_phone', 'VARCHAR(40) NULL', 'admin_email');
+    await ensureColumn('users', 'phone_number', 'VARCHAR(40) NULL', 'email');
+};
+
 /**
  * Create a fully-provisioned test tenant:
  *  1. Insert a Tenant row in the landlord DB (status: active)
@@ -36,12 +62,15 @@ export async function createTestTenant(label = 'default') {
     const token = `test-tok-${label}-${ts}`;
     const dbName = `test_tenant_${label}_${ts}`;
 
+    await ensureAuthPhoneSchema();
+
     // 1. Create landlord-side Tenant record
     const tenant = await Tenant.create({
         name: `Test Tenant [${label}] ${ts}`,
         db_name: dbName,
         company_token: token,
         status: 'active',
+        admin_phone: '+63 912 345 6789',
         plan: 'premium',
         subscription_status: 'active',
         db_host: process.env.DB_HOST || 'localhost'

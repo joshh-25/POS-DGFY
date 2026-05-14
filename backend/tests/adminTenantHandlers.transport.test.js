@@ -162,6 +162,7 @@ describe('adminTenantHandlers transport contracts', () => {
       body: {
         name: 'Tenant A',
         adminEmail: 'owner@example.com',
+        adminPhone: '+63 912 345 6789',
         adminPassword: 'Password123!',
         plan: 'premium',
         subscriptionId: 'sub_123'
@@ -191,6 +192,7 @@ describe('adminTenantHandlers transport contracts', () => {
       body: {
         name: 'Tenant A',
         adminEmail: 'owner@example.com',
+        adminPhone: '+63 912 345 6789',
         adminPassword: 'Password123!',
         plan: 'premium'
       }
