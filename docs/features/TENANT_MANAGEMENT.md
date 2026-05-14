@@ -20,6 +20,8 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Manual Approval Mode**: Defaults to the traditional pending flow. User submits registration -> record is created as `pending` -> awaits Admin approval.
 - **Temporary Auto-Accept Mode**: When `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, manual registrations are immediately provisioned, activated, and the registration UI signs the founder in through the normal login API. `manual` remains the default and rollback mode.
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
+- **Founder Contact Requirement**: Public company registration requires an admin phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
+- **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs after explicit admin approval in `manual` mode, or during public registration in `auto_standard` mode.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict when `auto_standard` is enabled because accepted registrations create tenant databases.
@@ -184,6 +186,8 @@ Mappings are created automatically when:
 1. A company is registered (founder email is mapped)
 2. A user is invited and accepts their invitation
 
+Company-user registration and invitation acceptance now require a phone number. Existing users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid.
+
 The `landlordService.js` functions handle mapping CRUD: `addEmailTenantMapping`, `removeEmailTenantMapping`, `updateEmailTenantMapping`, `findTenantsByEmail`.
 
 ---
@@ -208,7 +212,7 @@ Invitation rows use these statuses:
 Pending, expired, and cancelled invitation rows are non-login rows and cannot be edited through role/status/permission/location-scope controls. Admins must resend, copy a fresh link, cancel, or wait for acceptance.
 
 ### Admin UX
-The **Users** tab shows accepted users. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
+The **Users** tab shows accepted users, including phone number when present and a missing-phone marker for accepted legacy rows. User search matches username, email, and phone number. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
 - Resend email
 - Copy/generate manual link
 - Cancel invitation

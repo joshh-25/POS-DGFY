@@ -16,6 +16,7 @@
 - [POS Shift-Location Safety Addendum (2026-04-21)](#pos-shift-location-safety-addendum-2026-04-21)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
+- [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
 
 ### Table Definitions
 - [1. Users Table](#1-users-table)
@@ -117,6 +118,7 @@ CREATE TABLE tenants (
     compliance_profile JSON NULL,
     settings JSON,
     admin_email VARCHAR(255),
+    admin_phone VARCHAR(40) NULL,
     admin_password_hash VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -138,6 +140,21 @@ Subscription notes:
   - `compliance_mode_state`, `compliance_mode_choice_required`
   - `compliance_mode_selected_*`, `compliance_activated_at`
   - `compliance_mode_override_*`, `compliance_mode_revert_*`
+
+## Account Phone Contact Addendum (2026-05-15)
+
+Company registration, direct company-user registration, and invitation acceptance now require account phone numbers.
+
+Schema contract:
+- `tenants.admin_phone` stores the founder/admin phone number submitted during public company registration. Pending manual-approval tenants keep this value until provisioning; provisioning copies it into the seeded founder/admin user's `users.phone_number`.
+- `users.phone_number` exists in tenant-local user tables and stores the account contact number for accepted users.
+- Migration `20260514000001-add-phone-number-to-users.cjs` is tenant-aware: it adds `users.phone_number` to the landlord/current database when present and to every active tenant database listed in the landlord `tenants` registry.
+- Migration `20260514000002-add-admin-phone-to-tenants.cjs` adds `tenants.admin_phone` to the landlord registry.
+
+Validation contract:
+- Phone values are trimmed.
+- Accepted format is 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
+- Existing users created before this requirement can add or change their number through Settings > Profile. Admin user management surfaces display existing numbers and mark accepted legacy users whose phone number is missing.
   - `compliance_cycle_version`, `compliance_revert_last_cycle_version`
   - `compliance_policy_version`, `compliance_profile`
 - Drift-alignment migrations:
@@ -478,6 +495,7 @@ CREATE TABLE users (
     user_id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
+    phone_number VARCHAR(40) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
