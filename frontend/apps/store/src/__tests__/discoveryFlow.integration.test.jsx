@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
 
 vi.mock('maplibre-gl', () => {
@@ -142,7 +143,58 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('initializes the discovery map as a flat 2D map', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'in_stock_only',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy());
+    await waitFor(() => expect(maplibregl.Map).toHaveBeenCalled());
+    const mapOptions = maplibregl.Map.mock.calls.at(-1)?.[0] || {};
+
+    expect(mapOptions).not.toHaveProperty('bearing');
+    expect(mapOptions).not.toHaveProperty('pitch');
   });
 
   it('debounces search typing and only requests final query after delay', async () => {

@@ -1240,8 +1240,6 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       transformRequest: tileTransformRequest,
       center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
       zoom: 11,
-      bearing: 60,
-      pitch: 60,
     });
     mapRef.current = map;
 
@@ -1470,8 +1468,6 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   //     transformRequest: tileTransformRequest,
   //     center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
   //     zoom: 13,
-  //     bearing: 60,
-  //     pitch: 60,
   //   });
   //   map.getCanvas().style.zIndex = '0';
   //   mapRef.current = map;
