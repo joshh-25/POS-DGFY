@@ -32,7 +32,7 @@ This document records the current implementation state of the Storefront `servic
 ## Scope Covered Today
 The current services-mode storefront is implemented for service-oriented tenants using real storefront and catalog content from SKUpervisor-backed data. The current reference tenant for the visual and content model is `ABeeZee`.
 
-Current focus is service mode. Shared storefront foundations now also support generic catalog and F&B storefront behavior, but this document describes the live state of the `services` mode surface.
+Current focus is service mode only. Other business modes may share some normalized storefront foundations, but this document describes the live state of `services` mode.
 
 ## Source Of Truth
 The services-mode storefront is content-driven. It relies on existing backend and SKUpervisor-authored data only.
@@ -58,12 +58,9 @@ The storefront should not invent business meaning when source data is absent. Mi
 ## Frontend Files
 Current services-mode implementation is primarily concentrated in:
 - `frontend/apps/store/src/StorefrontApp.jsx`
-- `frontend/apps/store/src/main.jsx`
 - `frontend/apps/store/src/normalizeStorefrontPageModel.js`
 - `frontend/apps/store/src/servicesStorefrontViewModel.js`
 - `frontend/apps/store/src/modePresentationRegistry.js`
-
-`main.jsx` is now the Storefront app bootstrap only. Storefront rendering, route interpretation, customer-access gating, service booking composition, F&B reservation hooks, follow controls, and catalog empty/search states live in `StorefrontApp.jsx`.
 
 ## Current User-Facing Features
 

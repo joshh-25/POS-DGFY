@@ -1,6 +1,7 @@
 const CATEGORY_PRESETS = Object.freeze({
   laundry: Object.freeze({
     label: 'Laundry',
+    iconToken: 'laundry',
     accent: '#0f766e',
     accentBg: '#f0fdfa',
     howItWorks: [
@@ -16,6 +17,7 @@ const CATEGORY_PRESETS = Object.freeze({
   }),
   aircon_cleaning: Object.freeze({
     label: 'Aircon Cleaning',
+    iconToken: 'aircon',
     accent: '#0369a1',
     accentBg: '#f0f9ff',
     howItWorks: [
@@ -72,6 +74,7 @@ const DEFAULT_CATEGORY_META = Object.freeze({
   accent: '#0f766e',
   accentBg: '#f0fdfa',
   icon: null,
+  iconToken: 'service',
   howItWorks: [
     'Choose the service that matches the request.',
     'Share the required details during booking.',
@@ -86,6 +89,28 @@ const DEFAULT_CATEGORY_META = Object.freeze({
 const normalizeCategoryKey = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized || 'services';
+};
+
+const CATEGORY_ICON_KEYWORD_RULES = Object.freeze([
+  { token: 'aircon', keywords: ['aircon', 'air-con', 'ac cleaning', 'ac service', 'cassette', 'split type', 'window type', 'floor mounted'] },
+  { token: 'laundry', keywords: ['laundry', 'wash', 'wash & fold', 'wash and fold', 'bedsheet', 'blanket', 'comforter'] },
+  { token: 'pressing', keywords: ['press', 'pressing', 'iron', 'ironing', 'steam'] },
+  { token: 'addon', keywords: ['add-on', 'add ons', 'add ons', 'addon', 'extra'] },
+  { token: 'repair', keywords: ['repair', 'fix', 'maintenance', 'tune up', 'troubleshoot'] },
+  { token: 'cleaning', keywords: ['cleaning', 'general cleaning', 'deep clean', 'sanitize', 'sanitizing'] },
+  { token: 'consultation', keywords: ['consultation', 'assessment', 'inspection', 'diagnostic'] },
+  { token: 'grooming', keywords: ['grooming', 'pet'] },
+  { token: 'wellness', keywords: ['wellness', 'massage', 'spa', 'nail', 'facial'] }
+]);
+
+const resolveServiceGroupingLabel = (item = {}) => {
+  const folderName = String(item?.folder_name || '').trim();
+  if (folderName) return folderName;
+
+  const serviceCategory = String(item?.service_detail?.service_category || '').trim();
+  if (serviceCategory) return serviceCategory;
+
+  return 'services';
 };
 
 const normalizeAreaType = (value) => {
@@ -106,6 +131,20 @@ const getCategoryColor = (categoryKey) => {
   const normalizedKey = normalizeCategoryKey(categoryKey);
   const charTotal = [...normalizedKey].reduce((total, char) => total + char.charCodeAt(0), 0);
   return CATEGORY_COLORS[charTotal % CATEGORY_COLORS.length];
+};
+
+const resolveCategoryIconToken = (categoryKey, label = '') => {
+  const normalizedKey = normalizeCategoryKey(categoryKey);
+  const normalizedLabel = String(label || '').trim().toLowerCase();
+  const combined = `${normalizedKey} ${normalizedLabel}`.trim();
+
+  for (const rule of CATEGORY_ICON_KEYWORD_RULES) {
+    if (rule.keywords.some((keyword) => combined.includes(keyword))) {
+      return rule.token;
+    }
+  }
+
+  return 'service';
 };
 
 const summarizeIntake = (schema) => {
@@ -250,6 +289,7 @@ export const getServiceCategoryMeta = (categoryKey, items = []) => {
     ...colorMeta,
     ...preset,
     label: derivedLabel,
+    iconToken: preset.iconToken || resolveCategoryIconToken(normalizedKey, derivedLabel),
     eyebrow: preset.eyebrow || areaMeta.eyebrow || DEFAULT_CATEGORY_META.eyebrow,
     description: preset.description || buildDefaultDescription(derivedLabel, primaryAreaType, items),
     areaLabel: areaMeta.areaLabel || DEFAULT_CATEGORY_META.areaLabel,
@@ -266,7 +306,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
   const services = (Array.isArray(catalog) ? catalog : [])
     .filter((item) => String(item?.category || '').trim().toLowerCase() === 'service')
     .map((item) => {
-      const categoryKey = normalizeCategoryKey(item?.service_detail?.service_category);
+      const categoryKey = normalizeCategoryKey(resolveServiceGroupingLabel(item));
       const intakeFields = summarizeIntake(item?.service_detail?.intake_form_schema);
       const requiredIntakeCount = intakeFields.filter((field) => field.required).length;
       const hasAvailability = hasWeeklyAvailability(item);
