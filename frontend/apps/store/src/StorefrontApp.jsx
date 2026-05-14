@@ -1290,10 +1290,11 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       let pointerInsidePopup = false;
       let focusInsidePopup = false;
       const popup = new maplibregl.Popup({
+        anchor: 'bottom',
         offset: 18,
         closeButton: true,
         closeOnClick: true,
-        maxWidth: '260px'
+        maxWidth: '220px'
       });
       const clearCloseTimer = () => {
         if (closeTimer) {

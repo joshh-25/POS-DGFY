@@ -38,9 +38,9 @@
 }
 
 .store-marker-preview-card {
-  width: min(240px, calc(100vw - 48px));
+  width: min(220px, calc(100vw - 48px));
   max-width: 100%;
-  max-height: min(260px, calc(100vh - 180px));
+  max-height: 210px;
   overflow: hidden;
   border-radius: 12px;
   background: #ffffff;
@@ -51,7 +51,7 @@
 }
 
 .store-marker-preview-cover {
-  height: 72px;
+  height: 52px;
   background: linear-gradient(135deg, #dbeafe, #ecfeff 70%, #f8fafc);
   position: relative;
   overflow: hidden;
@@ -75,7 +75,7 @@
   left: 9px;
   top: 9px;
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 3px 7px;
   font-size: 10px;
   font-weight: 800;
   color: #ffffff;
@@ -90,9 +90,9 @@
 }
 
 .store-marker-preview-body {
-  padding: 10px;
+  padding: 8px;
   display: grid;
-  gap: 7px;
+  gap: 5px;
 }
 
 .store-marker-preview-identity {
@@ -103,8 +103,8 @@
 }
 
 .store-marker-preview-avatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
   overflow: hidden;
   border: 2px solid #ffffff;
@@ -113,7 +113,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  margin-top: -22px;
+  margin-top: -18px;
   position: relative;
 }
 
@@ -138,7 +138,7 @@
 }
 
 .store-marker-preview-title {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,7 +146,7 @@
 }
 
 .store-marker-preview-branch {
-  font-size: 11px;
+  font-size: 10px;
   color: #475569;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -154,20 +154,26 @@
 }
 
 .store-marker-preview-address {
-  font-size: 11px;
+  font-size: 10px;
   color: #334155;
-  line-height: 1.35;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .store-marker-preview-context {
   font-size: 10px;
   color: #0f766e;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .store-marker-preview-badges {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   gap: 5px;
 }
@@ -183,7 +189,7 @@
 }
 
 .store-marker-preview-action {
-  min-height: 32px;
+  min-height: 28px;
   border: none;
   border-radius: 8px;
   background: #1d4ed8;
@@ -197,21 +203,21 @@
   padding: 0;
   border-radius: 12px;
   overflow: hidden;
-  max-height: min(260px, calc(100vh - 180px));
+  max-height: 210px;
 }
 
 .maplibregl-popup:has(.store-marker-preview-card) {
-  max-width: min(260px, calc(100vw - 48px)) !important;
+  max-width: min(230px, calc(100vw - 48px)) !important;
 }
 
 @media (max-width: 640px), (max-height: 620px) {
   .store-marker-preview-card {
-    width: min(220px, calc(100vw - 40px));
-    max-height: min(220px, calc(100vh - 160px));
+    width: min(205px, calc(100vw - 40px));
+    max-height: 188px;
   }
 
   .store-marker-preview-cover {
-    height: 58px;
+    height: 44px;
   }
 
   .store-marker-preview-body {
