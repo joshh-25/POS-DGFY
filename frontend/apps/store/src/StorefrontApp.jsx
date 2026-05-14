@@ -1260,6 +1260,10 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
     const map = mapRef.current;
     if (!map) return;
 
+    if (activePopupRef.current) {
+      activePopupRef.current.remove();
+      activePopupRef.current = null;
+    }
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
@@ -1283,14 +1287,13 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `Preview ${store?.tenant_name || 'storefront'} at ${store?.location_name || store?.branch_label || 'location'}`);
       let closeTimer = null;
-      let persistent = false;
       let pointerInsidePopup = false;
       let focusInsidePopup = false;
       const popup = new maplibregl.Popup({
-        offset: 25,
+        offset: 18,
         closeButton: true,
-        closeOnClick: false,
-        maxWidth: '320px'
+        closeOnClick: true,
+        maxWidth: '260px'
       });
       const clearCloseTimer = () => {
         if (closeTimer) {
@@ -1300,7 +1303,6 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       };
       const closePopup = ({ restoreFocus = false } = {}) => {
         clearCloseTimer();
-        persistent = false;
         pointerInsidePopup = false;
         focusInsidePopup = false;
         popup.remove();
@@ -1323,7 +1325,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       });
       popupNode.addEventListener('pointerleave', () => {
         pointerInsidePopup = false;
-        if (!persistent && !focusInsidePopup) {
+        if (!focusInsidePopup) {
           closeTimer = window.setTimeout(() => {
             if (!pointerInsidePopup && !focusInsidePopup) closePopup();
           }, 180);
@@ -1335,7 +1337,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       });
       popupNode.addEventListener('focusout', (event) => {
         focusInsidePopup = false;
-        if (persistent || isInsidePreviewSurface(event.relatedTarget)) return;
+        if (isInsidePreviewSurface(event.relatedTarget)) return;
         closeTimer = window.setTimeout(() => {
           if (!pointerInsidePopup && !focusInsidePopup) closePopup();
         }, 180);
@@ -1352,9 +1354,8 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
           if (activePopupRef.current === popup) activePopupRef.current = null;
         });
       }
-      const openPopup = ({ keepOpen = false } = {}) => {
+      const openPopup = () => {
         clearCloseTimer();
-        persistent = persistent || keepOpen;
         if (activePopupRef.current && activePopupRef.current !== popup) {
           activePopupRef.current.remove();
         }
@@ -1362,7 +1363,6 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
         popup.setLngLat([lng, lat]).addTo(map);
       };
       const scheduleClose = (event) => {
-        if (persistent) return;
         if (isInsidePreviewSurface(event?.relatedTarget)) {
           focusInsidePopup = popupNode.contains(event.relatedTarget);
           clearCloseTimer();
@@ -1380,7 +1380,7 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       el.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          openPopup({ keepOpen: true });
+          openPopup();
         }
         if (event.key === 'Escape') {
           closePopup();
@@ -1388,12 +1388,13 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
       });
       el.addEventListener('click', (event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (typeof onPreviewAction === 'function') {
-          openPopup({ keepOpen: true });
+          openPopup();
           return;
         }
         if (typeof onSelectStore === 'function') onSelectStore(store);
-        openPopup({ keepOpen: true });
+        openPopup();
       });
       const marker = new maplibregl.Marker({ element: el, offset: markerOffset })
         .setLngLat([lng, lat])
@@ -1428,6 +1429,28 @@ function StoresMap({ stores, selectedKey, onSelectStore, onPreviewAction = null,
         { padding: 24, maxZoom: 14 }
       );
     }
+
+    const closeActivePopupOnOutsideClick = (event) => {
+      const target = event?.originalEvent?.target;
+      const activePopup = activePopupRef.current;
+      if (!activePopup || !target) return;
+      const popupElement = typeof activePopup.getElement === 'function' ? activePopup.getElement() : null;
+      const clickedPopup = popupElement?.contains(target);
+      const clickedMarker = markersRef.current.some((marker) => {
+        const markerElement = typeof marker.getElement === 'function' ? marker.getElement() : null;
+        return markerElement?.contains(target);
+      });
+      if (!clickedPopup && !clickedMarker) {
+        activePopup.remove();
+        activePopupRef.current = null;
+      }
+    };
+
+    map.on('click', closeActivePopupOnOutsideClick);
+
+    return () => {
+      map.off('click', closeActivePopupOnOutsideClick);
+    };
   }, [stores, selectedKey, onSelectStore, userLocation]);
 
   return <div ref={ref} style={{ height: 360, border: '1px solid #d6e2e8', borderRadius: 14 }} />;
