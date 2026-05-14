@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield } from 'lucide-react';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function AcceptInvite() {
 
   const [formData, setFormData] = useState({
     username: '',
+    phoneNumber: '',
     password: '',
     confirmPassword: ''
   });
@@ -96,6 +98,12 @@ export default function AcceptInvite() {
       return;
     }
 
+    const phoneNumberError = getPhoneNumberError(formData.phoneNumber);
+    if (phoneNumberError) {
+      setError(phoneNumberError);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -105,6 +113,7 @@ export default function AcceptInvite() {
       const response = await api.post('/auth/accept-invite', {
         token: tokenFromUrl,
         username: formData.username,
+        phone_number: normalizePhoneNumber(formData.phoneNumber),
         password: formData.password
       }, config);
 
@@ -260,7 +269,7 @@ export default function AcceptInvite() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <Label htmlFor="username">Choose a Username</Label>
-              <Input
+                <Input
                 id="username"
                 type="text"
                 autoComplete="username"
@@ -275,6 +284,22 @@ export default function AcceptInvite() {
               />
               <p className="text-xs text-slate-500 mt-1">3-50 characters</p>
             </div>
+
+            <div>
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+63 912 345 6789"
+                value={formData.phoneNumber}
+                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                required
+                disabled={isLoading}
+                  className="mt-1"
+                />
+                <p className="mt-1 text-xs text-slate-500">{PHONE_NUMBER_HELP_TEXT}</p>
+              </div>
 
             <div>
               <Label htmlFor="password">Create Password</Label>

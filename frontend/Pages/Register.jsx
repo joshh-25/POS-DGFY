@@ -5,7 +5,8 @@ import api from '../src/services/api.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, CheckCircle2, XCircle, Building2, Loader2, AlertCircle } from 'lucide-react';
+import { Package, CheckCircle2, XCircle, Building2, Loader2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ export default function Register() {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
+    phoneNumber: '',
     password: '',
     confirmPassword: '',
     companyToken: tokenFromUrl
@@ -30,6 +32,7 @@ export default function Register() {
   const [tokenValid, setTokenValid] = useState(false);
   const [companyName, setCompanyName] = useState('');
   const [tokenError, setTokenError] = useState('');
+  const [showTokenField, setShowTokenField] = useState(!tokenFromUrl);
 
   // Validate token when it changes
   useEffect(() => {
@@ -74,6 +77,7 @@ export default function Register() {
         } else {
           setTokenError('Could not validate token');
         }
+        setShowTokenField(true);
       } finally {
         setIsValidatingToken(false);
       }
@@ -111,6 +115,12 @@ export default function Register() {
       return;
     }
 
+    const phoneNumberError = getPhoneNumberError(formData.phoneNumber);
+    if (phoneNumberError) {
+      setError(phoneNumberError);
+      return;
+    }
+
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -129,6 +139,7 @@ export default function Register() {
       await register({
         username: formData.username,
         email: formData.email,
+        phone_number: normalizePhoneNumber(formData.phoneNumber),
         password: formData.password
       }, formData.companyToken);
 
@@ -194,34 +205,59 @@ export default function Register() {
 
           {/* Registration Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Company Token Field */}
-            <div>
-              <Label htmlFor="companyToken">Company Token *</Label>
-              <div className="relative">
-                <Input
-                  id="companyToken"
-                  type="text"
-                  autoComplete="off"
-                  placeholder="e.g., token-company-abc123"
-                  value={formData.companyToken}
-                  onChange={(e) => setFormData({ ...formData, companyToken: e.target.value })}
-                  required
-                  disabled={isLoading}
-                  className={`mt-1 pr-10 ${tokenValid ? 'border-green-500' : tokenError ? 'border-red-500' : ''}`}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {isValidatingToken && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-                  {!isValidatingToken && tokenValid && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                  {!isValidatingToken && tokenError && <AlertCircle className="w-4 h-4 text-red-500" />}
+            {showTokenField ? (
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="companyToken">Company Token *</Label>
+                  {tokenValid && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTokenField(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                    >
+                      Hide <ChevronUp className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
+                <div className="relative">
+                  <Input
+                    id="companyToken"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="e.g., token-company-abc123"
+                    value={formData.companyToken}
+                    onChange={(e) => setFormData({ ...formData, companyToken: e.target.value })}
+                    required
+                    disabled={isLoading}
+                    className={`mt-1 pr-10 ${tokenValid ? 'border-green-500' : tokenError ? 'border-red-500' : ''}`}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {isValidatingToken && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                    {!isValidatingToken && tokenValid && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                    {!isValidatingToken && tokenError && <AlertCircle className="w-4 h-4 text-red-500" />}
+                  </div>
+                </div>
+                {tokenError && (
+                  <p className="text-xs text-red-600 mt-1">{tokenError}</p>
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  Get this token from your company administrator
+                </p>
               </div>
-              {tokenError && (
-                <p className="text-xs text-red-600 mt-1">{tokenError}</p>
-              )}
-              <p className="text-xs text-slate-500 mt-1">
-                Get this token from your company administrator
-              </p>
-            </div>
+            ) : (
+              tokenValid && companyName && (
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Company token included in your registration link</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenField(true)}
+                    className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  >
+                    Change <ChevronDown className="w-3 h-3" />
+                  </button>
+                </div>
+              )
+            )}
 
             <div>
               <Label htmlFor="username">Username</Label>
@@ -254,6 +290,22 @@ export default function Register() {
                 disabled={isLoading}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+63 912 345 6789"
+                value={formData.phoneNumber}
+                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                required
+                disabled={isLoading}
+                className="mt-1"
+              />
+              <p className="mt-1 text-xs text-slate-500">{PHONE_NUMBER_HELP_TEXT}</p>
             </div>
 
             <div>

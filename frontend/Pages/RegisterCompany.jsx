@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, CheckCircle2, XCircle } from 'lucide-react';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 
 export default function RegisterCompany() {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         companyName: '',
         adminEmail: '',
+        adminPhone: '',
         adminPassword: '',
         confirmPassword: '',
         complianceMode: 'non_compliant',
@@ -51,12 +53,19 @@ export default function RegisterCompany() {
             return;
         }
 
+        const phoneNumberError = getPhoneNumberError(formData.adminPhone, { label: 'Admin phone number' });
+        if (phoneNumberError) {
+            setError(phoneNumberError);
+            return;
+        }
+
         setIsLoading(true);
         try {
             const registrationPassword = formData.adminPassword;
             const response = await api.post('/admin/tenants/register', {
                 name: formData.companyName,
                 adminEmail: formData.adminEmail,
+                adminPhone: normalizePhoneNumber(formData.adminPhone),
                 adminPassword: formData.adminPassword,
                 plan: 'premium',
                 complianceMode: formData.complianceMode,
@@ -273,6 +282,7 @@ export default function RegisterCompany() {
                                     disabled={isLoading}
                                     className="mt-1"
                                 />
+                                <p className="mt-1 text-xs text-slate-500">{PHONE_NUMBER_HELP_TEXT}</p>
                             </div>
                             <div>
                                 <Label htmlFor="adminEmail">Admin Email</Label>
@@ -282,6 +292,20 @@ export default function RegisterCompany() {
                                     placeholder="admin@acme.com"
                                     value={formData.adminEmail}
                                     onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
+                                    required
+                                    disabled={isLoading}
+                                    className="mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="adminPhone">Admin Phone Number</Label>
+                                <Input
+                                    id="adminPhone"
+                                    type="tel"
+                                    autoComplete="tel"
+                                    placeholder="+63 912 345 6789"
+                                    value={formData.adminPhone}
+                                    onChange={(e) => setFormData({ ...formData, adminPhone: e.target.value })}
                                     required
                                     disabled={isLoading}
                                     className="mt-1"

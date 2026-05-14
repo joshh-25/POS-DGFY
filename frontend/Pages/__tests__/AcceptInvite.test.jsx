@@ -67,6 +67,9 @@ describe('AcceptInvite', () => {
     fireEvent.change(screen.getByLabelText('Choose a Username'), {
       target: { value: 'teammate' }
     });
+    fireEvent.change(screen.getByLabelText('Phone Number'), {
+      target: { value: '+63 912 345 6789' }
+    });
     fireEvent.change(screen.getByLabelText('Create Password'), {
       target: { value: 'StrongPass1!' }
     });
@@ -79,6 +82,7 @@ describe('AcceptInvite', () => {
     expect(apiMock.post).toHaveBeenCalledWith('/auth/accept-invite', {
       token: 'invite-token',
       username: 'teammate',
+      phone_number: '+63 912 345 6789',
       password: 'StrongPass1!'
     }, {});
     expect(window.localStorage.getItem('authToken')).toBe('access-token');

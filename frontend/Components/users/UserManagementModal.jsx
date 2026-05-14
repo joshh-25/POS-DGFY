@@ -266,9 +266,11 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const filteredUsers = useMemo(() => {
     return users.filter(user => {
       // Search filter
+      const normalizedSearchQuery = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery ||
-        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase());
+        String(user.username || '').toLowerCase().includes(normalizedSearchQuery) ||
+        String(user.email || '').toLowerCase().includes(normalizedSearchQuery) ||
+        String(user.phone_number || '').toLowerCase().includes(normalizedSearchQuery);
 
       // Role/status filter
       let matchesFilter = true;
@@ -772,7 +774,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
-                  placeholder="Search by username or email..."
+                  placeholder="Search by username, email, or phone..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -924,6 +926,11 @@ export default function UserManagementModal({ open, onOpenChange }) {
                         )}
                       </p>
                       <p className="text-sm text-slate-500 truncate">{user.email}</p>
+                      {user.phone_number ? (
+                        <p className="text-xs text-slate-500 truncate">{user.phone_number}</p>
+                      ) : !isInvitationRow(user) ? (
+                        <p className="text-xs text-amber-700 truncate">Phone number missing</p>
+                      ) : null}
                       {isInvitationRow(user) && (
                         <p className="text-xs text-slate-500 truncate">
                           Expires {formatShortDate(user.invitation_expires_at)}

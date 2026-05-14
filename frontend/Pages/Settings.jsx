@@ -60,6 +60,7 @@ import {
   WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -236,6 +237,7 @@ const normalizeTerminalRegistry = (rawRegistry) => {
 const SETTINGS_FIELD_LABELS = {
   username: 'Username',
   email: 'Email',
+  phone_number: 'Phone Number',
   currentPassword: 'Current Password',
   newPassword: 'New Password',
   confirmPassword: 'Confirm Password',
@@ -500,12 +502,13 @@ export default function Settings() {
   const [profileSettings, setProfileSettings] = useState({
     username: '',
     email: '',
+    phoneNumber: '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
 
-  const [, setProfileErrors] = useState({});
+  const [profileErrors, setProfileErrors] = useState({});
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [companyInfo, setCompanyInfo] = useState(null);
   const { currentUser, setCurrentUser } = useStore();
@@ -605,6 +608,7 @@ export default function Settings() {
         setProfileSettings({
           username: user.username,
           email: user.email,
+          phoneNumber: user.phone_number || '',
           currentPassword: '',
           newPassword: '',
           confirmPassword: ''
@@ -1322,12 +1326,22 @@ export default function Settings() {
         }
       }
 
-      // Update profile (username/email) if changed
+      // Update profile identity fields if changed
       if (profileSettings.username !== currentUser?.username ||
-        profileSettings.email !== currentUser?.email) {
+        profileSettings.email !== currentUser?.email ||
+        profileSettings.phoneNumber !== (currentUser?.phone_number || '')) {
+        const normalizedPhoneNumber = normalizePhoneNumber(profileSettings.phoneNumber);
+        const phoneNumberError = getPhoneNumberError(normalizedPhoneNumber);
+        if (phoneNumberError) {
+          setProfileErrors({ phoneNumber: phoneNumberError });
+          toast.error(phoneNumberError);
+          return;
+        }
+
         await userService.updateProfile({
           username: profileSettings.username,
-          email: profileSettings.email
+          email: profileSettings.email,
+          phone_number: normalizedPhoneNumber
         });
 
         // Update current user
@@ -1551,7 +1565,8 @@ export default function Settings() {
       if (validationErrors.length > 0) {
         const errors = {};
         validationErrors.forEach(err => {
-          errors[err.field] = err.message;
+          const fieldKey = err.field === 'phone_number' ? 'phoneNumber' : err.field;
+          errors[fieldKey] = err.message;
         });
         setProfileErrors(errors);
       }
@@ -1597,6 +1612,7 @@ export default function Settings() {
       setProfileSettings({
         username: currentUser.username,
         email: currentUser.email,
+        phoneNumber: currentUser.phone_number || '',
         currentPassword: '',
         newPassword: '',
         confirmPassword: ''
@@ -1886,6 +1902,21 @@ export default function Settings() {
                   value={profileSettings.email}
                   onChange={(e) => handleProfileChange('email', e.target.value)}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Phone Number</Label>
+                <Input
+                  id="phoneNumber"
+                  type="tel"
+                  autoComplete="tel"
+                  placeholder="+63 912 345 6789"
+                  value={profileSettings.phoneNumber}
+                  onChange={(e) => handleProfileChange('phoneNumber', e.target.value)}
+                  aria-invalid={Boolean(profileErrors.phoneNumber)}
+                />
+                <p className={`text-xs ${profileErrors.phoneNumber ? 'text-red-600' : 'text-slate-500'}`}>
+                  {profileErrors.phoneNumber || PHONE_NUMBER_HELP_TEXT}
+                </p>
               </div>
               <Separator />
               <div className="space-y-4">

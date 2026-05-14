@@ -77,6 +77,9 @@ describe('RegisterCompany login handoff', () => {
     fireEvent.change(screen.getByLabelText('Admin Email'), {
       target: { value: 'owner@autofoods.test' }
     });
+    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
+      target: { value: '+63 912 345 6789' }
+    });
     fireEvent.change(screen.getByLabelText('Admin Password'), {
       target: { value: 'StrongPass1!' }
     });
@@ -131,6 +134,9 @@ describe('RegisterCompany login handoff', () => {
     fireEvent.change(screen.getByLabelText('Admin Email'), {
       target: { value: 'owner@autofoods.test' }
     });
+    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
+      target: { value: '+63 912 345 6789' }
+    });
     fireEvent.change(screen.getByLabelText('Admin Password'), {
       target: { value: 'StrongPass1!' }
     });
@@ -176,6 +182,9 @@ describe('RegisterCompany login handoff', () => {
     });
     fireEvent.change(screen.getByLabelText('Admin Email'), {
       target: { value: 'owner@pendingfoods.test' }
+    });
+    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
+      target: { value: '+63 912 345 6789' }
     });
     fireEvent.change(screen.getByLabelText('Admin Password'), {
       target: { value: 'StrongPass1!' }
